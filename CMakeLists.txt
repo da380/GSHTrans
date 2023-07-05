@@ -35,7 +35,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(GaussQuad)
 
-# add FFTW3
+# add in FFTW
 find_package(FFTW)
 
 # add in FFTWpp
