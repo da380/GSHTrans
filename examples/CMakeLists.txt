@@ -5,3 +5,6 @@ target_link_libraries(QuadExample
 add_executable(FFTWExample FFTWExample.cpp)
 target_link_libraries(FFTWExample FFTWpp)
 
+add_executable(LegendreExample LegendreExample.cpp)
+target_link_libraries(LegendreExample GSHT)
+
