@@ -75,7 +75,7 @@ class LegendreValue {
     return;
   }
 
-  void operator++(int) { return; }
+
 
  private:
   // Store the current degree.
