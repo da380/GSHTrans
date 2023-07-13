@@ -36,7 +36,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(GaussQuad)
 
 # add in FFTW
-find_package(FFTW)
+#find_package(FFTW)
 
 # add in FFTWpp
 include(FetchContent)
@@ -48,8 +48,9 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(FFTWpp)
 
 
-# add the source files
-add_subdirectory(src)
+# Set up the library
+add_subdirectory(include)
+
 
 # optionally add in the examples and tests
 if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)

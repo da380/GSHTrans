@@ -1,16 +1,15 @@
 
+#include <concepts>
+#include <fstream>
 #include <iostream>
 #include <numbers>
 
-#include "Legendre.h"
+
+#include "GSHT.h"
+
 
 int main() {
-
   using Float = double;
-  
-  Float theta = 0.3*std::numbers::pi_v<Float>;
-
-  GSHT::LegendreValue p(theta);
 
   using std::cout;
   using std::endl;
@@ -18,16 +17,45 @@ int main() {
   cout.setf(std::ios_base::showpos);
   cout.precision(16);
 
-  int L = 4;
-  for(int l = 0; l <= L; l++)
+  int n = 100;
+  int l = 200;
+  std::vector<Float> thetas(n);  
+
+  Float th{0.0};
+  Float dth = std::numbers::pi_v<Float>/static_cast<Float>(n-1);
+  for (auto& val : thetas)
     {
-      ++p;
-      for (int m = 0; m <= l; m++)
-	cout << p(m) << " ";
-      cout << endl;
+      val = th;
+      th += dth;
     }
   
-  
-  
-  
+
+  for(auto theta : thetas)
+    {
+
+      
+    // Construct the iterator.
+    GSHT::LegendreIterator p(theta);
+
+    // Take l steps.
+    p + l;
+
+    // Get a reference the current values
+    GSHT::LegendreIterator<Float>::reference plm = *p;
+
+    // Build vector of values using STL function.
+    std::vector<Float> plm2(l + 1);
+    std::generate(plm2.begin(), plm2.end(), [l, m = 0, theta]() mutable {
+      return std::sph_legendre(l, m++, theta);
+    });
+
+    // Compute the difference.
+    std::transform(plm.begin(), plm.end(), plm2.begin(), plm.begin(),
+                   std::minus<>());
+
+    // Write out the maximum value
+    auto max = std::abs(*std::max_element(plm.begin(), plm.end()));
+
+    cout << theta  << " " << max << endl;
+  }
 }
