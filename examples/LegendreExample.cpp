@@ -14,29 +14,31 @@ int main() {
 
   using std::cout;
   using std::endl;
+  cout.setf(std::ios_base::scientific);
+  cout.setf(std::ios_base::showpos);
+  cout.precision(std::numeric_limits<Float>::digits10);
+
+  
   using namespace GSHT;
 
-  Float theta = 10;
-  int L = 4;
-  int M = 1;
+  Float theta = 0.2;
+  int L = 2;
+  int M = L;
   
-  LegendreValues plm(theta,L,M);
+  LegendreValues p(theta,L,M);
 
-
-  for(int l = 0; l <= L; l++)
+  for(int  l = 0; l <= L; l++)
     {
-      LegendreValues<Float>::iterator start = plm.begin(l);
-      LegendreValues<Float>::iterator finish = plm.end(l);
-      if(l < L)
-	{	  
-	  cout << *start <<  " " << *finish << endl;
-	}
-      else
-	{
-	  cout << *start << endl;
-	}
-    }
 
+      for(int m = 0; m <= std::min(l,M); m++)
+	{
+	  cout << p(l,m) << " ";
+	}
+
+      cout << endl;
+      
+    }
+  
 
 
 }
