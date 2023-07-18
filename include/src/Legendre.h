@@ -21,34 +21,39 @@ class LegendreValues {
   LegendreValues() = delete;
   LegendreValues(Float theta, int L, int M);
 
-  // Basic data functions.
+  // Basic geters.
+  Float Angle() const { return theta; }
   int MaxDegree() const { return L; }
   int MaxOrder() const { return M; }
-  Float Angle() const { return theta; }
 
   // Functions to return iterators to the values.
   iterator begin() { return data.begin(); }
   iterator end() { return data.end(); }
-  iterator begin(int l) { return std::next(begin(), CountBeforeDegree(l)); }
-  iterator end(int l) { return std::next(begin(), CountToDegree(l)); }
+  iterator beginForDegree(int l) {
+    return std::next(begin(), CountBeforeDegree(l));
+  }
+  iterator endForDegree(int l) { return std::next(begin(), CountToDegree(l)); }
 
   // Function to return value at given degree and order.
   // Note that negative orders are obtained using symmetry.
   Float operator()(int l, int m) {
-    auto p = *std::next(begin(l), std::abs(m));
+    auto p = *std::next(beginForDegree(l), std::abs(m));
     return m < 0 ? Sign(m) * p : p;
   }
 
  private:
+  Float theta;
   int L;
   int M;
-  Float theta;
   std::vector<Float> data;
+
   int CountToDegree(int l) {
     return l <= M ? l + 1 + (l * (l + 1)) / 2
                   : M + 1 + (M * (M + 1)) / 2 + (l - M) * (M + 1);
   }
+
   int CountBeforeDegree(int l) { return CountToDegree(l - 1); }
+
   Float Sign(int m) { return m % 2 ? -1.0 : 1.0; }
 };
 
@@ -90,8 +95,8 @@ LegendreValues<Float>::LegendreValues(const Float theta, const int L,
       Float Fl = static_cast<Float>(l);
 
       // Apply the recursion relation
-      auto minus2 = begin(l - 2);
-      auto minus1 = begin(l - 1);
+      auto minus2 = beginForDegree(l - 2);
+      auto minus1 = beginForDegree(l - 1);
       for (int m = 0; m <= std::min(l - 1, M); m++) {
         Float Fm = static_cast<Float>(m);
         Float f1 = std::sqrt((4 * Fl * Fl - 1) / (Fl * Fl - Fm * Fm));
