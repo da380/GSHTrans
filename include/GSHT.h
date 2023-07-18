@@ -3,5 +3,6 @@
 
 // Header files to include for use of GHST library
 #include "src/Legendre.h"
+#include "src/Wigner.h"
 
 #endif

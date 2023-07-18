@@ -1,13 +1,11 @@
-#ifndef Legendre_GUARD_H
-#define Legendre_GUARD_H
+#ifndef LEGENDRE_GUARD_H
+#define LEGENDRE_GUARD_H
 
 #include <cassert>
 #include <cmath>
 #include <concepts>
-#include <iterator>
 #include <limits>
 #include <numbers>
-#include <utility>
 #include <vector>
 
 namespace GSHT {
@@ -119,7 +117,6 @@ LegendreValues<Float>::LegendreValues(const Float theta, const int L,
   }
 }
 
-
 }  // namespace GSHT
 
-#endif  // Legendre_GUARD_H
+#endif  // LEGENDRE_GUARD_H
