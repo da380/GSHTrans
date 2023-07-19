@@ -22,7 +22,7 @@ int main() {
 
 
   int L = 5;
-  int M = 5;
+  int M = 3;
   int N = 2;
   Float theta = 0.2;
   WignerValues d(L,M,N,theta);
@@ -49,8 +49,16 @@ int main() {
 
       
     }
-
   
+
+  for (int l : Degrees(10))
+    {
+      for (int m : Orders(l))
+	{
+	  cout << "l = " << l << ", m = " << m << endl;
+	}
+    }
+
   
 
 }

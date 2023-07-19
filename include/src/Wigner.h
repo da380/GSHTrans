@@ -17,7 +17,7 @@ class WignerValues {
   // Define member types.
   using value_type = Float;
   //  using iterator = typename std::vector<Float>::iterator;
-  using iterator = typename std::vector< std::tuple<int,int,int> >::iterator;
+  using iterator = typename std::vector<std::tuple<int, int, int> >::iterator;
 
   // Constructors.
   WignerValues() = delete;
@@ -33,19 +33,17 @@ class WignerValues {
   iterator begin() { return index.begin(); }
   iterator end() { return index.end(); }
   iterator beginForUpperIndex(const int n) {
-    return std::next(begin(), ElementsBeforeUpperIndex(n));
+    return std::next(begin(), ElementsIncludingUpperIndex(n - 1));
   }
   iterator endForUpperIndex(const int n) {
-    return std::next(begin(), ElementsBeforeUpperIndex(n+1));
+    return std::next(begin(), ElementsIncludingUpperIndex(n));
   }
   iterator beginForDegreeAtUpperIndex(const int l, const int n) {
-    return std::next(begin(), ElementsBeforeDegreeAtUpperIndex(l,n));
+    return std::next(begin(), ElementsIncludingDegreeAtUpperIndex(l - 1, n));
   }
   iterator endForDegreeAtUpperIndex(const int l, const int n) {
-    return std::next(begin(), ElementsBeforeDegreeAtUpperIndex(l+1,n));
-  }  
-
-
+    return std::next(begin(), ElementsIncludingDegreeAtUpperIndex(l, n));
+  }
 
  private:
   Float theta;
@@ -53,38 +51,29 @@ class WignerValues {
   int M;
   int N;
   std::vector<Float> data;
-  std::vector< std::tuple<int,int,int> > index;
+  std::vector<std::tuple<int, int, int> > index;
 
-  constexpr int ElementsUptoUpperIndex(int n) const {
+  constexpr int ElementsIncludingUpperIndex(int n) const {
     return (n + 1) * ((M + 1) * (M + 1) + (L - M) * (2 * M + 1)) -
-      (n * (n + 1) * (2 * n + 1)) / 6;
-  }
-  
-
-  constexpr int ElementsBeforeUpperIndex(int n) const {
-    return ElementsUptoUpperIndex(n-1);
+           (n * (n + 1) * (2 * n + 1)) / 6;
   }
 
-
-  constexpr int ElementsUptoDegreeAtUpperIndex(int l, int n) const {
-    int i = ElementsBeforeUpperIndex(n);
-    if(l >= n) {
-      i -= n*n;
-      if(l <= M){
-	i += (l+1)*(l+1);
+  constexpr int ElementsIncludingDegreeAtUpperIndex(int l, int n) const {
+    int i = ElementsIncludingUpperIndex(n - 1);
+    if (l >= n) {
+      i -= n * n;
+      if (l <= M) {
+        i += (l + 1) * (l + 1);
       } else {
-	i += (M+1)*(M+1) + (l-M)*(2*M+1);
-      }      
+        i += (M + 1) * (M + 1) + (l - M) * (2 * M + 1);
+      }
     }
     return i;
   }
-  
-  
-  constexpr int ElementsBeforeDegreeAtUpperIndex(int l,
-                                                 int n) const {
-    return ElementsUptoDegreeAtUpperIndex(l-1, n);
-  }
 
+  constexpr int ElementsBeforeDegreeAtUpperIndex(int l, int n) const {
+    return ElementsIncludingDegreeAtUpperIndex(l - 1, n);
+  }
 
   Float Sign(int m) { return m % 2 ? -1.0 : 1.0; }
 };
@@ -106,11 +95,12 @@ WignerValues<Float>::WignerValues(const int L, const int M, const int N,
     for (int l = n; l <= L; l++) {
       int mm = std::min(l, M);
       for (int m = -mm; m <= mm; m++) {
-	index.push_back({n,l,m});
+        index.push_back({n, l, m});
       }
     }
   }
 }
+
 
 }  // namespace GSHT
 
