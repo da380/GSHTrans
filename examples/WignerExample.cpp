@@ -8,7 +8,7 @@
 #include <tuple>
 
 
-#include "GSHT.h"
+#include <GSHT/Core>
 
 
 int main() {
@@ -28,10 +28,10 @@ int main() {
   WignerValues d(L,M,N,theta);
 
   
-  for ( int n = 0; n <= N; n++)
+  for (int n : UpperIndices(0,N))
     {
       
-      for (int l  = n; l <= L; l++)
+      for (int l : Degrees(n,L))
 	{
 
 	  auto start = d.beginForDegreeAtUpperIndex(l,n);
@@ -51,14 +51,6 @@ int main() {
     }
   
 
-  for (int l : Degrees(10))
-    {
-      for (int m : Orders(l))
-	{
-	  cout << "l = " << l << ", m = " << m << endl;
-	}
-    }
 
-  
 
 }

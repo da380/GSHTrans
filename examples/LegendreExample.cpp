@@ -7,7 +7,7 @@
 #include <numbers>
 
 
-#include "GSHT.h"
+#include <GSHT/Core>
 
 
 int main() {

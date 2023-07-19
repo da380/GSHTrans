@@ -7,12 +7,11 @@ namespace GSHT {
 
 class Range {
  private:
-  int first;
   int last;
   int iter;
 
  public:
-  Range(int first, int last) : first{first}, last{last}, iter{first} {}
+  Range(int first, int last) : last{last}, iter{first} {}
   explicit Range(int last) : Range(0, last) {}
 
   // Iterable functions

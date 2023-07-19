@@ -5,7 +5,7 @@
 #include <list>
 #include <vector>
 
-#include "FFTWpp.h"
+#include <FFTWpp/Core>
 
 
 

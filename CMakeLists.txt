@@ -35,9 +35,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(GaussQuad)
 
-# add in FFTW
-#find_package(FFTW)
-
 # add in FFTWpp
 include(FetchContent)
 FetchContent_Declare(
@@ -49,7 +46,12 @@ FetchContent_MakeAvailable(FFTWpp)
 
 
 # Set up the library
-add_subdirectory(include)
+add_library (GSHT INTERFACE)
+target_link_libraries(GSHT INTERFACE Eigen3::Eigen FFTWpp GaussQuad)
+target_include_directories (GaussQuad INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+  $<INSTALL_INTERFACE:${INCLUDE_INSTALL_DIR}>
+)
 
 
 # optionally add in the examples and tests

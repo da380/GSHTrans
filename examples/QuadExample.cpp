@@ -2,7 +2,7 @@
 #include <fstream>
 #include <iostream>
 
-#include "GaussQuad.h"
+#include <GaussQuad/Core>
 
 int main() {
   // Set the output precision
