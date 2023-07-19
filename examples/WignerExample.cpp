@@ -27,29 +27,6 @@ int main() {
   Float theta = 0.2;
   WignerValues d(L,M,N,theta);
 
-  
-  for (int n : UpperIndices(0,N))
-    {
-      
-      for (int l : Degrees(n,L))
-	{
-
-	  auto start = d.beginForDegreeAtUpperIndex(l,n);
-	  auto finish = d.endForDegreeAtUpperIndex(l,n);
-	  while(start != finish){
-	    auto [nn,ll,mm] = *start++;
-	    cout << nn << " " << ll << " " << mm  << endl;
-	  }
-	  cout << "---------------------------------------\n";
-	  
-	  
-	  
-	}
-      cout << "==============================================\n";
-
-      
-    }
-  
 
 
 
