@@ -1,6 +1,7 @@
 
 #include <cmath>
 #include <concepts>
+#include <execution>
 #include <fstream>
 #include <iostream>
 #include <limits>
@@ -21,8 +22,8 @@ int main() {
   using namespace GSHT;
 
 
-  int L = 5;
-  int M = 3;
+  int L = 10;
+  int M = 4;
   int N = 2;
   Float theta = 0.2;
   WignerValues d(L,M,N,theta);
