@@ -35,14 +35,16 @@ class WignerValues {
   using iterator = typename std::vector<Float>::iterator;
   using difference_type = std::vector<Float>::difference_type;
 
-  // Constructors.
+  // Delete default constructor.
   WignerValues() = delete;
 
+  // Constructor taking in execution policy as argument.
   template <typename ExecutionPolicy>
-  WignerValues(ExecutionPolicy policy, int L, int M, int N, Float theta);
+  WignerValues(int L, int M, int N, Float theta, ExecutionPolicy policy);
 
+  // Constructor using default construction policy.
   WignerValues(int L, int M, int N, Float theta)
-      : WignerValues(std::execution::seq, L, M, N, theta) {}
+      : WignerValues(L, M, N, theta, std::execution::seq) {}
 
   // Geters for basic data.
 
@@ -88,12 +90,23 @@ class WignerValues {
     }
     return i;
   }
+
+  template <typename ExecutionPolicy>
+  void SetInitialValues(int, Float, Float, bool, bool, ExecutionPolicy);
+
+  template <typename ExecutionPolicy>
+  void OneTermRecursion(int, int, Float, std::vector<Float>&,
+                        std::vector<Float>&, ExecutionPolicy);
+
+  template <typename ExecutionPolicy>
+  void TwoTermRecursion(int, int, Float, std::vector<Float>&,
+                        std::vector<Float>&, ExecutionPolicy);
 };
 
 template <std::floating_point Float>
 template <typename ExecutionPolicy>
-WignerValues<Float>::WignerValues(ExecutionPolicy policy, int L, int M, int N,
-                                  Float theta)
+WignerValues<Float>::WignerValues(int L, int M, int N, Float theta,
+                                  ExecutionPolicy policy)
     : L{L}, M{M}, N{N}, theta{theta} {
   // Check the maximum degree is non-negative.
   assert(L >= 0);
@@ -107,8 +120,8 @@ WignerValues<Float>::WignerValues(ExecutionPolicy policy, int L, int M, int N,
   // If N > M swap their values
   if (N > M) std::swap(M, N);
 
-  // Reserve space for the values.
-  data.reserve(Count(N));
+  // Initialise the data vector.
+  data = std::vector<Float>(Count(N));
 
   // Pre-compute and store trigonometric terms
   auto cos = std::cos(theta);
@@ -120,119 +133,272 @@ WignerValues<Float>::WignerValues(ExecutionPolicy policy, int L, int M, int N,
   auto atLeft = sinHalf < tiny;
   auto atRight = cosHalf < tiny;
 
-  // Pre-compute and store square roots of integers up to L + M
-  std::vector<Float> sqrtInts;
-  sqrtInts.reserve(L + M);
-  std::generate_n(back_inserter(sqrtInts), L + M + 1, [l = 0]() mutable {
-    return std::sqrt(static_cast<Float>(l++));
-  });
-
-
-
-
-  // Loop over the non-negative uppper indices.
-  for (int n = 0; n <= N; n++) {
-    // Set values for degree n
-    if (n == 0) {
-      // Deal with l == 0 separately
-      data.push_back(static_cast<Float>(1));
-    } else {
-      auto l = n;
-
-      /*
-      std::generate_n(policy, begin(n, l), 2 * l + 1, [&, m = -l]() {
-        return WignerValueMaxUpperIndexAtOrder(l, m, logSinHalf, logCosHalf,
-                                               atLeft, atRight);
+  // Pre-compute and store square roots and their inverses for natural numbers
+  // up to L + M
+  std::vector<Float> sqInt(L + M + 1);
+  std::transform(
+      policy, sqInt.begin(), sqInt.end(), sqInt.begin(),
+      [&](auto& x) { return std::sqrt(static_cast<Float>(&x - &sqInt[0])); });
+  std::vector<Float> sqIntInv(L + M + 1);
+  std::transform(
+      policy, sqInt.begin(), sqInt.end(), sqIntInv.begin(), [](auto x) {
+        return x > static_cast<Float>(0) ? 1 / x : static_cast<Float>(0);
       });
-      */
-      
-    }
-
-    // Set values for degree n+1.
-    {
-      auto l = n + 1;
-      // Add term at minimum order directly.
-      data.push_back(WignerValueMaxUpperIndexAtOrder(
-          l, -l, logSinHalf, logCosHalf, atLeft, atRight));
-      // Apply one term recursion for |m| < l.
-      auto preFac12 = (2 * l - 1) / sqrtInts[l + n];
-      auto preFac11 = preFac12 * l * cos;
-      std::transform(policy, begin(n, l - 1), end(n, l - 1), begin(n, l),
-                     [=, &sqrtInts, m = -l + 1](auto minus1) mutable {
-                       auto fac1 = (preFac11 - m * preFac12) /
-                                   (sqrtInts[l - m] * sqrtInts[l + m]);
-                       m++;
-                       return fac1 * minus1;
-                     });
-
-      // Add in term at maximum order directly.
-      data.push_back(WignerValueMaxUpperIndexAtOrder(
-          l, l, logSinHalf, logCosHalf, atLeft, atRight));
-    }
-
-  }  // End loop over upper index
-
-  /*
 
 
-  // Loop over the upper indices.
+
   for (int n = 0; n <= N; n++) {
-    // Compute the values at l = n for appropriate m directly.
-    {
-      int l = n;
-      for (int m : Orders(l)) {
-        data.push_back(ValueMaxUpperIndexAtOrder(l, m));
+
+    // Set the values for l == n;
+    SetInitialValues(n, logSinHalf, logCosHalf, atLeft, atRight, policy);
+
+
+    // Set values at the next degree using formulae and one-term recursion.
+    if (n + 1 <= L) {
+      auto l = n + 1;
+      auto mMax = std::min(l, M);
+
+      // Deal with m == -l using formulae if needed.
+      if (l <= M) {
+        data.push_back(WignerValueMinOrderAtUpperIndex(
+            l, n, logSinHalf, logCosHalf, atLeft, atRight));
+      }
+
+      // Deal with interior orders using one-term recusion.
+      {
+        // Set the iterators.
+        auto startMinusOne = begin(n, l - 1);
+        auto finishMinusOne = end(n, l - 1);
+        auto start = begin(n, l);
+        // Pre-compute some factors outside the loop.
+        auto alpha = (2 * l - 1) * l * cos * sqIntInv[l + n];
+        auto beta = (2 * l - 1) * sqIntInv[l + n];
+        std::transform(
+            policy, startMinusOne, finishMinusOne, start, [&](auto& minusOne) {
+              auto m = static_cast<int>(&minusOne - &*startMinusOne) - mMax + 1;
+              auto fOne =
+                  (alpha - beta * m) * sqIntInv[l - m] * sqIntInv[l + m];
+              return fOne * minusOne;
+            });
+      }
+
+      // Deal with m == l using formulae if needed
+      if (l <= M) {
+        data.push_back(WignerValueMaxOrderAtUpperIndex(
+            l, n, logSinHalf, logCosHalf, atLeft, atRight));
       }
     }
 
-    // Do the next degree using one-term recusion.
-    if (n < L) {
-      int l = n + 1;
+    // Loop over the degrees until the maximum order stops growing.
+    for (int l = n + 2; l <= M; l++) {
+      // Deal with m == -l using formulae
+      data.push_back(WignerValueMinOrderAtUpperIndex(
+          l, n, logSinHalf, logCosHalf, atLeft, atRight));
 
-      // Add in the new term at m = -l
-      data.push_back(ValueMinOrderAtUpperIndex(l,n));
+      // Deal with interior orders using two-term recusion.
+      {
+        // set the iterators.
+        auto startMinusTwo = begin(n, l - 2);
+        auto finishMinusTwo = end(n, l - 2);
+        auto startMinusOne = std::next(begin(n, l - 1));
+        auto start = std::next(begin(n, l), 2);
+        // Pre-compute some common factors outside the loop.
+        auto alpha = (2 * l - 1) * l * cos * sqIntInv[l - n] * sqIntInv[l + n];
+        auto beta = (2 * l - 1) * n * sqIntInv[l - n] * sqIntInv[l + n] /
+                    static_cast<Float>(l - 1);
+        auto gamma = l * sqInt[l - 1 - n] * sqInt[l - 1 + n] * sqIntInv[l - n] *
+                     sqIntInv[l + n] / static_cast<Float>(l - 1);
 
-      // Add in the new terms for |m| < l using one-term recusion
-      auto minusOne = beginForDegreeAtUpperIndex(l - 1, n);
-      for (int m : Orders(l-1, M)) {
-        Float f1 = Numerator1(l,m,n)/Denominator(l,m,n);
-        data.push_back(f1 * (*minusOne++));
-
+        std::transform(
+            policy, startMinusTwo, finishMinusTwo, startMinusOne, start,
+            [&](auto& minusTwo, auto& minusOne) {
+              auto m = static_cast<int>(&minusTwo - &*startMinusTwo) - l + 2;
+              auto denom = sqIntInv[l - m] * sqIntInv[l + m];
+              auto fOne = (alpha - beta * m) * denom;
+              auto fTwo = gamma * sqInt[l - 1 - m] * sqInt[l - 1 + m] * denom;
+              return fOne * minusOne - fTwo * minusTwo;
+            });
       }
 
-      // Add in the new term at m = l
-      data.push_back(ValueMaxOrderAtUpperIndex(l,n));
-    }
+      // Deal with m == l using formulae.
+      data.push_back(WignerValueMaxOrderAtUpperIndex(
+          l, n, logSinHalf, logCosHalf, atLeft, atRight));
+    }  // End of first loop over degrees.
 
-    // Now do the rest using two-term recusion.
-    for (int l = n + 2; l <= L; l++) {
+    // If needed, deal with l = M+1;
+    if (M + 1 <= L) {
+      auto l = M + 1;
 
-      // Add in the new term at m = -l
-      data.push_back(ValueMinOrderAtUpperIndex(l,n));
-
-      // Add in the new terms for |m| < l using two-term recusion
-      auto minusTwo = beginForDegreeAtUpperIndex(l - 2, n);
-      auto minusOne = beginForDegreeAtUpperIndex(l - 1, n);
-      for (int m : Orders(l-1, M)) {
-        Float d = Denominator(l,m,n);
-        Float f1 = Numerator1(l,m,n)/d;
-        Float f2 = Numerator2(l,m,n)/d;
-        data.push_back( f1 * (*minusOne++) + f2 * (*minusTwo++));
+      // Deal with m == -M using one-term recursion
+      {
+        auto m = -M;
+        auto fOne = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
+                    sqIntInv[l - n] * sqIntInv[l + n] * sqIntInv[l - m] *
+                    sqIntInv[l + m] / static_cast<Float>(l - 1);
+        auto minusOne = *begin(n, l - 1);
+        data.push_back(fOne * minusOne);
       }
 
-      // Add in the new term at m = l
-      data.push_back(ValueMaxOrderAtUpperIndex(l,n));
+      // Deal with interior orders using two-term recusion.
+      {
+        // set the iterators.
+        auto startMinusTwo = begin(n, l - 2);
+        auto finishMinusTwo = end(n, l - 2);
+        auto startMinusOne = std::next(begin(n, l - 1));
+        auto start = std::next(begin(n, l));
 
+        // Pre-compute some common factors outside the loop.
+        auto alpha = (2 * l - 1) * l * cos * sqIntInv[l - n] * sqIntInv[l + n];
+        auto beta = (2 * l - 1) * n * sqIntInv[l - n] * sqIntInv[l + n] /
+                    static_cast<Float>(l - 1);
+        auto gamma = l * sqInt[l - 1 - n] * sqInt[l - 1 + n] * sqIntInv[l - n] *
+                     sqIntInv[l + n] / static_cast<Float>(l - 1);
+
+        std::transform(
+            policy, startMinusTwo, finishMinusTwo, startMinusOne, start,
+            [&](auto& minusTwo, auto& minusOne) {
+              auto m = static_cast<int>(&minusTwo - &*startMinusTwo) - M + 1;
+              auto denom = sqIntInv[l - m] * sqIntInv[l + m];
+              auto fOne = (alpha - beta * m) * denom;
+              auto fTwo = gamma * sqInt[l - 1 - m] * sqInt[l - 1 + m] * denom;
+              return fOne * minusOne - fTwo * minusTwo;
+            });
+      }
+
+      // Deal with m == M with one-term recursion.
+      {
+        auto m = M;
+        auto fOne = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
+                    sqIntInv[l - n] * sqIntInv[l + n] * sqIntInv[l - m] *
+                    sqIntInv[l + m] / static_cast<Float>(l - 1);
+        auto minusOne = *std::prev(end(n, l - 1));
+        data.push_back(fOne * minusOne);
+      }
     }
-  }
 
-  */
+    // If needed, deal with M + 1 < l <= L
+    for (int l = M + 2; l <= L; l++) {
+      // set the iterators.
+      auto startMinusTwo = begin(n, l - 2);
+      auto finishMinusTwo = end(n, l - 2);
+      auto startMinusOne = begin(n, l - 1);
+      auto start = begin(n, l);
+
+      // Pre-compute some common factors outside the loop.
+      auto alpha = (2 * l - 1) * l * cos * sqIntInv[l - n] * sqIntInv[l + n];
+      auto beta = (2 * l - 1) * n * sqIntInv[l - n] * sqIntInv[l + n] /
+                  static_cast<Float>(l - 1);
+      auto gamma = l * sqInt[l - 1 - n] * sqInt[l - 1 + n] * sqIntInv[l - n] *
+                   sqIntInv[l + n] / static_cast<Float>(l - 1);
+
+      std::transform(
+          policy, startMinusTwo, finishMinusTwo, startMinusOne, start,
+          [&](auto& minusTwo, auto& minusOne) {
+            auto m = static_cast<int>(&minusTwo - &*startMinusTwo) - M;
+            auto denom = sqIntInv[l - m] * sqIntInv[l + m];
+            auto fOne = (alpha - beta * m) * denom;
+            auto fTwo = gamma * sqInt[l - 1 - m] * sqInt[l - 1 + m] * denom;
+            return fOne * minusOne - fTwo * minusTwo;
+          });
+
+    }  // End of second loop over degrees.
+
+  }  // End of loop over upper indices.
 }
 
 template <std::floating_point Float>
-auto WignerValueMaxOrderAtUpperIndex(int l, int n, Float logSinHalf,
-                                     Float logCosHalf, bool atLeft,
-                                     bool atRight) {
+template <typename ExecutionPolicy>
+void WignerValues<Float>::SetInitialValues(int l, Float logSinHalf,
+                                           Float logCosHalf, bool atLeft,
+                                           bool atRight,
+                                           ExecutionPolicy policy) {
+  auto mMax = std::min(l, M);
+  auto start = begin(l, l);
+  auto finish = end(l, l);
+  std::transform(policy, start, finish, start, [&](auto& p) {
+    auto m = static_cast<int>(&p - &*start) - mMax;
+    return WignerValueMaxUpperIndexAtOrder(l, m, logSinHalf, logCosHalf, atLeft,
+                                           atRight);
+  });
+}
+
+template <std::floating_point Float>
+template <typename ExecutionPolicy>
+void WignerValues<Float>::OneTermRecursion(int n, int l, Float cos,
+                                           std::vector<Float>& sqInt,
+                                           std::vector<Float>& sqIntInv,
+                                           ExecutionPolicy policy) {
+  // Work out the offsets for iterators
+  int minusOneOffSet = 0;
+  int currentOffSet = 0;
+  if (l <= M) {
+    minusOneOffSet = 1;
+    currentOffSet = 2;
+  }
+  if (l == M + 1) {
+    minusOneOffSet = 1;
+    currentOffSet = 1;
+  }
+
+  // Set the maximum degree
+  int mMax = M;
+  if (l <= M) {
+    mMax = l;
+  }
+  if (l == M + 1) {
+    mMax = M - 1;
+  }
+}
+
+template <std::floating_point Float>
+template <typename ExecutionPolicy>
+void WignerValues<Float>::TwoTermRecursion(int n, int l, Float cos,
+                                           std::vector<Float>& sqInt,
+                                           std::vector<Float>& sqIntInv,
+                                           ExecutionPolicy policy) {
+  // Work out the offsets for iterators
+  int minusOneOffSet = 0;
+  int currentOffSet = 0;
+  if (l <= M) {
+    minusOneOffSet = 1;
+    currentOffSet = 2;
+  }
+  if (l == M + 1) {
+    minusOneOffSet = 1;
+    currentOffSet = 1;
+  }
+
+  // Set the maximum degree
+  int mMax = l <= M + 1 ? l - 2 : M;
+
+  // set the iterators.
+  auto startMinusTwo = begin(n, l - 2);
+  auto finishMinusTwo = end(n, l - 2);
+  auto startMinusOne = std::next(begin(n, l - 1), minusOneOffSet);
+  auto start = std::next(begin(n, l), currentOffSet);
+
+  // Pre-compute some common factors outside the loop.
+  auto alpha = (2 * l - 1) * l * cos * sqIntInv[l - n] * sqIntInv[l + n];
+  auto beta = (2 * l - 1) * n * sqIntInv[l - n] * sqIntInv[l + n] /
+              static_cast<Float>(l - 1);
+  auto gamma = l * sqInt[l - 1 - n] * sqInt[l - 1 + n] * sqIntInv[l - n] *
+               sqIntInv[l + n] / static_cast<Float>(l - 1);
+
+  std::transform(
+      policy, startMinusTwo, finishMinusTwo, startMinusOne, start,
+      [&](auto& minusTwo, auto& minusOne) {
+        auto m = static_cast<int>(&minusTwo - &*startMinusTwo) - mMax;
+        auto denom = sqIntInv[l - m] * sqIntInv[l + m];
+        auto fOne = (alpha - beta * m) * denom;
+        auto fTwo = gamma * sqInt[l - 1 - m] * sqInt[l - 1 + m] * denom;
+        return fOne * minusOne - fTwo * minusTwo;
+      });
+}
+
+template <std::floating_point Float>
+Float WignerValueMaxOrderAtUpperIndex(int l, int n, Float logSinHalf,
+                                      Float logCosHalf, bool atLeft,
+                                      bool atRight) {
   // Check the inputs.
   assert(l >= 0);
   assert(std::abs(n) <= l);

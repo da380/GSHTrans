@@ -17,9 +17,10 @@ int main() {
 
   using std::cout;
   using std::endl;
-  cout.setf(std::ios_base::scientific);
-  cout.precision(std::numeric_limits<Float>::digits10);  
+  //  cout.setf(std::ios_base::scientific);
+  //  cout.precision(std::numeric_limits<Float>::digits10);  
   using namespace GSHT;
+
 
 
   int L = 10;
@@ -27,7 +28,6 @@ int main() {
   int N = 2;
   Float theta = 0.2;
   WignerValues d(L,M,N,theta);
-
 
 
 
