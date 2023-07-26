@@ -17,7 +17,7 @@
 
 namespace GSHT {
 
-// Define the WignerValues class.
+// Define the WignerValues class.  
 template <std::floating_point Float>
 class WignerValues {
  public:
@@ -134,11 +134,11 @@ WignerValues<Float>::WignerValues(int L, int M, int N, Float theta,
     // Set the values for l == n
     {
       auto l = n;
-      auto mMax = std::min(l, M);
+      auto mStart = std::min(l, M);
       auto start = begin(l, l);
       auto finish = end(l, l);
       std::transform(policy, start, finish, start, [&](auto& p) {
-        auto m = static_cast<int>(&p - &*start) - mMax;
+        auto m = static_cast<int>(&p - &*start) - mStart;
         return WignerValueMaxUpperIndexAtOrder(l, m, logSinHalf, logCosHalf,
                                                atLeft, atRight);
       });
@@ -146,9 +146,8 @@ WignerValues<Float>::WignerValues(int L, int M, int N, Float theta,
 
     // Set the values for l == n+1 if needed.
     if (n < L) {
-      // Degree and maximum order
       auto l = n + 1;
-      auto mMax = std::min(l, M);
+      auto mStart = std::min(l, M);
 
       // Set iterators
       auto startMinus1 = begin(n, l - 1);
@@ -159,6 +158,8 @@ WignerValues<Float>::WignerValues(int L, int M, int N, Float theta,
       if (l <= M) {
         *start++ = WignerValueMinOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
                                                    atLeft, atRight);
+	// Update the starting order for recursion
+	mStart -= 1;
       }
 
       // Add in interior orders using one-term recursion.
@@ -167,7 +168,7 @@ WignerValues<Float>::WignerValues(int L, int M, int N, Float theta,
         auto beta = (2 * l - 1) * sqIntInv[l + n];
         std::transform(
             policy, startMinus1, finishMinus1, start, [&](auto& minus1) {
-              auto m = static_cast<int>(&minus1 - &*startMinus1) - mMax + 1;
+              auto m = static_cast<int>(&minus1 - &*startMinus1) - mStart;
               auto f1 = (alpha - beta * m) * sqIntInv[l - m] * sqIntInv[l + m];
               return f1 * minus1;
             });
@@ -260,7 +261,7 @@ WignerValues<Float>::WignerValues(int L, int M, int N, Float theta,
         // Update the iterators.
         startMinus1 = std::next(startMinus1, M - 2);
         start = std::next(start, M - 2);
-	auto m = M;
+        auto m = M;
         auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) * sqIntInv[l - n] *
                   sqIntInv[l + n] * sqIntInv[l - m] * sqIntInv[l + m] /
                   static_cast<Float>(l - 1);
