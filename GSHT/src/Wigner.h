@@ -17,15 +17,6 @@
 
 namespace GSHT {
 
-// Declarations for some utility functions.
-int Sign(int m) { return m % 2 ? -1 : 1; }
-template <std::floating_point Float>
-Float WignerValueMaxOrderAtUpperIndex(int, int, Float, Float, bool, bool);
-template <std::floating_point Float>
-Float WignerValueMinOrderAtUpperIndex(int, int, Float, Float, bool, bool);
-template <std::floating_point Float>
-Float WignerValueMaxUpperIndexAtOrder(int, int, Float, Float, bool, bool);
-
 // Define the WignerValues class.
 template <std::floating_point Float>
 class WignerValues {
@@ -67,7 +58,7 @@ class WignerValues {
   int N;  // Maximum upper index
 
   Float theta;              // angle
-  std::vector<Float> data;  // vector containing values
+  std::vector<Float> data;  // vector containing struct
 
   // Returns the number of elements up to and including upper index n.
   // Note that n = -1 is a valid input with return value 0 which is needed.
@@ -91,16 +82,11 @@ class WignerValues {
     return i;
   }
 
-  template <typename ExecutionPolicy>
-  void SetInitialValues(int, Float, Float, bool, bool, ExecutionPolicy);
-
-  template <typename ExecutionPolicy>
-  void OneTermRecursion(int, int, Float, std::vector<Float>&,
-                        std::vector<Float>&, ExecutionPolicy);
-
-  template <typename ExecutionPolicy>
-  void TwoTermRecursion(int, int, Float, std::vector<Float>&,
-                        std::vector<Float>&, ExecutionPolicy);
+  // Declare/define some utility functions.
+  int Sign(int m) { return m % 2 ? -1 : 1; }
+  Float WignerValueMaxOrderAtUpperIndex(int, int, Float, Float, bool, bool);
+  Float WignerValueMinOrderAtUpperIndex(int, int, Float, Float, bool, bool);
+  Float WignerValueMaxUpperIndexAtOrder(int, int, Float, Float, bool, bool);
 };
 
 template <std::floating_point Float>
@@ -125,13 +111,12 @@ WignerValues<Float>::WignerValues(int L, int M, int N, Float theta,
 
   // Pre-compute and store trigonometric terms
   auto cos = std::cos(theta);
-  auto sinHalf = std::sin(theta / 2);
-  auto cosHalf = std::cos(theta / 2);
-  constexpr auto tiny = std::numeric_limits<Float>::min();
-  auto logSinHalf = sinHalf > tiny ? std::log(sinHalf) : static_cast<Float>(0);
-  auto logCosHalf = cosHalf > tiny ? std::log(cosHalf) : static_cast<Float>(0);
-  auto atLeft = sinHalf < tiny;
-  auto atRight = cosHalf < tiny;
+  auto logSinHalf = std::sin(theta / 2);
+  auto logCosHalf = std::cos(theta / 2);
+  auto atLeft = logSinHalf < std::numeric_limits<Float>::min();
+  auto atRight = logCosHalf < std::numeric_limits<Float>::min();
+  logSinHalf = atLeft ? static_cast<Float>(0) : std::log(logSinHalf);
+  logCosHalf = atRight ? static_cast<Float>(0) : std::log(logCosHalf);
 
   // Pre-compute and store square roots and their inverses for natural numbers
   // up to L + M
@@ -145,260 +130,152 @@ WignerValues<Float>::WignerValues(int L, int M, int N, Float theta,
         return x > static_cast<Float>(0) ? 1 / x : static_cast<Float>(0);
       });
 
-
-
   for (int n = 0; n <= N; n++) {
+    // Set the values for l == n
+    {
+      auto l = n;
+      auto mMax = std::min(l, M);
+      auto start = begin(l, l);
+      auto finish = end(l, l);
+      std::transform(policy, start, finish, start, [&](auto& p) {
+        auto m = static_cast<int>(&p - &*start) - mMax;
+        return WignerValueMaxUpperIndexAtOrder(l, m, logSinHalf, logCosHalf,
+                                               atLeft, atRight);
+      });
+    }
 
-    // Set the values for l == n;
-    SetInitialValues(n, logSinHalf, logCosHalf, atLeft, atRight, policy);
-
-
-    // Set values at the next degree using formulae and one-term recursion.
-    if (n + 1 <= L) {
+    // Set the values for l == n+1 if needed.
+    if (n < L) {
+      // Degree and maximum order
       auto l = n + 1;
       auto mMax = std::min(l, M);
 
-      // Deal with m == -l using formulae if needed.
+      // Set iterators
+      auto startMinus1 = begin(n, l - 1);
+      auto finishMinus1 = end(n, l - 1);
+      auto start = begin(n, l);
+
+      // Add in value at m == -l if needed.
       if (l <= M) {
-        data.push_back(WignerValueMinOrderAtUpperIndex(
-            l, n, logSinHalf, logCosHalf, atLeft, atRight));
+        *start++ = WignerValueMinOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
+                                                   atLeft, atRight);
       }
 
-      // Deal with interior orders using one-term recusion.
+      // Add in interior orders using one-term recursion.
       {
-        // Set the iterators.
-        auto startMinusOne = begin(n, l - 1);
-        auto finishMinusOne = end(n, l - 1);
-        auto start = begin(n, l);
-        // Pre-compute some factors outside the loop.
         auto alpha = (2 * l - 1) * l * cos * sqIntInv[l + n];
         auto beta = (2 * l - 1) * sqIntInv[l + n];
         std::transform(
-            policy, startMinusOne, finishMinusOne, start, [&](auto& minusOne) {
-              auto m = static_cast<int>(&minusOne - &*startMinusOne) - mMax + 1;
-              auto fOne =
-                  (alpha - beta * m) * sqIntInv[l - m] * sqIntInv[l + m];
-              return fOne * minusOne;
+            policy, startMinus1, finishMinus1, start, [&](auto& minus1) {
+              auto m = static_cast<int>(&minus1 - &*startMinus1) - mMax + 1;
+              auto f1 = (alpha - beta * m) * sqIntInv[l - m] * sqIntInv[l + m];
+              return f1 * minus1;
             });
       }
 
-      // Deal with m == l using formulae if needed
+      // Add in value at m == l if needed
       if (l <= M) {
-        data.push_back(WignerValueMaxOrderAtUpperIndex(
-            l, n, logSinHalf, logCosHalf, atLeft, atRight));
+        *std::next(start, 2 * l - 1) = WignerValueMaxOrderAtUpperIndex(
+            l, n, logSinHalf, logCosHalf, atLeft, atRight);
       }
     }
 
-    // Loop over the degrees until the maximum order stops growing.
-    for (int l = n + 2; l <= M; l++) {
-      // Deal with m == -l using formulae
-      data.push_back(WignerValueMinOrderAtUpperIndex(
-          l, n, logSinHalf, logCosHalf, atLeft, atRight));
+    // Now do the remaining degrees.
+    for (int l = n + 2; l <= L; l++) {
+      // Starting order within two-term recursion
+      auto mStart = std::min(l, M);
 
-      // Deal with interior orders using two-term recusion.
-      {
-        // set the iterators.
-        auto startMinusTwo = begin(n, l - 2);
-        auto finishMinusTwo = end(n, l - 2);
-        auto startMinusOne = std::next(begin(n, l - 1));
-        auto start = std::next(begin(n, l), 2);
-        // Pre-compute some common factors outside the loop.
-        auto alpha = (2 * l - 1) * l * cos * sqIntInv[l - n] * sqIntInv[l + n];
-        auto beta = (2 * l - 1) * n * sqIntInv[l - n] * sqIntInv[l + n] /
-                    static_cast<Float>(l - 1);
-        auto gamma = l * sqInt[l - 1 - n] * sqInt[l - 1 + n] * sqIntInv[l - n] *
-                     sqIntInv[l + n] / static_cast<Float>(l - 1);
-
-        std::transform(
-            policy, startMinusTwo, finishMinusTwo, startMinusOne, start,
-            [&](auto& minusTwo, auto& minusOne) {
-              auto m = static_cast<int>(&minusTwo - &*startMinusTwo) - l + 2;
-              auto denom = sqIntInv[l - m] * sqIntInv[l + m];
-              auto fOne = (alpha - beta * m) * denom;
-              auto fTwo = gamma * sqInt[l - 1 - m] * sqInt[l - 1 + m] * denom;
-              return fOne * minusOne - fTwo * minusTwo;
-            });
-      }
-
-      // Deal with m == l using formulae.
-      data.push_back(WignerValueMaxOrderAtUpperIndex(
-          l, n, logSinHalf, logCosHalf, atLeft, atRight));
-    }  // End of first loop over degrees.
-
-    // If needed, deal with l = M+1;
-    if (M + 1 <= L) {
-      auto l = M + 1;
-
-      // Deal with m == -M using one-term recursion
-      {
-        auto m = -M;
-        auto fOne = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
-                    sqIntInv[l - n] * sqIntInv[l + n] * sqIntInv[l - m] *
-                    sqIntInv[l + m] / static_cast<Float>(l - 1);
-        auto minusOne = *begin(n, l - 1);
-        data.push_back(fOne * minusOne);
-      }
-
-      // Deal with interior orders using two-term recusion.
-      {
-        // set the iterators.
-        auto startMinusTwo = begin(n, l - 2);
-        auto finishMinusTwo = end(n, l - 2);
-        auto startMinusOne = std::next(begin(n, l - 1));
-        auto start = std::next(begin(n, l));
-
-        // Pre-compute some common factors outside the loop.
-        auto alpha = (2 * l - 1) * l * cos * sqIntInv[l - n] * sqIntInv[l + n];
-        auto beta = (2 * l - 1) * n * sqIntInv[l - n] * sqIntInv[l + n] /
-                    static_cast<Float>(l - 1);
-        auto gamma = l * sqInt[l - 1 - n] * sqInt[l - 1 + n] * sqIntInv[l - n] *
-                     sqIntInv[l + n] / static_cast<Float>(l - 1);
-
-        std::transform(
-            policy, startMinusTwo, finishMinusTwo, startMinusOne, start,
-            [&](auto& minusTwo, auto& minusOne) {
-              auto m = static_cast<int>(&minusTwo - &*startMinusTwo) - M + 1;
-              auto denom = sqIntInv[l - m] * sqIntInv[l + m];
-              auto fOne = (alpha - beta * m) * denom;
-              auto fTwo = gamma * sqInt[l - 1 - m] * sqInt[l - 1 + m] * denom;
-              return fOne * minusOne - fTwo * minusTwo;
-            });
-      }
-
-      // Deal with m == M with one-term recursion.
-      {
-        auto m = M;
-        auto fOne = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
-                    sqIntInv[l - n] * sqIntInv[l + n] * sqIntInv[l - m] *
-                    sqIntInv[l + m] / static_cast<Float>(l - 1);
-        auto minusOne = *std::prev(end(n, l - 1));
-        data.push_back(fOne * minusOne);
-      }
-    }
-
-    // If needed, deal with M + 1 < l <= L
-    for (int l = M + 2; l <= L; l++) {
-      // set the iterators.
-      auto startMinusTwo = begin(n, l - 2);
-      auto finishMinusTwo = end(n, l - 2);
-      auto startMinusOne = begin(n, l - 1);
+      // Set iterators
+      auto startMinus2 = begin(n, l - 2);
+      auto finishMinus2 = end(n, l - 2);
+      auto startMinus1 = begin(n, l - 1);
       auto start = begin(n, l);
 
-      // Pre-compute some common factors outside the loop.
-      auto alpha = (2 * l - 1) * l * cos * sqIntInv[l - n] * sqIntInv[l + n];
-      auto beta = (2 * l - 1) * n * sqIntInv[l - n] * sqIntInv[l + n] /
+      // Add in lower boundary terms if still growing.
+      if (l <= M) {
+        // Add in the m == -l term.
+        *start++ = WignerValueMinOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
+                                                   atLeft, atRight);
+        // Now do the m == -l+1 term using one-point recursion.
+        {
+          auto m = -l + 1;
+          auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
+                    sqIntInv[l - n] * sqIntInv[l + n] * sqIntInv[l - m] *
+                    sqIntInv[l + m] / static_cast<Float>(l - 1);
+          *start++ = f1 * (*startMinus1++);
+        }
+        // Update the starting order for two-term recursion.
+        mStart -= 2;
+      }
+
+      // Add in the lower boundary term at the critical degree
+      if (l == M + 1) {
+        auto m = -M;
+        auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) * sqIntInv[l - n] *
+                  sqIntInv[l + n] * sqIntInv[l - m] * sqIntInv[l + m] /
                   static_cast<Float>(l - 1);
-      auto gamma = l * sqInt[l - 1 - n] * sqInt[l - 1 + n] * sqIntInv[l - n] *
-                   sqIntInv[l + n] / static_cast<Float>(l - 1);
+        *start++ = f1 * (*startMinus1++);
+        // Update the starting order for two-term recursion.
+        mStart -= 1;
+      }
 
-      std::transform(
-          policy, startMinusTwo, finishMinusTwo, startMinusOne, start,
-          [&](auto& minusTwo, auto& minusOne) {
-            auto m = static_cast<int>(&minusTwo - &*startMinusTwo) - M;
-            auto denom = sqIntInv[l - m] * sqIntInv[l + m];
-            auto fOne = (alpha - beta * m) * denom;
-            auto fTwo = gamma * sqInt[l - 1 - m] * sqInt[l - 1 + m] * denom;
-            return fOne * minusOne - fTwo * minusTwo;
-          });
+      // Apply two-term recusion for the interior orders.
+      {
+        auto alpha = (2 * l - 1) * l * cos * sqIntInv[l - n] * sqIntInv[l + n];
+        auto beta = (2 * l - 1) * n * sqIntInv[l - n] * sqIntInv[l + n] /
+                    static_cast<Float>(l - 1);
+        auto gamma = l * sqInt[l - 1 - n] * sqInt[l - 1 + n] * sqIntInv[l - n] *
+                     sqIntInv[l + n] / static_cast<Float>(l - 1);
 
-    }  // End of second loop over degrees.
+        std::transform(
+            policy, startMinus2, finishMinus2, startMinus1, start,
+            [&](auto& minus2, auto& minus1) {
+              auto m = static_cast<int>(&minus2 - &*startMinus2) - mStart;
+              auto denom = sqIntInv[l - m] * sqIntInv[l + m];
+              auto f1 = (alpha - beta * m) * denom;
+              auto f2 = gamma * sqInt[l - 1 - m] * sqInt[l - 1 + m] * denom;
+              return f1 * minus1 - f2 * minus2;
+            });
+      }
 
-  }  // End of loop over upper indices.
-}
+      // Add in the upper boundary terms if still growing.
+      if (l <= M) {
+        // Update the iterator
+        start = std::next(start, 2 * l - 2);
+        // Add in m == -l+1 term using one-point recursion.
+        {
+          auto m = -l + 1;
+          auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
+                    sqIntInv[l - n] * sqIntInv[l + n] * sqIntInv[l - m] *
+                    sqIntInv[l + m] / static_cast<Float>(l - 1);
+          *start++ = f1 * (*startMinus1++);
+        }
+        // Now do m == l.
+        *start++ = WignerValueMaxOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
+                                                   atLeft, atRight);
+      }
 
-template <std::floating_point Float>
-template <typename ExecutionPolicy>
-void WignerValues<Float>::SetInitialValues(int l, Float logSinHalf,
-                                           Float logCosHalf, bool atLeft,
-                                           bool atRight,
-                                           ExecutionPolicy policy) {
-  auto mMax = std::min(l, M);
-  auto start = begin(l, l);
-  auto finish = end(l, l);
-  std::transform(policy, start, finish, start, [&](auto& p) {
-    auto m = static_cast<int>(&p - &*start) - mMax;
-    return WignerValueMaxUpperIndexAtOrder(l, m, logSinHalf, logCosHalf, atLeft,
-                                           atRight);
-  });
-}
-
-template <std::floating_point Float>
-template <typename ExecutionPolicy>
-void WignerValues<Float>::OneTermRecursion(int n, int l, Float cos,
-                                           std::vector<Float>& sqInt,
-                                           std::vector<Float>& sqIntInv,
-                                           ExecutionPolicy policy) {
-  // Work out the offsets for iterators
-  int minusOneOffSet = 0;
-  int currentOffSet = 0;
-  if (l <= M) {
-    minusOneOffSet = 1;
-    currentOffSet = 2;
-  }
-  if (l == M + 1) {
-    minusOneOffSet = 1;
-    currentOffSet = 1;
-  }
-
-  // Set the maximum degree
-  int mMax = M;
-  if (l <= M) {
-    mMax = l;
-  }
-  if (l == M + 1) {
-    mMax = M - 1;
+      // Add in the upper boundary term at the crtiical degree.
+      if (l == M + 1) {
+        // Update the iterators.
+        startMinus1 = std::next(startMinus1, M - 2);
+        start = std::next(start, M - 2);
+	auto m = M;
+        auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) * sqIntInv[l - n] *
+                  sqIntInv[l + n] * sqIntInv[l - m] * sqIntInv[l + m] /
+                  static_cast<Float>(l - 1);
+        *start++ = f1 * (*startMinus1++);
+      }
+    }
   }
 }
 
 template <std::floating_point Float>
-template <typename ExecutionPolicy>
-void WignerValues<Float>::TwoTermRecursion(int n, int l, Float cos,
-                                           std::vector<Float>& sqInt,
-                                           std::vector<Float>& sqIntInv,
-                                           ExecutionPolicy policy) {
-  // Work out the offsets for iterators
-  int minusOneOffSet = 0;
-  int currentOffSet = 0;
-  if (l <= M) {
-    minusOneOffSet = 1;
-    currentOffSet = 2;
-  }
-  if (l == M + 1) {
-    minusOneOffSet = 1;
-    currentOffSet = 1;
-  }
-
-  // Set the maximum degree
-  int mMax = l <= M + 1 ? l - 2 : M;
-
-  // set the iterators.
-  auto startMinusTwo = begin(n, l - 2);
-  auto finishMinusTwo = end(n, l - 2);
-  auto startMinusOne = std::next(begin(n, l - 1), minusOneOffSet);
-  auto start = std::next(begin(n, l), currentOffSet);
-
-  // Pre-compute some common factors outside the loop.
-  auto alpha = (2 * l - 1) * l * cos * sqIntInv[l - n] * sqIntInv[l + n];
-  auto beta = (2 * l - 1) * n * sqIntInv[l - n] * sqIntInv[l + n] /
-              static_cast<Float>(l - 1);
-  auto gamma = l * sqInt[l - 1 - n] * sqInt[l - 1 + n] * sqIntInv[l - n] *
-               sqIntInv[l + n] / static_cast<Float>(l - 1);
-
-  std::transform(
-      policy, startMinusTwo, finishMinusTwo, startMinusOne, start,
-      [&](auto& minusTwo, auto& minusOne) {
-        auto m = static_cast<int>(&minusTwo - &*startMinusTwo) - mMax;
-        auto denom = sqIntInv[l - m] * sqIntInv[l + m];
-        auto fOne = (alpha - beta * m) * denom;
-        auto fTwo = gamma * sqInt[l - 1 - m] * sqInt[l - 1 + m] * denom;
-        return fOne * minusOne - fTwo * minusTwo;
-      });
-}
-
-template <std::floating_point Float>
-Float WignerValueMaxOrderAtUpperIndex(int l, int n, Float logSinHalf,
-                                      Float logCosHalf, bool atLeft,
-                                      bool atRight) {
+Float WignerValues<Float>::WignerValueMaxOrderAtUpperIndex(int l, int n,
+                                                           Float logSinHalf,
+                                                           Float logCosHalf,
+                                                           bool atLeft,
+                                                           bool atRight) {
   // Check the inputs.
   assert(l >= 0);
   assert(std::abs(n) <= l);
@@ -427,9 +304,11 @@ Float WignerValueMaxOrderAtUpperIndex(int l, int n, Float logSinHalf,
 }
 
 template <std::floating_point Float>
-Float WignerValueMinOrderAtUpperIndex(int l, int n, Float logSinHalf,
-                                      Float logCosHalf, bool atLeft,
-                                      bool atRight) {
+Float WignerValues<Float>::WignerValueMinOrderAtUpperIndex(int l, int n,
+                                                           Float logSinHalf,
+                                                           Float logCosHalf,
+                                                           bool atLeft,
+                                                           bool atRight) {
   // Check the inputs.
   assert(l >= 0);
   assert(std::abs(n) <= l);
@@ -458,9 +337,11 @@ Float WignerValueMinOrderAtUpperIndex(int l, int n, Float logSinHalf,
 }
 
 template <std::floating_point Float>
-Float WignerValueMaxUpperIndexAtOrder(int l, int m, Float logSinHalf,
-                                      Float logCosHalf, bool atLeft,
-                                      bool atRight) {
+Float WignerValues<Float>::WignerValueMaxUpperIndexAtOrder(int l, int m,
+                                                           Float logSinHalf,
+                                                           Float logCosHalf,
+                                                           bool atLeft,
+                                                           bool atRight) {
   // Check the inputs.
   assert(l >= 0);
   assert(std::abs(m) <= l);
