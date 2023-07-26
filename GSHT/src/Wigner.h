@@ -17,7 +17,7 @@
 
 namespace GSHT {
 
-// Define the WignerValues class.  
+// Define the WignerValues class.
 template <std::floating_point Float>
 class WignerValues {
  public:
@@ -38,7 +38,6 @@ class WignerValues {
       : WignerValues(L, M, N, theta, std::execution::seq) {}
 
   // Geters for basic data.
-
   Float Angle() const { return theta; }
   int MaxDegree() const { return L; }
   int MaxOrder() const { return M; }
@@ -47,10 +46,37 @@ class WignerValues {
   // Functions to return iterators to the data.
   iterator begin() { return data.begin(); }
   iterator end() { return data.end(); }
-  iterator begin(int n) { return std::next(begin(), Count(n - 1)); }
-  iterator end(int n) { return std::next(begin(), Count(n)); }
-  iterator begin(int n, int l) { return std::next(begin(), Count(n, l - 1)); }
-  iterator end(int n, int l) { return std::next(begin(), Count(n, l)); }
+  iterator begin(int n) {
+    assert(std::abs(n) <= N);
+    return std::next(begin(), Count(n - 1));
+  }
+  iterator end(int n) {
+    assert(std::abs(n) <= N);
+    return std::next(begin(), Count(n));
+  }
+  iterator begin(int n, int l) {
+    assert(std::abs(n) <= N);
+    assert(l >= 0 && l <= L);
+    return std::next(begin(), Count(n, l - 1));
+  }
+  iterator end(int n, int l) {
+    assert(std::abs(n) <= N);
+    assert(l >= 0 && l <= L);
+    return std::next(begin(), Count(n, l));
+  }
+
+  // Returns value for given indices
+  Float operator()(int l, int m, int n) const {
+    assert(l >= 0 && l <= L);
+    assert(std::abs(m) <= M);
+    assert(std::abs(n) <= N);
+    if (n >= 0) {
+      auto mstep = l <= M ? l + m : M + m;
+      return *std::next(begin(n,l), mstep);
+    } else {
+      return Sign(m + n) * operator()(l, -m, -n);
+    }
+  }
 
  private:
   int L;  // Maximum degree
@@ -158,8 +184,8 @@ WignerValues<Float>::WignerValues(int L, int M, int N, Float theta,
       if (l <= M) {
         *start++ = WignerValueMinOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
                                                    atLeft, atRight);
-	// Update the starting order for recursion
-	mStart -= 1;
+        // Update the starting order for recursion
+        mStart -= 1;
       }
 
       // Add in interior orders using one-term recursion.
