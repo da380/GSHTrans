@@ -22,7 +22,8 @@ int CheckAdditionTheorem() {
   // Pick a random angle
   std::random_device rd{};
   std::mt19937_64 gen{rd()};
-  std::uniform_real_distribution<Float> dist{0., std::numbers::pi_v<Float>};
+  std::uniform_real_distribution<Float> dist{static_cast<Float>(0),
+                                             std::numbers::pi_v<Float>};
   auto theta = dist(gen);
 
   // Construct the unnormalised Wigner values
