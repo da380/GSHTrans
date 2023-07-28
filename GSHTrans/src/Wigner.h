@@ -6,7 +6,6 @@
 #include <cmath>
 #include <concepts>
 #include <execution>
-#include <iostream>
 #include <iterator>
 #include <limits>
 #include <numbers>
@@ -16,7 +15,7 @@
 
 #include "Indexing.h"
 
-namespace GSHT {
+namespace GSHTrans {
 
 // Define the Wigner class.
 template <std::floating_point Float>
@@ -30,11 +29,12 @@ class Wigner {
 
   // Constructor taking in execution policy as argument.
   template <typename ExecutionPolicy>
-  Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy);
+  Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy,
+         bool normalise = false);
 
   // Constructor using default construction policy.
-  Wigner(int L, int M, int N, Float theta)
-      : Wigner(L, M, N, theta, std::execution::seq) {}
+  Wigner(int L, int M, int N, Float theta, bool normalise = false)
+      : Wigner(L, M, N, theta, std::execution::seq, normalise) {}
 
   // Geters for basic data.
   Float Angle() const { return theta; }
@@ -100,21 +100,6 @@ class Wigner {
     }
   }
 
-  // Normalise the values as required for generalised
-  // spherical harmoncis
-  void Normalise() {
-    for (int n : UpperIndices(true)) {
-      for (int l : Degrees()) {
-        auto start = begin(n, l);
-        auto finish = end(n, l);
-        std::transform(start, finish, start, [l](auto p) {
-          return 0.5 * std::sqrt(static_cast<Float>(2 * l + 1)) *
-                 std::numbers::inv_sqrtpi_v<Float> * p;
-        });
-      }
-    }
-  }
-
   // Ranges to use for looping over values
   auto Degrees() const { return Range(0, L + 1); }
   auto Degrees(int lmin) const { return Range(lmin, L + 1); }
@@ -172,7 +157,8 @@ class Wigner {
 
 template <std::floating_point Float>
 template <typename ExecutionPolicy>
-Wigner<Float>::Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy)
+Wigner<Float>::Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy,
+                      bool normalise)
     : L{L}, M{M}, N{N}, theta{theta} {
   // Check the maximum degree is non-negative.
   assert(L >= 0);
@@ -349,6 +335,20 @@ Wigner<Float>::Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy)
       }
     }
   }
+
+  // Normalise the functions if requested.
+  if (normalise) {
+    for (int n = 0; n <= N; n++) {
+      for (int l = 0; l <= L; l++) {
+        auto start = begin(n, l);
+        auto finish = end(n, l);
+        std::transform(start, finish, start, [l](auto p) {
+          return 0.5 * std::sqrt(static_cast<Float>(2 * l + 1)) *
+                 std::numbers::inv_sqrtpi_v<Float> * p;
+        });
+      }
+    }
+  }
 }
 
 template <std::floating_point Float>
@@ -398,6 +398,6 @@ Float Wigner<Float>::ValueMaxUpperIndexAtOrder(int l, int m, Float logSinHalf,
                                    atRight);
 }
 
-}  // namespace GSHT
+}  // namespace GSHTrans
 
 #endif  // WIGNER_GUARD_H

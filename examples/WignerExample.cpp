@@ -1,5 +1,5 @@
 
-#include <GSHT/Core>
+#include <GSHTrans/Core>
 #include <cmath>
 #include <concepts>
 #include <execution>
@@ -17,7 +17,7 @@ int main() {
   cout.setf(std::ios_base::scientific);
   cout.setf(std::ios_base::showpos);
   cout.precision(8);
-  using namespace GSHT;
+  using namespace GSHTrans;
 
   int L = 6;
   int M = L;

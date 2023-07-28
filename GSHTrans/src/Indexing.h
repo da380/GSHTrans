@@ -1,7 +1,7 @@
 #ifndef INDEXING_GUARD_H
 #define INDEXING_GUARD_H
 
-namespace GSHT {
+namespace GSHTrans {
 
 class Range {
  private:
@@ -22,8 +22,6 @@ class Range {
   int operator*() const { return iter; }
 };
 
-
-
-}  // namespace GSHT
+}  // namespace GSHTrans
 
 #endif  // INDEXING_GUARD_H

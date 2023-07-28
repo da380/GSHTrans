@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 3.5)
 
 
-project(GSHT
+project(GSHTrans
         VERSION 1.0
         LANGUAGES CXX
         )
@@ -46,8 +46,8 @@ FetchContent_MakeAvailable(FFTWpp)
 
 
 # Set up the library
-add_library (GSHT INTERFACE)
-target_link_libraries(GSHT INTERFACE Eigen3::Eigen FFTWpp GaussQuad)
+add_library (GSHTrans INTERFACE)
+target_link_libraries(GSHTrans INTERFACE Eigen3::Eigen FFTWpp GaussQuad)
 target_include_directories (GaussQuad INTERFACE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${INCLUDE_INSTALL_DIR}>
