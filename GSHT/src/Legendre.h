@@ -16,7 +16,7 @@ class LegendreValues {
   // Define member types.
   using value_type = Float;
   using iterator = typename std::vector<Float>::iterator;
-  using const_iterator = typename std::vector<Float>::const_iterator;  
+  using const_iterator = typename std::vector<Float>::const_iterator;
 
   // Constructors.
   LegendreValues(Float theta, int L, int M);
@@ -29,33 +29,28 @@ class LegendreValues {
   // Functions to return iterators to the values.
   iterator begin() { return data.begin(); }
   iterator end() { return data.end(); }
-  iterator begin(int l) {
-    return std::next(begin(), Count(l-1));
-  }
+  iterator begin(int l) { return std::next(begin(), Count(l - 1)); }
   iterator end(int l) { return std::next(begin(), Count(l)); }
-
 
   // Functions to return iterators to the values.
   const_iterator cbegin() const { return data.cbegin(); }
   const_iterator cend() { return data.cend(); }
   const_iterator cbegin(int l) const {
-    assert( 0 <= l && l <= L);
-    return std::next(cbegin(), Count(l-1));
+    assert(0 <= l && l <= L);
+    return std::next(cbegin(), Count(l - 1));
   }
   const_iterator cend(int l) {
-    assert( 0 <= l && l <= L);
+    assert(0 <= l && l <= L);
     return std::next(cbegin(), Count(l));
   }
-  
 
   // Function to return value at given degree and order.
   Float operator()(int l, int m) const {
     if (m >= 0) {
       return *std::next(cbegin(l), m);
     } else {
-      return Sign(m) * operator()(l,-m);
+      return Sign(m) * operator()(l, -m);
     }
-
   }
 
  private:
@@ -68,8 +63,6 @@ class LegendreValues {
     return l <= M ? l + 1 + (l * (l + 1)) / 2
                   : M + 1 + (M * (M + 1)) / 2 + (l - M) * (M + 1);
   }
-
-
 
   Float Sign(int m) const { return m % 2 ? -1.0 : 1.0; }
 };
@@ -97,17 +90,16 @@ LegendreValues<Float>::LegendreValues(const Float theta, const int L,
   Float sin = std::sin(theta);
   Float cos = std::cos(theta);
 
-
-
   // Pre-compute and store square roots and their inverses for natural numbers
   // up to 2*L + 1
-  std::vector<Float> sqInt(2*L+2);
-  std::transform(sqInt.begin(), sqInt.end(), sqInt.begin(),
-      [&](auto& x) { return std::sqrt(static_cast<Float>(&x - &sqInt[0])); });
-  std::vector<Float> sqIntInv(2*L+2);
+  std::vector<Float> sqInt(2 * L + 2);
+  std::transform(sqInt.begin(), sqInt.end(), sqInt.begin(), [&](auto& x) {
+    return std::sqrt(static_cast<Float>(&x - &sqInt[0]));
+  });
+  std::vector<Float> sqIntInv(2 * L + 2);
   std::transform(sqInt.begin(), sqInt.end(), sqIntInv.begin(), [](auto x) {
-        return x > static_cast<Float>(0) ? 1 / x : static_cast<Float>(0);
-      });
+    return x > static_cast<Float>(0) ? 1 / x : static_cast<Float>(0);
+  });
 
   // Deal with degree 1.
   if (L > 0) {

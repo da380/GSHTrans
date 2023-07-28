@@ -203,7 +203,7 @@ Wigner<Float>::Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy)
   std::vector<Float> sqInt(L + M + 1);
   std::transform(
       policy, sqInt.begin(), sqInt.end(), sqInt.begin(),
-      [&](auto& x) { return std::sqrt(static_cast<Float>(&x - &sqInt[0])); });
+      [&](auto &x) { return std::sqrt(static_cast<Float>(&x - &sqInt[0])); });
   std::vector<Float> sqIntInv(L + M + 1);
   std::transform(
       policy, sqInt.begin(), sqInt.end(), sqIntInv.begin(), [](auto x) {
@@ -217,7 +217,7 @@ Wigner<Float>::Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy)
       auto mStart = std::min(l, M);
       auto start = begin(l, l);
       auto finish = end(l, l);
-      std::transform(policy, start, finish, start, [&](auto& p) {
+      std::transform(policy, start, finish, start, [&](auto &p) {
         auto m = static_cast<int>(&p - &*start) - mStart;
         return ValueMaxUpperIndexAtOrder(l, m, logSinHalf, logCosHalf, atLeft,
                                          atRight);
@@ -247,7 +247,7 @@ Wigner<Float>::Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy)
         auto alpha = (2 * l - 1) * l * cos * sqIntInv[l + n];
         auto beta = (2 * l - 1) * sqIntInv[l + n];
         std::transform(
-            policy, startMinus1, finishMinus1, start, [&](auto& minus1) {
+            policy, startMinus1, finishMinus1, start, [&](auto &minus1) {
               auto m = static_cast<int>(&minus1 - &*startMinus1) - mStart;
               auto f1 = (alpha - beta * m) * sqIntInv[l - m] * sqIntInv[l + m];
               return f1 * minus1;
@@ -310,7 +310,7 @@ Wigner<Float>::Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy)
 
         std::transform(
             policy, startMinus2, finishMinus2, startMinus1, start,
-            [&](auto& minus2, auto& minus1) {
+            [&](auto &minus2, auto &minus1) {
               auto m = static_cast<int>(&minus2 - &*startMinus2) - mStart;
               auto denom = sqIntInv[l - m] * sqIntInv[l + m];
               auto f1 = (alpha - beta * m) * denom;

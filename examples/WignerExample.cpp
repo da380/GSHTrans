@@ -9,8 +9,6 @@
 #include <numbers>
 #include <tuple>
 
-
-
 int main() {
   using Float = double;
 
