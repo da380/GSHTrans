@@ -6,6 +6,7 @@
 #include <cmath>
 #include <concepts>
 #include <execution>
+#include <iostream>
 #include <iterator>
 #include <limits>
 #include <numbers>
@@ -17,25 +18,23 @@
 
 namespace GSHT {
 
-// Define the WignerValues class.
+// Define the Wigner class.
 template <std::floating_point Float>
-class WignerValues {
+class Wigner {
  public:
   // Define member types.
   using value_type = Float;
   using iterator = typename std::vector<Float>::iterator;
+  using const_iterator = typename std::vector<Float>::const_iterator;
   using difference_type = std::vector<Float>::difference_type;
-
-  // Delete default constructor.
-  WignerValues() = delete;
 
   // Constructor taking in execution policy as argument.
   template <typename ExecutionPolicy>
-  WignerValues(int L, int M, int N, Float theta, ExecutionPolicy policy);
+  Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy);
 
   // Constructor using default construction policy.
-  WignerValues(int L, int M, int N, Float theta)
-      : WignerValues(L, M, N, theta, std::execution::seq) {}
+  Wigner(int L, int M, int N, Float theta)
+      : Wigner(L, M, N, theta, std::execution::seq) {}
 
   // Geters for basic data.
   Float Angle() const { return theta; }
@@ -65,6 +64,29 @@ class WignerValues {
     return std::next(begin(), Count(n, l));
   }
 
+  // Functions to return constant iterators to the data.
+  const_iterator cbegin() const { return data.cbegin(); }
+  const_iterator cend() const { return data.cend(); }
+  const_iterator cbegin(int n) const {
+    assert(std::abs(n) <= N);
+    return std::next(cbegin(), Count(n - 1));
+  }
+
+  const_iterator cend(int n) const {
+    assert(std::abs(n) <= N);
+    return std::next(cbegin(), Count(n));
+  }
+  const_iterator cbegin(int n, int l) const {
+    assert(std::abs(n) <= N);
+    assert(l >= 0 && l <= L);
+    return std::next(cbegin(), Count(n, l - 1));
+  }
+  const_iterator cend(int n, int l) {
+    assert(std::abs(n) <= N);
+    assert(l >= 0 && l <= L);
+    return std::next(cbegin(), Count(n, l));
+  }
+
   // Returns value for given indices
   Float operator()(int l, int m, int n) const {
     assert(l >= 0 && l <= L);
@@ -72,10 +94,43 @@ class WignerValues {
     assert(std::abs(n) <= N);
     if (n >= 0) {
       auto mstep = l <= M ? l + m : M + m;
-      return *std::next(begin(n,l), mstep);
+      return *std::next(cbegin(n, l), mstep);
     } else {
       return Sign(m + n) * operator()(l, -m, -n);
     }
+  }
+
+  // Normalise the values as required for generalised
+  // spherical harmoncis
+  void Normalise() {
+    for (int n : UpperIndices(true)) {
+      for (int l : Degrees()) {
+        auto start = begin(n, l);
+        auto finish = end(n, l);
+        std::transform(start, finish, start, [l](auto p) {
+          return 0.5 * std::sqrt(static_cast<Float>(2 * l + 1)) *
+                 std::numbers::inv_sqrtpi_v<Float> * p;
+        });
+      }
+    }
+  }
+
+  // Ranges to use for looping over values
+  auto Degrees() const { return Range(0, L + 1); }
+  auto Degrees(int lmin) const { return Range(lmin, L + 1); }
+  auto UpperIndices(bool nonNegative = false) const {
+    return nonNegative ? Range(0, N + 1) : Range(-N, N + 1);
+  }
+  auto UpperIndices(int l, bool nonNegative = false) const {
+    auto nMax = std::min(l, N);
+    return nonNegative ? Range(0, nMax + 1) : Range(-nMax, nMax + 1);
+  }
+  auto Orders(bool nonNegative = false) const {
+    return nonNegative ? Range(0, M + 1) : Range(-M, M + 1);
+  }
+  auto Orders(int l, bool nonNegative = false) const {
+    auto mMax = std::min(l, M);
+    return nonNegative ? Range(0, mMax + 1) : Range(-mMax, mMax + 1);
   }
 
  private:
@@ -109,16 +164,15 @@ class WignerValues {
   }
 
   // Declare/define some utility functions.
-  int Sign(int m) { return m % 2 ? -1 : 1; }
-  Float WignerValueMaxOrderAtUpperIndex(int, int, Float, Float, bool, bool);
-  Float WignerValueMinOrderAtUpperIndex(int, int, Float, Float, bool, bool);
-  Float WignerValueMaxUpperIndexAtOrder(int, int, Float, Float, bool, bool);
+  int Sign(int m) const { return m % 2 ? -1 : 1; }
+  Float ValueMaxOrderAtUpperIndex(int, int, Float, Float, bool, bool);
+  Float ValueMinOrderAtUpperIndex(int, int, Float, Float, bool, bool);
+  Float ValueMaxUpperIndexAtOrder(int, int, Float, Float, bool, bool);
 };
 
 template <std::floating_point Float>
 template <typename ExecutionPolicy>
-WignerValues<Float>::WignerValues(int L, int M, int N, Float theta,
-                                  ExecutionPolicy policy)
+Wigner<Float>::Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy)
     : L{L}, M{M}, N{N}, theta{theta} {
   // Check the maximum degree is non-negative.
   assert(L >= 0);
@@ -165,8 +219,8 @@ WignerValues<Float>::WignerValues(int L, int M, int N, Float theta,
       auto finish = end(l, l);
       std::transform(policy, start, finish, start, [&](auto& p) {
         auto m = static_cast<int>(&p - &*start) - mStart;
-        return WignerValueMaxUpperIndexAtOrder(l, m, logSinHalf, logCosHalf,
-                                               atLeft, atRight);
+        return ValueMaxUpperIndexAtOrder(l, m, logSinHalf, logCosHalf, atLeft,
+                                         atRight);
       });
     }
 
@@ -182,8 +236,8 @@ WignerValues<Float>::WignerValues(int L, int M, int N, Float theta,
 
       // Add in value at m == -l if needed.
       if (l <= M) {
-        *start++ = WignerValueMinOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
-                                                   atLeft, atRight);
+        *start++ = ValueMinOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
+                                             atLeft, atRight);
         // Update the starting order for recursion
         mStart -= 1;
       }
@@ -202,7 +256,7 @@ WignerValues<Float>::WignerValues(int L, int M, int N, Float theta,
 
       // Add in value at m == l if needed
       if (l <= M) {
-        *std::next(start, 2 * l - 1) = WignerValueMaxOrderAtUpperIndex(
+        *std::next(start, 2 * l - 1) = ValueMaxOrderAtUpperIndex(
             l, n, logSinHalf, logCosHalf, atLeft, atRight);
       }
     }
@@ -221,8 +275,8 @@ WignerValues<Float>::WignerValues(int L, int M, int N, Float theta,
       // Add in lower boundary terms if still growing.
       if (l <= M) {
         // Add in the m == -l term.
-        *start++ = WignerValueMinOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
-                                                   atLeft, atRight);
+        *start++ = ValueMinOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
+                                             atLeft, atRight);
         // Now do the m == -l+1 term using one-point recursion.
         {
           auto m = -l + 1;
@@ -268,7 +322,7 @@ WignerValues<Float>::WignerValues(int L, int M, int N, Float theta,
       // Add in the upper boundary terms if still growing.
       if (l <= M) {
         // Update the iterator
-        start = std::next(start, 2 * l - 2);
+        start = std::next(start, 2 * l - 3);
         // Add in m == -l+1 term using one-point recursion.
         {
           auto m = -l + 1;
@@ -278,8 +332,8 @@ WignerValues<Float>::WignerValues(int L, int M, int N, Float theta,
           *start++ = f1 * (*startMinus1++);
         }
         // Now do m == l.
-        *start++ = WignerValueMaxOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
-                                                   atLeft, atRight);
+        *start++ = ValueMaxOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
+                                             atLeft, atRight);
       }
 
       // Add in the upper boundary term at the crtiical degree.
@@ -298,44 +352,9 @@ WignerValues<Float>::WignerValues(int L, int M, int N, Float theta,
 }
 
 template <std::floating_point Float>
-Float WignerValues<Float>::WignerValueMaxOrderAtUpperIndex(int l, int n,
-                                                           Float logSinHalf,
-                                                           Float logCosHalf,
-                                                           bool atLeft,
-                                                           bool atRight) {
-  // Check the inputs.
-  assert(l >= 0);
-  assert(std::abs(n) <= l);
-
-  // Deal with l == 0 case
-  if (l == 0) return static_cast<Float>(1);
-
-  // Deal with special case at the left boundary.
-  if (atLeft) {
-    return n == l ? static_cast<Float>(1) : static_cast<Float>(0);
-  }
-
-  // Deal with special case at the right boundary.
-  if (atRight) {
-    return n == -l ? static_cast<Float>(1) : static_cast<Float>(0);
-  }
-
-  // Deal with the general case.
-  auto Fl = static_cast<Float>(l);
-  auto Fn = static_cast<Float>(n);
-  using std::exp;
-  using std::lgamma;
-  return Sign(l + n) * exp(0.5 * (lgamma(2 * Fl + 1) - lgamma(Fl + Fn + 1) -
-                                  lgamma(Fl - Fn + 1)) +
-                           (Fl - Fn) * logSinHalf + (Fl + Fn) * logCosHalf);
-}
-
-template <std::floating_point Float>
-Float WignerValues<Float>::WignerValueMinOrderAtUpperIndex(int l, int n,
-                                                           Float logSinHalf,
-                                                           Float logCosHalf,
-                                                           bool atLeft,
-                                                           bool atRight) {
+Float Wigner<Float>::ValueMinOrderAtUpperIndex(int l, int n, Float logSinHalf,
+                                               Float logCosHalf, bool atLeft,
+                                               bool atRight) {
   // Check the inputs.
   assert(l >= 0);
   assert(std::abs(n) <= l);
@@ -364,36 +383,19 @@ Float WignerValues<Float>::WignerValueMinOrderAtUpperIndex(int l, int n,
 }
 
 template <std::floating_point Float>
-Float WignerValues<Float>::WignerValueMaxUpperIndexAtOrder(int l, int m,
-                                                           Float logSinHalf,
-                                                           Float logCosHalf,
-                                                           bool atLeft,
-                                                           bool atRight) {
-  // Check the inputs.
-  assert(l >= 0);
-  assert(std::abs(m) <= l);
+Float Wigner<Float>::ValueMaxOrderAtUpperIndex(int l, int n, Float logSinHalf,
+                                               Float logCosHalf, bool atLeft,
+                                               bool atRight) {
+  return Sign(n + l) * ValueMinOrderAtUpperIndex(l, -n, logSinHalf, logCosHalf,
+                                                 atLeft, atRight);
+}
 
-  // Deal with l == 0 case
-  if (l == 0) return static_cast<Float>(1);
-
-  // Deal with special case at the left boundary.
-  if (atLeft) {
-    return m == l ? static_cast<Float>(1) : static_cast<Float>(0);
-  }
-
-  // Deal with special case at the right boundary.
-  if (atRight) {
-    return m == -l ? static_cast<Float>(1) : static_cast<Float>(0);
-  }
-
-  // Deal with the general case.
-  auto Fl = static_cast<Float>(l);
-  auto Fm = static_cast<Float>(m);
-  using std::exp;
-  using std::lgamma;
-  return exp(
-      0.5 * (lgamma(2 * Fl + 1) - lgamma(Fl - Fm + 1) - lgamma(Fl + Fm + 1)) +
-      (Fl - Fm) * logSinHalf + (Fl + Fm) * logCosHalf);
+template <std::floating_point Float>
+Float Wigner<Float>::ValueMaxUpperIndexAtOrder(int l, int m, Float logSinHalf,
+                                               Float logCosHalf, bool atLeft,
+                                               bool atRight) {
+  return ValueMinOrderAtUpperIndex(l, -m, logSinHalf, logCosHalf, atLeft,
+                                   atRight);
 }
 
 }  // namespace GSHT
