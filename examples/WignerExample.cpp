@@ -20,16 +20,16 @@ int main() {
   cout.precision(8);
   using namespace GSHTrans;
 
-  int L = 6;
+  int L = 5;
   int M = L;
-  int N = L;
+  int N = 0;
   Float theta = 0.6;
   Wigner d(L, M, N, theta);
 
   for (int l : d.Degrees()) {
     cout << endl;
     for (int n : d.UpperIndices(l)) {
-      cout << n << "|  ";
+      cout << n << " " << l << " |  ";
       for (int m : d.Orders(l)) {
         cout << d(l, m, n) << " ";
       }

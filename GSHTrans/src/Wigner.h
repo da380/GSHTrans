@@ -308,10 +308,12 @@ Wigner<Float>::Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy,
       // Add in the upper boundary terms if still growing.
       if (l <= M) {
         // Update the iterator
-        start = std::next(start, 2 * l - 3);
+        auto mStep = 2 * l - 3;
+        startMinus1 = std::next(startMinus1, mStep);
+        start = std::next(start, mStep);
         // Add in m == -l+1 term using one-point recursion.
         {
-          auto m = -l + 1;
+          auto m = l - 1;
           auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
                     sqIntInv[l - n] * sqIntInv[l + n] * sqIntInv[l - m] *
                     sqIntInv[l + m] / static_cast<Float>(l - 1);
@@ -325,8 +327,9 @@ Wigner<Float>::Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy,
       // Add in the upper boundary term at the crtiical degree.
       if (l == M + 1) {
         // Update the iterators.
-        startMinus1 = std::next(startMinus1, M - 2);
-        start = std::next(start, M - 2);
+        auto mStep = M - 2;
+        startMinus1 = std::next(startMinus1, mStep);
+        start = std::next(start, mStep);
         auto m = M;
         auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) * sqIntInv[l - n] *
                   sqIntInv[l + n] * sqIntInv[l - m] * sqIntInv[l + m] /

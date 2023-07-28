@@ -7,8 +7,8 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
-#add_executable(Tests
-#               Tests.cpp)
-#target_link_libraries(Tests PRIVATE Eigen3::Eigen GaussQuad gtest_main)
-#include(GoogleTest)
-#gtest_discover_tests(Tests)
+add_executable(TestWigner
+               TestWigner.cpp)
+target_link_libraries(TestWigner PRIVATE GSHTrans gtest_main)
+include(GoogleTest)
+gtest_discover_tests(TestWigner)
