@@ -15,7 +15,7 @@ int CheckAdditionTheorem() {
   using namespace GSHTrans;
 
   // Set the degree, order and upper index
-  int L = 100;
+  int L = 50;
   int M = L;
   int N = L;
 
@@ -33,14 +33,17 @@ int CheckAdditionTheorem() {
   constexpr auto eps = 1000 * std::numeric_limits<Float>::epsilon();
 
   for (int l : d.Degrees()) {
-    for (int n : d.UpperIndices(l, true)) {
-      auto start = d.cbegin(n, l);
-      auto finish = d.cend(n, l);
-      auto sum = std::accumulate(start, finish, static_cast<Float>(0),
-                                 [](Float x, Float y) { return x + y * y; });
-      auto diff = std::abs(sum - static_cast<Float>(1));
-      if (diff > eps) {
-        return 1;
+    for (int n : d.UpperIndices(l)) {
+      for (int np : d.UpperIndices(l)) {
+        Float sum = static_cast<Float>(0);
+        for (int m : d.Orders(l)) {
+          sum += d(l, m, n) * d(l, m, np);
+        }
+        if (n == np) {
+          if (std::abs(sum - static_cast<Float>(1)) > eps) return 1;
+        } else {
+          if (abs(sum) > eps) return 1;
+        }
       }
     }
   }
