@@ -17,8 +17,32 @@
 
 namespace GSHTrans {
 
-// Define the Wigner class.
+// Declare some utility functions
+constexpr int Sign(int);
 template <std::floating_point Float>
+Float WignerMinOrderAtUpperIndex(int, int, Float, Float, bool, bool);
+template <std::floating_point Float>
+Float WignerMaxOrderAtUpperIndex(int, int, Float, Float, bool, bool);
+template <std::floating_point Float>
+Float WignerMaxUpperIndexAtOrder(int, int, Float, Float, bool, bool);
+template <std::floating_point Float>
+Float WignerMinUpperIndexAtOrder(int, int, Float, Float, bool, bool);
+
+// Tags for specifying Wigner class options.
+struct AllOrders {};
+struct NonNegativeOrders {};
+struct FourPiNormalised {};
+struct FullyNormalised {};
+
+template <typename Range>
+concept OrderRange =
+    std::same_as<Range, AllOrders> or std::same_as<Range, NonNegativeOrders>;
+
+template <typename Norm>
+concept Normalisation =
+    std::same_as<Norm, FourPiNormalised> or std::same_as<Norm, FullyNormalised>;
+
+template <std::floating_point Float, OrderRange Range, Normalisation Norm>
 class Wigner {
  public:
   // Define member types.
@@ -29,137 +53,89 @@ class Wigner {
 
   // Constructor taking in execution policy as argument.
   template <typename ExecutionPolicy>
-  Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy,
-         bool normalise = false);
+  Wigner(int L, int M, int n, Float theta, ExecutionPolicy policy);
 
-  // Constructor using default construction policy.
-  Wigner(int L, int M, int N, Float theta, bool normalise = false)
-      : Wigner(L, M, N, theta, std::execution::seq, normalise) {}
+  Wigner(int L, int M, int n, Float theta)
+      : Wigner(L, M, n, theta, std::execution::seq) {}
 
   // Geters for basic data.
   Float Angle() const { return theta; }
   int MaxDegree() const { return L; }
   int MaxOrder() const { return M; }
-  int MaxUpperIndex() const { return N; }
+  int UpperIndex() const { return n; }
 
-  // Functions to return iterators to the data.
+  // Iterators that point to the start of the data.
   iterator begin() { return data.begin(); }
-  iterator end() { return data.end(); }
-  iterator begin(int n) {
-    assert(std::abs(n) <= N);
-    return std::next(begin(), Count(n - 1));
-  }
-  iterator end(int n) {
-    assert(std::abs(n) <= N);
-    return std::next(begin(), Count(n));
-  }
-  iterator begin(int n, int l) {
-    assert(std::abs(n) <= N);
-    assert(l >= 0 && l <= L);
-    return std::next(begin(), Count(n, l - 1));
-  }
-  iterator end(int n, int l) {
-    assert(std::abs(n) <= N);
-    assert(l >= 0 && l <= L);
-    return std::next(begin(), Count(n, l));
-  }
-
-  // Functions to return constant iterators to the data.
   const_iterator cbegin() const { return data.cbegin(); }
+
+  // Iterators that point to the end of the data.
+  iterator end() { return data.end(); }
   const_iterator cend() const { return data.cend(); }
-  const_iterator cbegin(int n) const {
-    assert(std::abs(n) <= N);
-    return std::next(cbegin(), Count(n - 1));
+
+  // Iterators that point to the start of degree l.
+  iterator begin(int l) { return std::next(begin(), Count(l - 1)); }
+  const_iterator cbegin(int l) const {
+    return std::next(cbegin(), Count(l - 1));
   }
 
-  const_iterator cend(int n) const {
-    assert(std::abs(n) <= N);
-    return std::next(cbegin(), Count(n));
-  }
-  const_iterator cbegin(int n, int l) const {
-    assert(std::abs(n) <= N);
-    assert(l >= 0 && l <= L);
-    return std::next(cbegin(), Count(n, l - 1));
-  }
-  const_iterator cend(int n, int l) {
-    assert(std::abs(n) <= N);
-    assert(l >= 0 && l <= L);
-    return std::next(cbegin(), Count(n, l));
+  // Iterators that point to the end of degree l.
+  iterator end(int l) { return std::next(begin(), Count(l)); }
+  const_iterator cend(int l) const { return std::next(cbegin(), Count(l)); }
+
+  // Returns value for given degree and order when all orders are stored.
+  Float operator()(int l, int m) const requires std::same_as<Range, AllOrders> {
+    assert(0 <= l && l <= L);
+    assert(std::abs(m) <= std::min(l, M));
+    return *std::next(cbegin(l), l + m);
   }
 
-  // Returns value for given indices
-  Float operator()(int l, int m, int n) const {
-    assert(l >= 0 && l <= L);
-    assert(std::abs(m) <= M);
-    assert(std::abs(n) <= N);
-    if (n >= 0) {
-      auto mstep = l <= M ? l + m : M + m;
-      return *std::next(cbegin(n, l), mstep);
-    } else {
-      return Sign(m + n) * operator()(l, -m, -n);
-    }
-  }
-
-  // Ranges to use for looping over values
-  auto Degrees() const { return Range(0, L + 1); }
-  auto Degrees(int lmin) const { return Range(lmin, L + 1); }
-  auto UpperIndices(bool nonNegative = false) const {
-    return nonNegative ? Range(0, N + 1) : Range(-N, N + 1);
-  }
-  auto UpperIndices(int l, bool nonNegative = false) const {
-    auto nMax = std::min(l, N);
-    return nonNegative ? Range(0, nMax + 1) : Range(-nMax, nMax + 1);
-  }
-  auto Orders(bool nonNegative = false) const {
-    return nonNegative ? Range(0, M + 1) : Range(-M, M + 1);
-  }
-  auto Orders(int l, bool nonNegative = false) const {
-    auto mMax = std::min(l, M);
-    return nonNegative ? Range(0, mMax + 1) : Range(-mMax, mMax + 1);
+  // Returns value for given degree and non-negative order when only
+  // non-negative orders are stored.
+  Float operator()(
+      int l, int m) const requires std::same_as<Range, NonNegativeOrders> {
+    assert(0 <= l && l <= L);
+    assert(0 <= m <= std::min(l, M));
+    return *std::next(cbegin(l), m);
   }
 
  private:
   int L;  // Maximum degree
   int M;  // Maximum order
-  int N;  // Maximum upper index
+  int n;  // Maximum upper index
 
   Float theta;              // angle
   std::vector<Float> data;  // vector containing struct
 
-  // Returns the number of elements up to and including upper index n.
-  // Note that n = -1 is a valid input with return value 0 which is needed.
-  constexpr difference_type Count(int n) const {
-    return (n + 1) * ((M + 1) * (M + 1) + (L - M) * (2 * M + 1)) -
-           (n * (n + 1) * (2 * n + 1)) / 6;
+  // Returns the number of values at a given degree when
+  // all orders are stored.
+  constexpr difference_type Count(
+      int l) const requires std::same_as<Range, AllOrders> {
+    auto nabs = std::abs(n);
+    if (l < nabs) return 0;
+    if (l <= M) return (l + 1) * (l + 1) - nabs * nabs;
+    return (M + 1) * (M + 1) - nabs * nabs + (l - M) * (2 * M + 1);
   }
 
-  // Returns the number of elements up to and including degree l at upper index
-  // n. Note that l = -1 is a valid input with this case being needed.
-  constexpr difference_type Count(int n, int l) const {
-    int i = Count(n - 1);
-    if (l >= n) {
-      i -= n * n;
-      if (l <= M) {
-        i += (l + 1) * (l + 1);
-      } else {
-        i += (M + 1) * (M + 1) + (l - M) * (2 * M + 1);
-      }
-    }
-    return i;
+  // Returns the number of values at a given degree when
+  // only non-negative orders are stored.
+  constexpr difference_type Count(
+      int l) const requires std::same_as<Range, NonNegativeOrders> {
+    auto nabs = std::abs(n);
+    if (l < nabs) return 0;
+    if (l <= M) return ((l + 1) * (l + 2)) / 2 - (nabs * (nabs + 1)) / 2;
+    return ((M + 1) * (M + 2)) / 2 - (nabs * (nabs + 1)) / 2 +
+           (l - M) * (M + 1);
   }
 
-  // Declare/define some utility functions.
-  int Sign(int m) const { return m % 2 ? -1 : 1; }
-  Float ValueMaxOrderAtUpperIndex(int, int, Float, Float, bool, bool);
-  Float ValueMinOrderAtUpperIndex(int, int, Float, Float, bool, bool);
-  Float ValueMaxUpperIndexAtOrder(int, int, Float, Float, bool, bool);
+  // Returns total number of values.
+  constexpr difference_type const Count() { return Count(L); }
 };
 
-template <std::floating_point Float>
+template <std::floating_point Float, OrderRange Range, Normalisation Norm>
 template <typename ExecutionPolicy>
-Wigner<Float>::Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy,
-                      bool normalise)
-    : L{L}, M{M}, N{N}, theta{theta} {
+Wigner<Float, Range, Norm>::Wigner(int L, int M, int n, Float theta,
+                                   ExecutionPolicy policy)
+    : L{L}, M{M}, n{n}, theta{theta} {
   // Check the maximum degree is non-negative.
   assert(L >= 0);
 
@@ -167,15 +143,12 @@ Wigner<Float>::Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy,
   assert(M >= 0 && M <= L);
 
   // Check the upper index is in range.
-  assert(N >= 0 && N <= L);
-
-  // If N > M swap their values
-  if (N > M) std::swap(M, N);
+  assert(abs(n) <= M);
 
   // Initialise the data vector.
-  data = std::vector<Float>(Count(N));
+  data = std::vector<Float>(Count());
 
-  // Pre-compute and store trigonometric terms
+  // Pre-compute and store trigonometric terms.
   auto cos = std::cos(theta);
   auto logSinHalf = std::sin(theta / 2);
   auto logCosHalf = std::cos(theta / 2);
@@ -184,8 +157,7 @@ Wigner<Float>::Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy,
   logSinHalf = atLeft ? static_cast<Float>(0) : std::log(logSinHalf);
   logCosHalf = atRight ? static_cast<Float>(0) : std::log(logCosHalf);
 
-  // Pre-compute and store square roots and their inverses for natural numbers
-  // up to L + M
+  // Pre-compute and store square roots and their inverses up to L + M.
   std::vector<Float> sqInt(L + M + 1);
   std::transform(
       policy, sqInt.begin(), sqInt.end(), sqInt.begin(),
@@ -196,73 +168,96 @@ Wigner<Float>::Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy,
         return x > static_cast<Float>(0) ? 1 / x : static_cast<Float>(0);
       });
 
-  for (int n = 0; n <= N; n++) {
-    // Set the values for l == n
-    {
-      auto l = n;
-      auto mStart = std::min(l, M);
-      auto start = begin(l, l);
-      auto finish = end(l, l);
+  // Set the values for l == |n|
+  {
+    auto l = std::abs(n);
+    int mStart = 0;
+    if constexpr (std::same_as<Range, AllOrders>) {
+      mStart = -std::min(l, M);
+    }
+    auto start = begin(l);
+    auto finish = end(l);
+    if (n >= 0) {
       std::transform(policy, start, finish, start, [&](auto &p) {
-        auto m = static_cast<int>(&p - &*start) - mStart;
-        return ValueMaxUpperIndexAtOrder(l, m, logSinHalf, logCosHalf, atLeft,
-                                         atRight);
+        auto m = mStart + static_cast<int>(&p - &*start);
+        return WignerMaxUpperIndexAtOrder(l, m, logSinHalf, logCosHalf, atLeft,
+                                          atRight);
+      });
+    } else {
+      std::transform(policy, start, finish, start, [&](auto &p) {
+        auto m = mStart + static_cast<int>(&p - &*start);
+        return WignerMinUpperIndexAtOrder(l, m, logSinHalf, logCosHalf, atLeft,
+                                          atRight);
       });
     }
+  }
 
-    // Set the values for l == n+1 if needed.
-    if (n < L) {
-      auto l = n + 1;
-      auto mStart = std::min(l, M);
+  // Set the values for l == n+1 if needed.
+  if (std::abs(n) < L) {
+    auto l = std::abs(n) + 1;
+    auto mStart = -std::min(l, M);
+    if constexpr (std::same_as<Range, NonNegativeOrders>) {
+      mStart = 0;
+    }
 
-      // Set iterators
-      auto startMinus1 = begin(n, l - 1);
-      auto finishMinus1 = end(n, l - 1);
-      auto start = begin(n, l);
+    // Set iterators
+    auto startMinus1 = begin(l - 1);
+    auto finishMinus1 = end(l - 1);
+    auto start = begin(l);
 
-      // Add in value at m == -l if needed.
+    // Add in value at m == -l if needed.
+    if constexpr (std::same_as<Range, AllOrders>) {
       if (l <= M) {
-        *start++ = ValueMinOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
-                                             atLeft, atRight);
+        *start++ = WignerMinOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
+                                              atLeft, atRight);
         // Update the starting order for recursion
-        mStart -= 1;
-      }
-
-      // Add in interior orders using one-term recursion.
-      {
-        auto alpha = (2 * l - 1) * l * cos * sqIntInv[l + n];
-        auto beta = (2 * l - 1) * sqIntInv[l + n];
-        std::transform(
-            policy, startMinus1, finishMinus1, start, [&](auto &minus1) {
-              auto m = static_cast<int>(&minus1 - &*startMinus1) - mStart;
-              auto f1 = (alpha - beta * m) * sqIntInv[l - m] * sqIntInv[l + m];
-              return f1 * minus1;
-            });
-      }
-
-      // Add in value at m == l if needed
-      if (l <= M) {
-        *std::next(start, 2 * l - 1) = ValueMaxOrderAtUpperIndex(
-            l, n, logSinHalf, logCosHalf, atLeft, atRight);
+        mStart += 1;
       }
     }
 
-    // Now do the remaining degrees.
-    for (int l = n + 2; l <= L; l++) {
-      // Starting order within two-term recursion
-      auto mStart = std::min(l, M);
+    // Add in interior orders using one-term recursion.
+    {
+      auto alpha = (2 * l - 1) * l * cos * sqIntInv[l + n];
+      auto beta = (2 * l - 1) * sqIntInv[l + n];
+      std::transform(
+          policy, startMinus1, finishMinus1, start, [&](auto &minus1) {
+            auto m = mStart + static_cast<int>(&minus1 - &*startMinus1);
+            auto f1 = (alpha - beta * m) * sqIntInv[l - m] * sqIntInv[l + m];
+            return f1 * minus1;
+          });
+    }
 
-      // Set iterators
-      auto startMinus2 = begin(n, l - 2);
-      auto finishMinus2 = end(n, l - 2);
-      auto startMinus1 = begin(n, l - 1);
-      auto start = begin(n, l);
+    // Add in value at m == l if needed
+    if (l <= M) {
+      auto mStep = 2 * l - 1;
+      if constexpr (std::same_as<Range, NonNegativeOrders>) {
+        mStep = l;
+      }
+      *std::next(start, mStep) = WignerMaxOrderAtUpperIndex(
+          l, n, logSinHalf, logCosHalf, atLeft, atRight);
+    }
+  }
 
-      // Add in lower boundary terms if still growing.
+  // Now do the remaining degrees.
+  for (int l = std::abs(n) + 2; l <= L; l++) {
+    // Starting order within two-term recursion
+    auto mStart = -std::min(l, M);
+    if constexpr (std::same_as<Range, NonNegativeOrders>) {
+      mStart = 0;
+    }
+
+    // Set iterators
+    auto startMinus2 = begin(l - 2);
+    auto finishMinus2 = end(l - 2);
+    auto startMinus1 = begin(l - 1);
+    auto start = begin(l);
+
+    // Add in lower boundary terms if still growing.
+    if constexpr (std::same_as<Range, AllOrders>) {
       if (l <= M) {
         // Add in the m == -l term.
-        *start++ = ValueMinOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
-                                             atLeft, atRight);
+        *start++ = WignerMinOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
+                                              atLeft, atRight);
         // Now do the m == -l+1 term using one-point recursion.
         {
           auto m = -l + 1;
@@ -272,7 +267,7 @@ Wigner<Float>::Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy,
           *start++ = f1 * (*startMinus1++);
         }
         // Update the starting order for two-term recursion.
-        mStart -= 2;
+        mStart += 2;
       }
 
       // Add in the lower boundary term at the critical degree
@@ -283,81 +278,85 @@ Wigner<Float>::Wigner(int L, int M, int N, Float theta, ExecutionPolicy policy,
                   static_cast<Float>(l - 1);
         *start++ = f1 * (*startMinus1++);
         // Update the starting order for two-term recursion.
-        mStart -= 1;
+        mStart += 1;
       }
+    }
 
-      // Apply two-term recusion for the interior orders.
+    // Apply two-term recusion for the interior orders.
+    {
+      auto alpha = (2 * l - 1) * l * cos * sqIntInv[l - n] * sqIntInv[l + n];
+      auto beta = (2 * l - 1) * n * sqIntInv[l - n] * sqIntInv[l + n] /
+                  static_cast<Float>(l - 1);
+      auto gamma = l * sqInt[l - 1 - n] * sqInt[l - 1 + n] * sqIntInv[l - n] *
+                   sqIntInv[l + n] / static_cast<Float>(l - 1);
+
+      std::transform(
+          policy, startMinus2, finishMinus2, startMinus1, start,
+          [&](auto &minus2, auto &minus1) {
+            auto m = mStart + static_cast<int>(&minus2 - &*startMinus2);
+            auto denom = sqIntInv[l - m] * sqIntInv[l + m];
+            auto f1 = (alpha - beta * m) * denom;
+            auto f2 = gamma * sqInt[l - 1 - m] * sqInt[l - 1 + m] * denom;
+            return f1 * minus1 - f2 * minus2;
+          });
+    }
+
+    // Add in the upper boundary terms if still growing.
+    if (l <= M) {
+      // Update the iterator
+      auto mStep = 2 * l - 3;
+      if constexpr (std::same_as<Range, NonNegativeOrders>) {
+        mStep = l - 1;
+      }
+      startMinus1 = std::next(startMinus1, mStep);
+      start = std::next(start, mStep);
+      // Add in m == -l+1 term using one-point recursion.
       {
-        auto alpha = (2 * l - 1) * l * cos * sqIntInv[l - n] * sqIntInv[l + n];
-        auto beta = (2 * l - 1) * n * sqIntInv[l - n] * sqIntInv[l + n] /
-                    static_cast<Float>(l - 1);
-        auto gamma = l * sqInt[l - 1 - n] * sqInt[l - 1 + n] * sqIntInv[l - n] *
-                     sqIntInv[l + n] / static_cast<Float>(l - 1);
-
-        std::transform(
-            policy, startMinus2, finishMinus2, startMinus1, start,
-            [&](auto &minus2, auto &minus1) {
-              auto m = static_cast<int>(&minus2 - &*startMinus2) - mStart;
-              auto denom = sqIntInv[l - m] * sqIntInv[l + m];
-              auto f1 = (alpha - beta * m) * denom;
-              auto f2 = gamma * sqInt[l - 1 - m] * sqInt[l - 1 + m] * denom;
-              return f1 * minus1 - f2 * minus2;
-            });
-      }
-
-      // Add in the upper boundary terms if still growing.
-      if (l <= M) {
-        // Update the iterator
-        auto mStep = 2 * l - 3;
-        startMinus1 = std::next(startMinus1, mStep);
-        start = std::next(start, mStep);
-        // Add in m == -l+1 term using one-point recursion.
-        {
-          auto m = l - 1;
-          auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
-                    sqIntInv[l - n] * sqIntInv[l + n] * sqIntInv[l - m] *
-                    sqIntInv[l + m] / static_cast<Float>(l - 1);
-          *start++ = f1 * (*startMinus1++);
-        }
-        // Now do m == l.
-        *start++ = ValueMaxOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
-                                             atLeft, atRight);
-      }
-
-      // Add in the upper boundary term at the crtiical degree.
-      if (l == M + 1) {
-        // Update the iterators.
-        auto mStep = M - 2;
-        startMinus1 = std::next(startMinus1, mStep);
-        start = std::next(start, mStep);
-        auto m = M;
+        auto m = l - 1;
         auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) * sqIntInv[l - n] *
                   sqIntInv[l + n] * sqIntInv[l - m] * sqIntInv[l + m] /
                   static_cast<Float>(l - 1);
         *start++ = f1 * (*startMinus1++);
       }
+      // Now do m == l.
+      *start++ = WignerMaxOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
+                                            atLeft, atRight);
+    }
+
+    // Add in the upper boundary term at the crtiical degree.
+    if (l == M + 1) {
+      // Update the iterators.
+      auto mStep = 2 * M - 1;
+      if constexpr (std::same_as<Range, NonNegativeOrders>) {
+        mStep = M;
+      }
+      startMinus1 = std::next(startMinus1, mStep);
+      start = std::next(start, mStep);
+      auto m = M;
+      auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) * sqIntInv[l - n] *
+                sqIntInv[l + n] * sqIntInv[l - m] * sqIntInv[l + m] /
+                static_cast<Float>(l - 1);
+      *start++ = f1 * (*startMinus1++);
     }
   }
 
-  // Normalise the functions if requested.
-  if (normalise) {
-    for (int n = 0; n <= N; n++) {
-      for (int l = 0; l <= L; l++) {
-        auto start = begin(n, l);
-        auto finish = end(n, l);
-        std::transform(start, finish, start, [l](auto p) {
-          return 0.5 * std::sqrt(static_cast<Float>(2 * l + 1)) *
-                 std::numbers::inv_sqrtpi_v<Float> * p;
-        });
-      }
+  if constexpr (std::same_as<Norm, FullyNormalised>) {
+    for (int l = 0; l <= L; l++) {
+      auto start = begin(l);
+      auto finish = end(l);
+      std::transform(start, finish, start, [l](auto p) {
+        return 0.5 * std::sqrt(static_cast<Float>(2 * l + 1)) *
+               std::numbers::inv_sqrtpi_v<Float> * p;
+      });
     }
   }
 }
 
+constexpr int Sign(int m) { return m % 2 ? -1 : 0; }
+
 template <std::floating_point Float>
-Float Wigner<Float>::ValueMinOrderAtUpperIndex(int l, int n, Float logSinHalf,
-                                               Float logCosHalf, bool atLeft,
-                                               bool atRight) {
+Float WignerMinOrderAtUpperIndex(int l, int n, Float logSinHalf,
+                                 Float logCosHalf, bool atLeft, bool atRight) {
   // Check the inputs.
   assert(l >= 0);
   assert(std::abs(n) <= l);
@@ -386,19 +385,24 @@ Float Wigner<Float>::ValueMinOrderAtUpperIndex(int l, int n, Float logSinHalf,
 }
 
 template <std::floating_point Float>
-Float Wigner<Float>::ValueMaxOrderAtUpperIndex(int l, int n, Float logSinHalf,
-                                               Float logCosHalf, bool atLeft,
-                                               bool atRight) {
-  return Sign(n + l) * ValueMinOrderAtUpperIndex(l, -n, logSinHalf, logCosHalf,
-                                                 atLeft, atRight);
+Float WignerMaxOrderAtUpperIndex(int l, int n, Float logSinHalf,
+                                 Float logCosHalf, bool atLeft, bool atRight) {
+  return Sign(n + l) * WignerMinOrderAtUpperIndex(l, -n, logSinHalf, logCosHalf,
+                                                  atLeft, atRight);
 }
 
 template <std::floating_point Float>
-Float Wigner<Float>::ValueMaxUpperIndexAtOrder(int l, int m, Float logSinHalf,
-                                               Float logCosHalf, bool atLeft,
-                                               bool atRight) {
-  return ValueMinOrderAtUpperIndex(l, -m, logSinHalf, logCosHalf, atLeft,
-                                   atRight);
+Float WignerMinUpperIndexAtOrder(int l, int m, Float logSinHalf,
+                                 Float logCosHalf, bool atLeft, bool atRight) {
+  return WignerMaxOrderAtUpperIndex(l, -m, logSinHalf, logCosHalf, atLeft,
+                                    atRight);
+}
+
+template <std::floating_point Float>
+Float WignerMaxUpperIndexAtOrder(int l, int m, Float logSinHalf,
+                                 Float logCosHalf, bool atLeft, bool atRight) {
+  return WignerMinOrderAtUpperIndex(l, -m, logSinHalf, logCosHalf, atLeft,
+                                    atRight);
 }
 
 }  // namespace GSHTrans

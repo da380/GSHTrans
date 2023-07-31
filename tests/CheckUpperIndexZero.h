@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <concepts>
+#include <execution>
 #include <limits>
 #include <numbers>
 #include <random>
@@ -25,7 +26,8 @@ int CheckUpperIndexZero() {
   auto theta = dist(gen);
 
   // Construct the normalised Wigner values
-  Wigner d(L, M, N, theta, true);
+  //  Wigner d(L, M, N, theta, true);
+  Wigner<Float, AllOrders, FullyNormalised> d(L, M, 0, theta);
 
   // Define small numbers for comparison.
   constexpr auto eps = 100000 * std::numeric_limits<Float>::epsilon();
@@ -34,18 +36,15 @@ int CheckUpperIndexZero() {
   // Compare values to std library function
   for (int l = 0; l <= L; l++) {
     for (int m = 0; m <= l; m++) {
-      Float plm = d(l, m, 0);
+      Float plm = d(l, m);
       Float plmSTD = std::sph_legendre(l, m, theta);
       if (auto norm = std::abs(plm) > tiny) {
         Float diff = std::abs(plm - plmSTD) / norm;
-        if (diff > eps) {
-          std::cout << l << " " << m << " "
-                    << " " << plm << " " << plmSTD << " " << diff << std::endl;
-          return 1;
-        }
+        if (diff > eps) return 1;
       }
     }
   }
+
   return 0;
 }
 

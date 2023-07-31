@@ -22,19 +22,7 @@ int main() {
 
   int L = 5;
   int M = L;
-  int N = 0;
+  int n = 0;
   Float theta = 0.6;
-  Wigner d(L, M, N, theta);
-
-  for (int l : d.Degrees()) {
-    cout << endl;
-    for (int n : d.UpperIndices(l)) {
-      cout << n << " " << l << " |  ";
-      for (int m : d.Orders(l)) {
-        cout << d(l, m, n) << " ";
-      }
-      cout << endl;
-    }
-  }
-  cout << endl;
+  Wigner<Float, AllOrders, FullyNormalised> d(L, M, n, theta);
 }

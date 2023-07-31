@@ -3,21 +3,21 @@
 
 namespace GSHTrans {
 
-class Range {
+class IntegerRange {
  private:
   int last;
   int iter;
 
  public:
-  Range(int first, int last) : last{last}, iter{first} {}
-  explicit Range(int last) : Range(0, last) {}
+  IntegerRange(int first, int last) : last{last}, iter{first} {}
+  explicit IntegerRange(int last) : IntegerRange(0, last) {}
 
   // Iterable functions
-  const Range& begin() const { return *this; }
-  const Range& end() const { return *this; }
+  const IntegerRange& begin() const { return *this; }
+  const IntegerRange& end() const { return *this; }
 
   // Iterator functions
-  bool operator!=(const Range&) const { return iter < last; }
+  bool operator!=(const IntegerRange&) const { return iter < last; }
   void operator++() { ++iter; }
   int operator*() const { return iter; }
 };

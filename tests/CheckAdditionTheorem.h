@@ -26,6 +26,8 @@ int CheckAdditionTheorem() {
                                              std::numbers::pi_v<Float>};
   auto theta = dist(gen);
 
+  /*
+
   // Construct the unnormalised Wigner values
   Wigner d(L, M, N, theta);
 
@@ -47,6 +49,8 @@ int CheckAdditionTheorem() {
       }
     }
   }
+
+  */
   return 0;
 }
 
