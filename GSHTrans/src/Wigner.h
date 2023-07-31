@@ -64,6 +64,16 @@ class Wigner {
   int MaxOrder() const { return M; }
   int UpperIndex() const { return n; }
 
+  // Returns lowest order at given degree.
+  int StartingOrder(int l) requires std::same_as<Range, AllOrders> {
+    assert(n <= l && l <= L);
+    return -std::min(l, M);
+  }
+  int StartingOrder(int l) requires std::same_as<Range, NonNegativeOrders> {
+    assert(n <= l && l <= L);
+    return 0;
+  }
+
   // Iterators that point to the start of the data.
   iterator begin() { return data.begin(); }
   const_iterator cbegin() const { return data.cbegin(); }
@@ -84,7 +94,7 @@ class Wigner {
 
   // Returns value for given degree and order when all orders are stored.
   Float operator()(int l, int m) const requires std::same_as<Range, AllOrders> {
-    assert(0 <= l && l <= L);
+    assert(n <= l && l <= L);
     assert(std::abs(m) <= std::min(l, M));
     return *std::next(cbegin(l), l + m);
   }
@@ -93,7 +103,7 @@ class Wigner {
   // non-negative orders are stored.
   Float operator()(
       int l, int m) const requires std::same_as<Range, NonNegativeOrders> {
-    assert(0 <= l && l <= L);
+    assert(n <= l && l <= L);
     assert(0 <= m && m <= std::min(l, M));
     return *std::next(cbegin(l), m);
   }
@@ -171,10 +181,7 @@ Wigner<Float, Range, Norm>::Wigner(int L, int M, int n, Float theta,
   // Set the values for l == |n|
   {
     auto l = std::abs(n);
-    int mStart = 0;
-    if constexpr (std::same_as<Range, AllOrders>) {
-      mStart = -std::min(l, M);
-    }
+    auto mStart = StartingOrder(l);
     auto start = begin(l);
     auto finish = end(l);
     if (n >= 0) {
@@ -195,10 +202,7 @@ Wigner<Float, Range, Norm>::Wigner(int L, int M, int n, Float theta,
   // Set the values for l == n+1 if needed.
   if (std::abs(n) < L) {
     auto l = std::abs(n) + 1;
-    auto mStart = -std::min(l, M);
-    if constexpr (std::same_as<Range, NonNegativeOrders>) {
-      mStart = 0;
-    }
+    auto mStart = StartingOrder(l);
 
     // Set iterators
     auto startMinus1 = begin(l - 1);
@@ -241,10 +245,7 @@ Wigner<Float, Range, Norm>::Wigner(int L, int M, int n, Float theta,
   // Now do the remaining degrees.
   for (int l = std::abs(n) + 2; l <= L; l++) {
     // Starting order within two-term recursion
-    auto mStart = -std::min(l, M);
-    if constexpr (std::same_as<Range, NonNegativeOrders>) {
-      mStart = 0;
-    }
+    auto mStart = StartingOrder(l);
 
     // Set iterators
     auto startMinus2 = begin(l - 2);
