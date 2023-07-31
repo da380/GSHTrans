@@ -1,16 +1,16 @@
 #include <gtest/gtest.h>
 
 #include "CheckAdditionTheorem.h"
-#include "CheckUpperIndexZero.h"
+#include "CheckLegendre.h"
 
 // Compare values for n = 0 to the std library function.
-TEST(Wigner, CheckUpperIndexZeroDouble) {
-  int i = CheckUpperIndexZero<double>();
+TEST(Wigner, CheckLegendreDouble) {
+  int i = CheckLegendre<double>();
   EXPECT_EQ(i, 0);
 }
 
-TEST(Wigner, CheckUpperIndexZeroLongDouble) {
-  int i = CheckUpperIndexZero<long double>();
+TEST(Wigner, CheckLegendreLongDouble) {
+  int i = CheckLegendre<long double>();
   EXPECT_EQ(i, 0);
 }
 

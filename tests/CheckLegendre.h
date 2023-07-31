@@ -1,5 +1,5 @@
-#ifndef CHECK_UPPER_INDEX_ZERO_GUARD
-#define CHECK_UPPER_INDEX_ZERO_GUARD
+#ifndef CHECK_LEGENDRE_GUARD
+#define CHECK_LEGENDRE_GUARD
 
 #include <cmath>
 #include <concepts>
@@ -11,7 +11,7 @@
 #include "GSHTrans/Core"
 
 template <std::floating_point Float>
-int CheckUpperIndexZero() {
+int CheckLegendre() {
   using namespace GSHTrans;
 
   // Set the degree, order and upper index
@@ -27,7 +27,7 @@ int CheckUpperIndexZero() {
 
   // Construct the normalised Wigner values
   //  Wigner d(L, M, N, theta, true);
-  Wigner<Float, AllOrders, FullyNormalised> d(L, M, 0, theta);
+  Wigner<Float, NonNegativeOrders, FullyNormalised> d(L, M, 0, theta);
 
   // Define small numbers for comparison.
   constexpr auto eps = 100000 * std::numeric_limits<Float>::epsilon();

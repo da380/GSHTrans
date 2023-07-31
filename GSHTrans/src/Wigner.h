@@ -94,7 +94,7 @@ class Wigner {
   Float operator()(
       int l, int m) const requires std::same_as<Range, NonNegativeOrders> {
     assert(0 <= l && l <= L);
-    assert(0 <= m <= std::min(l, M));
+    assert(0 <= m && m <= std::min(l, M));
     return *std::next(cbegin(l), m);
   }
 
@@ -380,7 +380,8 @@ Float WignerMinOrderAtUpperIndex(int l, int n, Float logSinHalf,
   using std::exp;
   using std::lgamma;
   return exp(
-      0.5 * (lgamma(2 * Fl + 1) - lgamma(Fl - Fn + 1) - lgamma(Fl + Fn + 1)) +
+      static_cast<Float>(0.5) *
+          (lgamma(2 * Fl + 1) - lgamma(Fl - Fn + 1) - lgamma(Fl + Fn + 1)) +
       (Fl + Fn) * logSinHalf + (Fl - Fn) * logCosHalf);
 }
 
