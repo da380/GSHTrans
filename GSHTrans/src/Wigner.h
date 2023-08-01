@@ -1,5 +1,5 @@
-#ifndef WIGNER_GUARD_H
-#define WIGNER_GUARD_H
+#ifndef WIGNER_FIXED_UPPER_INDEX_GUARD_H
+#define WIGNER_FIXED_UPPER_INDEX_GUARD_H
 
 #include <algorithm>
 #include <cassert>
@@ -8,6 +8,7 @@
 #include <execution>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <numbers>
 #include <numeric>
 #include <tuple>
@@ -17,8 +18,23 @@
 
 namespace GSHTrans {
 
+// Define some tag-classes.
+struct AllOrders {};
+struct NonNegativeOrders {};
+struct FourPiNormalised {};
+struct FullyNormalised {};
+
+// Define some useful concepts.
+template <typename Range>
+concept OrderRange =
+    std::same_as<Range, AllOrders> or std::same_as<Range, NonNegativeOrders>;
+
+template <typename Norm>
+concept Normalisation =
+    std::same_as<Norm, FourPiNormalised> or std::same_as<Norm, FullyNormalised>;
+
 // Declare some utility functions
-constexpr int Sign(int);
+constexpr int MinusOneToPower(int);
 template <std::floating_point Float>
 Float WignerMinOrderAtUpperIndex(int, int, Float, Float, bool, bool);
 template <std::floating_point Float>
@@ -28,22 +44,9 @@ Float WignerMaxUpperIndexAtOrder(int, int, Float, Float, bool, bool);
 template <std::floating_point Float>
 Float WignerMinUpperIndexAtOrder(int, int, Float, Float, bool, bool);
 
-// Tags for specifying Wigner class options.
-struct AllOrders {};
-struct NonNegativeOrders {};
-struct FourPiNormalised {};
-struct FullyNormalised {};
-
-template <typename Range>
-concept OrderRange =
-    std::same_as<Range, AllOrders> or std::same_as<Range, NonNegativeOrders>;
-
-template <typename Norm>
-concept Normalisation =
-    std::same_as<Norm, FourPiNormalised> or std::same_as<Norm, FullyNormalised>;
-
+// Define the WignerFixedUpperIndex class.
 template <std::floating_point Float, OrderRange Range, Normalisation Norm>
-class Wigner {
+class WignerFixedUpperIndex {
  public:
   // Define member types.
   using value_type = Float;
@@ -53,10 +56,11 @@ class Wigner {
 
   // Constructor taking in execution policy as argument.
   template <typename ExecutionPolicy>
-  Wigner(int L, int M, int n, Float theta, ExecutionPolicy policy);
+  WignerFixedUpperIndex(int L, int M, int n, Float theta,
+                        ExecutionPolicy policy);
 
-  Wigner(int L, int M, int n, Float theta)
-      : Wigner(L, M, n, theta, std::execution::seq) {}
+  WignerFixedUpperIndex(int L, int M, int n, Float theta)
+      : WignerFixedUpperIndex(L, M, n, theta, std::execution::seq) {}
 
   // Geters for basic data.
   Float Angle() const { return theta; }
@@ -109,12 +113,12 @@ class Wigner {
   }
 
  private:
-  int L;  // Maximum degree
-  int M;  // Maximum order
-  int n;  // Maximum upper index
+  int L;  // Maximum degree.
+  int M;  // Maximum order.
+  int n;  // Upper index.
 
-  Float theta;              // angle
-  std::vector<Float> data;  // vector containing struct
+  Float theta;              // Angle.
+  std::vector<Float> data;  // Vector containing values.
 
   // Returns the number of values at a given degree when
   // all orders are stored.
@@ -143,8 +147,8 @@ class Wigner {
 
 template <std::floating_point Float, OrderRange Range, Normalisation Norm>
 template <typename ExecutionPolicy>
-Wigner<Float, Range, Norm>::Wigner(int L, int M, int n, Float theta,
-                                   ExecutionPolicy policy)
+WignerFixedUpperIndex<Float, Range, Norm>::WignerFixedUpperIndex(
+    int L, int M, int n, Float theta, ExecutionPolicy policy)
     : L{L}, M{M}, n{n}, theta{theta} {
   // Check the maximum degree is non-negative.
   assert(L >= 0);
@@ -205,8 +209,8 @@ Wigner<Float, Range, Norm>::Wigner(int L, int M, int n, Float theta,
     auto mStart = StartingOrder(l);
 
     // Set iterators
-    auto startMinus1 = begin(l - 1);
-    auto finishMinus1 = end(l - 1);
+    auto startMinusOne = begin(l - 1);
+    auto finishMinusOne = end(l - 1);
     auto start = begin(l);
 
     // Add in value at m == -l if needed.
@@ -224,8 +228,8 @@ Wigner<Float, Range, Norm>::Wigner(int L, int M, int n, Float theta,
       auto alpha = (2 * l - 1) * l * cos * sqIntInv[l + n];
       auto beta = (2 * l - 1) * sqIntInv[l + n];
       std::transform(
-          policy, startMinus1, finishMinus1, start, [&](auto &minus1) {
-            auto m = mStart + static_cast<int>(&minus1 - &*startMinus1);
+          policy, startMinusOne, finishMinusOne, start, [&](auto &minus1) {
+            auto m = mStart + static_cast<int>(&minus1 - &*startMinusOne);
             auto f1 = (alpha - beta * m) * sqIntInv[l - m] * sqIntInv[l + m];
             return f1 * minus1;
           });
@@ -248,9 +252,9 @@ Wigner<Float, Range, Norm>::Wigner(int L, int M, int n, Float theta,
     auto mStart = StartingOrder(l);
 
     // Set iterators
-    auto startMinus2 = begin(l - 2);
-    auto finishMinus2 = end(l - 2);
-    auto startMinus1 = begin(l - 1);
+    auto startMinusTwo = begin(l - 2);
+    auto finishMinusTwo = end(l - 2);
+    auto startMinusOne = begin(l - 1);
     auto start = begin(l);
 
     // Add in lower boundary terms if still growing.
@@ -265,7 +269,7 @@ Wigner<Float, Range, Norm>::Wigner(int L, int M, int n, Float theta,
           auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
                     sqIntInv[l - n] * sqIntInv[l + n] * sqIntInv[l - m] *
                     sqIntInv[l + m] / static_cast<Float>(l - 1);
-          *start++ = f1 * (*startMinus1++);
+          *start++ = f1 * (*startMinusOne++);
         }
         // Update the starting order for two-term recursion.
         mStart += 2;
@@ -277,7 +281,7 @@ Wigner<Float, Range, Norm>::Wigner(int L, int M, int n, Float theta,
         auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) * sqIntInv[l - n] *
                   sqIntInv[l + n] * sqIntInv[l - m] * sqIntInv[l + m] /
                   static_cast<Float>(l - 1);
-        *start++ = f1 * (*startMinus1++);
+        *start++ = f1 * (*startMinusOne++);
         // Update the starting order for two-term recursion.
         mStart += 1;
       }
@@ -292,9 +296,9 @@ Wigner<Float, Range, Norm>::Wigner(int L, int M, int n, Float theta,
                    sqIntInv[l + n] / static_cast<Float>(l - 1);
 
       std::transform(
-          policy, startMinus2, finishMinus2, startMinus1, start,
+          policy, startMinusTwo, finishMinusTwo, startMinusOne, start,
           [&](auto &minus2, auto &minus1) {
-            auto m = mStart + static_cast<int>(&minus2 - &*startMinus2);
+            auto m = mStart + static_cast<int>(&minus2 - &*startMinusTwo);
             auto denom = sqIntInv[l - m] * sqIntInv[l + m];
             auto f1 = (alpha - beta * m) * denom;
             auto f2 = gamma * sqInt[l - 1 - m] * sqInt[l - 1 + m] * denom;
@@ -309,7 +313,7 @@ Wigner<Float, Range, Norm>::Wigner(int L, int M, int n, Float theta,
       if constexpr (std::same_as<Range, NonNegativeOrders>) {
         mStep = l - 1;
       }
-      startMinus1 = std::next(startMinus1, mStep);
+      startMinusOne = std::next(startMinusOne, mStep);
       start = std::next(start, mStep);
       // Add in m == -l+1 term using one-point recursion.
       {
@@ -317,7 +321,7 @@ Wigner<Float, Range, Norm>::Wigner(int L, int M, int n, Float theta,
         auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) * sqIntInv[l - n] *
                   sqIntInv[l + n] * sqIntInv[l - m] * sqIntInv[l + m] /
                   static_cast<Float>(l - 1);
-        *start++ = f1 * (*startMinus1++);
+        *start++ = f1 * (*startMinusOne++);
       }
       // Now do m == l.
       *start++ = WignerMaxOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
@@ -331,13 +335,13 @@ Wigner<Float, Range, Norm>::Wigner(int L, int M, int n, Float theta,
       if constexpr (std::same_as<Range, NonNegativeOrders>) {
         mStep = M;
       }
-      startMinus1 = std::next(startMinus1, mStep);
+      startMinusOne = std::next(startMinusOne, mStep);
       start = std::next(start, mStep);
       auto m = M;
       auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) * sqIntInv[l - n] *
                 sqIntInv[l + n] * sqIntInv[l - m] * sqIntInv[l + m] /
                 static_cast<Float>(l - 1);
-      *start++ = f1 * (*startMinus1++);
+      *start++ = f1 * (*startMinusOne++);
     }
   }
 
@@ -353,7 +357,7 @@ Wigner<Float, Range, Norm>::Wigner(int L, int M, int n, Float theta,
   }
 }
 
-constexpr int Sign(int m) { return m % 2 ? -1 : 0; }
+constexpr int MinusOneToPower(int m) { return m % 2 ? -1 : 0; }
 
 template <std::floating_point Float>
 Float WignerMinOrderAtUpperIndex(int l, int n, Float logSinHalf,
@@ -389,8 +393,9 @@ Float WignerMinOrderAtUpperIndex(int l, int n, Float logSinHalf,
 template <std::floating_point Float>
 Float WignerMaxOrderAtUpperIndex(int l, int n, Float logSinHalf,
                                  Float logCosHalf, bool atLeft, bool atRight) {
-  return Sign(n + l) * WignerMinOrderAtUpperIndex(l, -n, logSinHalf, logCosHalf,
-                                                  atLeft, atRight);
+  return MinusOneToPower(n + l) * WignerMinOrderAtUpperIndex(l, -n, logSinHalf,
+                                                             logCosHalf, atLeft,
+                                                             atRight);
 }
 
 template <std::floating_point Float>
@@ -407,6 +412,15 @@ Float WignerMaxUpperIndexAtOrder(int l, int m, Float logSinHalf,
                                     atRight);
 }
 
+// Factory function to produce Wigner array for fixed upper index.
+template <std::floating_point Float, OrderRange Range, Normalisation Norm,
+        typename ExecutionPolicy>
+std::unique_ptr<WignerFixedUpperIndex<Float, Range, Norm>>
+MakeWignerFixedUpperIndex(int L, int M, int n, ExecutionPolicy policy) {
+return std::make_unique<WignerFixedUpperIndex<Float, Range, Norm>>(L, M, n,
+                                                                   policy);
+}
+
 }  // namespace GSHTrans
 
-#endif  // WIGNER_GUARD_H
+#endif  // WIGNER_FIXED_UPPER_INDEX_GUARD_H

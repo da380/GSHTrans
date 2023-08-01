@@ -24,5 +24,8 @@ int main() {
   int M = L;
   int n = 0;
   Float theta = 0.6;
-  Wigner<Float, AllOrders, FullyNormalised> d(L, M, n, theta);
+  WignerFixedUpperIndex<Float, AllOrders, FullyNormalised> d(L, M, n, theta);
+
+  auto p = MakeWignerFixedUpperIndex<Float, AllOrders, FullyNormalised>(L, M, n,
+                                                                        theta);
 }
