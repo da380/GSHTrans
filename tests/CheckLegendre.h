@@ -1,14 +1,13 @@
 #ifndef CHECK_LEGENDRE_GUARD
 #define CHECK_LEGENDRE_GUARD
 
+#include <GSHTrans/All>
 #include <cmath>
 #include <concepts>
 #include <execution>
 #include <limits>
 #include <numbers>
 #include <random>
-
-#include "GSHTrans/Core"
 
 template <std::floating_point Float>
 int CheckLegendre() {
@@ -27,7 +26,7 @@ int CheckLegendre() {
 
   // Construct the normalised Wigner values
   //  Wigner d(L, M, N, theta, true);
-  Wigner<Float, NonNegativeOrders, FullyNormalised> d(L, M, 0, theta);
+  Wigner<Float, NonNegativeOrders> d(L, M, 0, theta, Normalisation::Ortho);
 
   // Define small numbers for comparison.
   constexpr auto eps = 100000 * std::numeric_limits<Float>::epsilon();

@@ -1,8 +1,7 @@
+#include <GaussQuad/All>
 #include <concepts>
 #include <fstream>
 #include <iostream>
-
-#include <GaussQuad/Core>
 
 int main() {
   // Set the output precision

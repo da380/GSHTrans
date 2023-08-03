@@ -21,17 +21,14 @@ namespace GSHTrans {
 // Define some tag-classes.
 struct AllOrders {};
 struct NonNegativeOrders {};
-struct FourPiNormalised {};
-struct FullyNormalised {};
 
 // Define some useful concepts.
 template <typename Range>
 concept OrderRange =
     std::same_as<Range, AllOrders> or std::same_as<Range, NonNegativeOrders>;
 
-template <typename Norm>
-concept Normalisation =
-    std::same_as<Norm, FourPiNormalised> or std::same_as<Norm, FullyNormalised>;
+// Define enum class for normalisation options
+enum class Normalisation { FourPi, Ortho };
 
 // Declare some utility functions
 constexpr int MinusOneToPower(int);
@@ -45,7 +42,7 @@ template <std::floating_point Float>
 Float WignerMinUpperIndexAtOrder(int, int, Float, Float, bool, bool);
 
 // Define the Wigner class.
-template <std::floating_point Float, OrderRange Range, Normalisation Norm>
+template <std::floating_point Float = double, OrderRange Range = AllOrders>
 class Wigner {
  public:
   // Define member types.
@@ -56,10 +53,11 @@ class Wigner {
 
   // Constructor taking in execution policy as argument.
   template <typename ExecutionPolicy>
-  Wigner(int L, int M, int n, Float theta, ExecutionPolicy policy);
+  Wigner(int, int, int, Float, Normalisation, ExecutionPolicy);
 
-  Wigner(int L, int M, int n, Float theta)
-      : Wigner(L, M, n, theta, std::execution::seq) {}
+  // Constructor using default policy.
+  Wigner(int L, int M, int n, Float theta, Normalisation norm)
+      : Wigner(L, M, n, theta, norm, std::execution::seq) {}
 
   // Geters for basic data.
   Float Angle() const { return theta; }
@@ -148,10 +146,10 @@ class Wigner {
   constexpr difference_type const Count() { return Count(L); }
 };
 
-template <std::floating_point Float, OrderRange Range, Normalisation Norm>
+template <std::floating_point Float, OrderRange Range>
 template <typename ExecutionPolicy>
-Wigner<Float, Range, Norm>::Wigner(int L, int M, int n, Float theta,
-                                   ExecutionPolicy policy)
+Wigner<Float, Range>::Wigner(int L, int M, int n, Float theta,
+                             Normalisation norm, ExecutionPolicy policy)
     : L{L}, M{M}, n{n}, theta{theta} {
   // Check the maximum degree is non-negative.
   assert(L >= 0);
@@ -348,7 +346,7 @@ Wigner<Float, Range, Norm>::Wigner(int L, int M, int n, Float theta,
     }
   }
 
-  if constexpr (std::same_as<Norm, FullyNormalised>) {
+  if (norm == Normalisation::Ortho) {
     for (int l = 0; l <= L; l++) {
       auto start = begin(l);
       auto finish = end(l);
@@ -416,11 +414,11 @@ Float WignerMaxUpperIndexAtOrder(int l, int m, Float logSinHalf,
 }
 
 // Factory function to produce Wigner array for fixed upper index.
-template <std::floating_point Float, OrderRange Range, Normalisation Norm,
-          typename ExecutionPolicy>
-std::unique_ptr<Wigner<Float, Range, Norm>> MakeWigner(int L, int M, int n,
-                                                       ExecutionPolicy policy) {
-  return std::make_unique<Wigner<Float, Range, Norm>>(L, M, n, policy);
+template <std::floating_point Float, OrderRange Range, typename ExecutionPolicy>
+std::unique_ptr<Wigner<Float, Range>> MakeWigner(int L, int M, int n,
+                                                 Normalisation norm,
+                                                 ExecutionPolicy policy) {
+  return std::make_unique<Wigner<Float, Range>>(L, M, n, norm, policy);
 }
 
 }  // namespace GSHTrans
