@@ -5,6 +5,7 @@
 #include <cmath>
 #include <concepts>
 #include <limits>
+#include <memory>
 #include <numbers>
 #include <random>
 
@@ -25,6 +26,14 @@ int CheckAdditionTheorem() {
   std::uniform_real_distribution<Float> dist{static_cast<Float>(0),
                                              std::numbers::pi_v<Float>};
   auto theta = dist(gen);
+
+  using Wigner = GSHTrans::Wigner<Float, AllOrders, FourPiNormalised>;
+  std::vector<std::unique_ptr<Wigner>> d(2 * L + 1);
+
+  for (int n = -L; n <= L; n++) {
+    d.push_back(GSHTrans::MakeWigner<Float, AllOrders, FourPiNormalised>(
+        L, M, n, theta));
+  }
 
   /*
 

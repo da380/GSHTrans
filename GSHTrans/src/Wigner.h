@@ -1,5 +1,5 @@
-#ifndef WIGNER_FIXED_UPPER_INDEX_GUARD_H
-#define WIGNER_FIXED_UPPER_INDEX_GUARD_H
+#ifndef GSH_TRANS_WIGNER_GUARD_H
+#define GSH_TRANS_WIGNER_GUARD_H
 
 #include <algorithm>
 #include <cassert>
@@ -44,9 +44,9 @@ Float WignerMaxUpperIndexAtOrder(int, int, Float, Float, bool, bool);
 template <std::floating_point Float>
 Float WignerMinUpperIndexAtOrder(int, int, Float, Float, bool, bool);
 
-// Define the WignerFixedUpperIndex class.
+// Define the Wigner class.
 template <std::floating_point Float, OrderRange Range, Normalisation Norm>
-class WignerFixedUpperIndex {
+class Wigner {
  public:
   // Define member types.
   using value_type = Float;
@@ -56,11 +56,10 @@ class WignerFixedUpperIndex {
 
   // Constructor taking in execution policy as argument.
   template <typename ExecutionPolicy>
-  WignerFixedUpperIndex(int L, int M, int n, Float theta,
-                        ExecutionPolicy policy);
+  Wigner(int L, int M, int n, Float theta, ExecutionPolicy policy);
 
-  WignerFixedUpperIndex(int L, int M, int n, Float theta)
-      : WignerFixedUpperIndex(L, M, n, theta, std::execution::seq) {}
+  Wigner(int L, int M, int n, Float theta)
+      : Wigner(L, M, n, theta, std::execution::seq) {}
 
   // Geters for basic data.
   Float Angle() const { return theta; }
@@ -103,13 +102,17 @@ class WignerFixedUpperIndex {
     return *std::next(cbegin(l), l + m);
   }
 
-  // Returns value for given degree and non-negative order when only
-  // non-negative orders are stored.
+  // Returns value for given degree and order, m >= 0, when only non-negative
+  // orders are stored.
   Float operator()(
       int l, int m) const requires std::same_as<Range, NonNegativeOrders> {
     assert(n <= l && l <= L);
     assert(0 <= m && m <= std::min(l, M));
     return *std::next(cbegin(l), m);
+  }
+
+  void FlipUpperIndex() requires std::same_as<Range, AllOrders> {
+    if (n == 0) return;
   }
 
  private:
@@ -147,8 +150,8 @@ class WignerFixedUpperIndex {
 
 template <std::floating_point Float, OrderRange Range, Normalisation Norm>
 template <typename ExecutionPolicy>
-WignerFixedUpperIndex<Float, Range, Norm>::WignerFixedUpperIndex(
-    int L, int M, int n, Float theta, ExecutionPolicy policy)
+Wigner<Float, Range, Norm>::Wigner(int L, int M, int n, Float theta,
+                                   ExecutionPolicy policy)
     : L{L}, M{M}, n{n}, theta{theta} {
   // Check the maximum degree is non-negative.
   assert(L >= 0);
@@ -414,13 +417,12 @@ Float WignerMaxUpperIndexAtOrder(int l, int m, Float logSinHalf,
 
 // Factory function to produce Wigner array for fixed upper index.
 template <std::floating_point Float, OrderRange Range, Normalisation Norm,
-        typename ExecutionPolicy>
-std::unique_ptr<WignerFixedUpperIndex<Float, Range, Norm>>
-MakeWignerFixedUpperIndex(int L, int M, int n, ExecutionPolicy policy) {
-return std::make_unique<WignerFixedUpperIndex<Float, Range, Norm>>(L, M, n,
-                                                                   policy);
+          typename ExecutionPolicy>
+std::unique_ptr<Wigner<Float, Range, Norm>> MakeWigner(int L, int M, int n,
+                                                       ExecutionPolicy policy) {
+  return std::make_unique<Wigner<Float, Range, Norm>>(L, M, n, policy);
 }
 
 }  // namespace GSHTrans
 
-#endif  // WIGNER_FIXED_UPPER_INDEX_GUARD_H
+#endif  // GSH_TRANS_WIGNER_GUARD_H

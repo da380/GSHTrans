@@ -27,8 +27,7 @@ int CheckLegendre() {
 
   // Construct the normalised Wigner values
   //  Wigner d(L, M, N, theta, true);
-  WignerFixedUpperIndex<Float, NonNegativeOrders, FullyNormalised> d(L, M, 0,
-                                                                     theta);
+  Wigner<Float, NonNegativeOrders, FullyNormalised> d(L, M, 0, theta);
 
   // Define small numbers for comparison.
   constexpr auto eps = 100000 * std::numeric_limits<Float>::epsilon();

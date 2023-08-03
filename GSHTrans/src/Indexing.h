@@ -1,5 +1,5 @@
-#ifndef INDEXING_GUARD_H
-#define INDEXING_GUARD_H
+#ifndef GSH_TRANS_INDEXING_GUARD_H
+#define GSH_TRANS_INDEXING_GUARD_H
 
 namespace GSHTrans {
 
@@ -24,4 +24,4 @@ class IntegerRange {
 
 }  // namespace GSHTrans
 
-#endif  // INDEXING_GUARD_H
+#endif  // GSH_TRANS_INDEXING_GUARD_H
