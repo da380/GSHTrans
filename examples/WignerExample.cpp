@@ -16,33 +16,37 @@ int main() {
   using Float = double;
 
   // Set the degree, order and upper index
-  int L = 5;
+  int L = 3;
   int M = L;
-  int N = 0;
+  int N = L;
 
   // Pick a random angle
   std::random_device rd{};
   std::mt19937_64 gen{rd()};
   std::uniform_real_distribution<Float> dist{static_cast<Float>(0),
                                              std::numbers::pi_v<Float>};
-  auto theta = dist(gen);
+  Float theta = 0.6;
 
-  // Define small number for comparison.
-  constexpr auto eps = 1000 * std::numeric_limits<Float>::epsilon();
+  std::cout.setf(std::ios_base::scientific);
+  std::cout.setf(std::ios_base::showpos);
+  std::cout.precision(7);
 
+  std::vector<std::unique_ptr<Wigner<Float, AllOrders>>> d;
   for (int n = -N; n <= N; n++) {
-    std::cout << "-------------------\n";
-    Wigner<Float> d1(L, M, n, theta, Normalisation::FourPi);
-    for (int np = -N; np <= N; np++) {
-      std::cout << "-------------------\n";
-      Wigner<Float> d2(L, M, np, theta, Normalisation::FourPi);
+    d.push_back(std::make_unique<Wigner<Float, AllOrders>>(
+        L, M, n, theta, Normalisation::FourPi));
+  }
 
-      auto lstart = std::max(std::abs(n), std::abs(np));
-      for (int l = lstart; l <= L; l++) {
-        Float sum = std::inner_product(d1.cbegin(l), d1.cend(l), d2.cbegin(l),
-                                       static_cast<Float>(0.0));
-        std::cout << n << " " << np << " " << l << " " << sum << std::endl;
+  for (int l = L; l <= L; l++) {
+    auto nRange = std::min(l, N);
+    for (int n = -nRange; n <= -1; n++) {
+      std::cout << n << "  " << l << " | ";
+      auto mRange = std::min(l, M);
+      for (int m = -mRange; m <= mRange; m++) {
+        std::cout << d[n + N]->operator()(l, m) << "   ";
       }
+      std::cout << std::endl;
     }
+    std::cout << std::endl;
   }
 }

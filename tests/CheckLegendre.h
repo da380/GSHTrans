@@ -37,7 +37,7 @@ int CheckLegendre() {
     for (int m = 0; m <= l; m++) {
       Float plm = d(l, m);
       Float plmSTD = std::sph_legendre(l, m, theta);
-      if (auto norm = std::abs(plm) > tiny) {
+      if (auto norm = std::abs(plmSTD) > tiny) {
         Float diff = std::abs(plm - plmSTD) / norm;
         if (diff > eps) return 1;
       }
