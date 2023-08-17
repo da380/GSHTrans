@@ -17,15 +17,9 @@ class Legendre {
   using const_iterator = typename std::vector<Float>::const_iterator;
   using difference_type = std::vector<Float>::difference_type;
 
-  // Constructor with policy.
-  template <typename ExecutionPolicy>
-  Legendre(int L, int M, Float theta, Normalisation norm,
-           ExecutionPolicy policy)
-      : d{WignerN<Float, Range>(L, M, 0, theta, norm, policy)} {}
-
   // Constructor with default policy.
   Legendre(int L, int M, Float theta, Normalisation norm)
-      : Legendre(L, M, theta, norm, std::execution::seq) {}
+      : d{WignerN<Float, Range>(L, M, 0, theta, norm)} {}
 
   // Geters for basic data.
   Float Angle() const { return d.Angle(); }
@@ -55,9 +49,11 @@ class Legendre {
   WignerN<Float, Range> d;
 };
 
+// Simple legendre function
 template <std::floating_point Float>
-Float legendre(int l, int m, Float theta) {
-  return 0;
+Float legendre(int l, int m, Float theta,
+               Normalisation norm = Normalisation::Ortho) {
+  return wigner(l, m, 0, theta, norm);
 }
 
 }  // namespace GSHTrans

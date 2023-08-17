@@ -14,7 +14,7 @@ int CheckLegendre() {
   using namespace GSHTrans;
 
   // Set the degree, order and upper index
-  int L = 50;
+  int L = 300;
   int M = L;
   int N = 0;
 

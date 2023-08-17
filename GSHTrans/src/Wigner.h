@@ -53,13 +53,8 @@ class WignerN {
   using const_iterator = typename std::vector<Float>::const_iterator;
   using difference_type = std::vector<Float>::difference_type;
 
-  // Constructor taking in execution policy as argument.
-  template <typename ExecutionPolicy>
-  WignerN(int, int, int, Float, Normalisation, ExecutionPolicy);
-
-  // Constructor using default policy.
-  WignerN(int L, int M, int n, Float theta, Normalisation norm)
-      : WignerN(L, M, n, theta, norm, std::execution::seq) {}
+  // Constructor
+  WignerN(int, int, int, Float, Normalisation);
 
   // Geters for basic data.
   Float Angle() const { return theta; }
@@ -117,6 +112,9 @@ class WignerN {
   }
 
  private:
+  // Set the execution policy.
+  static constexpr auto policy = std::execution::seq;
+
   int L;  // Maximum degree.
   int M;  // Maximum order.
   int n;  // Upper index.
@@ -150,10 +148,8 @@ class WignerN {
 };
 
 template <std::floating_point Float, OrderRange Range>
-template <typename ExecutionPolicy>
 WignerN<Float, Range>::WignerN(const int L, const int M, const int n,
-                               const Float theta, Normalisation norm,
-                               ExecutionPolicy policy)
+                               const Float theta, Normalisation norm)
     : L{L}, M{M}, n{n}, theta{theta} {
   // Check the maximum degree is non-negative.
   assert(L >= 0);
@@ -410,6 +406,15 @@ WignerLN<Float>::WignerLN(int l, int N, Float theta, Normalisation norm)
   // Allocate the data vector.
   data = std::vector<Float>(2 * l + 1);
 
+  // Deal with l = 0 separately.
+  if (l == 0) {
+    data[0] = 1.0;
+    if (norm == Normalisation::Ortho) {
+      data[0] *= 0.5 * std::numbers::inv_sqrtpi_v<Float>;
+    }
+    return;
+  }
+
   // Pre-compute some trigonometric terms.
   auto logSinHalf = std::sin(0.5 * theta);
   auto logCosHalf = std::cos(0.5 * theta);
@@ -490,6 +495,13 @@ WignerLN<Float>::WignerLN(int l, int N, Float theta, Normalisation norm)
              std::numbers::inv_sqrtpi_v<Float> * p;
     });
   }
+}
+
+// Simple function to return Wigner values.
+template <std::floating_point Float>
+Float wigner(int l, int m, int N, Float theta,
+             Normalisation norm = Normalisation::Ortho) {
+  return WignerLN(l, N, theta, norm)(m);
 }
 
 /////////////////////////////////////////////////////////////////////////

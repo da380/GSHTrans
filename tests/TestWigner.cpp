@@ -2,6 +2,7 @@
 
 #include "CheckAdditionTheorem.h"
 #include "CheckLegendre.h"
+#include "CheckWigner.h"
 
 // Compare values for n = 0 to the std library function.
 TEST(Wigner, CheckLegendreDouble) {
@@ -22,5 +23,16 @@ TEST(Wigner, CheckAdditionTheoremDouble) {
 
 TEST(Wigner, CheckAdditionTheoremLongDouble) {
   int i = CheckAdditionTheorem<long double>();
+  EXPECT_EQ(i, 0);
+}
+
+// Check consistency of WignerN and WignerLN.
+TEST(Wigner, CheckWignerDouble) {
+  int i = CheckWigner<double>();
+  EXPECT_EQ(i, 0);
+}
+
+TEST(Wigner, CheckWignerLongDouble) {
+  int i = CheckWigner<long double>();
   EXPECT_EQ(i, 0);
 }
