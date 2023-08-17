@@ -3,7 +3,6 @@
 
 #include <concepts>
 #include <execution>
-#include <
 
 #include "Wigner.h"
 

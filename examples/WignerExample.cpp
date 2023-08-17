@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <concepts>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -15,38 +16,23 @@ int main() {
 
   using Float = double;
 
-  // Set the degree, order and upper index
-  int L = 3;
-  int M = L;
-  int N = L;
+  int n = 100;
+  Float theta1 = 0;
+  Float theta2 = std::numbers::pi_v<Float>;
+  Float dtheta = (theta2 - theta1) / static_cast<Float>(n - 1);
 
-  // Pick a random angle
-  std::random_device rd{};
-  std::mt19937_64 gen{rd()};
-  std::uniform_real_distribution<Float> dist{static_cast<Float>(0),
-                                             std::numbers::pi_v<Float>};
-  Float theta = 0.6;
+  int l = 2;
+  int N = -2;
 
-  std::cout.setf(std::ios_base::scientific);
-  std::cout.setf(std::ios_base::showpos);
-  std::cout.precision(7);
-
-  std::vector<std::unique_ptr<WignerN<Float, AllOrders>>> d;
-  for (int n = -N; n <= N; n++) {
-    d.push_back(std::make_unique<WignerN<Float, AllOrders>>(
-        L, M, n, theta, Normalisation::FourPi));
-  }
-
-  for (int l = L; l <= L; l++) {
-    auto nRange = std::min(l, N);
-    for (int n = -nRange; n <= -1; n++) {
-      std::cout << n << "  " << l << " | ";
-      auto mRange = std::min(l, M);
-      for (int m = -mRange; m <= mRange; m++) {
-        std::cout << d[n + N]->operator()(l, m) << "   ";
-      }
-      std::cout << std::endl;
+  std::ofstream file("WignerExample.out");
+  for (int i = 0; i < n; i++) {
+    Float theta = theta1 + i * dtheta;
+    WignerLN d(l, N, theta, Normalisation::Ortho);
+    WignerN d2(l, l, N, theta, Normalisation::Ortho);
+    file << theta;
+    for (int m = -l; m <= l; m++) {
+      file << " " << d(m) - d2(l, m);
     }
-    std::cout << std::endl;
+    file << std::endl;
   }
 }
