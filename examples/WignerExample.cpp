@@ -31,9 +31,9 @@ int main() {
   std::cout.setf(std::ios_base::showpos);
   std::cout.precision(7);
 
-  std::vector<std::unique_ptr<Wigner<Float, AllOrders>>> d;
+  std::vector<std::unique_ptr<WignerN<Float, AllOrders>>> d;
   for (int n = -N; n <= N; n++) {
-    d.push_back(std::make_unique<Wigner<Float, AllOrders>>(
+    d.push_back(std::make_unique<WignerN<Float, AllOrders>>(
         L, M, n, theta, Normalisation::FourPi));
   }
 

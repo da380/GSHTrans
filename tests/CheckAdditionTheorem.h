@@ -30,9 +30,9 @@ int CheckAdditionTheorem() {
   constexpr auto eps = 1000 * std::numeric_limits<Float>::epsilon();
 
   for (int n = -N; n <= N; n++) {
-    Wigner<Float, AllOrders> d1(L, M, n, theta, Normalisation::FourPi);
+    WignerN<Float, AllOrders> d1(L, M, n, theta, Normalisation::FourPi);
     for (int np = 0; np <= N; np++) {
-      Wigner<Float, AllOrders> d2(L, M, np, theta, Normalisation::FourPi);
+      WignerN<Float, AllOrders> d2(L, M, np, theta, Normalisation::FourPi);
 
       auto lstart = std::max(std::abs(n), std::abs(np));
       for (int l = lstart; l <= L; l++) {

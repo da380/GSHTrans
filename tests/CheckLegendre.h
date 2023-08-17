@@ -25,8 +25,7 @@ int CheckLegendre() {
   auto theta = dist(gen);
 
   // Construct the normalised Wigner values
-  //  Wigner d(L, M, N, theta, true);
-  Wigner<Float, NonNegativeOrders> d(L, M, 0, theta, Normalisation::Ortho);
+  Legendre<Float, NonNegativeOrders> d(L, M, theta, Normalisation::Ortho);
 
   // Define small numbers for comparison.
   constexpr auto eps = 100000 * std::numeric_limits<Float>::epsilon();

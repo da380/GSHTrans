@@ -4,5 +4,6 @@
 // Header files to include for use of GHSTrans library
 #include "src/Indexing.h"
 #include "src/Wigner.h"
+#include "src/Legendre.h"
 
 #endif

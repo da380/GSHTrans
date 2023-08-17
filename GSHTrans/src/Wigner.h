@@ -6,13 +6,11 @@
 #include <cmath>
 #include <concepts>
 #include <execution>
-#include <iostream>
 #include <iterator>
 #include <limits>
 #include <memory>
 #include <numbers>
 #include <numeric>
-#include <tuple>
 #include <vector>
 
 #include "Indexing.h"
@@ -42,9 +40,9 @@ Float WignerMaxUpperIndexAtOrder(int, int, Float, Float, bool, bool);
 template <std::floating_point Float>
 Float WignerMinUpperIndexAtOrder(int, int, Float, Float, bool, bool);
 
-// Define the Wigner class.
-template <std::floating_point Float = double, OrderRange Range = AllOrders>
-class Wigner {
+// Define the WignerN class.
+template <std::floating_point Float, OrderRange Range>
+class WignerN {
  public:
   // Define member types.
   using value_type = Float;
@@ -54,11 +52,11 @@ class Wigner {
 
   // Constructor taking in execution policy as argument.
   template <typename ExecutionPolicy>
-  Wigner(int, int, int, Float, Normalisation, ExecutionPolicy);
+  WignerN(int, int, int, Float, Normalisation, ExecutionPolicy);
 
   // Constructor using default policy.
-  Wigner(int L, int M, int n, Float theta, Normalisation norm)
-      : Wigner(L, M, n, theta, norm, std::execution::seq) {}
+  WignerN(int L, int M, int n, Float theta, Normalisation norm)
+      : WignerN(L, M, n, theta, norm, std::execution::seq) {}
 
   // Geters for basic data.
   Float Angle() const { return theta; }
@@ -150,9 +148,9 @@ class Wigner {
 
 template <std::floating_point Float, OrderRange Range>
 template <typename ExecutionPolicy>
-Wigner<Float, Range>::Wigner(const int L, const int M, const int n,
-                             const Float theta, Normalisation norm,
-                             ExecutionPolicy policy)
+WignerN<Float, Range>::WignerN(const int L, const int M, const int n,
+                               const Float theta, Normalisation norm,
+                               ExecutionPolicy policy)
     : L{L}, M{M}, n{n}, theta{theta} {
   // Check the maximum degree is non-negative.
   assert(L >= 0);
