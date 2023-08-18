@@ -14,14 +14,14 @@ int CheckWigner() {
   using namespace GSHTrans;
 
   // Set the degree and order
-  int L = 200;
-  int M = L;
+  int lMax = 200;
+  int mMax = lMax;
 
   // Set a random upper index
   std::random_device rd{};
   std::mt19937_64 gen{rd()};
-  std::uniform_int_distribution idist{-L, L};
-  int N = idist(gen);
+  std::uniform_int_distribution idist{-lMax, lMax};
+  int nMax = idist(gen);
 
   // Pick a random angle
   std::uniform_real_distribution<Float> rdist{0.0, std::numbers::pi_v<Float>};
@@ -35,17 +35,17 @@ int CheckWigner() {
     norm = Normalisation::FourPi;
   }
 
-  // Construct the WignerN object
-  WignerN d(L, M, N, theta, norm);
+  // Construct the WignerArrayN object
+  WignerArrayN d(lMax, mMax, nMax, theta, norm);
 
   // Define small numbers for comparison.
   constexpr auto eps = 1.0e-8;
   constexpr auto tiny = 1.0e-8;
 
   // Loop over degrees.
-  for (int l = std::abs(N); l <= L; l++) {
-    // Create WignerLN object.
-    WignerLN d2(l, N, theta, norm);
+  for (int l = std::abs(nMax); l <= lMax; l++) {
+    // Create WignerArrayLN object.
+    WignerArrayLN d2(l, nMax, theta, norm);
 
     // Compare values at each order.
     for (int m = -l; m <= l; m++) {

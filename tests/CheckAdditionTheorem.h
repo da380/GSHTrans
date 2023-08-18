@@ -15,9 +15,9 @@ int CheckAdditionTheorem() {
   using namespace GSHTrans;
 
   // Set the degree, order and upper index
-  int L = 30;
-  int M = L;
-  int N = L;
+  int lMax = 30;
+  int mMax = lMax;
+  int nMax = lMax;
 
   // Pick a random angle
   std::random_device rd{};
@@ -29,13 +29,13 @@ int CheckAdditionTheorem() {
   // Define small number for comparison.
   constexpr auto eps = 1000 * std::numeric_limits<Float>::epsilon();
 
-  for (int n = -N; n <= N; n++) {
-    WignerN<Float, AllOrders> d1(L, M, n, theta, Normalisation::FourPi);
-    for (int np = 0; np <= N; np++) {
-      WignerN<Float, AllOrders> d2(L, M, np, theta, Normalisation::FourPi);
+  for (int n = -nMax; n <= nMax; n++) {
+    WignerArrayN<Float, All> d1(lMax, mMax, n, theta, Normalisation::FourPi);
+    for (int np = 0; np <= nMax; np++) {
+      WignerArrayN<Float, All> d2(lMax, mMax, np, theta, Normalisation::FourPi);
 
       auto lstart = std::max(std::abs(n), std::abs(np));
-      for (int l = lstart; l <= L; l++) {
+      for (int l = lstart; l <= lMax; l++) {
         Float sum = 0.0;
         for (int m = -l; m <= l; m++) {
           sum += d1(l, m) * d2(l, m);

@@ -14,9 +14,8 @@ int CheckLegendre() {
   using namespace GSHTrans;
 
   // Set the degree, order and upper index
-  int L = 300;
-  int M = L;
-  int N = 0;
+  int lMax = 300;
+  int mMax = lMax;
 
   // Pick a random angle
   std::random_device rd{};
@@ -25,14 +24,14 @@ int CheckLegendre() {
   auto theta = dist(gen);
 
   // Construct the normalised Wigner values
-  Legendre<Float, NonNegativeOrders> d(L, M, theta, Normalisation::Ortho);
+  LegendreArray<Float, NonNegative> d(lMax, mMax, theta);
 
   // Define small numbers for comparison.
   constexpr auto eps = 100000 * std::numeric_limits<Float>::epsilon();
   constexpr auto tiny = 1000 * std::numeric_limits<Float>::min();
 
   // Compare values to std library function
-  for (int l = 0; l <= L; l++) {
+  for (int l = 0; l <= lMax; l++) {
     for (int m = 0; m <= l; m++) {
       Float plm = d(l, m);
       Float plmSTD = std::sph_legendre(l, m, theta);

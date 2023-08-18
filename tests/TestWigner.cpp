@@ -36,3 +36,5 @@ TEST(Wigner, CheckWignerLongDouble) {
   int i = CheckWigner<long double>();
   EXPECT_EQ(i, 0);
 }
+
+

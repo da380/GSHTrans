@@ -8,21 +8,20 @@
 
 namespace GSHTrans {
 
-template <std::floating_point Float, OrderRange Range>
-class Legendre {
+template <std::floating_point Float, IndexRange Range>
+class LegendreArray {
  public:
   // Define member types.
   using value_type = Float;
-  using iterator = typename std::vector<Float>::iterator;
-  using const_iterator = typename std::vector<Float>::const_iterator;
-  using difference_type = std::vector<Float>::difference_type;
+  using iterator = typename WignerArrayN<Float, Range>::iterator;
+  using const_iterator = typename WignerArrayN<Float, Range>::const_iterator;
+  using difference_type = WignerArrayN<Float, Range>::difference_type;
 
-  // Constructor with default policy.
-  Legendre(int L, int M, Float theta, Normalisation norm)
-      : d{WignerN<Float, Range>(L, M, 0, theta, norm)} {}
+  LegendreArray(int lMax, int mMax, Float theta,
+                Normalisation norm = Normalisation::Ortho)
+      : d{WignerArrayN<Float, Range>(lMax, mMax, 0, theta, norm)} {}
 
   // Geters for basic data.
-  Float Angle() const { return d.Angle(); }
   int MaxDegree() const { return d.MaxDegree(); }
   int MaxOrder() const { return d.MaxOrder(); }
 
@@ -46,14 +45,14 @@ class Legendre {
   Float operator()(int l, int m) const { return d(l, m); }
 
  private:
-  WignerN<Float, Range> d;
+  WignerArrayN<Float, Range> d;
 };
 
 // Simple legendre function
 template <std::floating_point Float>
-Float legendre(int l, int m, Float theta,
+Float Legendre(int l, int m, Float theta,
                Normalisation norm = Normalisation::Ortho) {
-  return wigner(l, m, 0, theta, norm);
+  return Wigner(l, m, 0, theta, norm);
 }
 
 }  // namespace GSHTrans
