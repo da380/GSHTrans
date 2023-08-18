@@ -376,6 +376,8 @@ class WignerArray {
   using iterator = WignerArrayN<Float, MRange>::iterator;
   using const_iterator = WignerArrayN<Float, MRange>::const_iterator;
   using difference_type = WignerArrayN<Float, MRange>::difference_type;
+  template <int Storage>
+  using Mat = Eigen::Matrix<Float, Eigen::Dynamic, Eigen::Dynamic, Storage>;
 
   WignerArray(int lMax, int mMax, int nMax, Float theta,
               Normalisation norm = Normalisation::Ortho)
@@ -384,7 +386,7 @@ class WignerArray {
     assert(0 <= mMax && mMax <= lMax);
     assert(0 <= nMax && nMax <= lMax);
     for (int n = nMin(); n <= nMax; n++) {
-      data.push_back(Array(lMax, mMax, n, theta));
+      data.push_back(std::make_unique<Array>(lMax, mMax, n, theta));
     }
   }
 
@@ -398,27 +400,45 @@ class WignerArray {
     assert(0 <= l && l <= lMax);
     assert(mMin() <= m && m <= mMax);
     assert(nMin() <= n && n <= nMax);
-    return data[Index(n)](l, m);
+    return data[nIndex(n)]->operator()(l, m);
   }
 
   // Iterators to the data for given upper index.
-  iterator begin(int n) { return data[Index(n)].begin(); }
-  iterator cbegin(int n) const { return data[Index(n)].cbegin(); }
-  iterator end(int n) { return data[Index(n)].end(); }
-  iterator cend(int n) const { return data[Index(n)].cend(); }
+  iterator begin(int n) { return data[nIndex(n)]->begin(); }
+  iterator cbegin(int n) const { return data[nIndex(n)]->cbegin(); }
+  iterator end(int n) { return data[nIndex(n)]->end(); }
+  iterator cend(int n) const { return data[nIndex(n)]->cend(); }
 
   // Iterators to the data for given degree and upper index.
-  iterator begin(int l, int n) { return data[Index(n)].begin(l); }
-  iterator cbegin(int l, int n) const { return data[Index(n)].cbegin(l); }
-  iterator end(int l, int n) { return data[Index(n)].end(l); }
-  iterator cend(int l, int n) const { return data[Index(n)].cend(l); }
+  iterator begin(int l, int n) { return data[nIndex(n)]->begin(l); }
+  iterator cbegin(int l, int n) const { return data[nIndex(n)]->cbegin(l); }
+  iterator end(int l, int n) { return data[nIndex(n)]->end(l); }
+  iterator cend(int l, int n) const { return data[nIndex(n)]->cend(l); }
+
+  // Returns matrix of values at given degree indexed using (n,m).
+  // Matrix storage order is input as a template parameter, with the
+  // default being row-major which is more efficient in this case.
+  template <int Storage = Eigen::RowMajor>
+  Mat<Storage> Matrix(int l) {
+    int nDim = nMax - nMin() + 1;
+    int mDim = mMax - mMin() + 1;
+    Mat<Storage> d(nDim, mDim);
+    for (int n = nMin(); n <= nMax; n++) {
+      auto iter = cbegin(l, n);
+      for (int m = mMin(); m <= mMax; m++) {
+        d(nIndex(n), mIndex(m)) = *iter++;
+      }
+    }
+    return d;
+  }
 
  private:
   int lMax;
   int mMax;
   int nMax;
   using Array = WignerArrayN<Float, MRange>;
-  std::vector<Array> data;
+  using ArrayPointer = std::unique_ptr<Array>;
+  std::vector<ArrayPointer> data;
 
   constexpr int mMin() const {
     if constexpr (std::same_as<MRange, All>) {
@@ -438,12 +458,21 @@ class WignerArray {
     }
   }
 
-  constexpr int Index(int n) const {
+  constexpr int nIndex(int n) const {
     if constexpr (std::same_as<NRange, All>) {
       return nMax + n;
     }
     if constexpr (std::same_as<NRange, NonNegative>) {
       return n;
+    }
+  }
+
+  constexpr int mIndex(int m) const {
+    if constexpr (std::same_as<MRange, All>) {
+      return mMax + m;
+    }
+    if constexpr (std::same_as<MRange, NonNegative>) {
+      return m;
     }
   }
 };
