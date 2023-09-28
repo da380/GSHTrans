@@ -5,5 +5,6 @@
 #include "src/Indexing.h"
 #include "src/Wigner.h"
 #include "src/Legendre.h"
+#include "src/Plan.h"
 
 #endif
