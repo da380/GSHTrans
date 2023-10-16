@@ -1,7 +1,6 @@
 #ifndef GSH_TRANS_WIGNER_GUARD_H
 #define GSH_TRANS_WIGNER_GUARD_H
 
-#include <Eigen/Core>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -25,69 +24,58 @@ template <typename Range>
 concept IndexRange =
     std::same_as<Range, All> or std::same_as<Range, NonNegative>;
 
-// Define enum class for normalisation options
+// Define enum class for normalisation options.
 enum class Normalisation { FourPi, Ortho };
 
-// Declare some utility functions
+// Declare/Define some utility functions.
 constexpr int MinusOneToPower(int m) { return m % 2 ? -1 : 1; }
-template <std::floating_point Float>
-Float WignerMinOrderAtUpperIndex(int, int, Float, Float, bool, bool);
-template <std::floating_point Float>
-Float WignerMaxOrderAtUpperIndex(int, int, Float, Float, bool, bool);
-template <std::floating_point Float>
-Float WignerMaxUpperIndexAtOrder(int, int, Float, Float, bool, bool);
-template <std::floating_point Float>
-Float WignerMinUpperIndexAtOrder(int, int, Float, Float, bool, bool);
-
-// Declate function that returns Wigner value for given degree, order
-// and upper index.
-template <std::floating_point Float>
-Float Wigner(int, int, int, Float, Normalisation = Normalisation::Ortho);
-
-// Declare function that returns Wigner matrix for given degree,
-// with rows index by n and columns by m.
-template <std::floating_point Float>
-Eigen::Matrix<Float, Eigen::Dynamic, Eigen::Dynamic> WignerMatrix(
-    int, Float, Normalisation = Normalisation::Ortho);
+template <std::floating_point Real>
+Real WignerMinOrderAtUpperIndex(int, int, Real, Real, bool, bool);
+template <std::floating_point Real>
+Real WignerMaxOrderAtUpperIndex(int, int, Real, Real, bool, bool);
+template <std::floating_point Real>
+Real WignerMaxUpperIndexAtOrder(int, int, Real, Real, bool, bool);
+template <std::floating_point Real>
+Real WignerMinUpperIndexAtOrder(int, int, Real, Real, bool, bool);
 
 /////////////////////////////////////////////////////////////////////////
 //                      WignerArrayN class                             //
 /////////////////////////////////////////////////////////////////////////
 
-template <std::floating_point Float, IndexRange Range = All>
+template <std::floating_point Real, IndexRange Range = All>
 class WignerArrayN {
  public:
   // Define member types.
-  using value_type = Float;
-  using iterator = std::vector<Float>::iterator;
-  using const_iterator = std::vector<Float>::const_iterator;
-  using difference_type = std::vector<Float>::difference_type;
+  using value_type = Real;
+  using iterator = std::vector<Real>::iterator;
+  using const_iterator = std::vector<Real>::const_iterator;
+  using difference_type = std::vector<Real>::difference_type;
 
   // Constructor
-  WignerArrayN(int, int, int, Float, Normalisation norm = Normalisation::Ortho);
+  WignerArrayN(int, int, int, Real, Normalisation norm = Normalisation::Ortho);
 
   // Geters for basic data.
-  int MaxDegree() const { return lMax; }
-  int MaxOrder() const { return mMax; }
-  int UpperIndex() const { return n; }
+  int MaxDegree() const { return _lMax; }
+  int MaxOrder() const { return _mMax; }
+  int UpperIndex() const { return _n; }
 
   // Returns lowest order at given degree.
   int StartingOrder(int l) requires std::same_as<Range, All> {
-    assert(n <= l && l <= lMax);
-    return -std::min(l, mMax);
+    assert(l <= _lMax && l >= std::abs(_n));
+    return -std::min(l, _mMax);
   }
   int StartingOrder(int l) requires std::same_as<Range, NonNegative> {
-    assert(n <= l && l <= lMax);
+    assert(l <= _lMax && l >= std::abs(_n));
     return 0;
   }
 
   // Iterators that point to the start of the data.
-  iterator begin() { return data.begin(); }
-  const_iterator cbegin() const { return data.cbegin(); }
+  iterator begin() { return _data.begin(); }
+  const_iterator cbegin() const { return _data.cbegin(); }
 
-  // Iterators that point to the end of the data.
-  iterator end() { return data.end(); }
-  const_iterator cend() const { return data.cend(); }
+  // Iterators that point to the end of the _data.
+  iterator end() { return _data.end(); }
+  const_iterator cend() const { return _data.cend(); }
 
   // Iterators that point to the start of degree l.
   iterator begin(int l) { return std::next(begin(), Count(l - 1)); }
@@ -100,109 +88,106 @@ class WignerArrayN {
   const_iterator cend(int l) const { return std::next(cbegin(), Count(l)); }
 
   // Returns value for given degree and order when all orders are stored.
-  Float operator()(int l, int m) const requires std::same_as<Range, All> {
-    assert(n <= l && l <= lMax);
-    auto mMaxAbs = std::min(l, mMax);
+  Real operator()(int l, int m) const requires std::same_as<Range, All> {
+    assert(l <= _lMax);
+    auto mMaxAbs = std::min(l, _mMax);
     assert(std::abs(m) <= mMaxAbs);
     return *std::next(cbegin(l), mMaxAbs + m);
   }
 
   // Returns value for given degree and order, m >= 0, when only non-negative
   // orders are stored.
-  Float operator()(int l,
-                   int m) const requires std::same_as<Range, NonNegative> {
-    assert(n <= l && l <= lMax);
-    assert(0 <= m && m <= std::min(l, mMax));
+  Real operator()(int l,
+                  int m) const requires std::same_as<Range, NonNegative> {
+    assert(l >= std::abs(_n) && l <= _lMax);
+    assert(0 <= m && m <= std::min(l, _mMax));
     return *std::next(cbegin(l), m);
-  }
-
-  void FlipUpperIndex() requires std::same_as<Range, All> {
-    if (n == 0) return;
   }
 
  private:
   // Set the execution policy.
-  static constexpr auto policy = std::execution::seq;
+  static constexpr auto _policy = std::execution::seq;
 
-  int lMax;  // Maximum degree.
-  int mMax;  // Maximum order.
-  int n;     // Upper index.
+  int _lMax;  // Maximum degree.
+  int _mMax;  // Maximum order.
+  int _n;     // Upper index.
 
-  std::vector<Float> data;  // Vector containing values.
+  std::vector<Real> _data;  // Vector containing values.
 
   // Returns the number of values at a given degree when
   // all orders are stored.
   constexpr difference_type Count(
       int l) const requires std::same_as<Range, All> {
-    auto nabs = std::abs(n);
+    auto nabs = std::abs(_n);
     if (l < nabs) return 0;
-    if (l <= mMax) return (l + 1) * (l + 1) - nabs * nabs;
-    return (mMax + 1) * (mMax + 1) - nabs * nabs + (l - mMax) * (2 * mMax + 1);
+    if (l <= _mMax) return (l + 1) * (l + 1) - nabs * nabs;
+    return (_mMax + 1) * (_mMax + 1) - nabs * nabs +
+           (l - _mMax) * (2 * _mMax + 1);
   }
 
   // Returns the number of values at a given degree when
   // only non-negative orders are stored.
   constexpr difference_type Count(
       int l) const requires std::same_as<Range, NonNegative> {
-    auto nabs = std::abs(n);
+    auto nabs = std::abs(_n);
     if (l < nabs) return 0;
-    if (l <= mMax) return ((l + 1) * (l + 2)) / 2 - (nabs * (nabs + 1)) / 2;
-    return ((mMax + 1) * (mMax + 2)) / 2 - (nabs * (nabs + 1)) / 2 +
-           (l - mMax) * (mMax + 1);
+    if (l <= _mMax) return ((l + 1) * (l + 2)) / 2 - (nabs * (nabs + 1)) / 2;
+    return ((_mMax + 1) * (_mMax + 2)) / 2 - (nabs * (nabs + 1)) / 2 +
+           (l - _mMax) * (_mMax + 1);
   }
 
   // Returns total number of values.
-  constexpr difference_type const Count() { return Count(lMax); }
+  constexpr difference_type const Count() { return Count(_lMax); }
 };
 
-template <std::floating_point Float, IndexRange Range>
-WignerArrayN<Float, Range>::WignerArrayN(int lMax, int mMax, int n, Float theta,
-                                         Normalisation norm)
-    : lMax{lMax}, mMax{mMax}, n{n} {
+template <std::floating_point Real, IndexRange Range>
+WignerArrayN<Real, Range>::WignerArrayN(int lMax, int mMax, int n, Real theta,
+                                        Normalisation norm)
+    : _lMax{lMax}, _mMax{mMax}, _n{n} {
   // Check the maximum degree is non-negative.
-  assert(lMax >= 0);
+  assert(_lMax >= 0);
 
   // Check the maximum order is in range.
-  assert(mMax >= 0 && mMax <= lMax);
+  assert(_mMax >= 0 && _mMax <= _lMax);
 
   // Initialise the data vector.
-  data = std::vector<Float>(Count());
+  _data = std::vector<Real>(Count());
 
   // Pre-compute and store trigonometric terms.
   auto cos = std::cos(theta);
   auto logSinHalf = std::sin(0.5 * theta);
   auto logCosHalf = std::cos(0.5 * theta);
-  auto atLeft = logSinHalf < std::numeric_limits<Float>::min();
-  auto atRight = logCosHalf < std::numeric_limits<Float>::min();
-  logSinHalf = atLeft ? static_cast<Float>(0) : std::log(logSinHalf);
-  logCosHalf = atRight ? static_cast<Float>(0) : std::log(logCosHalf);
+  auto atLeft = logSinHalf < std::numeric_limits<Real>::min();
+  auto atRight = logCosHalf < std::numeric_limits<Real>::min();
+  logSinHalf = atLeft ? static_cast<Real>(0) : std::log(logSinHalf);
+  logCosHalf = atRight ? static_cast<Real>(0) : std::log(logCosHalf);
 
   // Pre-compute and store square roots and their inverses up to lMax + mMax.
-  std::vector<Float> sqInt(lMax + mMax + 1);
+  std::vector<Real> sqInt(_lMax + _mMax + 1);
   std::transform(
-      policy, sqInt.begin(), sqInt.end(), sqInt.begin(),
-      [&](auto &x) { return std::sqrt(static_cast<Float>(&x - &sqInt[0])); });
-  std::vector<Float> sqIntInv(lMax + mMax + 1);
+      _policy, sqInt.begin(), sqInt.end(), sqInt.begin(),
+      [&](auto &x) { return std::sqrt(static_cast<Real>(&x - &sqInt[0])); });
+  std::vector<Real> sqIntInv(_lMax + _mMax + 1);
   std::transform(
-      policy, sqInt.begin(), sqInt.end(), sqIntInv.begin(), [](auto x) {
-        return x > static_cast<Float>(0) ? 1 / x : static_cast<Float>(0);
+      _policy, sqInt.begin(), sqInt.end(), sqIntInv.begin(), [](auto x) {
+        return x > static_cast<Real>(0) ? 1 / x : static_cast<Real>(0);
       });
 
   // Set the values for l == |n|
-  const int nabs = std::abs(n);
+  const int nabs = std::abs(_n);
   {
     auto l = nabs;
     auto mStart = StartingOrder(l);
     auto start = begin(l);
     auto finish = end(l);
-    if (n >= 0) {
-      std::transform(policy, start, finish, start, [&](auto &p) {
+    if (_n >= 0) {
+      std::transform(_policy, start, finish, start, [&](auto &p) {
         int m = mStart + std::distance(&*start, &p);
         return WignerMaxUpperIndexAtOrder(l, m, logSinHalf, logCosHalf, atLeft,
                                           atRight);
       });
     } else {
-      std::transform(policy, start, finish, start, [&](auto &p) {
+      std::transform(_policy, start, finish, start, [&](auto &p) {
         int m = mStart + std::distance(&*start, &p);
         return WignerMinUpperIndexAtOrder(l, m, logSinHalf, logCosHalf, atLeft,
                                           atRight);
@@ -211,7 +196,7 @@ WignerArrayN<Float, Range>::WignerArrayN(int lMax, int mMax, int n, Float theta,
   }
 
   // Set the values for l == n+1 if needed.
-  if (nabs < lMax) {
+  if (nabs < _lMax) {
     auto l = nabs + 1;
     auto mStart = StartingOrder(l);
 
@@ -222,8 +207,8 @@ WignerArrayN<Float, Range>::WignerArrayN(int lMax, int mMax, int n, Float theta,
 
     // Add in value at m == -l if needed.
     if constexpr (std::same_as<Range, All>) {
-      if (l <= mMax) {
-        *start++ = WignerMinOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
+      if (l <= _mMax) {
+        *start++ = WignerMinOrderAtUpperIndex(l, _n, logSinHalf, logCosHalf,
                                               atLeft, atRight);
         // Update the starting order for recursion
         mStart += 1;
@@ -234,9 +219,9 @@ WignerArrayN<Float, Range>::WignerArrayN(int lMax, int mMax, int n, Float theta,
     {
       auto alpha = (2 * l - 1) * l * cos * sqIntInv[l + nabs];
       auto beta = (2 * l - 1) * sqIntInv[l + nabs];
-      if (n < 0) beta *= -1;
+      if (_n < 0) beta *= -1;
       std::transform(
-          policy, startMinusOne, finishMinusOne, start, [&](auto &minusOne) {
+          _policy, startMinusOne, finishMinusOne, start, [&](auto &minusOne) {
             int m = mStart + std::distance(&*startMinusOne, &minusOne);
             auto f1 = (alpha - beta * m) * sqIntInv[l - m] * sqIntInv[l + m];
             return f1 * minusOne;
@@ -244,18 +229,18 @@ WignerArrayN<Float, Range>::WignerArrayN(int lMax, int mMax, int n, Float theta,
     }
 
     // Add in value at m == l if needed
-    if (l <= mMax) {
+    if (l <= _mMax) {
       auto mStep = 2 * l - 1;
       if constexpr (std::same_as<Range, NonNegative>) {
         mStep = l;
       }
       *std::next(start, mStep) = WignerMaxOrderAtUpperIndex(
-          l, n, logSinHalf, logCosHalf, atLeft, atRight);
+          l, _n, logSinHalf, logCosHalf, atLeft, atRight);
     }
   }
 
   // Now do the remaining degrees.
-  for (int l = nabs + 2; l <= lMax; l++) {
+  for (int l = nabs + 2; l <= _lMax; l++) {
     // Starting order within two-term recursion
     auto mStart = StartingOrder(l);
 
@@ -267,16 +252,16 @@ WignerArrayN<Float, Range>::WignerArrayN(int lMax, int mMax, int n, Float theta,
 
     // Add in lower boundary terms if still growing.
     if constexpr (std::same_as<Range, All>) {
-      if (l <= mMax) {
+      if (l <= _mMax) {
         // Add in the m == -l term.
-        *start++ = WignerMinOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
+        *start++ = WignerMinOrderAtUpperIndex(l, _n, logSinHalf, logCosHalf,
                                               atLeft, atRight);
         // Now do the m == -l+1 term using one-point recursion.
         {
           auto m = -l + 1;
-          auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
-                    sqIntInv[l - n] * sqIntInv[l + n] * sqIntInv[l - m] *
-                    sqIntInv[l + m] / static_cast<Float>(l - 1);
+          auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * _n) *
+                    sqIntInv[l - _n] * sqIntInv[l + _n] * sqIntInv[l - m] *
+                    sqIntInv[l + m] / static_cast<Real>(l - 1);
           *start++ = f1 * (*startMinusOne++);
         }
         // Update the starting order for two-term recursion.
@@ -284,11 +269,11 @@ WignerArrayN<Float, Range>::WignerArrayN(int lMax, int mMax, int n, Float theta,
       }
 
       // Add in the lower boundary term at the critical degree
-      if (l == mMax + 1) {
-        auto m = -mMax;
-        auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) * sqIntInv[l - n] *
-                  sqIntInv[l + n] * sqIntInv[l - m] * sqIntInv[l + m] /
-                  static_cast<Float>(l - 1);
+      if (l == _mMax + 1) {
+        auto m = -_mMax;
+        auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * _n) *
+                  sqIntInv[l - _n] * sqIntInv[l + _n] * sqIntInv[l - m] *
+                  sqIntInv[l + m] / static_cast<Real>(l - 1);
         *start++ = f1 * (*startMinusOne++);
         // Update the starting order for two-term recursion.
         mStart += 1;
@@ -297,13 +282,14 @@ WignerArrayN<Float, Range>::WignerArrayN(int lMax, int mMax, int n, Float theta,
 
     // Apply two-term recusion for the interior orders.
     {
-      auto alpha = (2 * l - 1) * l * cos * sqIntInv[l - n] * sqIntInv[l + n];
-      auto beta = (2 * l - 1) * n * sqIntInv[l - n] * sqIntInv[l + n] /
-                  static_cast<Float>(l - 1);
-      auto gamma = l * sqInt[l - 1 - n] * sqInt[l - 1 + n] * sqIntInv[l - n] *
-                   sqIntInv[l + n] / static_cast<Float>(l - 1);
+      auto alpha = (2 * l - 1) * l * cos * sqIntInv[l - _n] * sqIntInv[l + _n];
+      auto beta = (2 * l - 1) * _n * sqIntInv[l - _n] * sqIntInv[l + _n] /
+                  static_cast<Real>(l - 1);
+      auto gamma = l * sqInt[l - 1 - _n] * sqInt[l - 1 + _n] *
+                   sqIntInv[l - _n] * sqIntInv[l + _n] /
+                   static_cast<Real>(l - 1);
       std::transform(
-          policy, startMinusTwo, finishMinusTwo, startMinusOne, start,
+          _policy, startMinusTwo, finishMinusTwo, startMinusOne, start,
           [&](auto &minusTwo, auto &minusOne) {
             int m = mStart + std::distance(&*startMinusTwo, &minusTwo);
             auto denom = sqIntInv[l - m] * sqIntInv[l + m];
@@ -314,7 +300,7 @@ WignerArrayN<Float, Range>::WignerArrayN(int lMax, int mMax, int n, Float theta,
     }
 
     // Add in the upper boundary terms if still growing.
-    if (l <= mMax) {
+    if (l <= _mMax) {
       // Update the iterator
       auto mStep = 2 * l - 3;
       if constexpr (std::same_as<Range, NonNegative>) {
@@ -325,40 +311,40 @@ WignerArrayN<Float, Range>::WignerArrayN(int lMax, int mMax, int n, Float theta,
       // Add in m == l - 1 term using one-point recursion.
       {
         auto m = l - 1;
-        auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) * sqIntInv[l - n] *
-                  sqIntInv[l + n] * sqIntInv[l - m] * sqIntInv[l + m] /
-                  static_cast<Float>(l - 1);
+        auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * _n) *
+                  sqIntInv[l - _n] * sqIntInv[l + _n] * sqIntInv[l - m] *
+                  sqIntInv[l + m] / static_cast<Real>(l - 1);
         *start++ = f1 * (*startMinusOne++);
       }
       // Now do m == l.
-      *start++ = WignerMaxOrderAtUpperIndex(l, n, logSinHalf, logCosHalf,
+      *start++ = WignerMaxOrderAtUpperIndex(l, _n, logSinHalf, logCosHalf,
                                             atLeft, atRight);
     }
 
     // Add in the upper boundary term at the crtiical degree.
-    if (l == mMax + 1) {
+    if (l == _mMax + 1) {
       // Update the iterators.
-      auto mStep = 2 * mMax - 1;
+      auto mStep = 2 * _mMax - 1;
       if constexpr (std::same_as<Range, NonNegative>) {
-        mStep = mMax;
+        mStep = _mMax;
       }
       startMinusOne = std::next(startMinusOne, mStep);
       start = std::next(start, mStep);
-      auto m = mMax;
-      auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) * sqIntInv[l - n] *
-                sqIntInv[l + n] * sqIntInv[l - m] * sqIntInv[l + m] /
-                static_cast<Float>(l - 1);
+      auto m = _mMax;
+      auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * _n) * sqIntInv[l - _n] *
+                sqIntInv[l + _n] * sqIntInv[l - m] * sqIntInv[l + m] /
+                static_cast<Real>(l - 1);
       *start++ = f1 * (*startMinusOne++);
     }
   }
 
   if (norm == Normalisation::Ortho) {
-    for (int l = 0; l <= lMax; l++) {
+    for (int l = 0; l <= _lMax; l++) {
       auto start = begin(l);
       auto finish = end(l);
       std::transform(start, finish, start, [l](auto p) {
-        return 0.5 * std::sqrt(static_cast<Float>(2 * l + 1)) *
-               std::numbers::inv_sqrtpi_v<Float> * p;
+        return 0.5 * std::sqrt(static_cast<Real>(2 * l + 1)) *
+               std::numbers::inv_sqrtpi_v<Real> * p;
       });
     }
   }
@@ -368,81 +354,63 @@ WignerArrayN<Float, Range>::WignerArrayN(int lMax, int mMax, int n, Float theta,
 //                   Definition of WignerArray class                   //
 /////////////////////////////////////////////////////////////////////////
 
-template <std::floating_point Float, IndexRange MRange = All,
+template <std::floating_point Real, IndexRange MRange = All,
           IndexRange NRange = All>
 class WignerArray {
  public:
-  using value_type = Float;
-  using iterator = WignerArrayN<Float, MRange>::iterator;
-  using const_iterator = WignerArrayN<Float, MRange>::const_iterator;
-  using difference_type = WignerArrayN<Float, MRange>::difference_type;
+  using value_type = Real;
+  using iterator = WignerArrayN<Real, MRange>::iterator;
+  using const_iterator = WignerArrayN<Real, MRange>::const_iterator;
+  using difference_type = WignerArrayN<Real, MRange>::difference_type;
   template <int Storage>
-  using Mat = Eigen::Matrix<Float, Eigen::Dynamic, Eigen::Dynamic, Storage>;
 
-  WignerArray(int lMax, int mMax, int nMax, Float theta,
+  WignerArray(int lMax, int mMax, int nMax, Real theta,
               Normalisation norm = Normalisation::Ortho)
-      : lMax{lMax}, mMax{mMax}, nMax{nMax} {
-    assert(0 <= lMax);
-    assert(0 <= mMax && mMax <= lMax);
-    assert(0 <= nMax && nMax <= lMax);
-    for (int n = nMin(); n <= nMax; n++) {
-      data.push_back(std::make_unique<Array>(lMax, mMax, n, theta));
+      : _lMax{lMax}, _mMax{mMax}, _nMax{nMax} {
+    assert(0 <= _lMax);
+    assert(0 <= _mMax && _mMax <= _lMax);
+    assert(0 <= _nMax && _nMax <= _lMax);
+    for (int n = nMin(); n <= _nMax; n++) {
+      _data.push_back(std::make_unique<Array>(_lMax, _mMax, n, theta));
     }
   }
 
-  int MaxDegree() const { return lMax; }
-  int MaxOrder() const { return mMax; }
-  int MaxUpperIndex() const { return nMax; }
+  int MaxDegree() const { return _lMax; }
+  int MaxOrder() const { return _mMax; }
+  int MaxUpperIndex() const { return _nMax; }
 
   // Return value for given degree, order and
   // upper index.
-  Float operator()(int l, int m, int n) const {
-    assert(0 <= l && l <= lMax);
-    assert(mMin() <= m && m <= mMax);
-    assert(nMin() <= n && n <= nMax);
-    return data[nIndex(n)]->operator()(l, m);
+  Real operator()(int l, int m, int n) const {
+    assert(0 <= l && l <= _lMax);
+    assert(mMin() <= m && m <= _mMax);
+    assert(nMin() <= n && n <= _nMax);
+    return _data[nIndex(n)]->operator()(l, m);
   }
 
   // Iterators to the data for given upper index.
-  iterator begin(int n) { return data[nIndex(n)]->begin(); }
-  iterator cbegin(int n) const { return data[nIndex(n)]->cbegin(); }
-  iterator end(int n) { return data[nIndex(n)]->end(); }
-  iterator cend(int n) const { return data[nIndex(n)]->cend(); }
+  iterator begin(int n) { return _data[nIndex(n)]->begin(); }
+  iterator cbegin(int n) const { return _data[nIndex(n)]->cbegin(); }
+  iterator end(int n) { return _data[nIndex(n)]->end(); }
+  iterator cend(int n) const { return _data[nIndex(n)]->cend(); }
 
   // Iterators to the data for given degree and upper index.
-  iterator begin(int l, int n) { return data[nIndex(n)]->begin(l); }
-  iterator cbegin(int l, int n) const { return data[nIndex(n)]->cbegin(l); }
-  iterator end(int l, int n) { return data[nIndex(n)]->end(l); }
-  iterator cend(int l, int n) const { return data[nIndex(n)]->cend(l); }
-
-  // Returns matrix of values at given degree indexed using (n,m).
-  // Matrix storage order is input as a template parameter, with the
-  // default being row-major which is more efficient in this case.
-  template <int Storage = Eigen::RowMajor>
-  Mat<Storage> Matrix(int l) {
-    int nDim = nMax - nMin() + 1;
-    int mDim = mMax - mMin() + 1;
-    Mat<Storage> d(nDim, mDim);
-    for (int n = nMin(); n <= nMax; n++) {
-      auto iter = cbegin(l, n);
-      for (int m = mMin(); m <= mMax; m++) {
-        d(nIndex(n), mIndex(m)) = *iter++;
-      }
-    }
-    return d;
-  }
+  iterator begin(int l, int n) { return _data[nIndex(n)]->begin(l); }
+  iterator cbegin(int l, int n) const { return _data[nIndex(n)]->cbegin(l); }
+  iterator end(int l, int n) { return _data[nIndex(n)]->end(l); }
+  iterator cend(int l, int n) const { return _data[nIndex(n)]->cend(l); }
 
  private:
-  int lMax;
-  int mMax;
-  int nMax;
-  using Array = WignerArrayN<Float, MRange>;
+  int _lMax;
+  int _mMax;
+  int _nMax;
+  using Array = WignerArrayN<Real, MRange>;
   using ArrayPointer = std::unique_ptr<Array>;
-  std::vector<ArrayPointer> data;
+  std::vector<ArrayPointer> _data;
 
   constexpr int mMin() const {
     if constexpr (std::same_as<MRange, All>) {
-      return -mMax;
+      return -_mMax;
     }
     if constexpr (std::same_as<MRange, NonNegative>) {
       return 0;
@@ -451,7 +419,7 @@ class WignerArray {
 
   constexpr int nMin() const {
     if constexpr (std::same_as<NRange, All>) {
-      return -nMax;
+      return -_nMax;
     }
     if constexpr (std::same_as<NRange, NonNegative>) {
       return 0;
@@ -460,7 +428,7 @@ class WignerArray {
 
   constexpr int nIndex(int n) const {
     if constexpr (std::same_as<NRange, All>) {
-      return nMax + n;
+      return _nMax + n;
     }
     if constexpr (std::same_as<NRange, NonNegative>) {
       return n;
@@ -469,7 +437,7 @@ class WignerArray {
 
   constexpr int mIndex(int m) const {
     if constexpr (std::same_as<MRange, All>) {
-      return mMax + m;
+      return _mMax + m;
     }
     if constexpr (std::same_as<MRange, NonNegative>) {
       return m;
@@ -481,42 +449,41 @@ class WignerArray {
 //                          WignerArrayLN class                        //
 /////////////////////////////////////////////////////////////////////////
 
-template <std::floating_point Float>
+template <std::floating_point Real>
 class WignerArrayLN {
  public:
   // Define member types.
-  using value_type = Float;
-  using iterator = std::vector<Float>::iterator;
-  using const_iterator = std::vector<Float>::const_iterator;
-  using difference_type = std::vector<Float>::difference_type;
+  using value_type = Real;
+  using iterator = std::vector<Real>::iterator;
+  using const_iterator = std::vector<Real>::const_iterator;
+  using difference_type = std::vector<Real>::difference_type;
 
   // Constructor.
-  WignerArrayLN(int, int, Float, Normalisation norm = Normalisation::Ortho);
+  WignerArrayLN(int, int, Real, Normalisation norm = Normalisation::Ortho);
 
   // Basic data functions.
   int Degree() const { return l; }
   int UpperIndex() const { return n; }
-  Float Angle() const { return theta; }
+  Real Angle() const { return theta; }
 
   // Iterators to the data.
-  iterator begin() { return data.begin(); }
-  const_iterator cbegin() const { return data.cbegin(); }
-  iterator end() { return data.end(); }
-  const_iterator cend() { return data.end(); }
+  iterator begin() { return _data.begin(); }
+  const_iterator cbegin() const { return _data.cbegin(); }
+  iterator end() { return _data.end(); }
+  const_iterator cend() { return _data.end(); }
 
   // Returns value at given order.
-  Float operator()(int m) const { return data[l + m]; }
+  Real operator()(int m) const { return _data[l + m]; }
 
  private:
   int l;                    // Degree.
   int n;                    // Upper index.
-  Float theta;              // Angle.
-  std::vector<Float> data;  // Stored values.
+  Real theta;               // Angle.
+  std::vector<Real> _data;  // Stored values.
 };
 
-template <std::floating_point Float>
-WignerArrayLN<Float>::WignerArrayLN(int l, int n, Float theta,
-                                    Normalisation norm)
+template <std::floating_point Real>
+WignerArrayLN<Real>::WignerArrayLN(int l, int n, Real theta, Normalisation norm)
     : l{l}, n{n}, theta{theta} {
   // Check the inputs
   assert(0 <= l);
@@ -524,37 +491,37 @@ WignerArrayLN<Float>::WignerArrayLN(int l, int n, Float theta,
 
   // Deal with l = 0 separately.
   if (l == 0) {
-    data.push_back(1.0);
+    _data.push_back(1.0);
     if (norm == Normalisation::Ortho) {
-      data[0] *= 0.5 * std::numbers::inv_sqrtpi_v<Float>;
+      _data[0] *= 0.5 * std::numbers::inv_sqrtpi_v<Real>;
     }
     return;
   }
 
   // Allocate the data vector.
-  data = std::vector<Float>(2 * l + 1);
+  _data = std::vector<Real>(2 * l + 1);
 
   // Pre-compute some trigonometric terms.
   auto logSinHalf = std::sin(0.5 * theta);
   auto logCosHalf = std::cos(0.5 * theta);
-  auto atLeft = logSinHalf < std::numeric_limits<Float>::min();
-  auto atRight = logCosHalf < std::numeric_limits<Float>::min();
+  auto atLeft = logSinHalf < std::numeric_limits<Real>::min();
+  auto atRight = logCosHalf < std::numeric_limits<Real>::min();
 
   // Deal with values at the end points
   if (atLeft) {
-    data[l + n] = 1;
+    _data[l + n] = 1;
     if (norm == Normalisation::Ortho) {
-      data[l + n] *= 0.5 * std::sqrt(static_cast<Float>(2 * l + 1)) *
-                     std::numbers::inv_sqrtpi_v<Float>;
+      _data[l + n] *= 0.5 * std::sqrt(static_cast<Real>(2 * l + 1)) *
+                      std::numbers::inv_sqrtpi_v<Real>;
     }
     return;
   }
 
   if (atRight) {
-    data[l - n] = MinusOneToPower(l + n);
+    _data[l - n] = MinusOneToPower(l + n);
     if (norm == Normalisation::Ortho) {
-      data[l - n] *= 0.5 * std::sqrt(static_cast<Float>(2 * l + 1)) *
-                     std::numbers::inv_sqrtpi_v<Float>;
+      _data[l - n] *= 0.5 * std::sqrt(static_cast<Real>(2 * l + 1)) *
+                      std::numbers::inv_sqrtpi_v<Real>;
     }
     return;
   }
@@ -562,56 +529,56 @@ WignerArrayLN<Float>::WignerArrayLN(int l, int n, Float theta,
   // Compute remaining trigonometric terms
   logSinHalf = std::log(logSinHalf);
   logCosHalf = std::log(logCosHalf);
-  auto cosec = static_cast<Float>(1) / std::sin(theta);
+  auto cosec = static_cast<Real>(1) / std::sin(theta);
   auto cot = std::cos(theta) * cosec;
 
   // Pre-compute and store square roots and their inverses up to 2*l+1.
-  std::vector<Float> sqInt(2 * l + 1);
+  std::vector<Real> sqInt(2 * l + 1);
   std::transform(sqInt.begin(), sqInt.end(), sqInt.begin(), [&](auto &x) {
-    return std::sqrt(static_cast<Float>(&x - &sqInt[0]));
+    return std::sqrt(static_cast<Real>(&x - &sqInt[0]));
   });
-  std::vector<Float> sqIntInv(2 * l + 1);
+  std::vector<Real> sqIntInv(2 * l + 1);
   std::transform(sqInt.begin(), sqInt.end(), sqIntInv.begin(), [](auto x) {
-    return x > static_cast<Float>(0) ? 1 / x : static_cast<Float>(0);
+    return x > static_cast<Real>(0) ? 1 / x : static_cast<Real>(0);
   });
 
   // Compute the optimal meeting point for the recursion.
   int mOpt = n * std::cos(theta);
 
   // Set value at minimum order directly.
-  data[0] =
+  _data[0] =
       WignerMinOrderAtUpperIndex(l, n, logSinHalf, logCosHalf, false, false);
 
   //  Upwards recusion.
-  Float minusOne = 0;
+  Real minusOne = 0;
   for (int m = -l; m < mOpt; m++) {
-    Float current = data[l + m];
-    data[l + m + 1] = 2 * (n * cosec - m * cot) * sqIntInv[l - m] *
-                          sqIntInv[l + m + 1] * current -
-                      sqInt[l + m] * sqInt[l - m + 1] * sqIntInv[l - m] *
-                          sqIntInv[l + m + 1] * minusOne;
+    Real current = _data[l + m];
+    _data[l + m + 1] = 2 * (n * cosec - m * cot) * sqIntInv[l - m] *
+                           sqIntInv[l + m + 1] * current -
+                       sqInt[l + m] * sqInt[l - m + 1] * sqIntInv[l - m] *
+                           sqIntInv[l + m + 1] * minusOne;
     minusOne = current;
   }
 
   // Set value at maximum order directly.
-  data[2 * l] =
+  _data[2 * l] =
       WignerMaxOrderAtUpperIndex(l, n, logSinHalf, logCosHalf, false, false);
 
   // Downwards recusion.
-  Float plusOne = 0;
+  Real plusOne = 0;
   for (int m = l; m > mOpt + 1; m--) {
-    Float current = data[l + m];
-    data[l + m - 1] = 2 * (n * cosec - m * cot) * sqIntInv[l + m] *
-                          sqIntInv[l - m + 1] * current -
-                      sqInt[l - m] * sqInt[l + m + 1] * sqIntInv[l + m] *
-                          sqIntInv[l - m + 1] * plusOne;
+    Real current = _data[l + m];
+    _data[l + m - 1] = 2 * (n * cosec - m * cot) * sqIntInv[l + m] *
+                           sqIntInv[l - m + 1] * current -
+                       sqInt[l - m] * sqInt[l + m + 1] * sqIntInv[l + m] *
+                           sqIntInv[l - m + 1] * plusOne;
     plusOne = current;
   }
 
   if (norm == Normalisation::Ortho) {
-    std::transform(data.begin(), data.end(), data.begin(), [l](auto p) {
-      return 0.5 * std::sqrt(static_cast<Float>(2 * l + 1)) *
-             std::numbers::inv_sqrtpi_v<Float> * p;
+    std::transform(_data.begin(), _data.end(), _data.begin(), [l](auto p) {
+      return 0.5 * std::sqrt(static_cast<Real>(2 * l + 1)) *
+             std::numbers::inv_sqrtpi_v<Real> * p;
     });
   }
 }
@@ -620,61 +587,61 @@ WignerArrayLN<Float>::WignerArrayLN(int l, int n, Float theta,
 //                Definition of some utility functions                 //
 /////////////////////////////////////////////////////////////////////////
 
-template <std::floating_point Float>
-Float WignerMinOrderAtUpperIndex(int l, int n, Float logSinHalf,
-                                 Float logCosHalf, bool atLeft, bool atRight) {
+template <std::floating_point Real>
+Real WignerMinOrderAtUpperIndex(int l, int n, Real logSinHalf, Real logCosHalf,
+                                bool atLeft, bool atRight) {
   // Check the inputs.
   assert(l >= 0);
   assert(std::abs(n) <= l);
 
   // Deal with l == 0 case
-  if (l == 0) return static_cast<Float>(1);
+  if (l == 0) return static_cast<Real>(1);
 
   // Deal with special case at the left boundary.
   if (atLeft) {
-    return n == -l ? static_cast<Float>(1) : static_cast<Float>(0);
+    return n == -l ? static_cast<Real>(1) : static_cast<Real>(0);
   }
 
   // Deal with special case at the right boundary.
   if (atRight) {
-    return n == l ? static_cast<Float>(1) : static_cast<Float>(0);
+    return n == l ? static_cast<Real>(1) : static_cast<Real>(0);
   }
 
   // Deal with the general case.
-  auto Fl = static_cast<Float>(l);
-  auto Fn = static_cast<Float>(n);
+  auto Fl = static_cast<Real>(l);
+  auto Fn = static_cast<Real>(n);
   using std::exp;
   using std::lgamma;
   return exp(
-      static_cast<Float>(0.5) *
+      static_cast<Real>(0.5) *
           (lgamma(2 * Fl + 1) - lgamma(Fl - Fn + 1) - lgamma(Fl + Fn + 1)) +
       (Fl + Fn) * logSinHalf + (Fl - Fn) * logCosHalf);
 }
 
-template <std::floating_point Float>
-Float WignerMaxOrderAtUpperIndex(int l, int n, Float logSinHalf,
-                                 Float logCosHalf, bool atLeft, bool atRight) {
+template <std::floating_point Real>
+Real WignerMaxOrderAtUpperIndex(int l, int n, Real logSinHalf, Real logCosHalf,
+                                bool atLeft, bool atRight) {
   return MinusOneToPower(n + l) * WignerMinOrderAtUpperIndex(l, -n, logSinHalf,
                                                              logCosHalf, atLeft,
                                                              atRight);
 }
 
-template <std::floating_point Float>
-Float WignerMinUpperIndexAtOrder(int l, int m, Float logSinHalf,
-                                 Float logCosHalf, bool atLeft, bool atRight) {
+template <std::floating_point Real>
+Real WignerMinUpperIndexAtOrder(int l, int m, Real logSinHalf, Real logCosHalf,
+                                bool atLeft, bool atRight) {
   return WignerMaxOrderAtUpperIndex(l, -m, logSinHalf, logCosHalf, atLeft,
                                     atRight);
 }
 
-template <std::floating_point Float>
-Float WignerMaxUpperIndexAtOrder(int l, int m, Float logSinHalf,
-                                 Float logCosHalf, bool atLeft, bool atRight) {
+template <std::floating_point Real>
+Real WignerMaxUpperIndexAtOrder(int l, int m, Real logSinHalf, Real logCosHalf,
+                                bool atLeft, bool atRight) {
   return WignerMinOrderAtUpperIndex(l, -m, logSinHalf, logCosHalf, atLeft,
                                     atRight);
 }
 
-template <std::floating_point Float>
-Float Winger(int l, int m, int n, Float theta, Normalisation norm) {
+template <std::floating_point Real>
+Real Winger(int l, int m, int n, Real theta, Normalisation norm) {
   // Check the inputs.
   assert(l >= 0);
   assert(std::abs(m) <= l);
@@ -683,7 +650,7 @@ Float Winger(int l, int m, int n, Float theta, Normalisation norm) {
   // Deal with l = 0 separately.
   if (l == 0) {
     if (norm == Normalisation::Ortho) {
-      return 0.5 * std::numbers::inv_sqrtpi_v<Float>;
+      return 0.5 * std::numbers::inv_sqrtpi_v<Real>;
     } else {
       return 1;
     }
@@ -692,15 +659,15 @@ Float Winger(int l, int m, int n, Float theta, Normalisation norm) {
   // Pre-compute some trigonometric terms.
   auto logSinHalf = std::sin(0.5 * theta);
   auto logCosHalf = std::cos(0.5 * theta);
-  auto atLeft = logSinHalf < std::numeric_limits<Float>::min();
-  auto atRight = logCosHalf < std::numeric_limits<Float>::min();
+  auto atLeft = logSinHalf < std::numeric_limits<Real>::min();
+  auto atRight = logCosHalf < std::numeric_limits<Real>::min();
 
   // Deal with values at the end points
   if (atLeft) {
     if (n == -l) {
       if (norm == Normalisation::Ortho) {
-        return 0.5 * std::sqrt(static_cast<Float>(2 * l + 1)) *
-               std::numbers::inv_sqrtpi_v<Float>;
+        return 0.5 * std::sqrt(static_cast<Real>(2 * l + 1)) *
+               std::numbers::inv_sqrtpi_v<Real>;
       } else {
         return 1;
       }
@@ -713,8 +680,8 @@ Float Winger(int l, int m, int n, Float theta, Normalisation norm) {
     if (n == l) {
       if (norm == Normalisation::Ortho) {
         return MinusOneToPower(l + n) * 0.5 *
-               std::sqrt(static_cast<Float>(2 * l + 1)) *
-               std::numbers::inv_sqrtpi_v<Float>;
+               std::sqrt(static_cast<Real>(2 * l + 1)) *
+               std::numbers::inv_sqrtpi_v<Real>;
       } else {
         return MinusOneToPower(l + n);
       }
@@ -726,17 +693,17 @@ Float Winger(int l, int m, int n, Float theta, Normalisation norm) {
   // Compute remaining trigonometric terms
   logSinHalf = std::log(logSinHalf);
   logCosHalf = std::log(logCosHalf);
-  auto cosec = static_cast<Float>(1) / std::sin(theta);
+  auto cosec = static_cast<Real>(1) / std::sin(theta);
   auto cot = std::cos(theta) * cosec;
 
   // Pre-compute and store square roots and their inverses up to 2*l+1.
-  std::vector<Float> sqInt(2 * l + 1);
+  std::vector<Real> sqInt(2 * l + 1);
   std::transform(sqInt.begin(), sqInt.end(), sqInt.begin(), [&](auto &x) {
-    return std::sqrt(static_cast<Float>(&x - &sqInt[0]));
+    return std::sqrt(static_cast<Real>(&x - &sqInt[0]));
   });
-  std::vector<Float> sqIntInv(2 * l + 1);
+  std::vector<Real> sqIntInv(2 * l + 1);
   std::transform(sqInt.begin(), sqInt.end(), sqIntInv.begin(), [](auto x) {
-    return x > static_cast<Float>(0) ? 1 / x : static_cast<Float>(0);
+    return x > static_cast<Real>(0) ? 1 / x : static_cast<Real>(0);
   });
 
   // Compute the optimal meeting point for the recursion.
@@ -744,8 +711,8 @@ Float Winger(int l, int m, int n, Float theta, Normalisation norm) {
 
   // Apply upward recursion from m = -l.
   if (m <= mOpt) {
-    Float minusOne = 0;
-    Float current =
+    Real minusOne = 0;
+    Real current =
         WignerMinOrderAtUpperIndex(l, n, logSinHalf, logCosHalf, false, false);
     for (int mp = -l; mp < m; mp++) {
       current = 2 * (n * cosec - mp * cot) * sqIntInv[l - mp] *
@@ -755,8 +722,8 @@ Float Winger(int l, int m, int n, Float theta, Normalisation norm) {
       minusOne = current;
     }
     if (norm = Normalisation::Ortho) {
-      return 0.5 * std::sqrt(static_cast<Float>(2 * l + 1)) *
-             std::numbers::inv_sqrtpi_v<Float> * current;
+      return 0.5 * std::sqrt(static_cast<Real>(2 * l + 1)) *
+             std::numbers::inv_sqrtpi_v<Real> * current;
 
     } else {
       return current;
@@ -765,8 +732,8 @@ Float Winger(int l, int m, int n, Float theta, Normalisation norm) {
 
   // Apply downward recursion from m = l.
   if (m > mOpt) {
-    Float plusOne = 0;
-    Float current =
+    Real plusOne = 0;
+    Real current =
         WignerMaxOrderAtUpperIndex(l, n, logSinHalf, logCosHalf, false, false);
     for (int mp = l; mp > m; mp--) {
       current = 2 * (n * cosec - mp * cot) * sqIntInv[l + mp] *
@@ -776,29 +743,13 @@ Float Winger(int l, int m, int n, Float theta, Normalisation norm) {
       plusOne = current;
     }
     if (norm = Normalisation::Ortho) {
-      return 0.5 * std::sqrt(static_cast<Float>(2 * l + 1)) *
-             std::numbers::inv_sqrtpi_v<Float> * current;
+      return 0.5 * std::sqrt(static_cast<Real>(2 * l + 1)) *
+             std::numbers::inv_sqrtpi_v<Real> * current;
 
     } else {
       return current;
     }
   }
-}
-
-// Simple function to return values at degree l as a matrix.
-template <std::floating_point Float>
-Eigen::Matrix<Float, Eigen::Dynamic, Eigen::Dynamic> WignerMatrix(
-    int l, Float theta, Normalisation norm) {
-  using Matrix = Eigen::Matrix<Float, Eigen::Dynamic, Eigen::Dynamic>;
-  using Vector = Eigen::Matrix<Float, Eigen::Dynamic, 1>;
-  Matrix d(2 * l + 1, 2 * l + 1);
-  for (int n = -l; n <= l; n++) {
-    auto dn = WignerArrayLN(l, n, theta, norm);
-    for (int m = -l; m <= l; m++) {
-      d(n + l, m + l) = dn(m);
-    }
-  }
-  return d;
 }
 
 }  // namespace GSHTrans
