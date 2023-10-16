@@ -5,11 +5,11 @@ namespace GSHTrans {
 
 class IntegerRange {
  private:
-  int last;
-  int iter;
+  int _last;
+  int _iter;
 
  public:
-  IntegerRange(int first, int last) : last{last}, iter{first} {}
+  IntegerRange(int first, int last) : _last{last}, _iter{first} {}
   explicit IntegerRange(int last) : IntegerRange(0, last) {}
 
   // Iterable functions
@@ -17,9 +17,9 @@ class IntegerRange {
   const IntegerRange& end() const { return *this; }
 
   // Iterator functions
-  bool operator!=(const IntegerRange&) const { return iter < last; }
-  void operator++() { ++iter; }
-  int operator*() const { return iter; }
+  bool operator!=(const IntegerRange&) const { return _iter < _last; }
+  void operator++() { ++_iter; }
+  int operator*() const { return _iter; }
 };
 
 }  // namespace GSHTrans
