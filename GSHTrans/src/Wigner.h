@@ -24,19 +24,368 @@ template <typename Range>
 concept IndexRange =
     std::same_as<Range, All> or std::same_as<Range, NonNegative>;
 
+template <typename T>
+concept RealIterator = requires() {
+  requires std::random_access_iterator<T>;
+  requires std::floating_point<std::iter_value_t<T>>;
+};
+
 // Define enum class for normalisation options.
 enum class Normalisation { FourPi, Ortho };
 
 // Declare/Define some utility functions.
 constexpr int MinusOneToPower(int m) { return m % 2 ? -1 : 1; }
+
 template <std::floating_point Real>
 Real WignerMinOrderAtUpperIndex(int, int, Real, Real, bool, bool);
+
 template <std::floating_point Real>
 Real WignerMaxOrderAtUpperIndex(int, int, Real, Real, bool, bool);
+
 template <std::floating_point Real>
 Real WignerMaxUpperIndexAtOrder(int, int, Real, Real, bool, bool);
+
 template <std::floating_point Real>
 Real WignerMinUpperIndexAtOrder(int, int, Real, Real, bool, bool);
+
+template <IndexRange Range = All>
+std::size_t WingerNStorage(int lMax, int mMax, int n);
+
+template <IndexRange Range>
+requires std::same_as<Range, All> std::size_t WingerNStorage(int lMax, int mMax,
+                                                             int n) {
+  auto nabs = std::abs(n);
+  assert(lMax >= 0);
+  assert(nabs >= 0 && nabs <= lMax);
+  assert(mMax >= 0 && mMax <= lMax);
+  return (mMax + 1) * (mMax + 1) - nabs * nabs + (lMax - mMax) * (2 * mMax + 1);
+}
+
+template <IndexRange Range>
+requires std::same_as<Range, NonNegative> std::size_t WingerNStorage(int lMax,
+                                                                     int mMax,
+                                                                     int n) {
+  auto nabs = std::abs(n);
+  assert(lMax >= 0);
+  assert(nabs >= 0 && nabs <= lMax);
+  assert(mMax >= 0 && mMax <= lMax);
+  return ((mMax + 1) * (mMax + 2)) / 2 - (nabs * (nabs + 1)) / 2 +
+         (lMax - mMax) * (mMax + 1);
+}
+
+/////////////////////////////////////////////////////////////////////////
+//                         WignerN class                               //
+/////////////////////////////////////////////////////////////////////////
+
+template <RealIterator iterator, IndexRange Range = All>
+class WignerN {
+ public:
+  // Define member types.
+  using value_type = std::iter_value_t<iterator>;
+  using const_iterator = const iterator;
+  using difference_type = std::iter_difference_t<iterator>;
+
+  // Constructor.
+  WignerN(iterator, iterator, int, int, int, value_type,
+          Normalisation norm = Normalisation::Ortho);
+
+  // Geters for basic data.
+  int MaxDegree() const { return _lMax; }
+  int MaxOrder() const { return _mMax; }
+  int UpperIndex() const { return _n; }
+
+  // Returns lowest order at given degree.
+  int StartingOrder(int l) requires std::same_as<Range, All> {
+    assert(l <= _lMax && l >= std::abs(_n));
+    return -std::min(l, _mMax);
+  }
+  int StartingOrder(int l) requires std::same_as<Range, NonNegative> {
+    assert(l <= _lMax && l >= std::abs(_n));
+    return 0;
+  }
+
+  // Returns the number of values at a given degree when
+  // all orders are stored.
+  constexpr difference_type Count(
+      int l) const requires std::same_as<Range, All> {
+    auto nabs = std::abs(_n);
+    if (l < nabs) return 0;
+    if (l <= _mMax) return (l + 1) * (l + 1) - nabs * nabs;
+    return (_mMax + 1) * (_mMax + 1) - nabs * nabs +
+           (l - _mMax) * (2 * _mMax + 1);
+  }
+
+  // Returns the number of values at a given degree when
+  // only non-negative orders are stored.
+  constexpr difference_type Count(
+      int l) const requires std::same_as<Range, NonNegative> {
+    auto nabs = std::abs(_n);
+    if (l < nabs) return 0;
+    if (l <= _mMax) return ((l + 1) * (l + 2)) / 2 - (nabs * (nabs + 1)) / 2;
+    return ((_mMax + 1) * (_mMax + 2)) / 2 - (nabs * (nabs + 1)) / 2 +
+           (l - _mMax) * (_mMax + 1);
+  }
+
+  // Returns total number of values.
+  constexpr difference_type const Count() { return Count(_lMax); }
+
+  // Iterators that point to the start of the data.
+  iterator begin() { return _start; }
+  const_iterator cbegin() const { return _start; }
+
+  // Iterators that point to the end of the data.
+  iterator end() { return _finish; }
+  const_iterator cend() const { return _finish; }
+
+  // Iterators that point to the start of degree l.
+  iterator begin(int l) { return std::next(begin(), Count(l - 1)); }
+  const_iterator cbegin(int l) const {
+    return std::next(cbegin(), Count(l - 1));
+  }
+
+  // Iterators that point to the end of degree l.
+  iterator end(int l) { return std::next(begin(), Count(l)); }
+  const_iterator cend(int l) const { return std::next(cbegin(), Count(l)); }
+
+  // Returns value for given degree and order when all orders are stored.
+  auto operator()(int l, int m) const requires std::same_as<Range, All> {
+    assert(l >= std::abs(_n) && l <= _lMax);
+    auto mMaxAbs = std::min(l, _mMax);
+    assert(std::abs(m) <= mMaxAbs);
+    return *std::next(cbegin(l), mMaxAbs + m);
+  }
+
+  // Returns value for given degree and order, m >= 0, when only non-negative
+  // orders are stored.
+  auto operator()(int l,
+                  int m) const requires std::same_as<Range, NonNegative> {
+    assert(l >= std::abs(_n) && l <= _lMax);
+    assert(0 <= m && m <= std::min(l, _mMax));
+    return *std::next(cbegin(l), m);
+  }
+
+ private:
+  // Set the execution policy.
+  static constexpr auto _policy = std::execution::seq;
+
+  int _lMax;  // Maximum degree.
+  int _mMax;  // Maximum order.
+  int _n;     // Upper index.
+
+  iterator _start;   // Iterator to the start of the data.
+  iterator _finish;  // Iterator to the end of the data.
+};
+
+template <RealIterator iterator, IndexRange Range>
+WignerN<iterator, Range>::WignerN(iterator start, iterator finish, int lMax,
+                                  int mMax, int n, value_type theta,
+                                  Normalisation norm)
+    : _start{start}, _finish{finish}, _lMax{lMax}, _mMax{mMax}, _n{n} {
+  // Check the maximum degree is non-negative.
+  assert(_lMax >= 0);
+
+  // Check the maximum order is in range.
+  assert(_mMax >= 0 && _mMax <= _lMax);
+
+  // Check storage space is appropriate
+  assert(std::distance(_start, _finish) >= Count());
+
+  // Pre-compute and store trigonometric terms.
+  auto cos = std::cos(theta);
+  auto logSinHalf = std::sin(0.5 * theta);
+  auto logCosHalf = std::cos(0.5 * theta);
+  auto atLeft = logSinHalf < std::numeric_limits<value_type>::min();
+  auto atRight = logCosHalf < std::numeric_limits<value_type>::min();
+  logSinHalf = atLeft ? static_cast<value_type>(0) : std::log(logSinHalf);
+  logCosHalf = atRight ? static_cast<value_type>(0) : std::log(logCosHalf);
+
+  // Pre-compute and store square roots and their inverses up to lMax + mMax.
+  std::vector<value_type> sqInt(_lMax + _mMax + 1);
+  std::transform(
+      _policy, sqInt.begin(), sqInt.end(), sqInt.begin(),
+      [&](auto &x) { return std::sqrt(static_cast<value_type>(&x - &sqInt[0]));
+  }); std::vector<value_type> sqIntInv(_lMax + _mMax + 1); std::transform(
+      _policy, sqInt.begin(), sqInt.end(), sqIntInv.begin(), [](auto x) {
+        return x > static_cast<value_type>(0) ? 1 / x :
+  static_cast<value_type>(0);
+      });
+
+  // Set the values for l == |n|
+  const int nabs = std::abs(_n);
+  {
+    auto l = nabs;
+    auto mStart = StartingOrder(l);
+    auto start = begin(l);
+    auto finish = end(l);
+    if (_n >= 0) {
+      std::transform(_policy, start, finish, start, [&](auto &p) {
+        int m = mStart + std::distance(&*start, &p);
+        return WignerMaxUpperIndexAtOrder(l, m, logSinHalf, logCosHalf, atLeft,
+                                          atRight);
+      });
+    } else {
+      std::transform(_policy, start, finish, start, [&](auto &p) {
+        int m = mStart + std::distance(&*start, &p);
+        return WignerMinUpperIndexAtOrder(l, m, logSinHalf, logCosHalf, atLeft,
+                                          atRight);
+      });
+    }
+  }
+
+  // Set the values for l == n+1 if needed.
+  if (nabs < _lMax) {
+    auto l = nabs + 1;
+    auto mStart = StartingOrder(l);
+
+    // Set iterators
+    auto startMinusOne = begin(l - 1);
+    auto finishMinusOne = end(l - 1);
+    auto start = begin(l);
+
+    // Add in value at m == -l if needed.
+    if constexpr (std::same_as<Range, All>) {
+      if (l <= _mMax) {
+        *start++ = WignerMinOrderAtUpperIndex(l, _n, logSinHalf, logCosHalf,
+                                              atLeft, atRight);
+        // Update the starting order for recursion
+        mStart += 1;
+      }
+    }
+
+    // Add in interior orders using one-term recursion.
+    {
+      auto alpha = (2 * l - 1) * l * cos * sqIntInv[l + nabs];
+      auto beta = (2 * l - 1) * sqIntInv[l + nabs];
+      if (_n < 0) beta *= -1;
+      std::transform(
+          _policy, startMinusOne, finishMinusOne, start, [&](auto &minusOne) {
+            int m = mStart + std::distance(&*startMinusOne, &minusOne);
+            auto f1 = (alpha - beta * m) * sqIntInv[l - m] * sqIntInv[l + m];
+            return f1 * minusOne;
+          });
+    }
+
+    // Add in value at m == l if needed
+    if (l <= _mMax) {
+      auto mStep = 2 * l - 1;
+      if constexpr (std::same_as<Range, NonNegative>) {
+        mStep = l;
+      }
+      *std::next(start, mStep) = WignerMaxOrderAtUpperIndex(
+          l, _n, logSinHalf, logCosHalf, atLeft, atRight);
+    }
+  }
+
+  // Now do the remaining degrees.
+  for (int l = nabs + 2; l <= _lMax; l++) {
+    // Starting order within two-term recursion
+    auto mStart = StartingOrder(l);
+
+    // Set iterators
+    auto startMinusTwo = begin(l - 2);
+    auto finishMinusTwo = end(l - 2);
+    auto startMinusOne = begin(l - 1);
+    auto start = begin(l);
+
+    // Add in lower boundary terms if still growing.
+    if constexpr (std::same_as<Range, All>) {
+      if (l <= _mMax) {
+        // Add in the m == -l term.
+        *start++ = WignerMinOrderAtUpperIndex(l, _n, logSinHalf, logCosHalf,
+                                              atLeft, atRight);
+        // Now do the m == -l+1 term using one-point recursion.
+        {
+          auto m = -l + 1;
+          auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * _n) *
+                    sqIntInv[l - _n] * sqIntInv[l + _n] * sqIntInv[l - m] *
+                    sqIntInv[l + m] / static_cast<value_type>(l - 1);
+          *start++ = f1 * (*startMinusOne++);
+        }
+        // Update the starting order for two-term recursion.
+        mStart += 2;
+      }
+
+      // Add in the lower boundary term at the critical degree
+      if (l == _mMax + 1) {
+        auto m = -_mMax;
+        auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * _n) *
+                  sqIntInv[l - _n] * sqIntInv[l + _n] * sqIntInv[l - m] *
+                  sqIntInv[l + m] / static_cast<value_type>(l - 1);
+        *start++ = f1 * (*startMinusOne++);
+        // Update the starting order for two-term recursion.
+        mStart += 1;
+      }
+    }
+
+    // Apply two-term recusion for the interior orders.
+    {
+      auto alpha = (2 * l - 1) * l * cos * sqIntInv[l - _n] * sqIntInv[l + _n];
+      auto beta = (2 * l - 1) * _n * sqIntInv[l - _n] * sqIntInv[l + _n] /
+                  static_cast<value_type>(l - 1);
+      auto gamma = l * sqInt[l - 1 - _n] * sqInt[l - 1 + _n] *
+                   sqIntInv[l - _n] * sqIntInv[l + _n] /
+                   static_cast<value_type>(l - 1);
+      std::transform(
+          _policy, startMinusTwo, finishMinusTwo, startMinusOne, start,
+          [&](auto &minusTwo, auto &minusOne) {
+            int m = mStart + std::distance(&*startMinusTwo, &minusTwo);
+            auto denom = sqIntInv[l - m] * sqIntInv[l + m];
+            auto f1 = (alpha - beta * m) * denom;
+            auto f2 = gamma * sqInt[l - 1 - m] * sqInt[l - 1 + m] * denom;
+            return f1 * minusOne - f2 * minusTwo;
+          });
+    }
+
+    // Add in the upper boundary terms if still growing.
+    if (l <= _mMax) {
+      // Update the iterator
+      auto mStep = 2 * l - 3;
+      if constexpr (std::same_as<Range, NonNegative>) {
+        mStep = l - 1;
+      }
+      startMinusOne = std::next(startMinusOne, mStep);
+      start = std::next(start, mStep);
+      // Add in m == l - 1 term using one-point recursion.
+      {
+        auto m = l - 1;
+        auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * _n) *
+                  sqIntInv[l - _n] * sqIntInv[l + _n] * sqIntInv[l - m] *
+                  sqIntInv[l + m] / static_cast<value_type>(l - 1);
+        *start++ = f1 * (*startMinusOne++);
+      }
+      // Now do m == l.
+      *start++ = WignerMaxOrderAtUpperIndex(l, _n, logSinHalf, logCosHalf,
+                                            atLeft, atRight);
+    }
+
+    // Add in the upper boundary term at the crtiical degree.
+    if (l == _mMax + 1) {
+      // Update the iterators.
+      auto mStep = 2 * _mMax - 1;
+      if constexpr (std::same_as<Range, NonNegative>) {
+        mStep = _mMax;
+      }
+      startMinusOne = std::next(startMinusOne, mStep);
+      start = std::next(start, mStep);
+      auto m = _mMax;
+      auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * _n) * sqIntInv[l - _n] *
+                sqIntInv[l + _n] * sqIntInv[l - m] * sqIntInv[l + m] /
+                static_cast<value_type>(l - 1);
+      *start++ = f1 * (*startMinusOne++);
+    }
+  }
+
+  if (norm == Normalisation::Ortho) {
+    for (int l = 0; l <= _lMax; l++) {
+      auto start = begin(l);
+      auto finish = end(l);
+      std::transform(start, finish, start, [l](auto p) {
+        return 0.5 * std::sqrt(static_cast<value_type>(2 * l + 1)) *
+               std::numbers::inv_sqrtpi_v<value_type> * p;
+      });
+    }
+  }
+}
 
 /////////////////////////////////////////////////////////////////////////
 //                      WignerArrayN class                             //
@@ -73,7 +422,7 @@ class WignerArrayN {
   iterator begin() { return _data.begin(); }
   const_iterator cbegin() const { return _data.cbegin(); }
 
-  // Iterators that point to the end of the _data.
+  // Iterators that point to the end of the data.
   iterator end() { return _data.end(); }
   const_iterator cend() const { return _data.cend(); }
 
