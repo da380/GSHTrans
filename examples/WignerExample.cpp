@@ -16,9 +16,9 @@ int main() {
 
   int lMax = 100;
   int mMax = 50;
-  int n = 5;
+  int n = 0;
 
-  auto size = WingerNStorage<All>(lMax, mMax, n);
+  auto size = WignerNStorage<All>(lMax, mMax, n);
 
   std::vector<double> data(size);
 
@@ -26,12 +26,7 @@ int main() {
 
   auto p = WignerN(data.begin(), data.end(), lMax, mMax, n, th);
 
-  auto p1 = WignerArrayN(lMax, mMax, n, th);
+  //  auto q = WignerNVector(lMax, mMax, n, th);
 
-  for (int l = n; l < lMax; l++) {
-    auto mS = std::min(mMax, l);
-    for (int m = -mS; m <= mS; m++) {
-      std::cout << p(l, m) << " " << p1(l, m) << std::endl;
-    }
-  }
+  //  std::cout << q(3, 2) << std::endl;
 }
