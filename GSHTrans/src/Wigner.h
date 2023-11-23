@@ -15,6 +15,8 @@
 #include <numeric>
 #include <vector>
 
+#include "Concepts.h"
+
 namespace GSHTrans {
 
 // Define some tag-classes.
@@ -22,15 +24,9 @@ struct All {};
 struct NonNegative {};
 
 // Define some useful concepts.
-template <typename Range>
-concept IndexRange =
-    std::same_as<Range, All> or std::same_as<Range, NonNegative>;
-
-template <typename T>
-concept RealIterator = requires() {
-  requires std::random_access_iterator<T>;
-  requires std::floating_point<std::iter_value_t<T>>;
-};
+template <typename Orders>
+concept OrderRange =
+    std::same_as<Orders, All> or std::same_as<Orders, NonNegative>;
 
 // Define enum class for normalisation options.
 enum class Normalisation { FourPi, Ortho };
@@ -50,12 +46,12 @@ Real WignerMaxUpperIndexAtOrder(int, int, Real, Real, bool, bool);
 template <std::floating_point Real>
 Real WignerMinUpperIndexAtOrder(int, int, Real, Real, bool, bool);
 
-template <IndexRange Range = All>
+template <OrderRange Orders = All>
 std::size_t WignerNStorage(int lMax, int mMax, int n);
 
-template <IndexRange Range>
-requires std::same_as<Range, All> std::size_t WignerNStorage(int lMax, int mMax,
-                                                             int n) {
+template <OrderRange Orders>
+requires std::same_as<Orders, All> std::size_t WignerNStorage(int lMax,
+                                                              int mMax, int n) {
   auto nabs = std::abs(n);
   assert(lMax >= 0);
   assert(nabs >= 0 && nabs <= lMax);
@@ -63,10 +59,10 @@ requires std::same_as<Range, All> std::size_t WignerNStorage(int lMax, int mMax,
   return (mMax + 1) * (mMax + 1) - nabs * nabs + (lMax - mMax) * (2 * mMax + 1);
 }
 
-template <IndexRange Range>
-requires std::same_as<Range, NonNegative> std::size_t WignerNStorage(int lMax,
-                                                                     int mMax,
-                                                                     int n) {
+template <OrderRange Orders>
+requires std::same_as<Orders, NonNegative> std::size_t WignerNStorage(int lMax,
+                                                                      int mMax,
+                                                                      int n) {
   auto nabs = std::abs(n);
   assert(lMax >= 0);
   assert(nabs >= 0 && nabs <= lMax);
@@ -82,19 +78,49 @@ Real Wigner(int, int, int, Real, Normalisation);
 //                         WignerN class                               //
 /////////////////////////////////////////////////////////////////////////
 
-template <RealIterator Iter, IndexRange Range = All>
+template <std::floating_point Real, OrderRange Orders = All>
 class WignerN {
  public:
-  // Define member types.
-  using iterator = Iter;
-  using value_type = std::iter_value_t<iterator>;
-  using const_iterator = const iterator;
-  using difference_type = std::iter_difference_t<iterator>;
+  // Set member types.
+  using value_type = Real;
+  using iterator = Real *;
+  using const_iterator = Real const *;
+  using difference_type = std::ptrdiff_t;
+  using size_type = std::size_t;
 
   // Constructors.
   WignerN() = default;
-  WignerN(iterator, iterator, int, int, int, value_type,
-          Normalisation norm = Normalisation::Ortho);
+
+  // Storage passed as iterators.
+  template <RealFloatingPointIterator Iterator>
+  WignerN(Iterator start, Iterator finish, int lMax, int mMax, int n,
+          Real theta, Normalisation norm = Normalisation::Ortho)
+      : _start{&*start}, _finish{&*finish}, _lMax{lMax}, _mMax{mMax}, _n{n} {
+    ComputeValues(theta, norm);
+  }
+
+  // Storage passed as range.
+  template <RealFloatingPointRange Range>
+  WignerN(Range storage, int lMax, int mMax, int n, Real theta,
+          Normalisation norm = Normalisation::Ortho)
+      : _start{&*std::begin(storage)},
+        _finish{&*std::end(storage)},
+        _lMax{lMax},
+        _mMax{mMax},
+        _n{n} {
+    ComputeValues(theta, norm);
+  }
+
+  // Storage created locally.
+  WignerN(int lMax, int mMax, int n, Real theta,
+          Normalisation norm = Normalisation::Ortho)
+      : _lMax{lMax}, _mMax{mMax}, _n{n} {
+    auto size = Count();
+    _data = std::vector<Real>(size);
+    _start = &*std::begin(_data);
+    _finish = &*std::end(_data);
+    ComputeValues(theta, norm);
+  }
 
   // Geters for basic data.
   int MaxDegree() const { return _lMax; }
@@ -102,19 +128,18 @@ class WignerN {
   int UpperIndex() const { return _n; }
 
   // Returns lowest order at given degree.
-  int StartingOrder(int l) requires std::same_as<Range, All> {
+  int StartingOrder(int l) requires std::same_as<Orders, All> {
     assert(l <= _lMax && l >= std::abs(_n));
     return -std::min(l, _mMax);
   }
-  int StartingOrder(int l) requires std::same_as<Range, NonNegative> {
+  int StartingOrder(int l) requires std::same_as<Orders, NonNegative> {
     assert(l <= _lMax && l >= std::abs(_n));
     return 0;
   }
 
   // Returns the number of values at a given degree when
   // all orders are stored.
-  constexpr difference_type Count(
-      int l) const requires std::same_as<Range, All> {
+  constexpr size_type Count(int l) const requires std::same_as<Orders, All> {
     auto nabs = std::abs(_n);
     if (l < nabs) return 0;
     if (l <= _mMax) return (l + 1) * (l + 1) - nabs * nabs;
@@ -124,8 +149,8 @@ class WignerN {
 
   // Returns the number of values at a given degree when
   // only non-negative orders are stored.
-  constexpr difference_type Count(
-      int l) const requires std::same_as<Range, NonNegative> {
+  constexpr size_type Count(
+      int l) const requires std::same_as<Orders, NonNegative> {
     auto nabs = std::abs(_n);
     if (l < nabs) return 0;
     if (l <= _mMax) return ((l + 1) * (l + 2)) / 2 - (nabs * (nabs + 1)) / 2;
@@ -134,7 +159,7 @@ class WignerN {
   }
 
   // Returns total number of values.
-  constexpr difference_type const Count() { return Count(_lMax); }
+  constexpr size_type const Count() { return Count(_lMax); }
 
   // Iterators that point to the start of the data.
   iterator begin() { return _start; }
@@ -155,7 +180,7 @@ class WignerN {
   const_iterator cend(int l) const { return std::next(cbegin(), Count(l)); }
 
   // Returns value for given degree and order when all orders are stored.
-  auto operator()(int l, int m) const requires std::same_as<Range, All> {
+  auto operator()(int l, int m) const requires std::same_as<Orders, All> {
     assert(l >= std::abs(_n) && l <= _lMax);
     auto mMaxAbs = std::min(l, _mMax);
     assert(std::abs(m) <= mMaxAbs);
@@ -165,7 +190,7 @@ class WignerN {
   // Returns value for given degree and order, m >= 0, when only non-negative
   // orders are stored.
   auto operator()(int l,
-                  int m) const requires std::same_as<Range, NonNegative> {
+                  int m) const requires std::same_as<Orders, NonNegative> {
     assert(l >= std::abs(_n) && l <= _lMax);
     assert(0 <= m && m <= std::min(l, _mMax));
     return *std::next(cbegin(l), m);
@@ -179,15 +204,19 @@ class WignerN {
   int _mMax;  // Maximum order.
   int _n;     // Upper index.
 
-  iterator _start;   // Iterator to the start of the data.
-  iterator _finish;  // Iterator to the end of the data.
+  // Store iterators to the data.
+  iterator _start;
+  iterator _finish;
+
+  // Vector for local storage if needed.
+  std::vector<Real> _data;
+
+  // Storage passed as iterators.
+  void ComputeValues(Real theta, Normalisation norm);
 };
 
-template <RealIterator iterator, IndexRange Range>
-WignerN<iterator, Range>::WignerN(iterator start, iterator finish, int lMax,
-                                  int mMax, int n, value_type theta,
-                                  Normalisation norm)
-    : _start{start}, _finish{finish}, _lMax{lMax}, _mMax{mMax}, _n{n} {
+template <std::floating_point Real, OrderRange Orders>
+void WignerN<Real, Orders>::ComputeValues(Real theta, Normalisation norm) {
   // Check the maximum degree is non-negative.
   assert(_lMax >= 0);
 
@@ -252,7 +281,7 @@ WignerN<iterator, Range>::WignerN(iterator start, iterator finish, int lMax,
     auto start = begin(l);
 
     // Add in value at m == -l if needed.
-    if constexpr (std::same_as<Range, All>) {
+    if constexpr (std::same_as<Orders, All>) {
       if (l <= _mMax) {
         *start++ = WignerMinOrderAtUpperIndex(l, _n, logSinHalf, logCosHalf,
                                               atLeft, atRight);
@@ -277,7 +306,7 @@ WignerN<iterator, Range>::WignerN(iterator start, iterator finish, int lMax,
     // Add in value at m == l if needed
     if (l <= _mMax) {
       auto mStep = 2 * l - 1;
-      if constexpr (std::same_as<Range, NonNegative>) {
+      if constexpr (std::same_as<Orders, NonNegative>) {
         mStep = l;
       }
       *std::next(start, mStep) = WignerMaxOrderAtUpperIndex(
@@ -297,7 +326,7 @@ WignerN<iterator, Range>::WignerN(iterator start, iterator finish, int lMax,
     auto start = begin(l);
 
     // Add in lower boundary terms if still growing.
-    if constexpr (std::same_as<Range, All>) {
+    if constexpr (std::same_as<Orders, All>) {
       if (l <= _mMax) {
         // Add in the m == -l term.
         *start++ = WignerMinOrderAtUpperIndex(l, _n, logSinHalf, logCosHalf,
@@ -349,7 +378,7 @@ WignerN<iterator, Range>::WignerN(iterator start, iterator finish, int lMax,
     if (l <= _mMax) {
       // Update the iterator
       auto mStep = 2 * l - 3;
-      if constexpr (std::same_as<Range, NonNegative>) {
+      if constexpr (std::same_as<Orders, NonNegative>) {
         mStep = l - 1;
       }
       startMinusOne = std::next(startMinusOne, mStep);
@@ -371,7 +400,7 @@ WignerN<iterator, Range>::WignerN(iterator start, iterator finish, int lMax,
     if (l == _mMax + 1) {
       // Update the iterators.
       auto mStep = 2 * _mMax - 1;
-      if constexpr (std::same_as<Range, NonNegative>) {
+      if constexpr (std::same_as<Orders, NonNegative>) {
         mStep = _mMax;
       }
       startMinusOne = std::next(startMinusOne, mStep);
@@ -395,35 +424,6 @@ WignerN<iterator, Range>::WignerN(iterator start, iterator finish, int lMax,
     }
   }
 }
-
-template <RealIterator Iter, IndexRange Range = All>
-class WignerNArray {
- public:
-  using value_type = std::iter_value_t<Iter>;
-  using vector = std::vector<value_type>;
-  using iterator = vector::iterator;
-  using Wigner = WignerN<iterator, Range>;
-  using WignerVector = std::vector<Wigner>;
-
-  WignerNArray(int lMax, int mMax, int n, Iter thetaStart, Iter thetaFinish,
-               Normalisation norm = Normalisation::Ortho) {
-    auto nTheta = std::distance(thetaStart, thetaFinish);
-    auto nValues = WignerNStorage(lMax, mMax, n);
-    _data = vector(nValues * nTheta);
-    _d.reserve(nTheta);
-    auto start = _data.begin();
-    for (auto iter = thetaStart; iter != thetaFinish; ++iter) {
-      auto th = *iter;
-      auto finish = std::next(start, nValues);
-      _d.push_back(WignerN(start, finish, lMax, mMax, n, th, norm));
-      start = finish;
-    }
-  }
-
- private:
-  vector _data;
-  WignerVector _d;
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 //      Simple function to compute Wigner values using +/- recursion in m //

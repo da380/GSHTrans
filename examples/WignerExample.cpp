@@ -20,13 +20,16 @@ int main() {
 
   auto size = WignerNStorage<All>(lMax, mMax, n);
 
-  std::vector<double> data(size);
+  std::vector<double> data1(size);
+  std::vector<double> data2(size);
 
-  double th = 1.9;
+  double theta = 2.1;
 
-  auto p = WignerN(data.begin(), data.end(), lMax, mMax, n, th);
+  auto p1 = WignerN<double, All>(data2, lMax, mMax, n, theta);
 
-  //  auto q = WignerNVector(lMax, mMax, n, th);
+  auto p2 = WignerN<double, All>(data2, lMax, mMax, n, theta);
 
-  //  std::cout << q(3, 2) << std::endl;
+  auto p3 = WignerN<double, All>(lMax, mMax, n, theta);
+
+  std::cout << p1(4, 2) << " " << p2(4, 2) << " " << p3(4, 2) << std::endl;
 }

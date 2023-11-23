@@ -7,13 +7,14 @@ project(GSHTrans
         )
 
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED true)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+# Location for cmake modules
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 # add in Eigen3
@@ -36,7 +37,6 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(GaussQuad)
 
 # add in FFTWpp
-
 include(FetchContent)
 FetchContent_Declare(
   FFTWpp
@@ -45,10 +45,16 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(FFTWpp)
 
+# add in TBB
+find_package(TBB REQUIRED)
 
 # Set up the library
 add_library (GSHTrans INTERFACE)
-target_link_libraries(GSHTrans INTERFACE Eigen3::Eigen FFTWpp GaussQuad)
+target_link_libraries(GSHTrans INTERFACE
+  TBB::tbb
+  Eigen3::Eigen
+  FFTWpp
+  GaussQuad)
 target_include_directories (GaussQuad INTERFACE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${INCLUDE_INSTALL_DIR}>
