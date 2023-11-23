@@ -18,19 +18,10 @@ int main() {
   int mMax = 50;
   int n = 0;
 
-  auto size1 = WignerNStorage<All>(lMax, mMax, n);
-  std::vector<double> data1(size1);
-
-  auto size2 = WignerNStorage<NonNegative>(lMax, mMax, n);
-  std::vector<double> data2(size2);
-
   double theta = 2.1;
 
-  WignerN<double, All> p1(data1, lMax, mMax, n, theta);
-  std::cout << p1(4, 2) << std::endl;
-
-  WignerN<double, NonNegative> p2(data2, lMax, mMax, n, theta);
-  std::cout << p2(4, 2) << std::endl;
+  auto p1 = WignerN<double, All>(lMax, mMax, n, theta);
+  auto p2 = WignerN<double, NonNegative>(lMax, mMax, n, theta);
 
   std::cout << p1(4, 2) << " " << p2(4, 2) << std::endl;
 }

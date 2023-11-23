@@ -8,6 +8,21 @@
 
 namespace GSHTrans {
 
+// Tag classes for order storage.
+struct All {};
+struct NonNegative {};
+
+template <typename Orders>
+concept OrderRange =
+    std::same_as<Orders, All> or std::same_as<Orders, NonNegative>;
+
+// Tag classes for normalisations.
+struct Ortho {};
+struct FourPi {};
+
+template <typename Norm>
+concept Normalisation = std::same_as<Norm, Ortho> or std::same_as<Norm, FourPi>;
+
 // Concepts for real or complex floating point types.
 template <typename T>
 struct IsComplexFloatingPoint : public std::false_type {};

@@ -19,18 +19,6 @@
 
 namespace GSHTrans {
 
-// Define some tag-classes.
-struct All {};
-struct NonNegative {};
-
-// Define some useful concepts.
-template <typename Orders>
-concept OrderRange =
-    std::same_as<Orders, All> or std::same_as<Orders, NonNegative>;
-
-// Define enum class for normalisation options.
-enum class Normalisation { FourPi, Ortho };
-
 // Declare/Define some utility functions.
 constexpr int MinusOneToPower(int m) { return m % 2 ? -1 : 1; }
 
@@ -46,47 +34,20 @@ Real WignerMaxUpperIndexAtOrder(int, int, Real, Real, bool, bool);
 template <std::floating_point Real>
 Real WignerMinUpperIndexAtOrder(int, int, Real, Real, bool, bool);
 
-template <OrderRange Orders = All>
-std::size_t WignerNStorage(int lMax, int mMax, int n);
-
-template <OrderRange Orders>
-requires std::same_as<Orders, All> std::size_t WignerNStorage(int lMax,
-                                                              int mMax, int n) {
-  auto nabs = std::abs(n);
-  assert(lMax >= 0);
-  assert(nabs >= 0 && nabs <= lMax);
-  assert(mMax >= 0 && mMax <= lMax);
-  return (mMax + 1) * (mMax + 1) - nabs * nabs + (lMax - mMax) * (2 * mMax + 1);
-}
-
-template <OrderRange Orders>
-requires std::same_as<Orders, NonNegative> std::size_t WignerNStorage(int lMax,
-                                                                      int mMax,
-                                                                      int n) {
-  auto nabs = std::abs(n);
-  assert(lMax >= 0);
-  assert(nabs >= 0 && nabs <= lMax);
-  assert(mMax >= 0 && mMax <= lMax);
-  return ((mMax + 1) * (mMax + 2)) / 2 - (nabs * (nabs + 1)) / 2 +
-         (lMax - mMax) * (mMax + 1);
-}
-
-template <std::floating_point Real>
-Real Wigner(int, int, int, Real, Normalisation);
-
 /////////////////////////////////////////////////////////////////////////
 //                         WignerN class                               //
 /////////////////////////////////////////////////////////////////////////
 
-template <std::floating_point Real, OrderRange Orders = All>
+template <std::floating_point Real, OrderRange Orders,
+          Normalisation Norm = Ortho>
 class WignerN {
  public:
   // Set member types.
   using value_type = Real;
-  using iterator = Real *;
-  using const_iterator = Real const *;
-  using difference_type = std::ptrdiff_t;
-  using size_type = std::size_t;
+  using iterator = std::vector<Real>::iterator;
+  using const_iterator = std::vector<Real>::const_iterator;
+  using difference_type = std::vector<Real>::difference_type;
+  using size_type = std::vector<Real>::size_type;
 
   // Default constructor.
   WignerN() = default;
@@ -97,24 +58,27 @@ class WignerN {
   // Move constructor.
   WignerN(WignerN &&) = default;
 
-  // Constructor with storage passed as iterators.
-  template <RealFloatingPointIterator Iterator>
-  WignerN(Iterator start, Iterator finish, int lMax, int mMax, int n,
-          Real theta, Normalisation norm = Normalisation::Ortho)
-      : _start{&*start}, _finish{&*finish}, _lMax{lMax}, _mMax{mMax}, _n{n} {
-    ComputeValues(theta, norm);
+  // Constructor for a single angle.
+  WignerN(int lMax, int mMax, int n, Real theta)
+      : _lMax{lMax}, _mMax{mMax}, _n{n}, _nTheta{1} {
+    assert(_lMax >= 0);
+    assert(_mMax >= 0 && _mMax <= _lMax);
+    auto size = Count();
+    _data = std::vector<Real>(size);
+    ComputeValues(0, theta);
   }
 
-  // Constructor with storage passed as range.
+  // Constructor for a range of angles.
   template <RealFloatingPointRange Range>
-  WignerN(Range storage, int lMax, int mMax, int n, Real theta,
-          Normalisation norm = Normalisation::Ortho)
-      : _start{&*std::begin(storage)},
-        _finish{&*std::end(storage)},
-        _lMax{lMax},
-        _mMax{mMax},
-        _n{n} {
-    ComputeValues(theta, norm);
+  WignerN(int lMax, int mMax, int n, Range theta)
+      : _lMax{lMax}, _mMax{mMax}, _n{n}, _nTheta{theta.size()} {
+    assert(_lMax >= 0);
+    assert(_mMax >= 0 && _mMax <= _lMax);
+    auto size = Count() * _nTheta;
+    _data = std::vector<Real>(size);
+    for (int i = 0; i < _nTheta; i++) {
+      ComputeValues(i, theta[i]);
+    }
   }
 
   // Copy assigment.
@@ -163,12 +127,12 @@ class WignerN {
   constexpr size_type const Count() { return Count(_lMax); }
 
   // Iterators that point to the start of the data.
-  iterator begin() { return _start; }
-  const_iterator cbegin() const { return _start; }
+  iterator begin() { return _data.begin(); }
+  const_iterator cbegin() const { return _data.cbegin(); }
 
   // Iterators that point to the end of the data.
-  iterator end() { return _finish; }
-  const_iterator cend() const { return _finish; }
+  iterator end() { return _data.end(); }
+  const_iterator cend() const { return _data.cend(); }
 
   // Iterators that point to the start of degree l.
   iterator begin(int l) { return std::next(begin(), Count(l - 1)); }
@@ -180,12 +144,17 @@ class WignerN {
   iterator end(int l) { return std::next(begin(), Count(l)); }
   const_iterator cend(int l) const { return std::next(cbegin(), Count(l)); }
 
+  iterator begin(int i, int l) { return std::next(begin(l), i * _nTheta); }
+  iterator cbegin(int i, int l) { return std::next(cbegin(l), i * _nTheta); }
+
+  iterator end(int i, int l) { return std::next(end(l), i * _nTheta); }
+  iterator cend(int i, int l) { return std::next(cend(l), i * _nTheta); }
+
   // Returns value for given degree and order when all orders are stored.
   auto operator()(int l, int m) const requires std::same_as<Orders, All> {
     assert(l >= std::abs(_n) && l <= _lMax);
     auto mMaxAbs = std::min(l, _mMax);
     assert(std::abs(m) <= mMaxAbs);
-    //    std::cout << _start << std::endl;
     return *std::next(cbegin(l), mMaxAbs + m);
   }
 
@@ -195,7 +164,6 @@ class WignerN {
                   int m) const requires std::same_as<Orders, NonNegative> {
     assert(l >= std::abs(_n) && l <= _lMax);
     assert(0 <= m && m <= std::min(l, _mMax));
-    //    std::cout << _start << std::endl;
     return *std::next(cbegin(l), m);
   }
 
@@ -203,29 +171,20 @@ class WignerN {
   // Set the execution policy.
   static constexpr auto _policy = std::execution::seq;
 
-  int _lMax;  // Maximum degree.
-  int _mMax;  // Maximum order.
-  int _n;     // Upper index.
+  int _lMax;    // Maximum degree.
+  int _mMax;    // Maximum order.
+  int _n;       // Upper index.
+  int _nTheta;  // Number of angles.
 
-  // Store iterators to the data.
-  iterator _start;
-  iterator _finish;
+  // Vector to store the values.
+  std::vector<Real> _data;
 
   // Storage passed as iterators.
-  void ComputeValues(Real theta, Normalisation norm);
+  void ComputeValues(int i, Real theta);
 };
 
-template <std::floating_point Real, OrderRange Orders>
-void WignerN<Real, Orders>::ComputeValues(Real theta, Normalisation norm) {
-  // Check the maximum degree is non-negative.
-  assert(_lMax >= 0);
-
-  // Check the maximum order is in range.
-  assert(_mMax >= 0 && _mMax <= _lMax);
-
-  // Check storage space is appropriate
-  assert(std::distance(_start, _finish) >= Count());
-
+template <std::floating_point Real, OrderRange Orders, Normalisation Norm>
+void WignerN<Real, Orders, Norm>::ComputeValues(int i, Real theta) {
   // Pre-compute and store trigonometric terms.
   auto cos = std::cos(theta);
   auto logSinHalf = std::sin(0.5 * theta);
@@ -253,8 +212,8 @@ void WignerN<Real, Orders>::ComputeValues(Real theta, Normalisation norm) {
   {
     auto l = nabs;
     auto mStart = StartingOrder(l);
-    auto start = begin(l);
-    auto finish = end(l);
+    auto start = begin(i, l);
+    auto finish = end(i, l);
     if (_n >= 0) {
       std::transform(_policy, start, finish, start, [&](auto &p) {
         int m = mStart + std::distance(&*start, &p);
@@ -278,7 +237,7 @@ void WignerN<Real, Orders>::ComputeValues(Real theta, Normalisation norm) {
     // Set iterators
     auto startMinusOne = begin(l - 1);
     auto finishMinusOne = end(l - 1);
-    auto start = begin(l);
+    auto start = begin(i, l);
 
     // Add in value at m == -l if needed.
     if constexpr (std::same_as<Orders, All>) {
@@ -323,7 +282,7 @@ void WignerN<Real, Orders>::ComputeValues(Real theta, Normalisation norm) {
     auto startMinusTwo = begin(l - 2);
     auto finishMinusTwo = end(l - 2);
     auto startMinusOne = begin(l - 1);
-    auto start = begin(l);
+    auto start = begin(i, l);
 
     // Add in lower boundary terms if still growing.
     if constexpr (std::same_as<Orders, All>) {
@@ -413,10 +372,10 @@ void WignerN<Real, Orders>::ComputeValues(Real theta, Normalisation norm) {
     }
   }
 
-  if (norm == Normalisation::Ortho) {
+  if constexpr (std::same_as<Norm, Ortho>) {
     for (int l = 0; l <= _lMax; l++) {
-      auto start = begin(l);
-      auto finish = end(l);
+      auto start = begin(i, l);
+      auto finish = end(i, l);
       std::transform(start, finish, start, [l](auto p) {
         return 0.5 * std::sqrt(static_cast<value_type>(2 * l + 1)) *
                std::numbers::inv_sqrtpi_v<value_type> * p;
@@ -426,11 +385,11 @@ void WignerN<Real, Orders>::ComputeValues(Real theta, Normalisation norm) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-//      Simple function to compute Wigner values using +/- recursion in m //
+//      Simple function to compute Wigner values using +/- recursion in m     //
 ////////////////////////////////////////////////////////////////////////////////
 
-template <std::floating_point Real>
-Real Wigner(int l, int m, int n, Real theta, Normalisation norm) {
+template <std::floating_point Real, Normalisation Norm = Ortho>
+Real Wigner(int l, int m, int n, Real theta) {
   // Check the inputs.
   assert(l >= 0);
   assert(std::abs(m) <= l);
@@ -438,7 +397,7 @@ Real Wigner(int l, int m, int n, Real theta, Normalisation norm) {
 
   // Deal with l = 0 separately.
   if (l == 0) {
-    if (norm == Normalisation::Ortho) {
+    if constexpr (std::same_as<Norm, Ortho>) {
       return 0.5 * std::numbers::inv_sqrtpi_v<Real>;
     } else {
       return 1;
@@ -454,7 +413,7 @@ Real Wigner(int l, int m, int n, Real theta, Normalisation norm) {
   // Deal with values at the end points
   if (atLeft) {
     if (n == -l) {
-      if (norm == Normalisation::Ortho) {
+      if constexpr (std::same_as<Norm, Ortho>) {
         return 0.5 * std::sqrt(static_cast<Real>(2 * l + 1)) *
                std::numbers::inv_sqrtpi_v<Real>;
       } else {
@@ -467,7 +426,7 @@ Real Wigner(int l, int m, int n, Real theta, Normalisation norm) {
 
   if (atRight) {
     if (n == l) {
-      if (norm == Normalisation::Ortho) {
+      if constexpr (std::same_as<Norm, Ortho>) {
         return MinusOneToPower(l + n) * 0.5 *
                std::sqrt(static_cast<Real>(2 * l + 1)) *
                std::numbers::inv_sqrtpi_v<Real>;
@@ -510,10 +469,9 @@ Real Wigner(int l, int m, int n, Real theta, Normalisation norm) {
                     sqIntInv[l + mp + 1] * minusOne;
       minusOne = current;
     }
-    if (norm = Normalisation::Ortho) {
+    if constexpr (std::same_as<Norm, Ortho>) {
       return 0.5 * std::sqrt(static_cast<Real>(2 * l + 1)) *
              std::numbers::inv_sqrtpi_v<Real> * current;
-
     } else {
       return current;
     }
@@ -531,14 +489,14 @@ Real Wigner(int l, int m, int n, Real theta, Normalisation norm) {
                     sqIntInv[l - mp + 1] * plusOne;
       plusOne = current;
     }
-    if (norm = Normalisation::Ortho) {
+    if constexpr (std::same_as<Norm, Ortho>) {
       return 0.5 * std::sqrt(static_cast<Real>(2 * l + 1)) *
              std::numbers::inv_sqrtpi_v<Real> * current;
-
     } else {
       return current;
     }
   }
+  return 0;
 }
 
 /////////////////////////////////////////////////////////////////////////
