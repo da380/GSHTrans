@@ -88,10 +88,16 @@ class WignerN {
   using difference_type = std::ptrdiff_t;
   using size_type = std::size_t;
 
-  // Constructors.
+  // Default constructor.
   WignerN() = default;
 
-  // Storage passed as iterators.
+  // Copy constructor.
+  WignerN(WignerN const &) = default;
+
+  // Move constructor.
+  WignerN(WignerN &&) = default;
+
+  // Constructor with storage passed as iterators.
   template <RealFloatingPointIterator Iterator>
   WignerN(Iterator start, Iterator finish, int lMax, int mMax, int n,
           Real theta, Normalisation norm = Normalisation::Ortho)
@@ -99,7 +105,7 @@ class WignerN {
     ComputeValues(theta, norm);
   }
 
-  // Storage passed as range.
+  // Constructor with storage passed as range.
   template <RealFloatingPointRange Range>
   WignerN(Range storage, int lMax, int mMax, int n, Real theta,
           Normalisation norm = Normalisation::Ortho)
@@ -111,16 +117,11 @@ class WignerN {
     ComputeValues(theta, norm);
   }
 
-  // Storage created locally.
-  WignerN(int lMax, int mMax, int n, Real theta,
-          Normalisation norm = Normalisation::Ortho)
-      : _lMax{lMax}, _mMax{mMax}, _n{n} {
-    auto size = Count();
-    _data = std::vector<Real>(size);
-    _start = &*std::begin(_data);
-    _finish = &*std::end(_data);
-    ComputeValues(theta, norm);
-  }
+  // Copy assigment.
+  WignerN &operator=(WignerN const &) = default;
+
+  // Move assignment.
+  WignerN &operator=(WignerN &&) = default;
 
   // Geters for basic data.
   int MaxDegree() const { return _lMax; }
@@ -184,6 +185,7 @@ class WignerN {
     assert(l >= std::abs(_n) && l <= _lMax);
     auto mMaxAbs = std::min(l, _mMax);
     assert(std::abs(m) <= mMaxAbs);
+    //    std::cout << _start << std::endl;
     return *std::next(cbegin(l), mMaxAbs + m);
   }
 
@@ -193,6 +195,7 @@ class WignerN {
                   int m) const requires std::same_as<Orders, NonNegative> {
     assert(l >= std::abs(_n) && l <= _lMax);
     assert(0 <= m && m <= std::min(l, _mMax));
+    //    std::cout << _start << std::endl;
     return *std::next(cbegin(l), m);
   }
 
@@ -207,9 +210,6 @@ class WignerN {
   // Store iterators to the data.
   iterator _start;
   iterator _finish;
-
-  // Vector for local storage if needed.
-  std::vector<Real> _data;
 
   // Storage passed as iterators.
   void ComputeValues(Real theta, Normalisation norm);
