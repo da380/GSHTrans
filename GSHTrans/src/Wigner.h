@@ -193,10 +193,12 @@ class WignerN {
 
   // Ranges to the data.
   auto RangeForAngle(difference_type i) {
+    assert(i >= 0 && i < _nTheta);
     return Range(beginForAngle(i), endForAngle(i));
   }
 
   auto RangeForAngleAndDegree(difference_type i, difference_type l) {
+    assert(i >= 0 && i < _nTheta);
     return Range(beginForAngleAndDegree(i, l), endForAngleAndDegree(i, l));
   }
 
@@ -243,7 +245,7 @@ class WignerN {
 
   auto operator()(difference_type i, difference_type l,
                   difference_type m) const requires std::same_as<Orders, All> {
-    assert(i >= 0 && i <= _nTheta);
+    assert(i >= 0 && i < _nTheta);
     assert(l >= std::abs(_n) && l <= _lMax);
     auto mMaxAbs = std::min(l, _mMax);
     assert(std::abs(m) <= mMaxAbs);
@@ -252,7 +254,7 @@ class WignerN {
 
   auto operator()(difference_type i, difference_type l, difference_type m)
       const requires std::same_as<Orders, NonNegative> {
-    assert(i >= 0 && i <= _nTheta);
+    assert(i >= 0 && i < _nTheta);
     assert(l >= std::abs(_n) && l <= _lMax);
     assert(0 <= m && m <= std::min(l, _mMax));
     return *std::next(cbeginForAngleAndDegree(i, l), m);

@@ -23,11 +23,11 @@ int main() {
   auto p1 = WignerN<double, All>(lMax, mMax, n, theta);
   auto p2 = WignerN<double, NonNegative>(lMax, mMax, n, theta);
 
-  auto p3 =
-      WignerN<double, All>(lMax, mMax, n, std::vector<double>{theta, theta});
+  auto p3 = WignerN<double, All>(lMax, mMax, n,
+                                 std::vector<double>{theta, theta, theta});
 
-  std::cout << p1(4, 2) << " " << p2(4, 2) << " " << p3(0, 4, 2) << std::endl;
+  std::cout << p1(4, 2) << " " << p2(4, 2) << " " << p3(2, 4, 2) << std::endl;
 
-  auto range = p1.RangeForAngleAndDegree(0, 2);
-  for (auto val : range) std::cout << val << std::endl;
+  //  auto range = p1.RangeForAngleAndDegree(0, 4);
+  // for (auto val : range) std::cout << val << std::endl;
 }
