@@ -49,6 +49,18 @@ class WignerN {
   using difference_type = std::vector<Real>::difference_type;
   using size_type = std::vector<Real>::size_type;
 
+  // Define internal range class.
+  class Range {
+   public:
+    Range(iterator start, iterator finish) : _start{start}, _finish{finish} {}
+    iterator begin() { return _start; }
+    iterator end() { return _finish; }
+
+   private:
+    iterator _start;
+    iterator _finish;
+  };
+
   // Default constructor.
   WignerN() = default;
 
@@ -59,8 +71,9 @@ class WignerN {
   WignerN(WignerN &&) = default;
 
   // Constructor for a single angle.
-  WignerN(int lMax, int mMax, int n, Real theta)
-      : _lMax{lMax}, _mMax{mMax}, _n{n}, _nTheta{1} {
+  WignerN(difference_type lMax, difference_type mMax, difference_type n,
+          Real theta)
+      : _lMax(lMax), _mMax(mMax), _n(n), _nTheta(1) {
     assert(_lMax >= 0);
     assert(_mMax >= 0 && _mMax <= _lMax);
     auto size = Count();
@@ -70,14 +83,32 @@ class WignerN {
 
   // Constructor for a range of angles.
   template <RealFloatingPointRange Range>
-  WignerN(int lMax, int mMax, int n, Range theta)
-      : _lMax{lMax}, _mMax{mMax}, _n{n}, _nTheta{theta.size()} {
+  WignerN(difference_type lMax, difference_type mMax, difference_type n,
+          Range theta)
+      : _lMax(lMax), _mMax(mMax), _n(n), _nTheta(theta.size()) {
     assert(_lMax >= 0);
     assert(_mMax >= 0 && _mMax <= _lMax);
     auto size = Count() * _nTheta;
     _data = std::vector<Real>(size);
-    for (int i = 0; i < _nTheta; i++) {
+    for (difference_type i = 0; i < _nTheta; i++) {
       ComputeValues(i, theta[i]);
+    }
+  }
+
+  // Constructor given iterators to angles
+  template <RealFloatingPointIterator Iterator>
+  WignerN(difference_type lMax, difference_type mMax, difference_type n,
+          Iterator thetaStart, Iterator thetaFinish)
+      : _lMax(lMax),
+        _mMax(mMax),
+        _n(n),
+        _nTheta(std::distance(thetaStart, thetaFinish)) {
+    assert(_lMax >= 0);
+    assert(_mMax >= 0 && _mMax <= _lMax);
+    auto size = Count() * _nTheta;
+    _data = std::vector<Real>(size);
+    for (difference_type i = 0; i < _nTheta; i++) {
+      ComputeValues(i, thetaStart[i]);
     }
   }
 
@@ -88,23 +119,91 @@ class WignerN {
   WignerN &operator=(WignerN &&) = default;
 
   // Geters for basic data.
-  int MaxDegree() const { return _lMax; }
-  int MaxOrder() const { return _mMax; }
-  int UpperIndex() const { return _n; }
+  auto MaxDegree() const { return _lMax; }
+  auto MaxOrder() const { return _mMax; }
+  auto UpperIndex() const { return _n; }
+  auto NumberOfAngles() const { return _nTheta; }
 
   // Returns lowest order at given degree.
-  int StartingOrder(int l) requires std::same_as<Orders, All> {
+  auto StartingOrder(difference_type l) requires std::same_as<Orders, All> {
     assert(l <= _lMax && l >= std::abs(_n));
     return -std::min(l, _mMax);
   }
-  int StartingOrder(int l) requires std::same_as<Orders, NonNegative> {
+  auto StartingOrder(
+      difference_type l) requires std::same_as<Orders, NonNegative> {
     assert(l <= _lMax && l >= std::abs(_n));
     return 0;
   }
 
+  // Iterators to the data.
+  iterator begin() { return _data.begin(); }
+  const_iterator cbegin() const { return _data.cbegin(); }
+
+  iterator end() { return _data.end(); }
+  const_iterator cend() const { return _data.cend(); }
+
+  iterator beginForDegree(difference_type l) {
+    return std::next(begin(), Count(l - 1));
+  }
+  const_iterator cbeginForDegree(difference_type l) const {
+    return std::next(cbegin(), Count(l - 1));
+  }
+
+  iterator end(difference_type l) { return std::next(begin(), Count(l)); }
+  const_iterator cend(difference_type l) const {
+    return std::next(cbegin(), Count(l));
+  }
+
+  iterator endForDegee(difference_type l) {
+    return std::next(begin(), Count(l));
+  }
+  const_iterator cendForDegree(difference_type l) const {
+    return std::next(cbegin(), Count(l));
+  }
+
+  iterator beginForAngle(difference_type i) {
+    return std::next(begin(), i * Count());
+  }
+  const_iterator cbeginForAngle(difference_type i) const {
+    return std::next(cbegin(), i * Count());
+  }
+
+  iterator endForAngle(difference_type i) {
+    return std::next(begin(), (i + 1) * Count());
+  }
+  const_iterator cendForAngle(difference_type i) const {
+    return std::next(cbegin(), (i + 1) * Count());
+  }
+
+  iterator beginForAngleAndDegree(difference_type i, difference_type l) {
+    return std::next(beginForAngle(i), Count(l - 1));
+  }
+  const_iterator cbeginForAngleAndDegree(difference_type i,
+                                         difference_type l) const {
+    return std::next(cbeginForAngle(i), Count(l - 1));
+  }
+
+  iterator endForAngleAndDegree(difference_type i, difference_type l) {
+    return std::next(beginForAngle(i), Count(l));
+  }
+  const_iterator cendForAngleAndDegree(difference_type i,
+                                       difference_type l) const {
+    return std::next(cbeginForAngle(i), Count(l));
+  }
+
+  // Ranges to the data.
+  auto RangeForAngle(difference_type i) {
+    return Range(beginForAngle(i), endForAngle(i));
+  }
+
+  auto RangeForAngleAndDegree(difference_type i, difference_type l) {
+    return Range(beginForAngleAndDegree(i, l), endForAngleAndDegree(i, l));
+  }
+
   // Returns the number of values at a given degree when
   // all orders are stored.
-  constexpr size_type Count(int l) const requires std::same_as<Orders, All> {
+  constexpr size_type Count(
+      difference_type l) const requires std::same_as<Orders, All> {
     auto nabs = std::abs(_n);
     if (l < nabs) return 0;
     if (l <= _mMax) return (l + 1) * (l + 1) - nabs * nabs;
@@ -115,7 +214,7 @@ class WignerN {
   // Returns the number of values at a given degree when
   // only non-negative orders are stored.
   constexpr size_type Count(
-      int l) const requires std::same_as<Orders, NonNegative> {
+      difference_type l) const requires std::same_as<Orders, NonNegative> {
     auto nabs = std::abs(_n);
     if (l < nabs) return 0;
     if (l <= _mMax) return ((l + 1) * (l + 2)) / 2 - (nabs * (nabs + 1)) / 2;
@@ -124,67 +223,59 @@ class WignerN {
   }
 
   // Returns total number of values.
-  constexpr size_type const Count() { return Count(_lMax); }
+  constexpr size_type Count() const { return Count(_lMax); }
 
-  // Iterators that point to the start of the data.
-  iterator begin() { return _data.begin(); }
-  const_iterator cbegin() const { return _data.cbegin(); }
-
-  // Iterators that point to the end of the data.
-  iterator end() { return _data.end(); }
-  const_iterator cend() const { return _data.cend(); }
-
-  // Iterators that point to the start of degree l.
-  iterator begin(int l) { return std::next(begin(), Count(l - 1)); }
-  const_iterator cbegin(int l) const {
-    return std::next(cbegin(), Count(l - 1));
-  }
-
-  // Iterators that point to the end of degree l.
-  iterator end(int l) { return std::next(begin(), Count(l)); }
-  const_iterator cend(int l) const { return std::next(cbegin(), Count(l)); }
-
-  iterator begin(int i, int l) { return std::next(begin(l), i * _nTheta); }
-  iterator cbegin(int i, int l) { return std::next(cbegin(l), i * _nTheta); }
-
-  iterator end(int i, int l) { return std::next(end(l), i * _nTheta); }
-  iterator cend(int i, int l) { return std::next(cend(l), i * _nTheta); }
-
-  // Returns value for given degree and order when all orders are stored.
-  auto operator()(int l, int m) const requires std::same_as<Orders, All> {
+  // Return value for given arguments.
+  auto operator()(difference_type l,
+                  difference_type m) const requires std::same_as<Orders, All> {
     assert(l >= std::abs(_n) && l <= _lMax);
     auto mMaxAbs = std::min(l, _mMax);
     assert(std::abs(m) <= mMaxAbs);
-    return *std::next(cbegin(l), mMaxAbs + m);
+    return *std::next(cbeginForDegree(l), mMaxAbs + m);
   }
 
-  // Returns value for given degree and order, m >= 0, when only non-negative
-  // orders are stored.
-  auto operator()(int l,
-                  int m) const requires std::same_as<Orders, NonNegative> {
+  auto operator()(difference_type l, difference_type m)
+      const requires std::same_as<Orders, NonNegative> {
     assert(l >= std::abs(_n) && l <= _lMax);
     assert(0 <= m && m <= std::min(l, _mMax));
-    return *std::next(cbegin(l), m);
+    return *std::next(cbeginForDegree(l), m);
+  }
+
+  auto operator()(difference_type i, difference_type l,
+                  difference_type m) const requires std::same_as<Orders, All> {
+    assert(i >= 0 && i <= _nTheta);
+    assert(l >= std::abs(_n) && l <= _lMax);
+    auto mMaxAbs = std::min(l, _mMax);
+    assert(std::abs(m) <= mMaxAbs);
+    return *std::next(cbeginForAngleAndDegree(i, l), mMaxAbs + m);
+  }
+
+  auto operator()(difference_type i, difference_type l, difference_type m)
+      const requires std::same_as<Orders, NonNegative> {
+    assert(i >= 0 && i <= _nTheta);
+    assert(l >= std::abs(_n) && l <= _lMax);
+    assert(0 <= m && m <= std::min(l, _mMax));
+    return *std::next(cbeginForAngleAndDegree(i, l), m);
   }
 
  private:
   // Set the execution policy.
   static constexpr auto _policy = std::execution::seq;
 
-  int _lMax;    // Maximum degree.
-  int _mMax;    // Maximum order.
-  int _n;       // Upper index.
-  int _nTheta;  // Number of angles.
+  difference_type _lMax;    // Maximum degree.
+  difference_type _mMax;    // Maximum order.
+  difference_type _n;       // Upper index.
+  difference_type _nTheta;  // Number of angles.
 
   // Vector to store the values.
   std::vector<Real> _data;
 
   // Storage passed as iterators.
-  void ComputeValues(int i, Real theta);
+  void ComputeValues(difference_type i, Real theta);
 };
 
 template <std::floating_point Real, OrderRange Orders, Normalisation Norm>
-void WignerN<Real, Orders, Norm>::ComputeValues(int i, Real theta) {
+void WignerN<Real, Orders, Norm>::ComputeValues(difference_type i, Real theta) {
   // Pre-compute and store trigonometric terms.
   auto cos = std::cos(theta);
   auto logSinHalf = std::sin(0.5 * theta);
@@ -208,21 +299,21 @@ void WignerN<Real, Orders, Norm>::ComputeValues(int i, Real theta) {
       });
 
   // Set the values for l == |n|
-  const int nabs = std::abs(_n);
+  const auto nabs = std::abs(_n);
   {
     auto l = nabs;
     auto mStart = StartingOrder(l);
-    auto start = begin(i, l);
-    auto finish = end(i, l);
+    auto start = beginForAngleAndDegree(i, l);
+    auto finish = endForAngleAndDegree(i, l);
     if (_n >= 0) {
       std::transform(_policy, start, finish, start, [&](auto &p) {
-        int m = mStart + std::distance(&*start, &p);
+        auto m = mStart + std::distance(&*start, &p);
         return WignerMaxUpperIndexAtOrder(l, m, logSinHalf, logCosHalf, atLeft,
                                           atRight);
       });
     } else {
       std::transform(_policy, start, finish, start, [&](auto &p) {
-        int m = mStart + std::distance(&*start, &p);
+        auto m = mStart + std::distance(&*start, &p);
         return WignerMinUpperIndexAtOrder(l, m, logSinHalf, logCosHalf, atLeft,
                                           atRight);
       });
@@ -235,9 +326,9 @@ void WignerN<Real, Orders, Norm>::ComputeValues(int i, Real theta) {
     auto mStart = StartingOrder(l);
 
     // Set iterators
-    auto startMinusOne = begin(l - 1);
-    auto finishMinusOne = end(l - 1);
-    auto start = begin(i, l);
+    auto startMinusOne = beginForAngleAndDegree(i, l - 1);
+    auto finishMinusOne = endForAngleAndDegree(i, l - 1);
+    auto start = beginForAngleAndDegree(i, l);
 
     // Add in value at m == -l if needed.
     if constexpr (std::same_as<Orders, All>) {
@@ -256,7 +347,7 @@ void WignerN<Real, Orders, Norm>::ComputeValues(int i, Real theta) {
       if (_n < 0) beta *= -1;
       std::transform(
           _policy, startMinusOne, finishMinusOne, start, [&](auto &minusOne) {
-            int m = mStart + std::distance(&*startMinusOne, &minusOne);
+            auto m = mStart + std::distance(&*startMinusOne, &minusOne);
             auto f1 = (alpha - beta * m) * sqIntInv[l - m] * sqIntInv[l + m];
             return f1 * minusOne;
           });
@@ -274,15 +365,15 @@ void WignerN<Real, Orders, Norm>::ComputeValues(int i, Real theta) {
   }
 
   // Now do the remaining degrees.
-  for (int l = nabs + 2; l <= _lMax; l++) {
+  for (auto l = nabs + 2; l <= _lMax; l++) {
     // Starting order within two-term recursion
     auto mStart = StartingOrder(l);
 
     // Set iterators
-    auto startMinusTwo = begin(l - 2);
-    auto finishMinusTwo = end(l - 2);
-    auto startMinusOne = begin(l - 1);
-    auto start = begin(i, l);
+    auto startMinusTwo = beginForAngleAndDegree(i, l - 2);
+    auto finishMinusTwo = endForAngleAndDegree(i, l - 2);
+    auto startMinusOne = beginForAngleAndDegree(i, l - 1);
+    auto start = beginForAngleAndDegree(i, l);
 
     // Add in lower boundary terms if still growing.
     if constexpr (std::same_as<Orders, All>) {
@@ -325,7 +416,7 @@ void WignerN<Real, Orders, Norm>::ComputeValues(int i, Real theta) {
       std::transform(
           _policy, startMinusTwo, finishMinusTwo, startMinusOne, start,
           [&](auto &minusTwo, auto &minusOne) {
-            int m = mStart + std::distance(&*startMinusTwo, &minusTwo);
+            auto m = mStart + std::distance(&*startMinusTwo, &minusTwo);
             auto denom = sqIntInv[l - m] * sqIntInv[l + m];
             auto f1 = (alpha - beta * m) * denom;
             auto f2 = gamma * sqInt[l - 1 - m] * sqInt[l - 1 + m] * denom;
@@ -373,9 +464,9 @@ void WignerN<Real, Orders, Norm>::ComputeValues(int i, Real theta) {
   }
 
   if constexpr (std::same_as<Norm, Ortho>) {
-    for (int l = 0; l <= _lMax; l++) {
-      auto start = begin(i, l);
-      auto finish = end(i, l);
+    for (auto l = 0; l <= _lMax; l++) {
+      auto start = beginForAngleAndDegree(i, l);
+      auto finish = endForAngleAndDegree(i, l);
       std::transform(start, finish, start, [l](auto p) {
         return 0.5 * std::sqrt(static_cast<value_type>(2 * l + 1)) *
                std::numbers::inv_sqrtpi_v<value_type> * p;
