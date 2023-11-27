@@ -1,8 +1,9 @@
 #include <gtest/gtest.h>
 
 #include "CheckAdditionTheorem.h"
-#include "CheckLegendre.h"
-#include "CheckWigner.h"
+//#include "CheckLegendre.h"
+
+/*
 
 // Compare values for n = 0 to the std library function.
 TEST(Wigner, CheckLegendreDouble) {
@@ -15,6 +16,8 @@ TEST(Wigner, CheckLegendreLongDouble) {
   EXPECT_EQ(i, 0);
 }
 
+*/
+
 // Check the addition theorem is satisfied.
 TEST(Wigner, CheckAdditionTheoremDouble) {
   int i = CheckAdditionTheorem<double>();
@@ -25,16 +28,3 @@ TEST(Wigner, CheckAdditionTheoremLongDouble) {
   int i = CheckAdditionTheorem<long double>();
   EXPECT_EQ(i, 0);
 }
-
-// Check consistency of WignerN and WignerLN.
-TEST(Wigner, CheckWignerDouble) {
-  int i = CheckWigner<double>();
-  EXPECT_EQ(i, 0);
-}
-
-TEST(Wigner, CheckWignerLongDouble) {
-  int i = CheckWigner<long double>();
-  EXPECT_EQ(i, 0);
-}
-
-

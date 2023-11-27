@@ -20,27 +20,31 @@
 namespace GSHTrans {
 
 // Declare/Define some utility functions.
-constexpr int MinusOneToPower(int m) { return m % 2 ? -1 : 1; }
+constexpr auto MinusOneToPower(std::ptrdiff_t m) { return m % 2 ? -1 : 1; }
 
 template <std::floating_point Real>
-Real WignerMinOrderAtUpperIndex(int, int, Real, Real, bool, bool);
+Real WignerMinOrderAtUpperIndex(std::ptrdiff_t, std::ptrdiff_t, Real, Real,
+                                bool, bool);
 
 template <std::floating_point Real>
-Real WignerMaxOrderAtUpperIndex(int, int, Real, Real, bool, bool);
+Real WignerMaxOrderAtUpperIndex(std::ptrdiff_t, std::ptrdiff_t, Real, Real,
+                                bool, bool);
 
 template <std::floating_point Real>
-Real WignerMaxUpperIndexAtOrder(int, int, Real, Real, bool, bool);
+Real WignerMaxUpperIndexAtOrder(std::ptrdiff_t, std::ptrdiff_t, Real, Real,
+                                bool, bool);
 
 template <std::floating_point Real>
-Real WignerMinUpperIndexAtOrder(int, int, Real, Real, bool, bool);
+Real WignerMinUpperIndexAtOrder(std::ptrdiff_t, std::ptrdiff_t, Real, Real,
+                                bool, bool);
 
 /////////////////////////////////////////////////////////////////////////
-//                         WignerN class                               //
+//                         Wigner class                               //
 /////////////////////////////////////////////////////////////////////////
 
 template <std::floating_point Real, OrderRange Orders,
           Normalisation Norm = Ortho>
-class WignerN {
+class Wigner {
  public:
   // Set member types.
   using value_type = Real;
@@ -62,18 +66,18 @@ class WignerN {
   };
 
   // Default constructor.
-  WignerN() = default;
+  Wigner() = default;
 
   // Copy constructor.
-  WignerN(WignerN const &) = default;
+  Wigner(Wigner const &) = default;
 
   // Move constructor.
-  WignerN(WignerN &&) = default;
+  Wigner(Wigner &&) = default;
 
   // Constructor for a single angle.
   template <typename Execution>
-  WignerN(Execution policy, difference_type lMax, difference_type mMax,
-          difference_type n, Real theta)
+  Wigner(Execution policy, difference_type lMax, difference_type mMax,
+         difference_type n, Real theta)
       : _lMax(lMax), _mMax(mMax), _n(n), _nTheta(1) {
     assert(_lMax >= 0);
     assert(_mMax >= 0 && _mMax <= _lMax);
@@ -81,14 +85,14 @@ class WignerN {
     _data = std::vector<Real>(size);
     ComputeValues(policy, 0, theta);
   }
-  WignerN(difference_type lMax, difference_type mMax, difference_type n,
-          Real theta)
-      : WignerN(_policy, lMax, mMax, n, theta) {}
+  Wigner(difference_type lMax, difference_type mMax, difference_type n,
+         Real theta)
+      : Wigner(_policy, lMax, mMax, n, theta) {}
 
   // Constructor with iterators to angles
   template <RealFloatingPointIterator Iterator, typename Execution>
-  WignerN(Execution policy, difference_type lMax, difference_type mMax,
-          difference_type n, Iterator thetaStart, Iterator thetaFinish)
+  Wigner(Execution policy, difference_type lMax, difference_type mMax,
+         difference_type n, Iterator thetaStart, Iterator thetaFinish)
       : _lMax(lMax),
         _mMax(mMax),
         _n(n),
@@ -102,25 +106,25 @@ class WignerN {
     }
   }
   template <RealFloatingPointIterator Iterator>
-  WignerN(difference_type lMax, difference_type mMax, difference_type n,
-          Iterator thetaStart, Iterator thetaFinish)
-      : WignerN(_policy, lMax, mMax, n, thetaStart, thetaFinish) {}
+  Wigner(difference_type lMax, difference_type mMax, difference_type n,
+         Iterator thetaStart, Iterator thetaFinish)
+      : Wigner(_policy, lMax, mMax, n, thetaStart, thetaFinish) {}
 
   // Constructor for a range of angles.
   template <RealFloatingPointRange Range, typename Execution>
-  WignerN(Execution policy, difference_type lMax, difference_type mMax,
-          difference_type n, Range theta)
-      : WignerN(policy, lMax, mMax, n, std::begin(theta), std::end(theta)) {}
+  Wigner(Execution policy, difference_type lMax, difference_type mMax,
+         difference_type n, Range theta)
+      : Wigner(policy, lMax, mMax, n, std::begin(theta), std::end(theta)) {}
   template <RealFloatingPointRange Range>
-  WignerN(difference_type lMax, difference_type mMax, difference_type n,
-          Range theta)
-      : WignerN(_policy, lMax, mMax, n, theta) {}
+  Wigner(difference_type lMax, difference_type mMax, difference_type n,
+         Range theta)
+      : Wigner(_policy, lMax, mMax, n, theta) {}
 
   // Copy assigment.
-  WignerN &operator=(WignerN const &) = default;
+  Wigner &operator=(Wigner const &) = default;
 
   // Move assignment.
-  WignerN &operator=(WignerN &&) = default;
+  Wigner &operator=(Wigner &&) = default;
 
   // Recompute values for new angle(s).
   template <typename Execution>
@@ -185,12 +189,7 @@ class WignerN {
     return std::next(cbegin(), Count(l - 1));
   }
 
-  iterator end(difference_type l) { return std::next(begin(), Count(l)); }
-  const_iterator cend(difference_type l) const {
-    return std::next(cbegin(), Count(l));
-  }
-
-  iterator endForDegee(difference_type l) {
+  iterator endForDegree(difference_type l) {
     return std::next(begin(), Count(l));
   }
   const_iterator cendForDegree(difference_type l) const {
@@ -315,8 +314,8 @@ class WignerN {
 
 template <std::floating_point Real, OrderRange Orders, Normalisation Norm>
 template <typename Execution>
-void WignerN<Real, Orders, Norm>::ComputeValues(Execution policy,
-                                                difference_type i, Real theta) {
+void Wigner<Real, Orders, Norm>::ComputeValues(Execution policy,
+                                               difference_type i, Real theta) {
   // Pre-compute and store trigonometric terms.
   auto cos = std::cos(theta);
   auto logSinHalf = std::sin(0.5 * theta);
@@ -516,128 +515,14 @@ void WignerN<Real, Orders, Norm>::ComputeValues(Execution policy,
   }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-//      Simple function to compute Wigner values using +/- recursion in m     //
-////////////////////////////////////////////////////////////////////////////////
-
-template <std::floating_point Real, Normalisation Norm = Ortho>
-Real Wigner(int l, int m, int n, Real theta) {
-  // Check the inputs.
-  assert(l >= 0);
-  assert(std::abs(m) <= l);
-  assert(std::abs(n) <= l);
-
-  // Deal with l = 0 separately.
-  if (l == 0) {
-    if constexpr (std::same_as<Norm, Ortho>) {
-      return 0.5 * std::numbers::inv_sqrtpi_v<Real>;
-    } else {
-      return 1;
-    }
-  }
-
-  // Pre-compute some trigonometric terms.
-  auto logSinHalf = std::sin(0.5 * theta);
-  auto logCosHalf = std::cos(0.5 * theta);
-  auto atLeft = logSinHalf < std::numeric_limits<Real>::min();
-  auto atRight = logCosHalf < std::numeric_limits<Real>::min();
-
-  // Deal with values at the end points
-  if (atLeft) {
-    if (n == -l) {
-      if constexpr (std::same_as<Norm, Ortho>) {
-        return 0.5 * std::sqrt(static_cast<Real>(2 * l + 1)) *
-               std::numbers::inv_sqrtpi_v<Real>;
-      } else {
-        return 1;
-      }
-    } else {
-      return 0;
-    }
-  }
-
-  if (atRight) {
-    if (n == l) {
-      if constexpr (std::same_as<Norm, Ortho>) {
-        return MinusOneToPower(l + n) * 0.5 *
-               std::sqrt(static_cast<Real>(2 * l + 1)) *
-               std::numbers::inv_sqrtpi_v<Real>;
-      } else {
-        return MinusOneToPower(l + n);
-      }
-    } else {
-      return 0;
-    }
-  }
-
-  // Compute remaining trigonometric terms
-  logSinHalf = std::log(logSinHalf);
-  logCosHalf = std::log(logCosHalf);
-  auto cosec = static_cast<Real>(1) / std::sin(theta);
-  auto cot = std::cos(theta) * cosec;
-
-  // Pre-compute and store square roots and their inverses up to 2*l+1.
-  std::vector<Real> sqInt(2 * l + 1);
-  std::transform(sqInt.begin(), sqInt.end(), sqInt.begin(), [&](auto &x) {
-    return std::sqrt(static_cast<Real>(&x - &sqInt[0]));
-  });
-  std::vector<Real> sqIntInv(2 * l + 1);
-  std::transform(sqInt.begin(), sqInt.end(), sqIntInv.begin(), [](auto x) {
-    return x > static_cast<Real>(0) ? 1 / x : static_cast<Real>(0);
-  });
-
-  // Compute the optimal meeting point for the recursion.
-  int mOpt = n * std::cos(theta);
-
-  // Apply upward recursion from m = -l.
-  if (m <= mOpt) {
-    Real minusOne = 0;
-    Real current =
-        WignerMinOrderAtUpperIndex(l, n, logSinHalf, logCosHalf, false, false);
-    for (int mp = -l; mp < m; mp++) {
-      current = 2 * (n * cosec - mp * cot) * sqIntInv[l - mp] *
-                    sqIntInv[l + mp + 1] * current -
-                sqInt[l + mp] * sqInt[l - mp + 1] * sqIntInv[l - mp] *
-                    sqIntInv[l + mp + 1] * minusOne;
-      minusOne = current;
-    }
-    if constexpr (std::same_as<Norm, Ortho>) {
-      return 0.5 * std::sqrt(static_cast<Real>(2 * l + 1)) *
-             std::numbers::inv_sqrtpi_v<Real> * current;
-    } else {
-      return current;
-    }
-  }
-
-  // Apply downward recursion from m = l.
-  if (m > mOpt) {
-    Real plusOne = 0;
-    Real current =
-        WignerMaxOrderAtUpperIndex(l, n, logSinHalf, logCosHalf, false, false);
-    for (int mp = l; mp > m; mp--) {
-      current = 2 * (n * cosec - mp * cot) * sqIntInv[l + mp] *
-                    sqIntInv[l - mp + 1] * current -
-                sqInt[l - mp] * sqInt[l + mp + 1] * sqIntInv[l + mp] *
-                    sqIntInv[l - mp + 1] * plusOne;
-      plusOne = current;
-    }
-    if constexpr (std::same_as<Norm, Ortho>) {
-      return 0.5 * std::sqrt(static_cast<Real>(2 * l + 1)) *
-             std::numbers::inv_sqrtpi_v<Real> * current;
-    } else {
-      return current;
-    }
-  }
-  return 0;
-}
-
 /////////////////////////////////////////////////////////////////////////
 //                           Utility functions                         //
 /////////////////////////////////////////////////////////////////////////
 
 template <std::floating_point Real>
-Real WignerMinOrderAtUpperIndex(int l, int n, Real logSinHalf, Real logCosHalf,
-                                bool atLeft, bool atRight) {
+Real WignerMinOrderAtUpperIndex(std::ptrdiff_t l, std::ptrdiff_t n,
+                                Real logSinHalf, Real logCosHalf, bool atLeft,
+                                bool atRight) {
   // Check the inputs.
   assert(l >= 0);
   assert(std::abs(n) <= l);
@@ -667,23 +552,26 @@ Real WignerMinOrderAtUpperIndex(int l, int n, Real logSinHalf, Real logCosHalf,
 }
 
 template <std::floating_point Real>
-Real WignerMaxOrderAtUpperIndex(int l, int n, Real logSinHalf, Real logCosHalf,
-                                bool atLeft, bool atRight) {
+Real WignerMaxOrderAtUpperIndex(std::ptrdiff_t l, std::ptrdiff_t n,
+                                Real logSinHalf, Real logCosHalf, bool atLeft,
+                                bool atRight) {
   return MinusOneToPower(n + l) * WignerMinOrderAtUpperIndex(l, -n, logSinHalf,
                                                              logCosHalf, atLeft,
                                                              atRight);
 }
 
 template <std::floating_point Real>
-Real WignerMinUpperIndexAtOrder(int l, int m, Real logSinHalf, Real logCosHalf,
-                                bool atLeft, bool atRight) {
+Real WignerMinUpperIndexAtOrder(std::ptrdiff_t l, std::ptrdiff_t m,
+                                Real logSinHalf, Real logCosHalf, bool atLeft,
+                                bool atRight) {
   return WignerMaxOrderAtUpperIndex(l, -m, logSinHalf, logCosHalf, atLeft,
                                     atRight);
 }
 
 template <std::floating_point Real>
-Real WignerMaxUpperIndexAtOrder(int l, int m, Real logSinHalf, Real logCosHalf,
-                                bool atLeft, bool atRight) {
+Real WignerMaxUpperIndexAtOrder(std::ptrdiff_t l, std::ptrdiff_t m,
+                                Real logSinHalf, Real logCosHalf, bool atLeft,
+                                bool atRight) {
   return WignerMinOrderAtUpperIndex(l, -m, logSinHalf, logCosHalf, atLeft,
                                     atRight);
 }

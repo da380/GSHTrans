@@ -8,52 +8,93 @@
 
 namespace GSHTrans {
 
-template <std::floating_point Float, IndexRange Range>
-class LegendreArray {
+template <std::floating_point Real, OrderRange Orders,
+          Normalisation Norm = Ortho>
+class AssociatedLegendre : public Wigner<Real, Orders, Norm> {
  public:
-  // Define member types.
-  using value_type = Float;
-  using iterator = typename WignerArrayN<Float, Range>::iterator;
-  using const_iterator = typename WignerArrayN<Float, Range>::const_iterator;
-  using difference_type = WignerArrayN<Float, Range>::difference_type;
+  using typename Wigner<Real, Orders, Norm>::const_iterator;
+  using typename Wigner<Real, Orders, Norm>::difference_type;
+  using typename Wigner<Real, Orders, Norm>::iterator;
+  using typename Wigner<Real, Orders, Norm>::size_type;
+  using typename Wigner<Real, Orders, Norm>::value_type;
 
-  LegendreArray(int lMax, int mMax, Float theta,
-                Normalisation norm = Normalisation::Ortho)
-      : d{WignerArrayN<Float, Range>(lMax, mMax, 0, theta, norm)} {}
+  AssociatedLegendre() = default;
 
-  // Geters for basic data.
-  int MaxDegree() const { return d.MaxDegree(); }
-  int MaxOrder() const { return d.MaxOrder(); }
+  template <typename Execution>
+  AssociatedLegendre(Execution policy, difference_type lMax,
+                     difference_type mMax, Real theta)
+      : Wigner<Real, Orders, Norm>(policy, lMax, mMax, 0, theta) {}
 
-  // Iterators that point to the start of the data.
-  iterator begin() { return d.begin(); }
-  const_iterator cbegin() const { return d.cbegin(); }
+  AssociatedLegendre(difference_type lMax, difference_type mMax, Real theta)
+      : Wigner<Real, Orders, Norm>(lMax, mMax, 0, theta) {}
 
-  // Iterators that point to the end of the data.
-  iterator end() { return d.end(); }
-  const_iterator cend() const { return d.cend(); }
+  template <RealFloatingPointIterator Iterator, typename Execution>
+  AssociatedLegendre(Execution policy, difference_type lMax,
+                     difference_type mMax, Iterator thetaStart,
+                     Iterator thetaFinish)
+      : Wigner<Real, Orders, Norm>(policy, lMax, mMax, 0, thetaStart,
+                                   thetaFinish) {}
 
-  // Iterators that point to the start of degree l.
-  iterator begin(int l) { return d.begin(l); }
-  const_iterator cbegin(int l) const { return d.cbegin(l); }
+  template <RealFloatingPointIterator Iterator>
+  AssociatedLegendre(difference_type lMax, difference_type mMax,
+                     Iterator thetaStart, Iterator thetaFinish)
+      : Wigner<Real, Orders, Norm>(lMax, mMax, 0, thetaStart, thetaFinish) {}
 
-  // Iterators that point to the end of degree l.
-  iterator end(int l) { return d.end(l); }
-  const_iterator cend(int l) const { return d.cend(l); }
+  template <RealFloatingPointRange Range, typename Execution>
+  AssociatedLegendre(Execution policy, difference_type lMax,
+                     difference_type mMax, difference_type n, Range theta)
+      : Wigner<Real, Orders, Norm>(policy, lMax, mMax, 0, theta) {}
 
-  // Returns value for given degree and order when all orders are stored.
-  Float operator()(int l, int m) const { return d(l, m); }
-
- private:
-  WignerArrayN<Float, Range> d;
+  template <RealFloatingPointRange Range>
+  AssociatedLegendre(difference_type lMax, difference_type mMax,
+                     difference_type n, Range theta)
+      : Wigner<Real, Orders, Norm>(lMax, mMax, 0, theta) {}
 };
 
-// Simple legendre function
-template <std::floating_point Float>
-Float Legendre(int l, int m, Float theta,
-               Normalisation norm = Normalisation::Ortho) {
-  return Wigner(l, m, 0, theta, norm);
-}
+template <std::floating_point Real, Normalisation Norm = Ortho>
+class Legendre : public Wigner<Real, All, Norm> {
+ public:
+  using typename Wigner<Real, All, Norm>::const_iterator;
+  using typename Wigner<Real, All, Norm>::difference_type;
+  using typename Wigner<Real, All, Norm>::iterator;
+  using typename Wigner<Real, All, Norm>::size_type;
+  using typename Wigner<Real, All, Norm>::value_type;
+
+  Legendre() = default;
+
+  template <typename Execution>
+  Legendre(Execution policy, difference_type lMax, Real theta)
+      : Wigner<Real, All, Norm>(policy, lMax, 0, 0, theta) {}
+
+  Legendre(difference_type lMax, Real theta)
+      : Wigner<Real, All, Norm>(lMax, 0, 0, theta) {}
+
+  template <RealFloatingPointIterator Iterator, typename Execution>
+  Legendre(Execution policy, difference_type lMax, Iterator thetaStart,
+           Iterator thetaFinish)
+      : Wigner<Real, All, Norm>(policy, lMax, 0, 0, thetaStart, thetaFinish) {}
+
+  template <RealFloatingPointIterator Iterator>
+  Legendre(difference_type lMax, Iterator thetaStart, Iterator thetaFinish)
+      : Wigner<Real, All, Norm>(lMax, 0, 0, thetaStart, thetaFinish) {}
+
+  template <RealFloatingPointRange Range, typename Execution>
+  Legendre(Execution policy, difference_type lMax, difference_type n,
+           Range theta)
+      : Wigner<Real, All, Norm>(policy, lMax, 0, 0, theta) {}
+
+  template <RealFloatingPointRange Range>
+  Legendre(difference_type lMax, difference_type n, Range theta)
+      : Wigner<Real, All, Norm>(lMax, 0, 0, theta) {}
+
+  auto operator()(difference_type l) {
+    return Wigner<Real, All, Norm>::operator()(l, 0);
+  }
+
+  auto operator()(difference_type i, difference_type l) {
+    return Wigner<Real, All, Norm>::operator()(i, l, 0);
+  }
+};
 
 }  // namespace GSHTrans
 
