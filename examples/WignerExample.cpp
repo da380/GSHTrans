@@ -28,6 +28,6 @@ int main() {
 
   std::cout << p1(4, 2) << " " << p2(4, 2) << " " << p3(2, 4, 2) << std::endl;
 
-  //  auto range = p1.RangeForAngleAndDegree(0, 4);
-  // for (auto val : range) std::cout << val << std::endl;
+  auto range = p3.RangeForAngleAndDegree(2, 4);
+  for (auto val : range) std::cout << val << std::endl;
 }
