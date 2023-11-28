@@ -22,15 +22,16 @@
 
 namespace GSHTrans {
 
-template <std::floating_point Real>
-class PlanComplex {
+template <std::floating_point Real, TransformType Type>
+class Plan {
   using Complex = std::complex<Real>;
-  using wigner = Wigner<Real, All>;
+  using WignerAll = Wigner<Real, All>;
+  using WignerNonNegative = Wigner<Real, NonNegative>;
 
  public:
-  PlanComplex() = default;
+  Plan() = default;
 
-  PlanComplex(int lMax, int nMax, FFTWpp::PlanFlag flag = FFTWpp::Measure)
+  Plan(int lMax, int nMax, FFTWpp::PlanFlag flag = FFTWpp::Measure)
       : _lMax{lMax},
         _nMax{nMax},
         _quad{GaussQuad::GaussLegendreQuadrature1D<Real>(_lMax + 1)} {
@@ -39,19 +40,51 @@ class PlanComplex {
     assert(_nMax >= 0 && _nMax <= _lMax);
 
     // Transform the quadrature points.
-    _quad.Transform([](auto x) { return std::acos(x); },
+    _quad.Transform([](auto x) { return std::acos(-x); },
                     [](auto x) { return 1; });
 
     // Compute the Wigner d-functions.
-    for (auto n = -_nMax; n <= _nMax; n++) {
-      _d.push_back(std::make_unique<wigner>(_lMax, _lMax, n, _quad.Points()));
+
+    if constexpr (std::same_as<Type, C2C>) {
+      for (auto n = -_nMax; n <= _nMax; n++) {
+        _dAll.push_back(std::make_unique<WignerAll>(MaxDegree(), MaxDegree(), n,
+                                                    _quad.Points()));
+      }
     }
 
-    // Generate wisdom for FFTW
-    _layout = FFTWpp::DataLayout(1, {2 * _lMax}, _lMax + 1, {2 * _lMax}, 1,
-                                 2 * _lMax);
-    FFTWpp::GenerateWisdom<Complex, Complex, true>(_layout, _layout, flag);
+    if constexpr (std::same_as<Type, R2C>) {
+      for (auto n = 0; n <= _nMax; n++) {
+        _dNonNegative.push_back(std::make_unique<WignerNonNegative>(
+            MaxDegree(), MaxDegree(), n, _quad.Points()));
+      }
+    }
+
+    // Generate wisdom for FFTW.
+    if constexpr (std::same_as<Type, C2C>) {
+      _inLayout =
+          FFTWpp::DataLayout(1, {NumberOfLongitudes()}, NumberOfCoLatitudes(),
+                             {NumberOfLongitudes()}, 1, NumberOfCoLatitudes());
+      _outLayout = _inLayout;
+      FFTWpp::GenerateWisdom<Complex, Complex, true>(_inLayout, _outLayout,
+                                                     flag);
+    }
+
+    if constexpr (std::same_as<Type, R2C>) {
+      _inLayout =
+          FFTWpp::DataLayout(1, {NumberOfLongitudes()}, NumberOfCoLatitudes(),
+                             {NumberOfLongitudes()}, 1, NumberOfCoLatitudes());
+      _outLayout = FFTWpp::DataLayout(
+          1, {NumberOfLongitudes() / 2 + 1}, NumberOfCoLatitudes(),
+          {NumberOfLongitudes() / 2 + 1}, 1, NumberOfCoLatitudes());
+      FFTWpp::GenerateWisdom<Real, Complex, true>(_inLayout, _outLayout, flag);
+    }
   }
+
+  // Return the truncation degree.
+  auto MaxDegree() const { return _lMax; }
+
+  // Return the maximum upper index.
+  auto MaxUpperIndex() const { return _nMax; }
 
   // Return the longitude spacing.
   auto DeltaLongitude() const {
@@ -94,22 +127,24 @@ class PlanComplex {
     return integral;
   }
 
-   private:
-    // Store maximum orders and upper indices.
-    int _lMax;
-    int _nMax;
+ private:
+  // Store maximum orders and upper indices.
+  int _lMax;
+  int _nMax;
 
-    // View to the longitudes.
+  // View to the longitudes.
 
-    // Store the data layout
-    FFTWpp::DataLayout _layout;
+  // Store the data layouts
+  FFTWpp::DataLayout _inLayout;
+  FFTWpp::DataLayout _outLayout;
 
-    // Store quadrature points and weights.
-    GaussQuad::Quadrature1D<Real> _quad;
+  // Store quadrature points and weights.
+  GaussQuad::Quadrature1D<Real> _quad;
 
-    // Store the Wigner values
-    std::vector<std::unique_ptr<wigner>> _d;
-  };
+  // Store the Wigner values
+  std::vector<std::unique_ptr<WignerAll>> _dAll;
+  std::vector<std::unique_ptr<WignerNonNegative>> _dNonNegative;
+};
 
 }  // namespace GSHTrans
 
