@@ -42,12 +42,12 @@ class AssociatedLegendre : public Wigner<Real, Orders, Norm> {
 
   template <RealFloatingPointRange Range, typename Execution>
   AssociatedLegendre(Execution policy, difference_type lMax,
-                     difference_type mMax, difference_type n, Range theta)
+                     difference_type mMax, difference_type n, Range&& theta)
       : Wigner<Real, Orders, Norm>(policy, lMax, mMax, 0, theta) {}
 
   template <RealFloatingPointRange Range>
   AssociatedLegendre(difference_type lMax, difference_type mMax,
-                     difference_type n, Range theta)
+                     difference_type n, Range&& theta)
       : Wigner<Real, Orders, Norm>(lMax, mMax, 0, theta) {}
 };
 
@@ -80,11 +80,11 @@ class Legendre : public Wigner<Real, All, Norm> {
 
   template <RealFloatingPointRange Range, typename Execution>
   Legendre(Execution policy, difference_type lMax, difference_type n,
-           Range theta)
+           Range&& theta)
       : Wigner<Real, All, Norm>(policy, lMax, 0, 0, theta) {}
 
   template <RealFloatingPointRange Range>
-  Legendre(difference_type lMax, difference_type n, Range theta)
+  Legendre(difference_type lMax, difference_type n, Range&& theta)
       : Wigner<Real, All, Norm>(lMax, 0, 0, theta) {}
 
   auto operator()(difference_type l) {

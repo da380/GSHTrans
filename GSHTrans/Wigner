@@ -1,10 +1,10 @@
-#ifndef GSH_TRANS_ALL_MODULE_H
-#define GSH_TRANS_ALL_MODULE_H
+#ifndef GSH_TRANS_WIGNER_MODULE_H
+#define GSH_TRANS_WIGNER_MODULE_H
 
 // Header files to include for use of GHSTrans library
 #include "src/Concepts.h"
 #include "src/Wigner.h"
 #include "src/Legendre.h"
-#include "src/Plan.h"
+
 
 #endif
