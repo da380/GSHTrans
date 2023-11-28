@@ -15,7 +15,7 @@ int CheckAdditionTheorem() {
   using namespace GSHTrans;
 
   // Set the degree, order and upper index
-  int lMax = 30;
+  int lMax = 40;
   int mMax = lMax;
   int nMax = lMax;
 
@@ -28,24 +28,19 @@ int CheckAdditionTheorem() {
 
   // Define small number for comparison.
   constexpr auto eps = 1000 * std::numeric_limits<Real>::epsilon();
-
   for (auto n = -nMax; n <= nMax; n++) {
     Wigner<Real, All, FourPi> d1(lMax, mMax, n, theta);
     for (auto np = 0; np <= nMax; np++) {
       Wigner<Real, All, FourPi> d2(lMax, mMax, np, theta);
-
       auto lstart = std::max(std::abs(n), std::abs(np));
       for (auto l = lstart; l <= lMax; l++) {
-        auto first1 = d1.beginForDegree(l);
-        auto last1 = d1.endForDegree(l);
-        auto first2 = d2.beginForDegree(l);
-        auto sum = std::inner_product(first1, last1, first2, Real{0});
+        auto sum = std::inner_product(d1.beginForDegree(l), d1.endForDegree(l),
+                                      d2.beginForDegree(l), Real{0});
         if (n == np) --sum;
         if (std::abs(sum) > eps) return 1;
       }
     }
   }
-
   return 0;
 }
 
