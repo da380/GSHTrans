@@ -22,11 +22,12 @@
 
 namespace GSHTrans {
 
-template <std::floating_point Real, TransformType Type>
+template <std::floating_point Real, TransformType Type,
+          Normalisation Norm = Ortho>
 class Plan {
   using Complex = std::complex<Real>;
-  using WignerAll = Wigner<Real, All>;
-  using WignerNonNegative = Wigner<Real, NonNegative>;
+  using WignerAll = Wigner<Real, All, Norm>;
+  using WignerNonNegative = Wigner<Real, NonNegative, Norm>;
 
  public:
   Plan() = default;
@@ -38,6 +39,10 @@ class Plan {
     // Check the inputs.
     assert(_lMax >= 0);
     assert(_nMax >= 0 && _nMax <= _lMax);
+
+    if constexpr (std::same_as<Type, R2R>) {
+      assert(MaxUpperIndex() == 0);
+    }
 
     // Transform the quadrature points.
     _quad.Transform([](auto x) { return std::acos(-x); },
@@ -52,7 +57,7 @@ class Plan {
       }
     }
 
-    if constexpr (std::same_as<Type, R2C>) {
+    if constexpr (std::same_as<Type, R2C> or std::same_as<Type, R2R>) {
       for (auto n = 0; n <= _nMax; n++) {
         _dNonNegative.push_back(std::make_unique<WignerNonNegative>(
             MaxDegree(), MaxDegree(), n, _quad.Points()));
@@ -61,21 +66,21 @@ class Plan {
 
     // Generate wisdom for FFTW.
     if constexpr (std::same_as<Type, C2C>) {
-      _inLayout =
-          FFTWpp::DataLayout(1, {NumberOfLongitudes()}, NumberOfCoLatitudes(),
-                             {NumberOfLongitudes()}, 1, NumberOfCoLatitudes());
+      _inLayout = FFTWpp::DataLayout(
+          1, std::vector{NumberOfLongitudes()}, NumberOfCoLatitudes(),
+          std::vector{NumberOfLongitudes()}, 1, NumberOfCoLatitudes());
       _outLayout = _inLayout;
       FFTWpp::GenerateWisdom<Complex, Complex, true>(_inLayout, _outLayout,
                                                      flag);
     }
 
-    if constexpr (std::same_as<Type, R2C>) {
-      _inLayout =
-          FFTWpp::DataLayout(1, {NumberOfLongitudes()}, NumberOfCoLatitudes(),
-                             {NumberOfLongitudes()}, 1, NumberOfCoLatitudes());
+    if constexpr (std::same_as<Type, R2C> or std::same_as<Type, R2R>) {
+      _inLayout = FFTWpp::DataLayout(
+          1, std::vector{NumberOfLongitudes()}, NumberOfCoLatitudes(),
+          std::vector{NumberOfLongitudes()}, 1, NumberOfCoLatitudes());
       _outLayout = FFTWpp::DataLayout(
-          1, {NumberOfLongitudes() / 2 + 1}, NumberOfCoLatitudes(),
-          {NumberOfLongitudes() / 2 + 1}, 1, NumberOfCoLatitudes());
+          1, std::vector{NumberOfLongitudes() / 2 + 1}, NumberOfCoLatitudes(),
+          std::vector{NumberOfLongitudes() / 2 + 1}, 1, NumberOfCoLatitudes());
       FFTWpp::GenerateWisdom<Real, Complex, true>(_inLayout, _outLayout, flag);
     }
   }

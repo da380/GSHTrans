@@ -27,9 +27,11 @@ concept Normalisation = std::same_as<Norm, Ortho> or std::same_as<Norm, FourPi>;
 
 struct C2C {};
 struct R2C {};
+struct R2R {};
 
 template <typename Type>
-concept TransformType = std::same_as<Type, C2C> or std::same_as<Type, R2C>;
+concept TransformType = std::same_as<Type, C2C> or std::same_as<Type, R2C> or
+    std::same_as<Type, R2R>;
 
 // Concepts for real or complex floating point types.
 template <typename T>
