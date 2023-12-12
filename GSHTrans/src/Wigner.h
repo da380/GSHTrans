@@ -1,10 +1,13 @@
 #ifndef GSH_TRANS_WIGNER_GUARD_H
 #define GSH_TRANS_WIGNER_GUARD_H
 
+#include <omp.h>
+
 #include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <concepts>
+#include <iostream>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -132,6 +135,7 @@ class Wigner {
     assert(_mMax >= 0 && _mMax <= _lMax);
     auto size = Count() * _nTheta;
     _data = std::vector<Real>(size);
+#pragma omp parallel for
     for (auto i = 0; i < _nTheta; i++) {
       ComputeValues(i, thetaStart[i]);
     }
@@ -154,6 +158,7 @@ class Wigner {
   template <RealFloatingPointIterator Iterator>
   void ResetValues(Iterator thetaStart, Iterator thetaFinish) {
     assert(std::distance(thetaStart, thetaFinish) == _nTheta);
+#pragma omp parallel for
     for (auto i = 0; i < _nTheta; i++) {
       ComputeValues(i, thetaStart[i]);
     }
@@ -162,6 +167,7 @@ class Wigner {
   template <RealFloatingPointRange Range>
   void ResetValues(Range &&theta) {
     assert(theta.size() == _nTheta);
+#pragma omp parallel for
     for (auto i = 0; i < _nTheta; i++) {
       ComputeValues(i, theta[i]);
     }

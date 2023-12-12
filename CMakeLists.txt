@@ -45,13 +45,16 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(FFTWpp)
 
+# add in OMP
+find_package(OpenMP)
 
 # Set up the library
 add_library (GSHTrans INTERFACE)
 target_link_libraries(GSHTrans INTERFACE
   Eigen3::Eigen
   FFTWpp
-  GaussQuad)
+  GaussQuad
+  OpenMP::OpenMP_CXX)
 target_include_directories (GaussQuad INTERFACE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${INCLUDE_INSTALL_DIR}>
