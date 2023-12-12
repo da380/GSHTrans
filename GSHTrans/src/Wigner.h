@@ -5,7 +5,6 @@
 #include <cassert>
 #include <cmath>
 #include <concepts>
-#include <execution>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -112,22 +111,19 @@ class Wigner {
   Wigner(Wigner &&) = default;
 
   // Constructor for a single angle.
-  template <typename Execution>
-  Wigner(Execution policy, Integer lMax, Integer mMax, Integer n, Real theta)
+  Wigner(Integer lMax, Integer mMax, Integer n, Real theta)
       : _lMax(lMax), _mMax(mMax), _n(n), _nTheta(1) {
     assert(_lMax >= 0);
     assert(_mMax >= 0 && _mMax <= _lMax);
     auto size = Count();
     _data = std::vector<Real>(size);
-    ComputeValues(policy, 0, theta);
+    ComputeValues(0, theta);
   }
-  Wigner(Integer lMax, Integer mMax, Integer n, Real theta)
-      : Wigner(_policy, lMax, mMax, n, theta) {}
 
   // Constructor with iterators to angles
-  template <RealFloatingPointIterator Iterator, typename Execution>
-  Wigner(Execution policy, Integer lMax, Integer mMax, Integer n,
-         Iterator thetaStart, Iterator thetaFinish)
+  template <RealFloatingPointIterator Iterator>
+  Wigner(Integer lMax, Integer mMax, Integer n, Iterator thetaStart,
+         Iterator thetaFinish)
       : _lMax(lMax),
         _mMax(mMax),
         _n(n),
@@ -137,21 +133,14 @@ class Wigner {
     auto size = Count() * _nTheta;
     _data = std::vector<Real>(size);
     for (auto i = 0; i < _nTheta; i++) {
-      ComputeValues(policy, i, thetaStart[i]);
+      ComputeValues(i, thetaStart[i]);
     }
   }
-  template <RealFloatingPointIterator Iterator>
-  Wigner(Integer lMax, Integer mMax, Integer n, Iterator thetaStart,
-         Iterator thetaFinish)
-      : Wigner(_policy, lMax, mMax, n, thetaStart, thetaFinish) {}
 
   // Constructor for a range of angles.
-  template <RealFloatingPointRange Range, typename Execution>
-  Wigner(Execution policy, Integer lMax, Integer mMax, Integer n, Range &&theta)
-      : Wigner(policy, lMax, mMax, n, std::begin(theta), std::end(theta)) {}
   template <RealFloatingPointRange Range>
   Wigner(Integer lMax, Integer mMax, Integer n, Range &&theta)
-      : Wigner(_policy, lMax, mMax, n, theta) {}
+      : Wigner(lMax, mMax, n, std::begin(theta), std::end(theta)) {}
 
   // Copy assigment.
   Wigner &operator=(Wigner const &) = default;
@@ -160,35 +149,22 @@ class Wigner {
   Wigner &operator=(Wigner &&) = default;
 
   // Recompute values for new angle(s).
-  template <typename Execution>
-  void ResetValues(Execution policy, Real theta) {
-    ComputeValues(policy, 0, theta);
-  }
-  void ResetValues(Real theta) { ResetValues(_policy, theta); }
+  void ResetValues(Real theta) { ComputeValues(0, theta); }
 
-  template <RealFloatingPointIterator Iterator, typename Execution>
-  void ResetValues(Execution policy, Iterator thetaStart,
-                   Iterator thetaFinish) {
-    assert(std::distance(thetaStart, thetaFinish) == _nTheta);
-    for (auto i = 0; i < _nTheta; i++) {
-      ComputeValues(policy, i, thetaStart[i]);
-    }
-  }
   template <RealFloatingPointIterator Iterator>
   void ResetValues(Iterator thetaStart, Iterator thetaFinish) {
-    ResetValues(_policy, thetaStart, thetaFinish);
-  }
-
-  template <RealFloatingPointRange Range, typename Execution>
-  void ResetValues(Execution policy, Range &&theta) {
-    assert(theta.size() == _nTheta);
+    assert(std::distance(thetaStart, thetaFinish) == _nTheta);
     for (auto i = 0; i < _nTheta; i++) {
-      ComputeValues(policy, i, theta[i]);
+      ComputeValues(i, thetaStart[i]);
     }
   }
+
   template <RealFloatingPointRange Range>
   void ResetValues(Range &&theta) {
-    ResetValues(_policy, theta);
+    assert(theta.size() == _nTheta);
+    for (auto i = 0; i < _nTheta; i++) {
+      ComputeValues(i, theta[i]);
+    }
   }
 
   // Geters for basic data.
@@ -322,9 +298,6 @@ class Wigner {
   }
 
  private:
-  // Set the default execution policy.
-  static constexpr auto _policy = std::execution::seq;
-
   Integer _lMax;    // Maximum degree.
   Integer _mMax;    // Maximum order.
   Integer _n;       // Upper index.
@@ -334,14 +307,11 @@ class Wigner {
   std::vector<Real> _data;
 
   // Functions to compute the values
-  template <typename Execution>
-  void ComputeValues(Execution policy, Integer i, Real theta);
+  void ComputeValues(Integer i, Real theta);
 };
 
 template <std::floating_point Real, OrderRange Orders, Normalisation Norm>
-template <typename Execution>
-void Wigner<Real, Orders, Norm>::ComputeValues(Execution policy, Integer i,
-                                               Real theta) {
+void Wigner<Real, Orders, Norm>::ComputeValues(Integer i, Real theta) {
   using namespace Details;
 
   // Pre-compute and store trigonometric terms.
@@ -355,16 +325,13 @@ void Wigner<Real, Orders, Norm>::ComputeValues(Execution policy, Integer i,
 
   // Pre-compute and store square roots and their inverses up to lMax + mMax.
   std::vector<value_type> sqInt(_lMax + _mMax + 1);
-  std::transform(policy, sqInt.begin(), sqInt.end(), sqInt.begin(),
-                 [&](auto &x) {
-                   return std::sqrt(static_cast<value_type>(&x - &sqInt[0]));
-                 });
+  std::transform(sqInt.begin(), sqInt.end(), sqInt.begin(), [&](auto &x) {
+    return std::sqrt(static_cast<value_type>(&x - &sqInt[0]));
+  });
   std::vector<value_type> sqIntInv(_lMax + _mMax + 1);
-  std::transform(
-      policy, sqInt.begin(), sqInt.end(), sqIntInv.begin(), [](auto x) {
-        return x > static_cast<value_type>(0) ? 1 / x
-                                              : static_cast<value_type>(0);
-      });
+  std::transform(sqInt.begin(), sqInt.end(), sqIntInv.begin(), [](auto x) {
+    return x > static_cast<value_type>(0) ? 1 / x : static_cast<value_type>(0);
+  });
 
   // Set the values for l == |n|
   const auto nabs = std::abs(_n);
@@ -374,13 +341,13 @@ void Wigner<Real, Orders, Norm>::ComputeValues(Execution policy, Integer i,
     auto start = beginForAngleAndDegree(i, l);
     auto finish = endForAngleAndDegree(i, l);
     if (_n >= 0) {
-      std::transform(policy, start, finish, start, [&](auto &p) {
+      std::transform(start, finish, start, [&](auto &p) {
         auto m = mStart + std::distance(&*start, &p);
         return WignerMaxUpperIndexAtOrder(l, m, logSinHalf, logCosHalf, atLeft,
                                           atRight);
       });
     } else {
-      std::transform(policy, start, finish, start, [&](auto &p) {
+      std::transform(start, finish, start, [&](auto &p) {
         auto m = mStart + std::distance(&*start, &p);
         return WignerMinUpperIndexAtOrder(l, m, logSinHalf, logCosHalf, atLeft,
                                           atRight);
@@ -413,12 +380,11 @@ void Wigner<Real, Orders, Norm>::ComputeValues(Execution policy, Integer i,
       auto alpha = (2 * l - 1) * l * cos * sqIntInv[l + nabs];
       auto beta = (2 * l - 1) * sqIntInv[l + nabs];
       if (_n < 0) beta *= -1;
-      std::transform(
-          policy, startMinusOne, finishMinusOne, start, [&](auto &minusOne) {
-            auto m = mStart + std::distance(&*startMinusOne, &minusOne);
-            auto f1 = (alpha - beta * m) * sqIntInv[l - m] * sqIntInv[l + m];
-            return f1 * minusOne;
-          });
+      std::transform(startMinusOne, finishMinusOne, start, [&](auto &minusOne) {
+        auto m = mStart + std::distance(&*startMinusOne, &minusOne);
+        auto f1 = (alpha - beta * m) * sqIntInv[l - m] * sqIntInv[l + m];
+        return f1 * minusOne;
+      });
     }
 
     // Add in value at m == l if needed
@@ -482,7 +448,7 @@ void Wigner<Real, Orders, Norm>::ComputeValues(Execution policy, Integer i,
                    sqIntInv[l - _n] * sqIntInv[l + _n] /
                    static_cast<value_type>(l - 1);
       std::transform(
-          policy, startMinusTwo, finishMinusTwo, startMinusOne, start,
+          startMinusTwo, finishMinusTwo, startMinusOne, start,
           [&](auto &minusTwo, auto &minusOne) {
             auto m = mStart + std::distance(&*startMinusTwo, &minusTwo);
             auto denom = sqIntInv[l - m] * sqIntInv[l + m];

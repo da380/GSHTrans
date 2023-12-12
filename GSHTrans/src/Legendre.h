@@ -2,7 +2,6 @@
 #define GHS_TRANS_LEGNEDRE_GUARD_H
 
 #include <concepts>
-#include <execution>
 
 #include "Wigner.h"
 
@@ -20,30 +19,13 @@ class AssociatedLegendre : public Wigner<Real, Orders, Norm> {
 
   AssociatedLegendre() = default;
 
-  template <typename Execution>
-  AssociatedLegendre(Execution policy, difference_type lMax,
-                     difference_type mMax, Real theta)
-      : Wigner<Real, Orders, Norm>(policy, lMax, mMax, 0, theta) {}
-
   AssociatedLegendre(difference_type lMax, difference_type mMax, Real theta)
       : Wigner<Real, Orders, Norm>(lMax, mMax, 0, theta) {}
-
-  template <RealFloatingPointIterator Iterator, typename Execution>
-  AssociatedLegendre(Execution policy, difference_type lMax,
-                     difference_type mMax, Iterator thetaStart,
-                     Iterator thetaFinish)
-      : Wigner<Real, Orders, Norm>(policy, lMax, mMax, 0, thetaStart,
-                                   thetaFinish) {}
 
   template <RealFloatingPointIterator Iterator>
   AssociatedLegendre(difference_type lMax, difference_type mMax,
                      Iterator thetaStart, Iterator thetaFinish)
       : Wigner<Real, Orders, Norm>(lMax, mMax, 0, thetaStart, thetaFinish) {}
-
-  template <RealFloatingPointRange Range, typename Execution>
-  AssociatedLegendre(Execution policy, difference_type lMax,
-                     difference_type mMax, difference_type n, Range&& theta)
-      : Wigner<Real, Orders, Norm>(policy, lMax, mMax, 0, theta) {}
 
   template <RealFloatingPointRange Range>
   AssociatedLegendre(difference_type lMax, difference_type mMax,
@@ -62,26 +44,12 @@ class Legendre : public Wigner<Real, All, Norm> {
 
   Legendre() = default;
 
-  template <typename Execution>
-  Legendre(Execution policy, difference_type lMax, Real theta)
-      : Wigner<Real, All, Norm>(policy, lMax, 0, 0, theta) {}
-
   Legendre(difference_type lMax, Real theta)
       : Wigner<Real, All, Norm>(lMax, 0, 0, theta) {}
-
-  template <RealFloatingPointIterator Iterator, typename Execution>
-  Legendre(Execution policy, difference_type lMax, Iterator thetaStart,
-           Iterator thetaFinish)
-      : Wigner<Real, All, Norm>(policy, lMax, 0, 0, thetaStart, thetaFinish) {}
 
   template <RealFloatingPointIterator Iterator>
   Legendre(difference_type lMax, Iterator thetaStart, Iterator thetaFinish)
       : Wigner<Real, All, Norm>(lMax, 0, 0, thetaStart, thetaFinish) {}
-
-  template <RealFloatingPointRange Range, typename Execution>
-  Legendre(Execution policy, difference_type lMax, difference_type n,
-           Range&& theta)
-      : Wigner<Real, All, Norm>(policy, lMax, 0, 0, theta) {}
 
   template <RealFloatingPointRange Range>
   Legendre(difference_type lMax, difference_type n, Range&& theta)

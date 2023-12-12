@@ -7,13 +7,13 @@
 #include <cassert>
 #include <cmath>
 #include <concepts>
-#include <execution>
 #include <iterator>
 #include <limits>
 #include <memory>
 #include <numbers>
 #include <numeric>
 #include <ranges>
+#include <variant>
 #include <vector>
 
 #include "Concepts.h"
@@ -22,12 +22,17 @@
 
 namespace GSHTrans {
 
-template <std::floating_point Real, TransformType Type,
+template <std::floating_point Real, TransformType Type = C2C,
           Normalisation Norm = Ortho>
 class Plan {
+  // Local type aliases.
   using Complex = std::complex<Real>;
   using WignerAll = Wigner<Real, All, Norm>;
   using WignerNonNegative = Wigner<Real, NonNegative, Norm>;
+  using WignerAllPointer = std::unique_ptr<WignerAll>;
+  using WignerNonNegativePointer = std::unique_ptr<WignerNonNegative>;
+  using WignerAllVector = std::vector<WignerAllPointer>;
+  using WignerNonNegativeVector = std::vector<WignerNonNegativePointer>;
 
  public:
   Plan() = default;
@@ -49,18 +54,20 @@ class Plan {
                     [](auto x) { return 1; });
 
     // Compute the Wigner d-functions.
-
     if constexpr (std::same_as<Type, C2C>) {
+      _d = WignerAllVector(2 * _nMax + 1);
       for (auto n = -_nMax; n <= _nMax; n++) {
-        _dAll.push_back(std::make_unique<WignerAll>(MaxDegree(), MaxDegree(), n,
-                                                    _quad.Points()));
+        std::get<WignerAllVector>(_d)[n + _nMax] = std::make_unique<WignerAll>(
+            MaxDegree(), MaxDegree(), n, _quad.Points());
       }
     }
 
     if constexpr (std::same_as<Type, R2C> or std::same_as<Type, R2R>) {
+      _d = WignerNonNegativeVector(_nMax + 1);
       for (auto n = 0; n <= _nMax; n++) {
-        _dNonNegative.push_back(std::make_unique<WignerNonNegative>(
-            MaxDegree(), MaxDegree(), n, _quad.Points()));
+        std::get<WignerNonNegativeVector>(_d)[n] =
+            std::make_unique<WignerNonNegative>(MaxDegree(), MaxDegree(), n,
+                                                _quad.Points());
       }
     }
 
@@ -146,9 +153,8 @@ class Plan {
   // Store quadrature points and weights.
   GaussQuad::Quadrature1D<Real> _quad;
 
-  // Store the Wigner values
-  std::vector<std::unique_ptr<WignerAll>> _dAll;
-  std::vector<std::unique_ptr<WignerNonNegative>> _dNonNegative;
+  // Vector of pointers to the Wigner values for difference upper indices.
+  std::variant<WignerAllVector, WignerNonNegativeVector> _d;
 };
 
 }  // namespace GSHTrans

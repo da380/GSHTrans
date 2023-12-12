@@ -45,13 +45,10 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(FFTWpp)
 
-# add in TBB
-find_package(TBB REQUIRED)
 
 # Set up the library
 add_library (GSHTrans INTERFACE)
 target_link_libraries(GSHTrans INTERFACE
-  TBB::tbb
   Eigen3::Eigen
   FFTWpp
   GaussQuad)
