@@ -73,21 +73,19 @@ class Plan {
 
     // Generate wisdom for FFTW.
     if constexpr (std::same_as<Type, C2C>) {
-      _inLayout = FFTWpp::DataLayout(
-          1, std::vector{NumberOfLongitudes()}, NumberOfCoLatitudes(),
-          std::vector{NumberOfLongitudes()}, 1, NumberOfCoLatitudes());
+      _inLayout = FFTWpp::DataLayout(1, std::vector{NumberOfLongitudes()}, 1,
+                                     std::vector{NumberOfLongitudes()}, 1, 1);
       _outLayout = _inLayout;
       FFTWpp::GenerateWisdom<Complex, Complex, true>(_inLayout, _outLayout,
                                                      flag);
     }
 
     if constexpr (std::same_as<Type, R2C> or std::same_as<Type, R2R>) {
-      _inLayout = FFTWpp::DataLayout(
-          1, std::vector{NumberOfLongitudes()}, NumberOfCoLatitudes(),
-          std::vector{NumberOfLongitudes()}, 1, NumberOfCoLatitudes());
-      _outLayout = FFTWpp::DataLayout(
-          1, std::vector{NumberOfLongitudes() / 2 + 1}, NumberOfCoLatitudes(),
-          std::vector{NumberOfLongitudes() / 2 + 1}, 1, NumberOfCoLatitudes());
+      _inLayout = FFTWpp::DataLayout(1, std::vector{NumberOfLongitudes()}, 1,
+                                     std::vector{NumberOfLongitudes()}, 1, 1);
+      _outLayout =
+          FFTWpp::DataLayout(1, std::vector{NumberOfLongitudes() / 2 + 1}, 1,
+                             std::vector{NumberOfLongitudes() / 2 + 1}, 1, 1);
       FFTWpp::GenerateWisdom<Real, Complex, true>(_inLayout, _outLayout, flag);
     }
   }
@@ -100,7 +98,7 @@ class Plan {
 
   // Return the longitude spacing.
   auto DeltaLongitude() const {
-    return 2 * std::numbers::pi_v<Real> / static_cast<Real>(2 * _lMax - 1);
+    return 2 * std::numbers::pi_v<Real> / static_cast<Real>(2 * _lMax);
   }
 
   // Return numbers of points in each direction.
@@ -117,26 +115,74 @@ class Plan {
            std::ranges::views::transform([dphi](auto i) { return i * dphi; });
   }
 
-  // Return view to the longitudes.
-  auto LongitudesWithoutRepeat() const {
-    return Longitudes() | std::ranges::views::take(NumberOfLongitudes() - 1);
+  // View over colatitude index.
+  auto IndexCoLatitudes() const {
+    return std::ranges::views::iota(0, _lMax + 1);
+  }
+
+  // View over longitude index
+  auto IndexLongitudes() const {
+    return std::ranges::views::iota(0, 2 * _lMax);
   }
 
   // Integrate function.
   template <typename Function>
+  requires requires(Function f, Real theta, Real phi, Real w) {
+    std::invocable<Function, Real, Real>;
+    {f(theta, phi) * w};
+  }
   auto Integrate(Function f) {
-    auto integral = Real{0};
-    auto dphi = DeltaLongitude();
-    auto phi = LongitudesWithoutRepeat();
-    auto w = _quad.Weights().begin();
-    for (auto theta : CoLatitudes()) {
-      auto sum = std::accumulate(std::begin(phi), std::end(phi), Real{0},
-                                 [&theta, &dphi, &f](auto acc, auto phi) {
-                                   return acc + f(theta, phi) * dphi;
-                                 });
-      integral += sum * (*w++);
+    using FunctionValue = decltype(f(0, 0));
+    auto thetaIntegrand = [this, &f](auto theta) {
+      auto dPhi = DeltaLongitude();
+      auto phi = Longitudes();
+      return dPhi * std::accumulate(phi.begin(), phi.end(), FunctionValue{0},
+                                    [&theta, &f](auto acc, auto phi) {
+                                      return acc + f(theta, phi);
+                                    });
+    };
+    return _quad.Integrate(thetaIntegrand);
+  };
+
+    // Forward C2C transformation.
+  template <std::ranges::random_access_range RangeIn,
+            std::ranges::random_access_range RangeOut>
+  void Execute(int n, RangeIn& in,
+               RangeOut& out) requires std::same_as<Type, C2C> {
+    auto nPhi = NumberOfLongitudes();
+
+    auto tmp = std::vector<Complex>(nPhi);
+    auto tmpView = FFTWpp::DataView(tmp.begin(), tmp.end(), _outLayout);
+
+    auto start = in.begin();
+    for (auto ith : IndexCoLatitudes()) {
+      // Set the end of the current longitudes.
+      auto finish = std::next(start, nPhi);
+
+      // Make views to the FFT data.
+      auto inView = FFTWpp::DataView(start, finish, _inLayout);
+
+      // Form the FFT plan.
+      auto FFTPlan =
+          FFTWpp::Plan(inView, tmpView, FFTWpp::WisdomOnly, FFTWpp::Forward);
+
+      // Perform the FFT
+      FFTPlan.Execute();
+
+      // Loop over spherical harmonic degree.
+      for (int l = 0; l < _lMax; l++) {
+        // Loop over negative orders.
+        for (int m = -l; m < 0; m++) {
+        }
+
+        // Loop over positive orders.
+        for (int m = 0; m <= l; m++) {
+        }
+      }
+
+      // Set the start for the next longitudes
+      auto start = std::next(finish);
     }
-    return integral;
   }
 
  private:
