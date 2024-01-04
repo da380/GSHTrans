@@ -17,22 +17,20 @@
 #include <vector>
 
 #include "Concepts.h"
+#include "Indexing.h"
 #include "Legendre.h"
 #include "Wigner.h"
 
 namespace GSHTrans {
 
-template <std::floating_point Real, TransformType Type = C2C,
+template <RealFloatingPoint Real = double, TransformType Type = C2C,
           Normalisation Norm = Ortho>
 class Plan {
   // Local type aliases.
   using Complex = std::complex<Real>;
-  using WignerAll = Wigner<Real, All, Norm>;
-  using WignerNonNegative = Wigner<Real, NonNegative, Norm>;
-  using WignerAllPointer = std::unique_ptr<WignerAll>;
-  using WignerNonNegativePointer = std::unique_ptr<WignerNonNegative>;
-  using WignerAllVector = std::vector<WignerAllPointer>;
-  using WignerNonNegativeVector = std::vector<WignerNonNegativePointer>;
+  using WignerType = Wigner<Real, Type, Norm>;
+  using WignerPointer = std::unique_ptr<WignerType>;
+  using WignerVector = std::vector<WignerPointer>;
 
  public:
   Plan() = default;
@@ -42,45 +40,28 @@ class Plan {
         _nMax{nMax},
         _quad{GaussQuad::GaussLegendreQuadrature1D<Real>(_lMax + 1)} {
     // Check the inputs.
-    assert(_lMax >= 0);
-    assert(_nMax >= 0 && _nMax <= _lMax);
-
-    if constexpr (std::same_as<Type, R2R>) {
-      assert(MaxUpperIndex() == 0);
-    }
+    assert(MaxDegree() >= 0);
+    assert(MaxUpperIndex() >= 0 && MaxUpperIndex() <= MaxDegree());
 
     // Transform the quadrature points.
     _quad.Transform([](auto x) { return std::acos(-x); },
                     [](auto x) { return 1; });
 
     // Compute the Wigner d-functions.
-    if constexpr (std::same_as<Type, C2C>) {
-      _d = WignerAllVector(2 * _nMax + 1);
-      for (auto n = -_nMax; n <= _nMax; n++) {
-        std::get<WignerAllVector>(_d)[n + _nMax] = std::make_unique<WignerAll>(
-            MaxDegree(), MaxDegree(), n, _quad.Points());
-      }
+    _d = WignerVector(MaxUpperIndex() - MinUpperIndex() + 1);
+    for (auto n : UpperIndices()) {
+      _d[n - MinUpperIndex()] = std::make_unique<WignerType>(
+          MaxDegree(), MaxDegree(), n, _quad.Points());
     }
 
-    if constexpr (std::same_as<Type, R2C> or std::same_as<Type, R2R>) {
-      _d = WignerNonNegativeVector(_nMax + 1);
-      for (auto n = 0; n <= _nMax; n++) {
-        std::get<WignerNonNegativeVector>(_d)[n] =
-            std::make_unique<WignerNonNegative>(MaxDegree(), MaxDegree(), n,
-                                                _quad.Points());
-      }
-    }
-
-    // Generate wisdom for FFTW.
+    // Generate wisdom for FFTs.
     if constexpr (std::same_as<Type, C2C>) {
       _inLayout = FFTWpp::DataLayout(1, std::vector{NumberOfLongitudes()}, 1,
                                      std::vector{NumberOfLongitudes()}, 1, 1);
       _outLayout = _inLayout;
       FFTWpp::GenerateWisdom<Complex, Complex, true>(_inLayout, _outLayout,
                                                      flag);
-    }
-
-    if constexpr (std::same_as<Type, R2C> or std::same_as<Type, R2R>) {
+    } else {
       _inLayout = FFTWpp::DataLayout(1, std::vector{NumberOfLongitudes()}, 1,
                                      std::vector{NumberOfLongitudes()}, 1, 1);
       _outLayout =
@@ -93,8 +74,22 @@ class Plan {
   // Return the truncation degree.
   auto MaxDegree() const { return _lMax; }
 
+  // Return view to the degrees.
+  auto Degrees() const { return GSHTrans::Degrees(_lMax); }
+
   // Return the maximum upper index.
   auto MaxUpperIndex() const { return _nMax; }
+
+  auto MinUpperIndex() const {
+    if constexpr (std::same_as<Type, C2C>) {
+      return -_nMax;
+    } else {
+      return 0;
+    }
+  };
+
+  // Return view to the upper indices
+  auto UpperIndices() const { return GSHTrans::UpperIndices<Type>(_nMax); }
 
   // Return the longitude spacing.
   auto DeltaLongitude() const {
@@ -110,9 +105,9 @@ class Plan {
 
   // Return view to the longitudes.
   auto Longitudes() const {
-    auto dphi = DeltaLongitude();
+    auto dPhi = DeltaLongitude();
     return std::ranges::views::iota(0, 2 * _lMax) |
-           std::ranges::views::transform([dphi](auto i) { return i * dphi; });
+           std::ranges::views::transform([dPhi](auto i) { return i * dPhi; });
   }
 
   // View over colatitude index.
@@ -125,7 +120,7 @@ class Plan {
     return std::ranges::views::iota(0, 2 * _lMax);
   }
 
-  // Integrate function.
+  // Integrate a function over the unit sphere.
   template <typename Function>
   requires requires(Function f, Real theta, Real phi, Real w) {
     std::invocable<Function, Real, Real>;
@@ -144,23 +139,31 @@ class Plan {
     return _quad.Integrate(thetaIntegrand);
   };
 
-    // Forward C2C transformation.
+  // Forward  transformation.
   template <std::ranges::random_access_range RangeIn,
             std::ranges::random_access_range RangeOut>
-  void Execute(int n, RangeIn& in,
-               RangeOut& out) requires std::same_as<Type, C2C> {
-    auto nPhi = NumberOfLongitudes();
+  void Execute(RangeIn& in, RangeOut& out, int n, int lMax) {
+    const auto nPhi = NumberOfLongitudes();
 
+    // Initialise tempory vector to store FFT results.
     auto tmp = std::vector<Complex>(nPhi);
     auto tmpView = FFTWpp::DataView(tmp.begin(), tmp.end(), _outLayout);
 
-    auto start = in.begin();
-    for (auto ith : IndexCoLatitudes()) {
-      // Set the end of the current longitudes.
-      auto finish = std::next(start, nPhi);
+    // Set scale factor for nomalising the FFTs
+    const auto scaleFactor =
+        2 * std::numbers::pi_v<Real> / static_cast<Real>(nPhi);
+
+    // Iterator to the start of the in-data.
+    auto inStart = in.begin();
+    for (auto w : _quad.Weights()) {
+      // Scale the quadrature weight
+      w *= scaleFactor;
+
+      // Iterator to the end of the in-data for this colatitude.
+      auto inFinish = std::next(inStart, nPhi);
 
       // Make views to the FFT data.
-      auto inView = FFTWpp::DataView(start, finish, _inLayout);
+      auto inView = FFTWpp::DataView(inStart, inFinish, _inLayout);
 
       // Form the FFT plan.
       auto FFTPlan =
@@ -169,20 +172,31 @@ class Plan {
       // Perform the FFT
       FFTPlan.Execute();
 
-      // Loop over spherical harmonic degree.
-      for (int l = 0; l < _lMax; l++) {
-        // Loop over negative orders.
-        for (int m = -l; m < 0; m++) {
-        }
+      // Iterator to the start of the coefficients.
+      auto coefficientIterator = out.begin();
 
-        // Loop over positive orders.
-        for (int m = 0; m <= l; m++) {
+      // Iterator to the start to the Wigner functions.
+      auto wignerIterator = _d[n - MinUpperIndex()]->begin();
+
+      // Loop over the spherical harmonic coefficients.
+      for (auto [l, m] : SphericalHarmonicIndices(lMax)) {
+        auto i = m;
+        if constexpr (std::same_as<Type, C2C>) {
+          if (m < 0) i = nPhi + m;
         }
+        *coefficientIterator++ += *wignerIterator++ * tmp[i] * w;
       }
 
-      // Set the start for the next longitudes
-      auto start = std::next(finish);
+      // Set the start for the next section of the in-data.
+      inStart = inFinish;
     }
+  }
+
+  template <std::ranges::random_access_range RangeIn,
+            std::ranges::random_access_range RangeOut>
+  void Execute(RangeIn& in, RangeOut& out,
+               int n) requires std::same_as<Type, C2C> {
+    Execute(in, out, n, MaxDegree());
   }
 
  private:
@@ -200,7 +214,7 @@ class Plan {
   GaussQuad::Quadrature1D<Real> _quad;
 
   // Vector of pointers to the Wigner values for difference upper indices.
-  std::variant<WignerAllVector, WignerNonNegativeVector> _d;
+  WignerVector _d;
 };
 
 }  // namespace GSHTrans

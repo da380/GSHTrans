@@ -25,13 +25,14 @@ concept Normalisation = std::same_as<Norm, Ortho> or std::same_as<Norm, FourPi>;
 
 // Tag classes and concepts for transformation types.
 
-struct C2C {};
-struct R2C {};
-struct R2R {};
+// struct C2C {};
+// struct R2C {};
+
+using C2C = All;
+using R2C = NonNegative;
 
 template <typename Type>
-concept TransformType = std::same_as<Type, C2C> or std::same_as<Type, R2C> or
-    std::same_as<Type, R2R>;
+concept TransformType = std::same_as<Type, C2C> or std::same_as<Type, R2C>;
 
 // Concepts for real or complex floating point types.
 template <typename T>
