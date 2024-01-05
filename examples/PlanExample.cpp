@@ -13,9 +13,19 @@
 
 int main() {
   using namespace GSHTrans;
-
   using Real = double;
   using Complex = std::complex<double>;
+
+  auto lMax = 9;
+  auto mMax = 9;
+  auto nMax = 2;
+  auto theta = 1.0;
+
+  auto d = WignerNew<Real, All, All, Ortho>(lMax, mMax, theta, nMax);
+
+  std::cout << d.size() << std::endl;
+
+  /*
 
   auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -43,4 +53,6 @@ int main() {
   std::vector<Complex> y((lMax + 1) * (lMax + 1));
 
   plan.Execute(x, y, 0);
+
+  */
 }

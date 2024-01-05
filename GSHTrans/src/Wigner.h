@@ -13,6 +13,7 @@
 #include <memory>
 #include <numbers>
 #include <numeric>
+#include <ranges>
 #include <vector>
 
 #include "Concepts.h"
@@ -514,6 +515,105 @@ void Wigner<Real, Orders, Norm>::ComputeValues(Integer i, Real theta) {
     }
   }
 }
+
+//--------------------------------------------------------------------//
+//--------------------------------------------------------------------//
+//--------------------------------------------------------------------//
+//--------------------------------------------------------------------//
+//--------------------------------------------------------------------//
+//--------------------------------------------------------------------//
+//--------------------------------------------------------------------//
+//--------------------------------------------------------------------//
+//--------------------------------------------------------------------//
+
+template <std::floating_point Real, OrderRange ORange, OrderRange NRange,
+          Normalisation Norm>
+class WignerNew {
+  using Integer = std::vector<Real>::difference_type;
+  using Indices = SphericalHarmonicIndices<ORange>;
+
+ public:
+  // Set member types.
+  using value_type = Real;
+  using iterator = std::vector<Real>::iterator;
+  using const_iterator = std::vector<Real>::const_iterator;
+  using difference_type = std::vector<Real>::difference_type;
+  using size_type = std::vector<Real>::size_type;
+
+  WignerNew() = default;
+
+  template <RealFloatingPointRange RealRange>
+  WignerNew(Integer lMax, Integer mMax, RealRange &&thetaRange, Integer nMax)
+      : _lMax{lMax}, _mMax{mMax}, _nTheta(thetaRange.size()), _nMax{nMax} {
+    // Allocate storage for the values.
+    AllocateStorage();
+
+    // Precompute common values.
+    auto work = PreCompute();
+
+    // Loop over the upper indices.
+    for (auto n : UpperIndices<NRange>(_nMax)) {
+      // Loop over the angles.
+      for (auto theta : thetaRange) {
+      }
+    }
+  }
+
+  WignerNew(Integer lMax, Integer mMax, Real theta, Integer nMax)
+      : WignerNew(lMax, mMax, std::vector{theta}, nMax) {}
+
+  // Return basic range information.
+  auto begin() { return _data.begin(); }
+  auto end() { return _data.end(); }
+  auto cbegin() const { return _data.cbegin(); }
+  auto cend() const { return _data.cend(); }
+  auto size() const { return _data.size(); }
+
+ private:
+  Integer _lMax;            // Maximum degree.
+  Integer _mMax;            // Maximum order.
+  Integer _nMax;            // Maximum upper index.
+  Integer _nTheta;          // Number of colatitudes.
+  std::vector<Real> _data;  // Vector storing the values.
+
+  // Vector of spherical harmonic indices for each upper index.
+  std::vector<Indices> _indices;
+
+  // Compute the necessary storage capacity.
+  void AllocateStorage() {
+    std::ranges::transform(UpperIndices<NRange>(_nMax),
+                           std::back_inserter(_indices),
+                           [this](auto n) { return Indices(_lMax, _mMax, n); });
+    auto size =
+        std::accumulate(_indices.begin(), _indices.end(), Integer{1},
+                        [](auto acc, auto ind) { return acc + ind.size(); });
+    _data.resize(size);
+  }
+
+  // Pre-compute some numerical terms used repeatedly within
+  // calculation of the Wigner values for each (theta,n) pair.
+  auto PreCompute() const {
+    std::vector<Real> sqrtInt, invSqrtInt;
+    sqrtInt.reserve(_lMax + _mMax + 1);
+    invSqrtInt.reserve(_lMax + _mMax + 1);
+    std::generate_n(
+        std::back_inserter(sqrtInt), _lMax + _mMax + 1,
+        [m = 0]() mutable { return std::sqrt(static_cast<Real>(m++)); });
+    std::transform(sqrtInt.begin(), sqrtInt.end(),
+                   std::back_inserter(invSqrtInt),
+                   [](auto x) { return x > 0 ? 1 / x : 0; });
+    return std::tuple(std::make_shared<std::vector<Real>>(sqrtInt),
+                      std::make_shared<std::vector<Real>>(invSqrtInt));
+  }
+
+  // Compute the values for given theta and n.
+  void ComputeValues(iterator start, iterator finish, Real theta, Integer n,
+                     auto work) {
+    // Extract references to the pre-computed arrays.
+    auto &sqrtInt = *std::get<0>(work);
+    auto &invSqrtInt = *std::get<1>(work);
+  }
+};
 
 }  // namespace GSHTrans
 

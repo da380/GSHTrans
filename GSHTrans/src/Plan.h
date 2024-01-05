@@ -28,7 +28,7 @@ template <RealFloatingPoint Real = double, TransformType Type = C2C,
 class Plan {
   // Local type aliases.
   using Complex = std::complex<Real>;
-  using WignerType = Wigner<Real, Type, Norm>;
+  using WignerType = Wigner<Real, typename Type::Orders, Norm>;
   using WignerPointer = std::unique_ptr<WignerType>;
   using WignerVector = std::vector<WignerPointer>;
 
@@ -179,13 +179,12 @@ class Plan {
       auto wignerIterator = _d[n - MinUpperIndex()]->begin();
 
       // Loop over the spherical harmonic coefficients.
+      /*
       for (auto [l, m] : SphericalHarmonicIndices(lMax)) {
-        auto i = m;
-        if constexpr (std::same_as<Type, C2C>) {
-          if (m < 0) i = nPhi + m;
-        }
+        auto i = m < 0 ? nPhi + m : m;
         *coefficientIterator++ += *wignerIterator++ * tmp[i] * w;
       }
+      */
 
       // Set the start for the next section of the in-data.
       inStart = inFinish;
@@ -203,8 +202,6 @@ class Plan {
   // Store maximum orders and upper indices.
   int _lMax;
   int _nMax;
-
-  // View to the longitudes.
 
   // Store the data layouts
   FFTWpp::DataLayout _inLayout;

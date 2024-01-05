@@ -24,12 +24,12 @@ template <typename Norm>
 concept Normalisation = std::same_as<Norm, Ortho> or std::same_as<Norm, FourPi>;
 
 // Tag classes and concepts for transformation types.
-
-// struct C2C {};
-// struct R2C {};
-
-using C2C = All;
-using R2C = NonNegative;
+struct C2C {
+  using Orders = All;
+};
+struct R2C {
+  using Orders = NonNegative;
+};
 
 template <typename Type>
 concept TransformType = std::same_as<Type, C2C> or std::same_as<Type, R2C>;
