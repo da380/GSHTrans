@@ -80,7 +80,7 @@ Real WignerMaxUpperIndexAtOrder(Integer l, Integer m, Real logSinHalf,
 
 }  // namespace Details
 
-template <std::floating_point Real, OrderRange Orders,
+template <std::floating_point Real, IndexRange Orders,
           Normalisation Norm = Ortho>
 class Wigner {
   using Integer = std::vector<Real>::difference_type;
@@ -317,7 +317,7 @@ class Wigner {
   void ComputeValues(Integer i, Real theta);
 };
 
-template <std::floating_point Real, OrderRange Orders, Normalisation Norm>
+template <std::floating_point Real, IndexRange Orders, Normalisation Norm>
 void Wigner<Real, Orders, Norm>::ComputeValues(Integer i, Real theta) {
   using namespace Details;
 
@@ -526,11 +526,11 @@ void Wigner<Real, Orders, Norm>::ComputeValues(Integer i, Real theta) {
 //--------------------------------------------------------------------//
 //--------------------------------------------------------------------//
 
-template <std::floating_point Real, OrderRange ORange, OrderRange NRange,
+template <std::floating_point Real, IndexRange MRange, IndexRange NRange,
           Normalisation Norm>
 class WignerNew {
   using Integer = std::vector<Real>::difference_type;
-  using Indices = SphericalHarmonicIndices<ORange>;
+  using Indices = SphericalHarmonicIndices<MRange>;
 
  public:
   // Set member types.

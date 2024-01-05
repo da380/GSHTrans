@@ -1,5 +1,5 @@
-#ifndef GSH_TRANS_GQL_GRID_GUARD_H
-#define GSH_TRANS_GQL_GRID_GUARD_H
+#ifndef GSH_TRANS_GAUSS_LEGENDRE_GRID_GUARD_H
+#define GSH_TRANS_GAUSS_LEGENDRE_GRID_GUARD_H
 
 #include <GaussQuad/All>
 
@@ -11,11 +11,11 @@
 namespace GSHTrans {
 
 template <RealFloatingPoint Real = double, TransformType Type = C2C>
-class GLQGrid {
+class GaussLegendreGrid {
  public:
-  GLQGrid() = default;
+  GaussLegendreGrid() = default;
 
-  GLQGrid(int lMax, int nMax)
+  GaussLegendreGrid(int lMax, int nMax)
       : _lMax{lMax},
         _nMax{nMax},
         _quad{GaussQuad::GaussLegendreQuadrature1D<Real>(_lMax + 1)} {}
@@ -31,4 +31,4 @@ class GLQGrid {
 
 }  // namespace GSHTrans
 
-#endif  // GSH_TRANS_GQL_GRID_GUARD_H
+#endif  // GSH_TRANS_GAUSS_LEGENDRE_GRID_GUARD_H

@@ -12,9 +12,9 @@ namespace GSHTrans {
 auto Degrees(int lMax) { return std::ranges::views::iota(0, lMax + 1); }
 
 // View to the orders for a given degree
-template <OrderRange ORange>
+template <IndexRange MRange>
 auto Orders(int l) {
-  if constexpr (std::same_as<ORange, All>) {
+  if constexpr (std::same_as<MRange, All>) {
     return std::ranges::views::iota(-l, l + 1);
   } else {
     return std::ranges::views::iota(0, l + 1);
@@ -22,7 +22,7 @@ auto Orders(int l) {
 }
 
 // Return view to the upper indices for given nMax.
-template <OrderRange NRange>
+template <IndexRange NRange>
 auto UpperIndices(int nMax) {
   if constexpr (std::same_as<NRange, All>) {
     return std::ranges::views::iota(-nMax, nMax + 1);
@@ -31,9 +31,9 @@ auto UpperIndices(int nMax) {
   }
 }
 
-// Class for indexing spherical harmonic arrays based on
+// Class for indexing spherical harmonic coefficients based on
 // the "natural" ordering.
-template <OrderRange ORange = All>
+template <IndexRange MRange = All>
 class SphericalHarmonicIndices {
   using Integer = std::ptrdiff_t;
 
@@ -47,7 +47,7 @@ class SphericalHarmonicIndices {
     assert(_mMax <= _lMax);
     assert(_nAbs <= _lMax);
     _l = _nAbs;
-    if constexpr (std::same_as<ORange, All>) {
+    if constexpr (std::same_as<MRange, All>) {
       _m = -std::min(_l, _mMax);
     } else {
       _m = 0;
@@ -57,6 +57,10 @@ class SphericalHarmonicIndices {
   // Reduced constructor that assumes that mMax = lMax;
   SphericalHarmonicIndices(Integer lMax, Integer n)
       : SphericalHarmonicIndices(lMax, lMax, n) {}
+
+  // Reduced constructor that assumes mMax = lMax and nMax = 0;
+  SphericalHarmonicIndices(Integer lMax)
+      : SphericalHarmonicIndices(lMax, lMax, 0) {}
 
   // Return iterators to the begining and end.
   const auto& begin() const { return *this; }
@@ -69,7 +73,7 @@ class SphericalHarmonicIndices {
   void operator++() {
     if (_m == std::min(_l, _mMax)) {
       ++_l;
-      if constexpr (std::same_as<ORange, All>) {
+      if constexpr (std::same_as<MRange, All>) {
         _m = -std::min(_l, _mMax);
       } else {
         _m = 0;
@@ -84,7 +88,7 @@ class SphericalHarmonicIndices {
 
   // Application operator returns the index of the (l,m)th value.
   auto operator()(Integer l,
-                  Integer m) const requires std::same_as<ORange, All> {
+                  Integer m) const requires std::same_as<MRange, All> {
     assert(l >= _nAbs && l <= _lMax);
     assert(m >= -l && m <= l);
     if (_mMax >= _nAbs) {
@@ -96,7 +100,7 @@ class SphericalHarmonicIndices {
     }
   }
   auto operator()(Integer l,
-                  Integer m) const requires std::same_as<ORange, NonNegative> {
+                  Integer m) const requires std::same_as<MRange, NonNegative> {
     assert(l >= _nAbs && l <= _lMax);
     assert(m >= 0 && m <= l);
     if (_mMax >= _nAbs) {

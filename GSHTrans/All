@@ -6,7 +6,7 @@
 #include "src/Indexing.h"
 #include "src/Wigner.h"
 #include "src/Legendre.h"
-#include "src/GLQGrid.h"
+#include "src/GaussLegendreGrid.h"
 #include "src/Plan.h"
 
 #endif

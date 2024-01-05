@@ -13,7 +13,7 @@ struct All {};
 struct NonNegative {};
 
 template <typename Orders>
-concept OrderRange =
+concept IndexRange =
     std::same_as<Orders, All> or std::same_as<Orders, NonNegative>;
 
 // Tag classes and concepts for normalisations.
@@ -25,10 +25,10 @@ concept Normalisation = std::same_as<Norm, Ortho> or std::same_as<Norm, FourPi>;
 
 // Tag classes and concepts for transformation types.
 struct C2C {
-  using Orders = All;
+  using IndexRange = All;
 };
 struct R2C {
-  using Orders = NonNegative;
+  using IndexRange = NonNegative;
 };
 
 template <typename Type>

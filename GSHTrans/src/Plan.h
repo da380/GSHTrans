@@ -28,7 +28,7 @@ template <RealFloatingPoint Real = double, TransformType Type = C2C,
 class Plan {
   // Local type aliases.
   using Complex = std::complex<Real>;
-  using WignerType = Wigner<Real, typename Type::Orders, Norm>;
+  using WignerType = Wigner<Real, typename Type::IndexRange, Norm>;
   using WignerPointer = std::unique_ptr<WignerType>;
   using WignerVector = std::vector<WignerPointer>;
 

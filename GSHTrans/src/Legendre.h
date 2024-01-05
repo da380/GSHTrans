@@ -7,30 +7,30 @@
 
 namespace GSHTrans {
 
-template <std::floating_point Real, OrderRange Orders,
+template <std::floating_point Real, IndexRange MRange,
           Normalisation Norm = Ortho>
-class AssociatedLegendre : public Wigner<Real, Orders, Norm> {
+class AssociatedLegendre : public Wigner<Real, MRange, Norm> {
  public:
-  using typename Wigner<Real, Orders, Norm>::const_iterator;
-  using typename Wigner<Real, Orders, Norm>::difference_type;
-  using typename Wigner<Real, Orders, Norm>::iterator;
-  using typename Wigner<Real, Orders, Norm>::size_type;
-  using typename Wigner<Real, Orders, Norm>::value_type;
+  using typename Wigner<Real, MRange, Norm>::const_iterator;
+  using typename Wigner<Real, MRange, Norm>::difference_type;
+  using typename Wigner<Real, MRange, Norm>::iterator;
+  using typename Wigner<Real, MRange, Norm>::size_type;
+  using typename Wigner<Real, MRange, Norm>::value_type;
 
   AssociatedLegendre() = default;
 
   AssociatedLegendre(difference_type lMax, difference_type mMax, Real theta)
-      : Wigner<Real, Orders, Norm>(lMax, mMax, 0, theta) {}
+      : Wigner<Real, MRange, Norm>(lMax, mMax, 0, theta) {}
 
   template <RealFloatingPointIterator Iterator>
   AssociatedLegendre(difference_type lMax, difference_type mMax,
                      Iterator thetaStart, Iterator thetaFinish)
-      : Wigner<Real, Orders, Norm>(lMax, mMax, 0, thetaStart, thetaFinish) {}
+      : Wigner<Real, MRange, Norm>(lMax, mMax, 0, thetaStart, thetaFinish) {}
 
   template <RealFloatingPointRange Range>
   AssociatedLegendre(difference_type lMax, difference_type mMax,
                      difference_type n, Range&& theta)
-      : Wigner<Real, Orders, Norm>(lMax, mMax, 0, theta) {}
+      : Wigner<Real, MRange, Norm>(lMax, mMax, 0, theta) {}
 };
 
 template <std::floating_point Real, Normalisation Norm = Ortho>
