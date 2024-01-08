@@ -14,6 +14,17 @@
 int main() {
   using namespace GSHTrans;
 
+  using Real = double;
+
+  int lMax = 5;
+  int mMax = 3;
+  int nMax = 2;
+  auto theta = std::vector<Real>(10, 1.0);
+
+  auto d = WignerNew<Real, All, All, Ortho>(lMax, mMax, nMax, theta);
+
+  /*
+
   int lMax = 100;
   int mMax = 50;
   int n = 0;
@@ -34,4 +45,6 @@ int main() {
             << p4(4, 2) << std::endl;
 
   std::cout << p1(0, 4, 0) << " " << p5(0, 4) << std::endl;
+
+  */
 }

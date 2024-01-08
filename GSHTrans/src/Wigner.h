@@ -526,92 +526,96 @@ void Wigner<Real, Orders, Norm>::ComputeValues(Integer i, Real theta) {
 //--------------------------------------------------------------------//
 //--------------------------------------------------------------------//
 
-template <std::floating_point Real, IndexRange MRange, IndexRange NRange,
+template <RealFloatingPoint Real, IndexRange MRange, IndexRange NRange,
           Normalisation Norm>
 class WignerNew {
-  using Integer = std::vector<Real>::difference_type;
-  using Indices = SphericalHarmonicIndices<MRange>;
+  using Vector = std::vector<Real>;
+  using Integer = Vector::difference_type;
 
  public:
   // Set member types.
   using value_type = Real;
-  using iterator = std::vector<Real>::iterator;
-  using const_iterator = std::vector<Real>::const_iterator;
-  using difference_type = std::vector<Real>::difference_type;
-  using size_type = std::vector<Real>::size_type;
+  using iterator = Vector::iterator;
+  using const_iterator = Vector::const_iterator;
+  using difference_type = Vector::difference_type;
+  using size_type = Vector::size_type;
 
   WignerNew() = default;
 
   template <RealFloatingPointRange RealRange>
-  WignerNew(Integer lMax, Integer mMax, RealRange &&thetaRange, Integer nMax)
-      : _lMax{lMax}, _mMax{mMax}, _nTheta(thetaRange.size()), _nMax{nMax} {
-    // Allocate storage for the values.
+  WignerNew(Integer lMax, Integer mMax, Integer nMax, RealRange &&theta)
+      : _lMax{lMax}, _mMax{mMax}, _nMax{nMax}, _nTheta(theta.size()) {
     AllocateStorage();
-
-    // Precompute common values.
-    auto work = PreCompute();
-
-    // Loop over the upper indices.
-    for (auto n : UpperIndices<NRange>(_nMax)) {
-      // Loop over the angles.
-      for (auto theta : thetaRange) {
-      }
-    }
   }
 
-  WignerNew(Integer lMax, Integer mMax, Real theta, Integer nMax)
-      : WignerNew(lMax, mMax, std::vector{theta}, nMax) {}
+  WignerNew(Integer lMax, Integer mMax, Integer nMax, Real theta)
+      : WignerNew(lMax, mMax, nMax, std::vector{theta}) {}
 
-  // Return basic range information.
+  // Return basic information.
+  auto MaxDegree() const { return _lMax; }
+  auto MaxOrder() const { return _mMax; }
+  auto MaxUpperIndex() const { return _nMax; }
+  auto NumberOfAngles() const { return _nTheta; }
+  auto size() const { return _data.size(); }
   auto begin() { return _data.begin(); }
   auto end() { return _data.end(); }
-  auto cbegin() const { return _data.cbegin(); }
-  auto cend() const { return _data.cend(); }
-  auto size() const { return _data.size(); }
+
+  // Return view to the data for given theta and upper index.
+  auto operator()(Integer n, Integer iTheta) {
+    auto offset = Offset(n, iTheta);
+    auto start = std::next(begin(), offset);
+    return SHViewFixedN(_lMax, _mMax, n, start);
+  }
 
  private:
-  Integer _lMax;            // Maximum degree.
-  Integer _mMax;            // Maximum order.
-  Integer _nMax;            // Maximum upper index.
-  Integer _nTheta;          // Number of colatitudes.
-  std::vector<Real> _data;  // Vector storing the values.
+  Integer _lMax;    // Maximum degree.
+  Integer _mMax;    // Maximum order.
+  Integer _nMax;    // Maximum upper index.
+  Integer _nTheta;  // Number of colatitudes.
 
-  // Vector of spherical harmonic indices for each upper index.
-  std::vector<Indices> _indices;
+  // Vector storing the values.
+  Vector _data;
 
   // Compute the necessary storage capacity.
   void AllocateStorage() {
-    std::ranges::transform(UpperIndices<NRange>(_nMax),
-                           std::back_inserter(_indices),
-                           [this](auto n) { return Indices(_lMax, _mMax, n); });
-    auto size =
-        std::accumulate(_indices.begin(), _indices.end(), Integer{1},
-                        [](auto acc, auto ind) { return acc + ind.size(); });
+    auto upperIndices = UpperIndices<NRange>(_nMax);
+    auto size = std::accumulate(
+        upperIndices.begin(), upperIndices.end(), Integer{0},
+        [this](auto acc, auto n) {
+          return acc + SHIndices(_lMax, _mMax, n).size() * NumberOfAngles();
+        });
     _data.resize(size);
+  }
+
+  // Compute offset to the start of the data for given
+  // upper index and angle.
+  auto OffSet(Integer n, Integer iTheta) const {
+    auto upperIndices =
+        UpperIndices<NRange>(_nMax) |
+        std::ranges::views::filter([n](auto np) { return np < n; });
+    auto size = SHIndices(_lMax, _mMax, n).size() * iTheta;
+    return std::accumulate(upperIndices.begin(), upperIndices.end(), size,
+                           [this](auto acc, auto n) {
+                             return acc + SHIndices(_lMax, _mMax, n).size() *
+                                              NumberOfAngles();
+                           });
   }
 
   // Pre-compute some numerical terms used repeatedly within
   // calculation of the Wigner values for each (theta,n) pair.
   auto PreCompute() const {
-    std::vector<Real> sqrtInt, invSqrtInt;
-    sqrtInt.reserve(_lMax + _mMax + 1);
-    invSqrtInt.reserve(_lMax + _mMax + 1);
-    std::generate_n(
-        std::back_inserter(sqrtInt), _lMax + _mMax + 1,
-        [m = 0]() mutable { return std::sqrt(static_cast<Real>(m++)); });
+    auto size = MaxDegree() + MaxOrder() + 1;
+    Vector sqrtInt, invSqrtInt;
+    sqrtInt.reserve(size);
+    invSqrtInt.reserve(size);
+    std::generate_n(std::back_inserter(sqrtInt), size, [m = 0]() mutable {
+      return std::sqrt(static_cast<Real>(m++));
+    });
     std::transform(sqrtInt.begin(), sqrtInt.end(),
                    std::back_inserter(invSqrtInt),
                    [](auto x) { return x > 0 ? 1 / x : 0; });
-    return std::tuple(std::make_shared<std::vector<Real>>(sqrtInt),
-                      std::make_shared<std::vector<Real>>(invSqrtInt));
-  }
-
-  // Compute the values for given theta and n.
-  void ComputeValues(iterator start, iterator finish, Real theta, Integer n,
-                     auto work) {
-    // Extract references to the pre-computed arrays.
-    auto &sqrtInt = *std::get<0>(work);
-    auto &invSqrtInt = *std::get<1>(work);
+    return std::tuple(std::make_shared<Vector>(sqrtInt),
+                      std::make_shared<Vector>(invSqrtInt));
   }
 };
 
