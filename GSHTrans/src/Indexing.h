@@ -10,30 +10,7 @@
 
 namespace GSHTrans {
 
-// Return view to the degrees for a given maximum value.
-auto Degrees(int lMax) { return std::ranges::views::iota(0, lMax + 1); }
-
-// View to the orders for a given degree
 template <IndexRange MRange>
-auto Orders(int mMax) {
-  if constexpr (std::same_as<MRange, All>) {
-    return std::ranges::views::iota(-mMax, mMax + 1);
-  } else {
-    return std::ranges::views::iota(0, mMax + 1);
-  }
-}
-
-// Return view to the upper indices for given nMax.
-template <IndexRange NRange>
-auto UpperIndices(int nMax) {
-  if constexpr (std::same_as<NRange, All>) {
-    return std::ranges::views::iota(-nMax, nMax + 1);
-  } else {
-    return std::ranges::views::iota(0, nMax + 1);
-  }
-}
-
-template <IndexRange MRange = All>
 class GSHIndices {
   using Integer = std::ptrdiff_t;
 
@@ -167,7 +144,7 @@ class GSHIndices {
 };
 
 template <RealOrComplexFloatingPoint Scalar, IndexRange MRange>
-class GSHViewFixedL {
+class GSHViewDegree {
  public:
   using value_type = Scalar;
   using iterator = Scalar*;
@@ -175,10 +152,10 @@ class GSHViewFixedL {
   using difference_type = std::ptrdiff_t;
   using size_type = std::size_t;
 
-  GSHViewFixedL() = delete;
+  GSHViewDegree() = delete;
 
   template <RealOrComplexFloatingPointIterator Iterator>
-  GSHViewFixedL(difference_type l, difference_type mMax, Iterator start)
+  GSHViewDegree(difference_type l, difference_type mMax, Iterator start)
       : _l{l}, _mMax{mMax}, _start{&*start} {
     assert(_l >= 0);
     assert(_mMax >= 0);
@@ -203,6 +180,14 @@ class GSHViewFixedL {
     }
   }
 
+  auto& operator()(difference_type m) {
+    if constexpr (std::same_as<MRange, All>) {
+      return _start[_mMax + m];
+    } else {
+      return _start[m];
+    }
+  }
+
   auto Degree() const { return _l; }
 
   auto MinOrder() const {
@@ -219,10 +204,19 @@ class GSHViewFixedL {
     return std::ranges::views::iota(MinOrder(), MaxOrder() + 1);
   }
 
-   private:
-    difference_type _l;
-    difference_type _mMax;
-    iterator _start;
+  auto OrdersDrop(difference_type i) const {
+    auto orders = std::ranges::views::iota(MinOrder(), MaxOrder() + 1 - i);
+    if constexpr (std::same_as<MRange, All>) {
+      return orders | std::ranges::views::drop(i);
+    } else {
+      return orders;
+    }
+  }
+
+ private:
+  difference_type _l;
+  difference_type _mMax;
+  iterator _start;
 };
 
 template <RealOrComplexFloatingPoint Scalar, IndexRange MRange>
@@ -246,9 +240,7 @@ class GSHView {
   auto end() { return std::next(_start, size()); }
 
   auto MinDegree() const { return _indices.MinDegree(); }
-
   auto MaxDegree() const { return _indices.MaxDegree(); }
-
   auto Degrees() const {
     return std::ranges::views::iota(MinDegree(), MaxDegree() + 1);
   }
@@ -256,15 +248,15 @@ class GSHView {
   auto operator()(difference_type l) {
     auto offset = _indices(l, _indices.MinOrder(l));
     auto start = std::next(_start, offset);
-    return GSHViewFixedL<Scalar, MRange>(l, _indices.MaxOrder(l), start);
+    return GSHViewDegree<Scalar, MRange>(l, _indices.MaxOrder(l), start);
   }
 
-  auto Indices() const { return _indices; }
+    auto Indices() const { return _indices; }
 
- private:
-  GSHIndices<MRange> _indices;
-  iterator _start;
-};
+   private:
+    GSHIndices<MRange> _indices;
+    iterator _start;
+  };
 
 }  // namespace GSHTrans
 

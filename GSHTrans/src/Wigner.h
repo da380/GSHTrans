@@ -530,7 +530,7 @@ template <RealFloatingPoint Real, IndexRange MRange, IndexRange NRange,
           Normalisation Norm>
 class WignerNew {
   using Vector = std::vector<Real>;
-  using Integer = Vector::difference_type;
+  using Int = Vector::difference_type;
 
  public:
   // Set member types.
@@ -543,87 +543,238 @@ class WignerNew {
   WignerNew() = default;
 
   template <RealFloatingPointRange RealRange>
-  WignerNew(Integer lMax, Integer mMax, Integer nMax, RealRange &&theta)
-      : _lMax{lMax}, _mMax{mMax}, _nMax{nMax}, _nTheta(theta.size()) {
+  WignerNew(Int lMax, Int mMax, Int nMax, RealRange &&thetaRange)
+      : _lMax{lMax}, _mMax{mMax}, _nMax{nMax}, _nTheta(thetaRange.size()) {
     AllocateStorage();
+    auto preCompute = PreCompute();
+    for (auto n : UpperIndices()) {
+      auto iTheta = Int{0};
+      for (auto theta : thetaRange) {
+        auto d = operator()(n, iTheta++);
+        Compute(n, theta, d, preCompute);
+      }
+    }
   }
 
-  WignerNew(Integer lMax, Integer mMax, Integer nMax, Real theta)
+  WignerNew(Int lMax, Int mMax, Int nMax, Real theta)
       : WignerNew(lMax, mMax, nMax, std::vector{theta}) {}
 
   // Return basic information.
   auto MaxDegree() const { return _lMax; }
   auto MaxOrder() const { return _mMax; }
-  auto MaxUpperIndex() const { return _nMax; }
+
   auto NumberOfAngles() const { return _nTheta; }
   auto size() const { return _data.size(); }
   auto begin() { return _data.begin(); }
   auto end() { return _data.end(); }
 
-  // Return view to upper indices.
-  auto UpperIndices() const { return GSHTrans::UpperIndices<NRange>(_nMax); }
+  auto MinUpperIndex() const {
+    if constexpr (std::same_as<NRange, All>) {
+      return -_nMax;
+    } else {
+      return Int{0};
+    }
+  }
+  auto MaxUpperIndex() const { return _nMax; }
+  auto UpperIndices() const {
+    return std::ranges::views::iota(MinUpperIndex(), MaxUpperIndex() + 1);
+  }
 
   // Return view to angle indices.
-  auto AngleIndices() const { return std::ranges::views::iota(0, _nTheta); }
+  auto AngleIndices() const {
+    return std::ranges::views::iota(Int{0}, _nTheta);
+  }
 
   // Return view to the data for given theta and upper index.
-  auto operator()(Integer n, Integer iTheta) {
+  auto operator()(Int n, Int iTheta) {
     auto offset = Offset(n, iTheta);
     auto start = std::next(begin(), offset);
     return GSHView<Real, MRange>(_lMax, _mMax, n, start);
   }
 
- private:
-  Integer _lMax;    // Maximum degree.
-  Integer _mMax;    // Maximum order.
-  Integer _nMax;    // Maximum upper index.
-  Integer _nTheta;  // Number of colatitudes.
+   private:
+    Int _lMax;    // Maximum degree.
+    Int _mMax;    // Maximum order.
+    Int _nMax;    // Maximum upper index.
+    Int _nTheta;  // Number of colatitudes.
 
-  // Vector storing the values.
-  Vector _data;
+    // Vector storing the values.
+    Vector _data;
 
-  // Compute the necessary storage capacity.
-  void AllocateStorage() {
-    auto upperIndices = UpperIndices();
-    auto size = std::accumulate(
-        upperIndices.begin(), upperIndices.end(), Integer{0},
-        [this](auto acc, auto n) {
-          return acc + GSHIndices(_lMax, _mMax, n).size() * NumberOfAngles();
-        });
-    _data.resize(size);
-    auto i = 0;
-    for (auto &x : _data) x = i++;
-  }
+    // Compute the necessary storage capacity.
+    void AllocateStorage() {
+      auto upperIndices = UpperIndices();
+      auto size = std::accumulate(
+          upperIndices.begin(), upperIndices.end(), Int{0},
+          [this](auto acc, auto n) {
+            return acc + GSHIndices<MRange>(_lMax, _mMax, n).size() *
+                             NumberOfAngles();
+          });
+      _data.resize(size);
+    }
 
-  // Compute offset to the start of the data for given
-  // upper index and angle.
-  auto Offset(Integer n, Integer iTheta) const {
-    auto upperIndices = UpperIndices() | std::ranges::views::filter(
-                                             [n](auto np) { return np < n; });
-    auto size = GSHIndices(_lMax, _mMax, n).size() * iTheta;
-    return std::accumulate(upperIndices.begin(), upperIndices.end(), size,
-                           [this](auto acc, auto n) {
-                             return acc + GSHIndices(_lMax, _mMax, n).size() *
-                                              NumberOfAngles();
-                           });
-  }
+    // Compute offset to the start of the data for given
+    // upper index and angle.
+    auto Offset(Int n, Int iTheta) const {
+      auto upperIndices = UpperIndices() | std::ranges::views::filter(
+                                               [n](auto np) { return np < n; });
+      return std::accumulate(
+          upperIndices.begin(), upperIndices.end(),
+          GSHIndices<MRange>(_lMax, _mMax, n).size() * iTheta,
+          [this](auto acc, auto np) {
+            return acc + GSHIndices<MRange>(_lMax, _mMax, np).size() *
+                             NumberOfAngles();
+          });
+    }
 
-  // Pre-compute some numerical terms used repeatedly within
-  // calculation of the Wigner values for each (theta,n) pair.
-  auto PreCompute() const {
-    auto size = MaxDegree() + MaxOrder() + 1;
-    Vector sqrtInt, invSqrtInt;
-    sqrtInt.reserve(size);
-    invSqrtInt.reserve(size);
-    std::generate_n(std::back_inserter(sqrtInt), size, [m = 0]() mutable {
-      return std::sqrt(static_cast<Real>(m++));
-    });
-    std::transform(sqrtInt.begin(), sqrtInt.end(),
-                   std::back_inserter(invSqrtInt),
-                   [](auto x) { return x > 0 ? 1 / x : 0; });
-    return std::tuple(std::make_shared<Vector>(sqrtInt),
-                      std::make_shared<Vector>(invSqrtInt));
-  }
+    // Pre-compute some numerical terms used repeatedly within
+    // calculation of the Wigner values for each (theta,n) pair.
+    auto PreCompute() const {
+      auto size = MaxDegree() + MaxOrder() + 1;
+      Vector sqrtInt, sqrtIntInv;
+      sqrtInt.reserve(size);
+      sqrtIntInv.reserve(size);
+      std::generate_n(
+          std::back_inserter(sqrtInt), size,
+          [m = Int{0}]() mutable { return std::sqrt(static_cast<Real>(m++)); });
+      std::transform(sqrtInt.begin(), sqrtInt.end(),
+                     std::back_inserter(sqrtIntInv),
+                     [](auto x) { return x > 0 ? 1 / x : 0; });
+      return std::tuple(std::make_shared<Vector>(sqrtInt),
+                        std::make_shared<Vector>(sqrtIntInv));
+    }
+
+    constexpr auto MinusOneToPower(Int m) { return m % 2 ? -1 : 1; }
+
+    Real WignerMinOrder(Int l, Int n, Real logSinHalf, Real logCosHalf,
+                        bool atLeft, bool atRight) {
+      // Check the inputs.
+      assert(l >= 0);
+      assert(std::abs(n) <= l);
+
+      // Deal with l == 0 case
+      if (l == 0) return static_cast<Real>(1);
+
+      // Deal with special case at the left boundary.
+      if (atLeft) {
+        return n == -l ? static_cast<Real>(1) : static_cast<Real>(0);
+      }
+
+      // Deal with special case at the right boundary.
+      if (atRight) {
+        return n == l ? static_cast<Real>(1) : static_cast<Real>(0);
+      }
+
+      // Deal with the general case.
+      auto Fl = static_cast<Real>(l);
+      auto Fn = static_cast<Real>(n);
+      using std::exp;
+      using std::lgamma;
+      return exp(
+          static_cast<Real>(0.5) *
+              (lgamma(2 * Fl + 1) - lgamma(Fl - Fn + 1) - lgamma(Fl + Fn + 1)) +
+          (Fl + Fn) * logSinHalf + (Fl - Fn) * logCosHalf);
+    }
+
+    Real WignerMaxOrder(Int l, Int n, Real logSinHalf, Real logCosHalf,
+                        bool atLeft, bool atRight) {
+      return MinusOneToPower(n + l) *
+             WignerMinOrder(l, -n, logSinHalf, logCosHalf, atLeft, atRight);
+    }
+
+    Real WignerMinUpperIndex(Int l, Int m, Real logSinHalf, Real logCosHalf,
+                             bool atLeft, bool atRight) {
+      return WignerMaxOrder(l, -m, logSinHalf, logCosHalf, atLeft, atRight);
+    }
+
+    Real WignerMaxUpperIndex(Int l, Int m, Real logSinHalf, Real logCosHalf,
+                             bool atLeft, bool atRight) {
+      return WignerMinOrder(l, -m, logSinHalf, logCosHalf, atLeft, atRight);
+    }
+
+    void Compute(Int n, Real theta, GSHView<Real, MRange> d,
+                 const auto preCompute) {
+      // Get references to the pre-computed values.
+      auto &sqrtInt = *std::get<0>(preCompute);
+      auto &sqrtIntInv = *std::get<1>(preCompute);
+
+      // Pre-compute and store some terms.
+      const auto nAbs = std::abs(n);
+      const auto lMin = d.MinDegree();
+      const auto lMax = d.MaxDegree();
+      const auto cos = std::cos(theta);
+      const auto SinHalf = std::sin(0.5 * theta);
+      const auto CosHalf = std::cos(0.5 * theta);
+      const auto atLeft = SinHalf < std::numeric_limits<Real>::min();
+      const auto atRight = CosHalf < std::numeric_limits<Real>::min();
+      const auto logSinHalf = atLeft ? static_cast<Real>(0) : std::log(SinHalf);
+      const auto logCosHalf =
+          atRight ? static_cast<Real>(0) : std::log(CosHalf);
+
+      // Set the values for l == |n|
+      {
+        auto l = lMin;
+        auto p = d(l);
+        if (n >= 0) {
+          for (auto m : p.Orders()) {
+            p(m) = WignerMaxUpperIndex(l, m, logSinHalf, logCosHalf, atLeft,
+                                       atRight);
+          }
+        } else {
+          for (auto m : p.Orders()) {
+            p(m) = WignerMinUpperIndex(l, m, logSinHalf, logCosHalf, atLeft,
+                                       atRight);
+          }
+        }
+        if (l == lMax) return;
+      }
+
+      // Set the values for l == n+1 if needed.
+      {
+        auto l = lMin + 1;
+        auto pm1 = d(l - 1);
+        auto p = d(l);
+
+        /*
+
+        auto l = lMin + 1;
+        auto pm1 = d(l - 1);
+        auto p = d(l);
+        auto mMin = p.MinOrder();
+        auto mMax = p.MaxOrder();
+        if constexpr (std::same_as<MRange, All>) {
+          if (l <= mMax) {
+            p(mMin) =
+                WignerMinOrder(l, n, logSinHalf, logCosHalf, atLeft, atRight);
+            mMin++;
+          }
+        }
+        auto alpha = (2 * l - 1) * l * cos * sqrtIntInv[l + nAbs];
+        auto beta = (2 * l - 1) * sqrtIntInv[l + nAbs];
+        if (n < 0) beta *= -1;
+        std::ranges::transform(
+            pm1, p.Drop(1).begin(), [&, this, m = mMin](auto &pm1) {
+              auto f1 =
+                  (alpha - beta * m) * sqrtIntInv[l - m] * sqrtIntInv[l + m];
+              return f1 * pm1;
+            });
+        if (l <= mMax) {
+          p(mMax) =
+              WignerMaxOrder(l, n, logSinHalf, logCosHalf, atLeft, atRight);
+        }
+
+        */
+      }
+
+      // Do the remaining degrees
+      for (auto l : d.Degrees() | std::ranges::views::drop(2)) {
+        auto pm2 = d(l - 2);
+        auto pm1 = d(l - 1);
+        auto p = d(l);
+        auto mMin = p.MinOrder();
+        auto mMax = p.MaxOrder();
+      }
+    }
 };
 
 }  // namespace GSHTrans
