@@ -19,9 +19,24 @@ int main() {
   int lMax = 5;
   int mMax = 3;
   int nMax = 2;
-  auto theta = std::vector<Real>(10, 1.0);
+  auto theta = std::vector<Real>(2, 1.0);
 
-  auto d = WignerNew<Real, All, All, Ortho>(lMax, mMax, nMax, theta);
+  auto d = WignerNew<Real, All, NonNegative, Ortho>(lMax, mMax, nMax, theta);
+
+  auto i = 0;
+  for (auto n : d.UpperIndices()) {
+    for (auto iTheta : d.AngleIndices()) {
+      auto e = d(n, iTheta);
+      for (auto l : e.Degrees()) {
+        auto f = e(l);
+        for (auto m : f.Orders()) {
+          std::cout << n << " " << iTheta << " " << l << " " << m << " "
+                    << f(m) - i++ << std::endl;
+        }
+      }
+    }
+    std::cout << "-------------------------------\n";
+  }
 
   /*
 

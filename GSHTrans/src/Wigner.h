@@ -560,11 +560,17 @@ class WignerNew {
   auto begin() { return _data.begin(); }
   auto end() { return _data.end(); }
 
+  // Return view to upper indices.
+  auto UpperIndices() const { return GSHTrans::UpperIndices<NRange>(_nMax); }
+
+  // Return view to angle indices.
+  auto AngleIndices() const { return std::ranges::views::iota(0, _nTheta); }
+
   // Return view to the data for given theta and upper index.
   auto operator()(Integer n, Integer iTheta) {
     auto offset = Offset(n, iTheta);
     auto start = std::next(begin(), offset);
-    return SHViewFixedN(_lMax, _mMax, n, start);
+    return GSHView<Real, MRange>(_lMax, _mMax, n, start);
   }
 
  private:
@@ -578,25 +584,26 @@ class WignerNew {
 
   // Compute the necessary storage capacity.
   void AllocateStorage() {
-    auto upperIndices = UpperIndices<NRange>(_nMax);
+    auto upperIndices = UpperIndices();
     auto size = std::accumulate(
         upperIndices.begin(), upperIndices.end(), Integer{0},
         [this](auto acc, auto n) {
-          return acc + SHIndices(_lMax, _mMax, n).size() * NumberOfAngles();
+          return acc + GSHIndices(_lMax, _mMax, n).size() * NumberOfAngles();
         });
     _data.resize(size);
+    auto i = 0;
+    for (auto &x : _data) x = i++;
   }
 
   // Compute offset to the start of the data for given
   // upper index and angle.
-  auto OffSet(Integer n, Integer iTheta) const {
-    auto upperIndices =
-        UpperIndices<NRange>(_nMax) |
-        std::ranges::views::filter([n](auto np) { return np < n; });
-    auto size = SHIndices(_lMax, _mMax, n).size() * iTheta;
+  auto Offset(Integer n, Integer iTheta) const {
+    auto upperIndices = UpperIndices() | std::ranges::views::filter(
+                                             [n](auto np) { return np < n; });
+    auto size = GSHIndices(_lMax, _mMax, n).size() * iTheta;
     return std::accumulate(upperIndices.begin(), upperIndices.end(), size,
                            [this](auto acc, auto n) {
-                             return acc + SHIndices(_lMax, _mMax, n).size() *
+                             return acc + GSHIndices(_lMax, _mMax, n).size() *
                                               NumberOfAngles();
                            });
   }

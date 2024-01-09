@@ -34,15 +34,15 @@ auto UpperIndices(int nMax) {
 }
 
 template <IndexRange MRange = All>
-class SHIndices {
+class GSHIndices {
   using Integer = std::ptrdiff_t;
 
  public:
-  SHIndices() = delete;
+  GSHIndices() = delete;
 
   // General constructor taking in lMax, mMax, and n.
-  SHIndices(Integer lMax, Integer mMax, Integer n)
-      : _lMax{lMax}, _mMax{mMax}, _nAbs{std::abs(n)} {
+  GSHIndices(Integer lMax, Integer mMax, Integer n)
+      : _lMax{lMax}, _mMax{mMax}, _n{n}, _nAbs{std::abs(_n)} {
     assert(_lMax >= 0);
     assert(_mMax <= _lMax);
     assert(_nAbs <= _lMax);
@@ -55,17 +55,17 @@ class SHIndices {
   }
 
   // Reduced constructor that assumes that mMax = lMax;
-  SHIndices(Integer lMax, Integer n) : SHIndices(lMax, lMax, n) {}
+  GSHIndices(Integer lMax, Integer n) : GSHIndices(lMax, lMax, n) {}
 
   // Reduced constructor that assumes mMax = lMax and nMax = 0;
-  SHIndices(Integer lMax) : SHIndices(lMax, lMax, 0) {}
+  GSHIndices(Integer lMax) : GSHIndices(lMax, lMax, 0) {}
 
   // Return iterators to the begining and end.
   const auto& begin() const { return *this; }
   const auto& end() const { return *this; }
 
   // Not equals required for terminating loops.
-  auto operator!=(const SHIndices&) const { return _l <= _lMax; }
+  auto operator!=(const GSHIndices&) const { return _l <= _lMax; }
 
   // Increment operator.
   void operator++() {
@@ -115,6 +115,14 @@ class SHIndices {
   // Return the total number of (l,m) values.
   auto size() const { return operator()(_lMax, _mMax) + 1; }
 
+  // Return the upper index and its absolute value.
+  auto UpperIndex() const { return _n; }
+  auto AbsUpperIndex() const { return _nAbs; }
+
+  // Return the minimum and maximum degrees.
+  auto MinDegree() const { return _nAbs; }
+  auto MaxDegree() const { return _lMax; }
+
   // Return minimum order for given degree.
   auto MinOrder(Integer l) const {
     if constexpr (std::same_as<MRange, All>) {
@@ -152,20 +160,26 @@ class SHIndices {
  private:
   Integer _lMax;
   Integer _mMax;
+  Integer _n;
   Integer _nAbs;
   Integer _l;
   Integer _m;
 };
 
-template <IndexRange MRange, RealOrComplexFloatingPointIterator Iterator>
-class SHViewFixedNL {
-  using Integer = std::iterator_traits<Iterator>::difference_type;
-
+template <RealOrComplexFloatingPoint Scalar, IndexRange MRange>
+class GSHViewFixedL {
  public:
-  SHViewFixedNL() = default;
+  using value_type = Scalar;
+  using iterator = Scalar*;
+  using const_iterator = Scalar const*;
+  using difference_type = std::ptrdiff_t;
+  using size_type = std::size_t;
 
-  SHViewFixedNL(Integer l, Integer mMax, Iterator start)
-      : _l{l}, _mMax{mMax}, _start{start} {
+  GSHViewFixedL() = delete;
+
+  template <RealOrComplexFloatingPointIterator Iterator>
+  GSHViewFixedL(difference_type l, difference_type mMax, Iterator start)
+      : _l{l}, _mMax{mMax}, _start{&*start} {
     assert(_l >= 0);
     assert(_mMax >= 0);
   }
@@ -181,7 +195,7 @@ class SHViewFixedNL {
   auto begin() { return _start; }
   auto end() { return std::next(_start, size()); }
 
-  auto operator()(Integer m) const {
+  auto operator()(difference_type m) const {
     if constexpr (std::same_as<MRange, All>) {
       return _start[_mMax + m];
     } else {
@@ -189,46 +203,67 @@ class SHViewFixedNL {
     }
   }
 
-  auto Orders() const {
-    auto m = std::min(_l, _mMax);
+  auto Degree() const { return _l; }
+
+  auto MinOrder() const {
     if constexpr (std::same_as<MRange, All>) {
-      return std::ranges::views::iota(-m, m + 1);
+      return -std::min(_l, _mMax);
     } else {
-      return std::ranges::views::iota(0, m + 1);
+      return difference_type{0};
     }
   }
 
- private:
-  Integer _l;
-  Integer _mMax;
-  Iterator _start;
+  auto MaxOrder() const { return std::min(_l, _mMax); }
+
+  auto Orders() const {
+    return std::ranges::views::iota(MinOrder(), MaxOrder() + 1);
+  }
+
+   private:
+    difference_type _l;
+    difference_type _mMax;
+    iterator _start;
 };
 
-template <IndexRange MRange, RealOrComplexFloatingPointIterator Iterator>
-class SHViewFixedN {
-  using Integer = std::iterator_traits<Iterator>::difference_type;
-
+template <RealOrComplexFloatingPoint Scalar, IndexRange MRange>
+class GSHView {
  public:
-  SHViewFixedN() = default;
+  using value_type = Scalar;
+  using iterator = Scalar*;
+  using const_iterator = Scalar const*;
+  using difference_type = std::ptrdiff_t;
+  using size_type = std::size_t;
 
-  SHViewFixedN(Integer lMax, Integer mMax, Integer n, Iterator start)
-      : _indices{SHIndices<MRange>(lMax, mMax, n)}, _start{start} {}
+  GSHView() = delete;
+
+  template <RealOrComplexFloatingPointIterator Iterator>
+  GSHView(difference_type lMax, difference_type mMax, difference_type n,
+          Iterator start)
+      : _indices{GSHIndices<MRange>(lMax, mMax, n)}, _start{&*start} {}
 
   auto size() const { return _indices.size(); }
   auto begin() { return _start; }
   auto end() { return std::next(_start, size()); }
 
-  auto operator()(Integer l) {
+  auto MinDegree() const { return _indices.MinDegree(); }
+
+  auto MaxDegree() const { return _indices.MaxDegree(); }
+
+  auto Degrees() const {
+    return std::ranges::views::iota(MinDegree(), MaxDegree() + 1);
+  }
+
+  auto operator()(difference_type l) {
     auto offset = _indices(l, _indices.MinOrder(l));
-    auto start = std::next(_start, Offset(l));
-    return SHViewFixedNL<MRange, Iterator>(l, _indices.MaxOrder(l), start);
+    auto start = std::next(_start, offset);
+    return GSHViewFixedL<Scalar, MRange>(l, _indices.MaxOrder(l), start);
   }
 
   auto Indices() const { return _indices; }
 
  private:
-  SHIndices<MRange> _indices;
-  Iterator _start;
+  GSHIndices<MRange> _indices;
+  iterator _start;
 };
 
 }  // namespace GSHTrans
