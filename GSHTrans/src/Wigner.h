@@ -700,7 +700,6 @@ class WignerNew {
 
       // Pre-compute and store some terms.
       const auto nAbs = std::abs(n);
-      const auto lMin = d.MinDegree();
       const auto lMax = d.MaxDegree();
       const auto cos = std::cos(theta);
       const auto SinHalf = std::sin(0.5 * theta);
@@ -713,66 +712,178 @@ class WignerNew {
 
       // Set the values for l == |n|
       {
-        auto l = lMin;
-        auto p = d(l);
+        const auto l = nAbs;
+        auto m = d(l).MinOrder();
+        auto start = d(l).begin();
+        auto finish = d(l).end();
         if (n >= 0) {
-          for (auto m : p.Orders()) {
-            p(m) = WignerMaxUpperIndex(l, m, logSinHalf, logCosHalf, atLeft,
+          std::transform(start, finish, start, [&, this](auto &p) mutable {
+            return WignerMaxUpperIndex(l, m, logSinHalf, logCosHalf, atLeft,
                                        atRight);
-          }
+            m++;
+          });
         } else {
-          for (auto m : p.Orders()) {
-            p(m) = WignerMinUpperIndex(l, m, logSinHalf, logCosHalf, atLeft,
+          std::transform(start, finish, start, [&, this](auto &p) mutable {
+            return WignerMinUpperIndex(l, m, logSinHalf, logCosHalf, atLeft,
                                        atRight);
-          }
+            m++;
+          });
         }
-        if (l == lMax) return;
       }
 
       // Set the values for l == n+1 if needed.
-      {
-        auto l = lMin + 1;
-        auto pm1 = d(l - 1);
-        auto p = d(l);
+      if (nAbs < lMax) {
+        const auto l = nAbs + 1;
+        const auto mMin = d(l).MinOrder();
+        const auto mMax = d(l).MaxOrder();
+        auto m = mMin;
 
-        /*
+        // Set iterators
+        auto startMinusOne = d(l - 1).begin();
+        auto finishMinusOne = d(l - 1).end();
+        auto start = d(l).begin();
 
-        auto l = lMin + 1;
-        auto pm1 = d(l - 1);
-        auto p = d(l);
-        auto mMin = p.MinOrder();
-        auto mMax = p.MaxOrder();
+        // Add in value at m == -l if needed.
         if constexpr (std::same_as<MRange, All>) {
           if (l <= mMax) {
-            p(mMin) =
+            *start++ =
                 WignerMinOrder(l, n, logSinHalf, logCosHalf, atLeft, atRight);
-            mMin++;
+            // Update the starting order for recursion
+            m++;
           }
         }
-        auto alpha = (2 * l - 1) * l * cos * sqrtIntInv[l + nAbs];
-        auto beta = (2 * l - 1) * sqrtIntInv[l + nAbs];
-        if (n < 0) beta *= -1;
-        std::ranges::transform(
-            pm1, p.Drop(1).begin(), [&, this, m = mMin](auto &pm1) {
-              auto f1 =
-                  (alpha - beta * m) * sqrtIntInv[l - m] * sqrtIntInv[l + m];
-              return f1 * pm1;
-            });
-        if (l <= mMax) {
-          p(mMax) =
-              WignerMaxOrder(l, n, logSinHalf, logCosHalf, atLeft, atRight);
+
+        // Add in interior orders using one-term recursion.
+        {
+          const auto alpha = (2 * l - 1) * l * cos * sqrtIntInv[l + nAbs];
+          const auto beta =
+              (n < 0 ? -1 : 1) * (2 * l - 1) * sqrtIntInv[l + nAbs];
+
+          std::transform(startMinusOne, finishMinusOne, start,
+                         [&](auto &minusOne) mutable {
+                           auto f1 = (alpha - beta * m) * sqrtIntInv[l - m] *
+                                     sqrtIntInv[l + m];
+                           m++;
+                           return f1 * minusOne;
+                         });
         }
 
-        */
+        // Add in value at m == l if needed
+        if (l <= mMax) {
+          std::advance(start, m - mMin - 1);
+          *start++ =
+              WignerMaxOrder(l, n, logSinHalf, logCosHalf, atLeft, atRight);
+        }
+        if (start != d(l).end()) std::cout << "Problem!\n";
       }
 
       // Do the remaining degrees
       for (auto l : d.Degrees() | std::ranges::views::drop(2)) {
-        auto pm2 = d(l - 2);
-        auto pm1 = d(l - 1);
-        auto p = d(l);
-        auto mMin = p.MinOrder();
-        auto mMax = p.MaxOrder();
+        const auto mMin = d(l).MinOrder();
+        const auto mMax = d(l).MaxOrder();
+        auto m = mMin;
+
+        // Set iterators.
+        auto startMinusTwo = d(l - 2).begin();
+        auto finishMinusTwo = d(l - 2).end();
+        auto startMinusOne = d(l - 1).begin();
+        auto start = d(l).begin();
+
+        // Add in lower boundary terms if still growing.
+        if constexpr (std::same_as<MRange, All>) {
+          if (l <= mMax) {
+            {
+              // Add in the m == -l term.
+              *start++ =
+                  WignerMinOrder(l, n, logSinHalf, logCosHalf, atLeft, atRight);
+              m++;
+            }
+            {
+              // Now do the m == -l+1 term using one-point recursion.
+              const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
+                              sqrtIntInv[l - n] * sqrtIntInv[l + n] *
+                              sqrtIntInv[l - m] * sqrtIntInv[l + m] /
+                              static_cast<Real>(l - 1);
+              *start++ = f1 * (*startMinusOne++);
+              m++;
+            }
+          }
+
+          // Add in the lower boundary term at the critical degree
+          if (l == mMax + 1) {
+            const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
+                            sqrtIntInv[l - n] * sqrtIntInv[l + n] *
+                            sqrtIntInv[l - m] * sqrtIntInv[l + m] /
+                            static_cast<Real>(l - 1);
+            *start++ = f1 * (*startMinusOne++);
+            m++;
+          }
+        }
+
+        // Apply two-term recusion for the interior orders.
+        {
+          const auto alpha =
+              (2 * l - 1) * l * cos * sqrtIntInv[l - n] * sqrtIntInv[l + n];
+          const auto beta = (2 * l - 1) * n * sqrtIntInv[l - n] *
+                            sqrtIntInv[l + n] / static_cast<Real>(l - 1);
+          const auto gamma = l * sqrtInt[l - 1 - n] * sqrtInt[l - 1 + n] *
+                             sqrtIntInv[l - n] * sqrtIntInv[l + n] /
+                             static_cast<Real>(l - 1);
+          std::transform(startMinusTwo, finishMinusTwo, startMinusOne, start,
+                         [&](auto &minusTwo, auto &minusOne) {
+                           auto denom = sqrtIntInv[l - m] * sqrtIntInv[l + m];
+                           auto f1 = (alpha - beta * m) * denom;
+                           auto f2 = gamma * sqrtInt[l - 1 - m] *
+                                     sqrtInt[l - 1 + m] * denom;
+                           m++;
+                           return f1 * minusOne - f2 * minusTwo;
+                         });
+        }
+
+        // Add in the upper boundary terms if still growing.
+        if (l <= mMax) {
+          std::advance(start, m - mMin - 1);
+          // Add in m == l - 1 term using one-point recursion.
+          {
+            const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
+                            sqrtIntInv[l - n] * sqrtIntInv[l + n] *
+                            sqrtIntInv[l - m] * sqrtIntInv[l + m] /
+                            static_cast<Real>(l - 1);
+            *start++ = f1 * (*startMinusOne++);
+          }
+          // Now do m == l.
+          *start++ =
+              WignerMaxOrder(l, n, logSinHalf, logCosHalf, atLeft, atRight);
+        }
+
+        // Add in the upper boundary term at the crtiical degree.
+        if (l == mMax + 1) {
+          // Update the iterators.
+          std::advance(start, m - mMin - 1);
+          const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
+                          sqrtIntInv[l - n] * sqrtIntInv[l + n] *
+                          sqrtIntInv[l - m] * sqrtIntInv[l + m] /
+                          static_cast<Real>(l - 1);
+          *start++ = f1 * (*startMinusOne++);
+        }
+        if (start != d(l).end())
+          std::cout << "Problem! " << n << " " << l << std::endl;
+      }
+
+      // Normalise the values if required.
+      if constexpr (std::same_as<Norm, Ortho>) {
+        const auto factor =
+            std::numbers::inv_sqrtpi_v<Real> / static_cast<Real>(2);
+        for (auto l : d.Degrees()) {
+          auto start = d(l).begin();
+          auto finish = d(l).end();
+
+          /*
+          std::transform(start, finish, start, [l, factor](auto p) {
+            return factor * std::sqrt(static_cast<Real>(2 * l + 1)) * p;
+          });
+          */
+        }
       }
     }
 };

@@ -204,15 +204,6 @@ class GSHViewDegree {
     return std::ranges::views::iota(MinOrder(), MaxOrder() + 1);
   }
 
-  auto OrdersDrop(difference_type i) const {
-    auto orders = std::ranges::views::iota(MinOrder(), MaxOrder() + 1 - i);
-    if constexpr (std::same_as<MRange, All>) {
-      return orders | std::ranges::views::drop(i);
-    } else {
-      return orders;
-    }
-  }
-
  private:
   difference_type _l;
   difference_type _mMax;
@@ -251,12 +242,12 @@ class GSHView {
     return GSHViewDegree<Scalar, MRange>(l, _indices.MaxOrder(l), start);
   }
 
-    auto Indices() const { return _indices; }
+  auto Indices() const { return _indices; }
 
-   private:
-    GSHIndices<MRange> _indices;
-    iterator _start;
-  };
+ private:
+  GSHIndices<MRange> _indices;
+  iterator _start;
+};
 
 }  // namespace GSHTrans
 

@@ -17,8 +17,8 @@ int main() {
   using Real = double;
 
   int lMax = 5;
-  int mMax = 1;
-  int nMax = 2;
+  int mMax = 5;
+  int nMax = 0;
   auto theta = std::vector<Real>(2, 1.0);
 
   auto d = WignerNew<Real, All, All, Ortho>(lMax, mMax, nMax, theta);
