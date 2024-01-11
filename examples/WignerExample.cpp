@@ -16,35 +16,31 @@ int main() {
 
   using Real = double;
 
-  int lMax = 5;
-  int mMax = 5;
-  int nMax = 0;
-  auto theta = std::vector<Real>(2, 1.0);
+  int lMax = 40;
+  int mMax = lMax;
+  int nMax = lMax;
 
-  auto d = WignerNew<Real, All, All, Ortho>(lMax, mMax, nMax, theta);
+  // Pick a random angle
+  std::random_device rd{};
+  std::mt19937_64 gen{rd()};
+  std::uniform_real_distribution<Real> dist{static_cast<Real>(0),
+                                            std::numbers::pi_v<Real>};
+  auto theta = dist(gen);
+  auto d = Wigner<Real, All, All, FourPi>(lMax, lMax, lMax, theta);
 
-  /*
+  constexpr auto eps = 1000 * std::numeric_limits<Real>::epsilon();
 
-  int lMax = 100;
-  int mMax = 50;
-  int n = 0;
-
-  double theta = 2.1;
-
-  auto p1 = Wigner<double, All>(lMax, mMax, n, theta);
-  auto p2 = Wigner<double, NonNegative>(lMax, mMax, n, theta);
-
-  auto p3 = Wigner<double, All>(lMax, mMax, n,
-                                std::vector<double>{theta, theta, theta});
-
-  auto p4 = AssociatedLegendre<double, All>(lMax, mMax, theta);
-
-  auto p5 = Legendre<double>(lMax, theta);
-
-  std::cout << p1(4, 2) << " " << p2(4, 2) << " " << p3(2, 4, 2) << " "
-            << p4(4, 2) << std::endl;
-
-  std::cout << p1(0, 4, 0) << " " << p5(0, 4) << std::endl;
-
-  */
+  for (auto n : d.UpperIndices()) {
+    auto d1 = d(n, 0);
+    for (auto np : d.UpperIndices()) {
+      auto d2 = d(np, 0);
+      auto lMin = std::max(std::abs(n), std::abs(np));
+      for (auto l = lMin; l <= lMax; l++) {
+        auto sum = std::inner_product(d1(l).begin(), d1(l).end(), d2(l).begin(),
+                                      Real{0});
+        if (n == np) --sum;
+        std::cout << sum << std::endl;
+      }
+    }
+  }
 }

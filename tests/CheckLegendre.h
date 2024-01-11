@@ -15,7 +15,6 @@ int CheckLegendre() {
 
   // Set the degree, order and upper index
   int lMax = 300;
-  int mMax = lMax;
 
   // Pick a random angle
   std::random_device rd{};
@@ -24,21 +23,20 @@ int CheckLegendre() {
   auto theta = dist(gen);
 
   // Construct the normalised Wigner values
-  AssociatedLegendre<Real, NonNegative> d(lMax, mMax, theta);
+  auto d = Wigner<Real, All, All, Ortho>(lMax, lMax, 0, theta);
+  auto p = d(0, 0);
 
   // Define small numbers for comparison.
   constexpr auto eps = 100000 * std::numeric_limits<Real>::epsilon();
   constexpr auto tiny = 1000 * std::numeric_limits<Real>::min();
 
   // Compare values to std library function
-  for (int l = 0; l <= lMax; l++) {
-    for (int m = 0; m <= l; m++) {
-      Real plm = d(l, m);
-      Real plmSTD = std::sph_legendre(l, m, theta);
-      if (auto norm = std::abs(plmSTD) > tiny) {
-        Real diff = std::abs(plm - plmSTD) / norm;
-        if (diff > eps) return 1;
-      }
+  for (auto [l, m] : p.Indices()) {
+    Real plm = p(l)(m);
+    Real plmSTD = std::sph_legendre(l, m, theta);
+    if (auto norm = std::abs(plmSTD) > tiny) {
+      Real diff = std::abs(plm - plmSTD) / norm;
+      if (diff > eps) return 1;
     }
   }
 

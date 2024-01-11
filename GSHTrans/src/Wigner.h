@@ -20,515 +20,9 @@
 
 namespace GSHTrans {
 
-namespace Details {
-
-// Define some local utility functions within Details namespace.
-constexpr auto MinusOneToPower(long int m) { return m % 2 ? -1 : 1; }
-
-template <std::integral Integer, std::floating_point Real>
-Real WignerMinOrderAtUpperIndex(Integer l, Integer n, Real logSinHalf,
-                                Real logCosHalf, bool atLeft, bool atRight) {
-  // Check the inputs.
-  assert(l >= 0);
-  assert(std::abs(n) <= l);
-
-  // Deal with l == 0 case
-  if (l == 0) return static_cast<Real>(1);
-
-  // Deal with special case at the left boundary.
-  if (atLeft) {
-    return n == -l ? static_cast<Real>(1) : static_cast<Real>(0);
-  }
-
-  // Deal with special case at the right boundary.
-  if (atRight) {
-    return n == l ? static_cast<Real>(1) : static_cast<Real>(0);
-  }
-
-  // Deal with the general case.
-  auto Fl = static_cast<Real>(l);
-  auto Fn = static_cast<Real>(n);
-  using std::exp;
-  using std::lgamma;
-  return exp(
-      static_cast<Real>(0.5) *
-          (lgamma(2 * Fl + 1) - lgamma(Fl - Fn + 1) - lgamma(Fl + Fn + 1)) +
-      (Fl + Fn) * logSinHalf + (Fl - Fn) * logCosHalf);
-}
-
-template <std::integral Integer, std::floating_point Real>
-Real WignerMaxOrderAtUpperIndex(Integer l, Integer n, Real logSinHalf,
-                                Real logCosHalf, bool atLeft, bool atRight) {
-  return MinusOneToPower(n + l) * WignerMinOrderAtUpperIndex(l, -n, logSinHalf,
-                                                             logCosHalf, atLeft,
-                                                             atRight);
-}
-
-template <std::integral Integer, std::floating_point Real>
-Real WignerMinUpperIndexAtOrder(Integer l, Integer m, Real logSinHalf,
-                                Real logCosHalf, bool atLeft, bool atRight) {
-  return WignerMaxOrderAtUpperIndex(l, -m, logSinHalf, logCosHalf, atLeft,
-                                    atRight);
-}
-
-template <std::integral Integer, std::floating_point Real>
-Real WignerMaxUpperIndexAtOrder(Integer l, Integer m, Real logSinHalf,
-                                Real logCosHalf, bool atLeft, bool atRight) {
-  return WignerMinOrderAtUpperIndex(l, -m, logSinHalf, logCosHalf, atLeft,
-                                    atRight);
-}
-
-}  // namespace Details
-
-template <std::floating_point Real, IndexRange Orders,
-          Normalisation Norm = Ortho>
-class Wigner {
-  using Integer = std::vector<Real>::difference_type;
-
- public:
-  // Set member types.
-  using value_type = Real;
-  using iterator = std::vector<Real>::iterator;
-  using const_iterator = std::vector<Real>::const_iterator;
-  using difference_type = std::vector<Real>::difference_type;
-  using size_type = std::vector<Real>::size_type;
-
-  // Define internal view class.
-  class View {
-   public:
-    View(iterator start, iterator finish) : _start{start}, _finish{finish} {}
-    iterator begin() { return _start; }
-    iterator end() { return _finish; }
-
-   private:
-    iterator _start;
-    iterator _finish;
-  };
-
-  // Default constructor.
-  Wigner() = default;
-
-  // Copy constructor.
-  Wigner(Wigner const &) = default;
-
-  // Move constructor.
-  Wigner(Wigner &&) = default;
-
-  // Constructor for a single angle.
-  Wigner(Integer lMax, Integer mMax, Integer n, Real theta)
-      : _lMax(lMax), _mMax(mMax), _n(n), _nTheta(1) {
-    assert(_lMax >= 0);
-    assert(_mMax >= 0 && _mMax <= _lMax);
-    auto size = Count();
-    _data = std::vector<Real>(size);
-    ComputeValues(0, theta);
-  }
-
-  // Constructor with iterators to angles
-  template <RealFloatingPointIterator Iterator>
-  Wigner(Integer lMax, Integer mMax, Integer n, Iterator thetaStart,
-         Iterator thetaFinish)
-      : _lMax(lMax),
-        _mMax(mMax),
-        _n(n),
-        _nTheta(std::distance(thetaStart, thetaFinish)) {
-    assert(_lMax >= 0);
-    assert(_mMax >= 0 && _mMax <= _lMax);
-    auto size = Count() * _nTheta;
-    _data = std::vector<Real>(size);
-#pragma omp parallel for
-    for (auto i = 0; i < _nTheta; i++) {
-      ComputeValues(i, thetaStart[i]);
-    }
-  }
-
-  // Constructor for a range of angles.
-  template <RealFloatingPointRange Range>
-  Wigner(Integer lMax, Integer mMax, Integer n, Range &&theta)
-      : Wigner(lMax, mMax, n, std::begin(theta), std::end(theta)) {}
-
-  // Copy assigment.
-  Wigner &operator=(Wigner const &) = default;
-
-  // Move assignment.
-  Wigner &operator=(Wigner &&) = default;
-
-  // Recompute values for new angle(s).
-  void ResetValues(Real theta) { ComputeValues(0, theta); }
-
-  template <RealFloatingPointIterator Iterator>
-  void ResetValues(Iterator thetaStart, Iterator thetaFinish) {
-    assert(std::distance(thetaStart, thetaFinish) == _nTheta);
-#pragma omp parallel for
-    for (auto i = 0; i < _nTheta; i++) {
-      ComputeValues(i, thetaStart[i]);
-    }
-  }
-
-  template <RealFloatingPointRange Range>
-  void ResetValues(Range &&theta) {
-    assert(theta.size() == _nTheta);
-#pragma omp parallel for
-    for (auto i = 0; i < _nTheta; i++) {
-      ComputeValues(i, theta[i]);
-    }
-  }
-
-  // Geters for basic data.
-  auto MaxDegree() const { return _lMax; }
-  auto MaxOrder() const { return _mMax; }
-  auto UpperIndex() const { return _n; }
-  auto NumberOfAngles() const { return _nTheta; }
-
-  // Returns lowest order at given degree.
-  auto StartingOrder(Integer l) requires std::same_as<Orders, All> {
-    assert(l <= _lMax && l >= std::abs(_n));
-    return -std::min(l, _mMax);
-  }
-  auto StartingOrder(Integer l) requires std::same_as<Orders, NonNegative> {
-    assert(l <= _lMax && l >= std::abs(_n));
-    return 0;
-  }
-
-  // Iterators to the data.
-  iterator begin() { return _data.begin(); }
-  const_iterator cbegin() const { return _data.cbegin(); }
-
-  iterator end() { return _data.end(); }
-  const_iterator cend() const { return _data.cend(); }
-
-  iterator beginForDegree(Integer l) {
-    return std::next(begin(), Count(l - 1));
-  }
-  const_iterator cbeginForDegree(Integer l) const {
-    return std::next(cbegin(), Count(l - 1));
-  }
-
-  iterator endForDegree(Integer l) { return std::next(begin(), Count(l)); }
-  const_iterator cendForDegree(Integer l) const {
-    return std::next(cbegin(), Count(l));
-  }
-
-  iterator beginForAngle(Integer i) { return std::next(begin(), i * Count()); }
-  const_iterator cbeginForAngle(Integer i) const {
-    return std::next(cbegin(), i * Count());
-  }
-
-  iterator endForAngle(Integer i) {
-    return std::next(begin(), (i + 1) * Count());
-  }
-  const_iterator cendForAngle(Integer i) const {
-    return std::next(cbegin(), (i + 1) * Count());
-  }
-
-  iterator beginForAngleAndDegree(Integer i, Integer l) {
-    return std::next(beginForAngle(i), Count(l - 1));
-  }
-  const_iterator cbeginForAngleAndDegree(Integer i, Integer l) const {
-    return std::next(cbeginForAngle(i), Count(l - 1));
-  }
-
-  iterator endForAngleAndDegree(Integer i, Integer l) {
-    return std::next(beginForAngle(i), Count(l));
-  }
-  const_iterator cendForAngleAndDegree(Integer i, Integer l) const {
-    return std::next(cbeginForAngle(i), Count(l));
-  }
-
-  // Views to the data.
-  auto ViewForAngle(Integer i) {
-    assert(i >= 0 && i < _nTheta);
-    return View(beginForAngle(i), endForAngle(i));
-  }
-
-  auto ViewForAngleAndDegree(Integer i, Integer l) {
-    assert(i >= 0 && i < _nTheta);
-    return View(beginForAngleAndDegree(i, l), endForAngleAndDegree(i, l));
-  }
-
-  // Returns the number of values at a given degree when
-  // all orders are stored.
-  constexpr size_type Count(
-      Integer l) const requires std::same_as<Orders, All> {
-    auto nabs = std::abs(_n);
-    if (l < nabs) return 0;
-    if (l <= _mMax) return (l + 1) * (l + 1) - nabs * nabs;
-    return (_mMax + 1) * (_mMax + 1) - nabs * nabs +
-           (l - _mMax) * (2 * _mMax + 1);
-  }
-
-  // Returns the number of values at a given degree when
-  // only non-negative orders are stored.
-  constexpr size_type Count(
-      Integer l) const requires std::same_as<Orders, NonNegative> {
-    auto nabs = std::abs(_n);
-    if (l < nabs) return 0;
-    if (l <= _mMax) return ((l + 1) * (l + 2)) / 2 - (nabs * (nabs + 1)) / 2;
-    return ((_mMax + 1) * (_mMax + 2)) / 2 - (nabs * (nabs + 1)) / 2 +
-           (l - _mMax) * (_mMax + 1);
-  }
-
-  // Returns total number of values.
-  constexpr size_type Count() const { return Count(_lMax); }
-
-  // Return value for given arguments.
-  auto operator()(Integer l,
-                  Integer m) const requires std::same_as<Orders, All> {
-    assert(l >= std::abs(_n) && l <= _lMax);
-    auto mMaxAbs = std::min(l, _mMax);
-    assert(std::abs(m) <= mMaxAbs);
-    return *std::next(cbeginForDegree(l), mMaxAbs + m);
-  }
-
-  auto operator()(Integer l,
-                  Integer m) const requires std::same_as<Orders, NonNegative> {
-    assert(l >= std::abs(_n) && l <= _lMax);
-    assert(0 <= m && m <= std::min(l, _mMax));
-    return *std::next(cbeginForDegree(l), m);
-  }
-
-  auto operator()(Integer i, Integer l,
-                  Integer m) const requires std::same_as<Orders, All> {
-    assert(i >= 0 && i < _nTheta);
-    assert(l >= std::abs(_n) && l <= _lMax);
-    auto mMaxAbs = std::min(l, _mMax);
-    assert(std::abs(m) <= mMaxAbs);
-    return *std::next(cbeginForAngleAndDegree(i, l), mMaxAbs + m);
-  }
-
-  auto operator()(Integer i, Integer l,
-                  Integer m) const requires std::same_as<Orders, NonNegative> {
-    assert(i >= 0 && i < _nTheta);
-    assert(l >= std::abs(_n) && l <= _lMax);
-    assert(0 <= m && m <= std::min(l, _mMax));
-    return *std::next(cbeginForAngleAndDegree(i, l), m);
-  }
-
- private:
-  Integer _lMax;    // Maximum degree.
-  Integer _mMax;    // Maximum order.
-  Integer _n;       // Upper index.
-  Integer _nTheta;  // Number of angles.
-
-  // Vector to store the values.
-  std::vector<Real> _data;
-
-  // Functions to compute the values
-  void ComputeValues(Integer i, Real theta);
-};
-
-template <std::floating_point Real, IndexRange Orders, Normalisation Norm>
-void Wigner<Real, Orders, Norm>::ComputeValues(Integer i, Real theta) {
-  using namespace Details;
-
-  // Pre-compute and store trigonometric terms.
-  auto cos = std::cos(theta);
-  auto logSinHalf = std::sin(0.5 * theta);
-  auto logCosHalf = std::cos(0.5 * theta);
-  auto atLeft = logSinHalf < std::numeric_limits<value_type>::min();
-  auto atRight = logCosHalf < std::numeric_limits<value_type>::min();
-  logSinHalf = atLeft ? static_cast<value_type>(0) : std::log(logSinHalf);
-  logCosHalf = atRight ? static_cast<value_type>(0) : std::log(logCosHalf);
-
-  // Pre-compute and store square roots and their inverses up to lMax + mMax.
-  std::vector<value_type> sqInt(_lMax + _mMax + 1);
-  std::transform(sqInt.begin(), sqInt.end(), sqInt.begin(), [&](auto &x) {
-    return std::sqrt(static_cast<value_type>(&x - &sqInt[0]));
-  });
-  std::vector<value_type> sqIntInv(_lMax + _mMax + 1);
-  std::transform(sqInt.begin(), sqInt.end(), sqIntInv.begin(), [](auto x) {
-    return x > static_cast<value_type>(0) ? 1 / x : static_cast<value_type>(0);
-  });
-
-  // Set the values for l == |n|
-  const auto nabs = std::abs(_n);
-  {
-    auto l = nabs;
-    auto mStart = StartingOrder(l);
-    auto start = beginForAngleAndDegree(i, l);
-    auto finish = endForAngleAndDegree(i, l);
-    if (_n >= 0) {
-      std::transform(start, finish, start, [&](auto &p) {
-        auto m = mStart + std::distance(&*start, &p);
-        return WignerMaxUpperIndexAtOrder(l, m, logSinHalf, logCosHalf, atLeft,
-                                          atRight);
-      });
-    } else {
-      std::transform(start, finish, start, [&](auto &p) {
-        auto m = mStart + std::distance(&*start, &p);
-        return WignerMinUpperIndexAtOrder(l, m, logSinHalf, logCosHalf, atLeft,
-                                          atRight);
-      });
-    }
-  }
-
-  // Set the values for l == n+1 if needed.
-  if (nabs < _lMax) {
-    auto l = nabs + 1;
-    auto mStart = StartingOrder(l);
-
-    // Set iterators
-    auto startMinusOne = beginForAngleAndDegree(i, l - 1);
-    auto finishMinusOne = endForAngleAndDegree(i, l - 1);
-    auto start = beginForAngleAndDegree(i, l);
-
-    // Add in value at m == -l if needed.
-    if constexpr (std::same_as<Orders, All>) {
-      if (l <= _mMax) {
-        *start++ = WignerMinOrderAtUpperIndex(l, _n, logSinHalf, logCosHalf,
-                                              atLeft, atRight);
-        // Update the starting order for recursion
-        mStart += 1;
-      }
-    }
-
-    // Add in interior orders using one-term recursion.
-    {
-      auto alpha = (2 * l - 1) * l * cos * sqIntInv[l + nabs];
-      auto beta = (2 * l - 1) * sqIntInv[l + nabs];
-      if (_n < 0) beta *= -1;
-      std::transform(startMinusOne, finishMinusOne, start, [&](auto &minusOne) {
-        auto m = mStart + std::distance(&*startMinusOne, &minusOne);
-        auto f1 = (alpha - beta * m) * sqIntInv[l - m] * sqIntInv[l + m];
-        return f1 * minusOne;
-      });
-    }
-
-    // Add in value at m == l if needed
-    if (l <= _mMax) {
-      auto mStep = 2 * l - 1;
-      if constexpr (std::same_as<Orders, NonNegative>) {
-        mStep = l;
-      }
-      *std::next(start, mStep) = WignerMaxOrderAtUpperIndex(
-          l, _n, logSinHalf, logCosHalf, atLeft, atRight);
-    }
-  }
-
-  // Now do the remaining degrees.
-  for (auto l = nabs + 2; l <= _lMax; l++) {
-    // Starting order within two-term recursion
-    auto mStart = StartingOrder(l);
-
-    // Set iterators
-    auto startMinusTwo = beginForAngleAndDegree(i, l - 2);
-    auto finishMinusTwo = endForAngleAndDegree(i, l - 2);
-    auto startMinusOne = beginForAngleAndDegree(i, l - 1);
-    auto start = beginForAngleAndDegree(i, l);
-
-    // Add in lower boundary terms if still growing.
-    if constexpr (std::same_as<Orders, All>) {
-      if (l <= _mMax) {
-        // Add in the m == -l term.
-        *start++ = WignerMinOrderAtUpperIndex(l, _n, logSinHalf, logCosHalf,
-                                              atLeft, atRight);
-        // Now do the m == -l+1 term using one-point recursion.
-        {
-          auto m = -l + 1;
-          auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * _n) *
-                    sqIntInv[l - _n] * sqIntInv[l + _n] * sqIntInv[l - m] *
-                    sqIntInv[l + m] / static_cast<value_type>(l - 1);
-          *start++ = f1 * (*startMinusOne++);
-        }
-        // Update the starting order for two-term recursion.
-        mStart += 2;
-      }
-
-      // Add in the lower boundary term at the critical degree
-      if (l == _mMax + 1) {
-        auto m = -_mMax;
-        auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * _n) *
-                  sqIntInv[l - _n] * sqIntInv[l + _n] * sqIntInv[l - m] *
-                  sqIntInv[l + m] / static_cast<value_type>(l - 1);
-        *start++ = f1 * (*startMinusOne++);
-        // Update the starting order for two-term recursion.
-        mStart += 1;
-      }
-    }
-
-    // Apply two-term recusion for the interior orders.
-    {
-      auto alpha = (2 * l - 1) * l * cos * sqIntInv[l - _n] * sqIntInv[l + _n];
-      auto beta = (2 * l - 1) * _n * sqIntInv[l - _n] * sqIntInv[l + _n] /
-                  static_cast<value_type>(l - 1);
-      auto gamma = l * sqInt[l - 1 - _n] * sqInt[l - 1 + _n] *
-                   sqIntInv[l - _n] * sqIntInv[l + _n] /
-                   static_cast<value_type>(l - 1);
-      std::transform(
-          startMinusTwo, finishMinusTwo, startMinusOne, start,
-          [&](auto &minusTwo, auto &minusOne) {
-            auto m = mStart + std::distance(&*startMinusTwo, &minusTwo);
-            auto denom = sqIntInv[l - m] * sqIntInv[l + m];
-            auto f1 = (alpha - beta * m) * denom;
-            auto f2 = gamma * sqInt[l - 1 - m] * sqInt[l - 1 + m] * denom;
-            return f1 * minusOne - f2 * minusTwo;
-          });
-    }
-
-    // Add in the upper boundary terms if still growing.
-    if (l <= _mMax) {
-      // Update the iterator
-      auto mStep = 2 * l - 3;
-      if constexpr (std::same_as<Orders, NonNegative>) {
-        mStep = l - 1;
-      }
-      startMinusOne = std::next(startMinusOne, mStep);
-      start = std::next(start, mStep);
-      // Add in m == l - 1 term using one-point recursion.
-      {
-        auto m = l - 1;
-        auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * _n) *
-                  sqIntInv[l - _n] * sqIntInv[l + _n] * sqIntInv[l - m] *
-                  sqIntInv[l + m] / static_cast<value_type>(l - 1);
-        *start++ = f1 * (*startMinusOne++);
-      }
-      // Now do m == l.
-      *start++ = WignerMaxOrderAtUpperIndex(l, _n, logSinHalf, logCosHalf,
-                                            atLeft, atRight);
-    }
-
-    // Add in the upper boundary term at the crtiical degree.
-    if (l == _mMax + 1) {
-      // Update the iterators.
-      auto mStep = 2 * _mMax - 1;
-      if constexpr (std::same_as<Orders, NonNegative>) {
-        mStep = _mMax;
-      }
-      startMinusOne = std::next(startMinusOne, mStep);
-      start = std::next(start, mStep);
-      auto m = _mMax;
-      auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * _n) * sqIntInv[l - _n] *
-                sqIntInv[l + _n] * sqIntInv[l - m] * sqIntInv[l + m] /
-                static_cast<value_type>(l - 1);
-      *start++ = f1 * (*startMinusOne++);
-    }
-  }
-
-  if constexpr (std::same_as<Norm, Ortho>) {
-    for (auto l = 0; l <= _lMax; l++) {
-      auto start = beginForAngleAndDegree(i, l);
-      auto finish = endForAngleAndDegree(i, l);
-      std::transform(start, finish, start, [l](auto p) {
-        return 0.5 * std::sqrt(static_cast<value_type>(2 * l + 1)) *
-               std::numbers::inv_sqrtpi_v<value_type> * p;
-      });
-    }
-  }
-}
-
-//--------------------------------------------------------------------//
-//--------------------------------------------------------------------//
-//--------------------------------------------------------------------//
-//--------------------------------------------------------------------//
-//--------------------------------------------------------------------//
-//--------------------------------------------------------------------//
-//--------------------------------------------------------------------//
-//--------------------------------------------------------------------//
-//--------------------------------------------------------------------//
-
 template <RealFloatingPoint Real, IndexRange MRange, IndexRange NRange,
           Normalisation Norm>
-class WignerNew {
+class Wigner {
   using Vector = std::vector<Real>;
   using Int = Vector::difference_type;
 
@@ -540,10 +34,10 @@ class WignerNew {
   using difference_type = Vector::difference_type;
   using size_type = Vector::size_type;
 
-  WignerNew() = default;
+  Wigner() = default;
 
   template <RealFloatingPointRange RealRange>
-  WignerNew(Int lMax, Int mMax, Int nMax, RealRange &&thetaRange)
+  Wigner(Int lMax, Int mMax, Int nMax, RealRange &&thetaRange)
       : _lMax{lMax}, _mMax{mMax}, _nMax{nMax}, _nTheta(thetaRange.size()) {
     AllocateStorage();
     auto preCompute = PreCompute();
@@ -556,8 +50,8 @@ class WignerNew {
     }
   }
 
-  WignerNew(Int lMax, Int mMax, Int nMax, Real theta)
-      : WignerNew(lMax, mMax, nMax, std::vector{theta}) {}
+  Wigner(Int lMax, Int mMax, Int nMax, Real theta)
+      : Wigner(lMax, mMax, nMax, std::vector{theta}) {}
 
   // Return basic information.
   auto MaxDegree() const { return _lMax; }
@@ -592,300 +86,284 @@ class WignerNew {
     return GSHView<Real, MRange>(_lMax, _mMax, n, start);
   }
 
-   private:
-    Int _lMax;    // Maximum degree.
-    Int _mMax;    // Maximum order.
-    Int _nMax;    // Maximum upper index.
-    Int _nTheta;  // Number of colatitudes.
+ private:
+  Int _lMax;    // Maximum degree.
+  Int _mMax;    // Maximum order.
+  Int _nMax;    // Maximum upper index.
+  Int _nTheta;  // Number of colatitudes.
 
-    // Vector storing the values.
-    Vector _data;
+  // Vector storing the values.
+  Vector _data;
 
-    // Compute the necessary storage capacity.
-    void AllocateStorage() {
-      auto upperIndices = UpperIndices();
-      auto size = std::accumulate(
-          upperIndices.begin(), upperIndices.end(), Int{0},
-          [this](auto acc, auto n) {
-            return acc + GSHIndices<MRange>(_lMax, _mMax, n).size() *
-                             NumberOfAngles();
-          });
-      _data.resize(size);
+  // Compute the necessary storage capacity.
+  void AllocateStorage() {
+    auto upperIndices = UpperIndices();
+    auto size = std::accumulate(
+        upperIndices.begin(), upperIndices.end(), Int{0},
+        [this](auto acc, auto n) {
+          return acc +
+                 GSHIndices<MRange>(_lMax, _mMax, n).size() * NumberOfAngles();
+        });
+    _data.resize(size);
+  }
+
+  // Compute offset to the start of the data for given
+  // upper index and angle.
+  auto Offset(Int n, Int iTheta) const {
+    auto upperIndices = UpperIndices() | std::ranges::views::filter(
+                                             [n](auto np) { return np < n; });
+    return std::accumulate(
+        upperIndices.begin(), upperIndices.end(),
+        GSHIndices<MRange>(_lMax, _mMax, n).size() * iTheta,
+        [this](auto acc, auto np) {
+          return acc +
+                 GSHIndices<MRange>(_lMax, _mMax, np).size() * NumberOfAngles();
+        });
+  }
+
+  // Pre-compute some numerical terms used repeatedly within
+  // calculation of the Wigner values for each (theta,n) pair.
+  auto PreCompute() const {
+    auto size = MaxDegree() + std::max(MaxOrder(), MaxUpperIndex()) + 1;
+    Vector sqrtInt, sqrtIntInv;
+    sqrtInt.reserve(size);
+    sqrtIntInv.reserve(size);
+    std::generate_n(std::back_inserter(sqrtInt), size, [m = Int{0}]() mutable {
+      return std::sqrt(static_cast<Real>(m++));
+    });
+    std::transform(sqrtInt.begin(), sqrtInt.end(),
+                   std::back_inserter(sqrtIntInv),
+                   [](auto x) { return x > 0 ? 1 / x : 0; });
+    return std::tuple(std::make_shared<Vector>(sqrtInt),
+                      std::make_shared<Vector>(sqrtIntInv));
+  }
+
+  constexpr auto MinusOneToPower(Int m) { return m % 2 ? -1 : 1; }
+
+  Real WignerMinOrder(Int l, Int n, Real logSinHalf, Real logCosHalf,
+                      bool atLeft, bool atRight) {
+    // Check the inputs.
+    assert(l >= 0);
+    assert(std::abs(n) <= l);
+
+    // Deal with l == 0 case
+    if (l == 0) return static_cast<Real>(1);
+
+    // Deal with special case at the left boundary.
+    if (atLeft) {
+      return n == -l ? static_cast<Real>(1) : static_cast<Real>(0);
     }
 
-    // Compute offset to the start of the data for given
-    // upper index and angle.
-    auto Offset(Int n, Int iTheta) const {
-      auto upperIndices = UpperIndices() | std::ranges::views::filter(
-                                               [n](auto np) { return np < n; });
-      return std::accumulate(
-          upperIndices.begin(), upperIndices.end(),
-          GSHIndices<MRange>(_lMax, _mMax, n).size() * iTheta,
-          [this](auto acc, auto np) {
-            return acc + GSHIndices<MRange>(_lMax, _mMax, np).size() *
-                             NumberOfAngles();
-          });
+    // Deal with special case at the right boundary.
+    if (atRight) {
+      return n == l ? static_cast<Real>(1) : static_cast<Real>(0);
     }
 
-    // Pre-compute some numerical terms used repeatedly within
-    // calculation of the Wigner values for each (theta,n) pair.
-    auto PreCompute() const {
-      auto size = MaxDegree() + MaxOrder() + 1;
-      Vector sqrtInt, sqrtIntInv;
-      sqrtInt.reserve(size);
-      sqrtIntInv.reserve(size);
-      std::generate_n(
-          std::back_inserter(sqrtInt), size,
-          [m = Int{0}]() mutable { return std::sqrt(static_cast<Real>(m++)); });
-      std::transform(sqrtInt.begin(), sqrtInt.end(),
-                     std::back_inserter(sqrtIntInv),
-                     [](auto x) { return x > 0 ? 1 / x : 0; });
-      return std::tuple(std::make_shared<Vector>(sqrtInt),
-                        std::make_shared<Vector>(sqrtIntInv));
+    // Deal with the general case.
+    auto Fl = static_cast<Real>(l);
+    auto Fn = static_cast<Real>(n);
+    using std::exp;
+    using std::lgamma;
+    return exp(
+        static_cast<Real>(0.5) *
+            (lgamma(2 * Fl + 1) - lgamma(Fl - Fn + 1) - lgamma(Fl + Fn + 1)) +
+        (Fl + Fn) * logSinHalf + (Fl - Fn) * logCosHalf);
+  }
+
+  Real WignerMaxOrder(Int l, Int n, Real logSinHalf, Real logCosHalf,
+                      bool atLeft, bool atRight) {
+    return MinusOneToPower(n + l) *
+           WignerMinOrder(l, -n, logSinHalf, logCosHalf, atLeft, atRight);
+  }
+
+  Real WignerMinUpperIndex(Int l, Int m, Real logSinHalf, Real logCosHalf,
+                           bool atLeft, bool atRight) {
+    return WignerMaxOrder(l, -m, logSinHalf, logCosHalf, atLeft, atRight);
+  }
+
+  Real WignerMaxUpperIndex(Int l, Int m, Real logSinHalf, Real logCosHalf,
+                           bool atLeft, bool atRight) {
+    return WignerMinOrder(l, -m, logSinHalf, logCosHalf, atLeft, atRight);
+  }
+
+  void Compute(Int n, Real theta, GSHView<Real, MRange> d,
+               const auto preCompute) {
+    // Get references to the pre-computed values.
+    auto &sqrtInt = *std::get<0>(preCompute);
+    auto &sqrtIntInv = *std::get<1>(preCompute);
+
+    // Pre-compute and store some terms.
+    const auto nAbs = std::abs(n);
+    const auto lMax = d.MaxDegree();
+    const auto cos = std::cos(theta);
+    const auto SinHalf = std::sin(0.5 * theta);
+    const auto CosHalf = std::cos(0.5 * theta);
+    const auto atLeft = SinHalf < std::numeric_limits<Real>::min();
+    const auto atRight = CosHalf < std::numeric_limits<Real>::min();
+    const auto logSinHalf = atLeft ? static_cast<Real>(0) : std::log(SinHalf);
+    const auto logCosHalf = atRight ? static_cast<Real>(0) : std::log(CosHalf);
+
+    // Set the values for l == |n|
+    {
+      const auto l = nAbs;
+      auto m = d(l).MinOrder();
+      auto iter = d(l).begin();
+      auto finish = d(l).end();
+      if (n >= 0) {
+        while (iter != finish) {
+          *iter++ = WignerMaxUpperIndex(l, m++, logSinHalf, logCosHalf, atLeft,
+                                        atRight);
+        }
+      } else {
+        while (iter != finish) {
+          *iter++ = WignerMinUpperIndex(l, m++, logSinHalf, logCosHalf, atLeft,
+                                        atRight);
+        }
+      }
     }
 
-    constexpr auto MinusOneToPower(Int m) { return m % 2 ? -1 : 1; }
+    // Set the values for l == n+1 if needed.
+    if (nAbs < lMax) {
+      const auto l = nAbs + 1;
+      const auto mMin = d(l).MinOrder();
+      const auto mMax = d(l).MaxOrder();
+      auto m = mMin;
 
-    Real WignerMinOrder(Int l, Int n, Real logSinHalf, Real logCosHalf,
-                        bool atLeft, bool atRight) {
-      // Check the inputs.
-      assert(l >= 0);
-      assert(std::abs(n) <= l);
+      // Set iterators
+      auto iterMinusOne = d(l - 1).begin();
+      auto finishMinusOne = d(l - 1).end();
+      auto iter = d(l).begin();
 
-      // Deal with l == 0 case
-      if (l == 0) return static_cast<Real>(1);
-
-      // Deal with special case at the left boundary.
-      if (atLeft) {
-        return n == -l ? static_cast<Real>(1) : static_cast<Real>(0);
+      // Add in value at m == -l if needed.
+      if constexpr (std::same_as<MRange, All>) {
+        if (l <= mMax) {
+          *iter++ =
+              WignerMinOrder(l, n, logSinHalf, logCosHalf, atLeft, atRight);
+          m++;
+        }
       }
 
-      // Deal with special case at the right boundary.
-      if (atRight) {
-        return n == l ? static_cast<Real>(1) : static_cast<Real>(0);
-      }
-
-      // Deal with the general case.
-      auto Fl = static_cast<Real>(l);
-      auto Fn = static_cast<Real>(n);
-      using std::exp;
-      using std::lgamma;
-      return exp(
-          static_cast<Real>(0.5) *
-              (lgamma(2 * Fl + 1) - lgamma(Fl - Fn + 1) - lgamma(Fl + Fn + 1)) +
-          (Fl + Fn) * logSinHalf + (Fl - Fn) * logCosHalf);
-    }
-
-    Real WignerMaxOrder(Int l, Int n, Real logSinHalf, Real logCosHalf,
-                        bool atLeft, bool atRight) {
-      return MinusOneToPower(n + l) *
-             WignerMinOrder(l, -n, logSinHalf, logCosHalf, atLeft, atRight);
-    }
-
-    Real WignerMinUpperIndex(Int l, Int m, Real logSinHalf, Real logCosHalf,
-                             bool atLeft, bool atRight) {
-      return WignerMaxOrder(l, -m, logSinHalf, logCosHalf, atLeft, atRight);
-    }
-
-    Real WignerMaxUpperIndex(Int l, Int m, Real logSinHalf, Real logCosHalf,
-                             bool atLeft, bool atRight) {
-      return WignerMinOrder(l, -m, logSinHalf, logCosHalf, atLeft, atRight);
-    }
-
-    void Compute(Int n, Real theta, GSHView<Real, MRange> d,
-                 const auto preCompute) {
-      // Get references to the pre-computed values.
-      auto &sqrtInt = *std::get<0>(preCompute);
-      auto &sqrtIntInv = *std::get<1>(preCompute);
-
-      // Pre-compute and store some terms.
-      const auto nAbs = std::abs(n);
-      const auto lMax = d.MaxDegree();
-      const auto cos = std::cos(theta);
-      const auto SinHalf = std::sin(0.5 * theta);
-      const auto CosHalf = std::cos(0.5 * theta);
-      const auto atLeft = SinHalf < std::numeric_limits<Real>::min();
-      const auto atRight = CosHalf < std::numeric_limits<Real>::min();
-      const auto logSinHalf = atLeft ? static_cast<Real>(0) : std::log(SinHalf);
-      const auto logCosHalf =
-          atRight ? static_cast<Real>(0) : std::log(CosHalf);
-
-      // Set the values for l == |n|
+      // Add in interior orders using one-term recursion.
       {
-        const auto l = nAbs;
-        auto m = d(l).MinOrder();
-        auto start = d(l).begin();
-        auto finish = d(l).end();
-        if (n >= 0) {
-          std::transform(start, finish, start, [&, this](auto &p) mutable {
-            return WignerMaxUpperIndex(l, m, logSinHalf, logCosHalf, atLeft,
-                                       atRight);
-            m++;
-          });
-        } else {
-          std::transform(start, finish, start, [&, this](auto &p) mutable {
-            return WignerMinUpperIndex(l, m, logSinHalf, logCosHalf, atLeft,
-                                       atRight);
-            m++;
-          });
+        const auto alpha = (2 * l - 1) * l * cos * sqrtIntInv[l + nAbs];
+        const auto beta = (n < 0 ? -1 : 1) * (2 * l - 1) * sqrtIntInv[l + nAbs];
+
+        while (iterMinusOne != finishMinusOne) {
+          auto f1 = (alpha - beta * m) * sqrtIntInv[l - m] * sqrtIntInv[l + m];
+          *iter++ = f1 * *iterMinusOne++;
+          m++;
         }
       }
 
-      // Set the values for l == n+1 if needed.
-      if (nAbs < lMax) {
-        const auto l = nAbs + 1;
-        const auto mMin = d(l).MinOrder();
-        const auto mMax = d(l).MaxOrder();
-        auto m = mMin;
-
-        // Set iterators
-        auto startMinusOne = d(l - 1).begin();
-        auto finishMinusOne = d(l - 1).end();
-        auto start = d(l).begin();
-
-        // Add in value at m == -l if needed.
-        if constexpr (std::same_as<MRange, All>) {
-          if (l <= mMax) {
-            *start++ =
-                WignerMinOrder(l, n, logSinHalf, logCosHalf, atLeft, atRight);
-            // Update the starting order for recursion
-            m++;
-          }
-        }
-
-        // Add in interior orders using one-term recursion.
-        {
-          const auto alpha = (2 * l - 1) * l * cos * sqrtIntInv[l + nAbs];
-          const auto beta =
-              (n < 0 ? -1 : 1) * (2 * l - 1) * sqrtIntInv[l + nAbs];
-
-          std::transform(startMinusOne, finishMinusOne, start,
-                         [&](auto &minusOne) mutable {
-                           auto f1 = (alpha - beta * m) * sqrtIntInv[l - m] *
-                                     sqrtIntInv[l + m];
-                           m++;
-                           return f1 * minusOne;
-                         });
-        }
-
-        // Add in value at m == l if needed
-        if (l <= mMax) {
-          std::advance(start, m - mMin - 1);
-          *start++ =
-              WignerMaxOrder(l, n, logSinHalf, logCosHalf, atLeft, atRight);
-        }
-        if (start != d(l).end()) std::cout << "Problem!\n";
+      // Add in value at m == l if needed
+      if (l <= mMax) {
+        *iter++ = WignerMaxOrder(l, n, logSinHalf, logCosHalf, atLeft, atRight);
       }
+    }
 
-      // Do the remaining degrees
-      for (auto l : d.Degrees() | std::ranges::views::drop(2)) {
-        const auto mMin = d(l).MinOrder();
-        const auto mMax = d(l).MaxOrder();
-        auto m = mMin;
+    // Do the remaining degrees
+    for (auto l = nAbs + 2; l <= lMax; l++) {
+      const auto mMin = d(l).MinOrder();
+      const auto mMax = d(l).MaxOrder();
+      auto m = mMin;
 
-        // Set iterators.
-        auto startMinusTwo = d(l - 2).begin();
-        auto finishMinusTwo = d(l - 2).end();
-        auto startMinusOne = d(l - 1).begin();
-        auto start = d(l).begin();
+      // Set iterators.
+      auto iterMinusTwo = d(l - 2).begin();
+      auto finishMinusTwo = d(l - 2).end();
+      auto iterMinusOne = d(l - 1).begin();
+      auto iter = d(l).begin();
 
-        // Add in lower boundary terms if still growing.
-        if constexpr (std::same_as<MRange, All>) {
-          if (l <= mMax) {
-            {
-              // Add in the m == -l term.
-              *start++ =
-                  WignerMinOrder(l, n, logSinHalf, logCosHalf, atLeft, atRight);
-              m++;
-            }
-            {
-              // Now do the m == -l+1 term using one-point recursion.
-              const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
-                              sqrtIntInv[l - n] * sqrtIntInv[l + n] *
-                              sqrtIntInv[l - m] * sqrtIntInv[l + m] /
-                              static_cast<Real>(l - 1);
-              *start++ = f1 * (*startMinusOne++);
-              m++;
-            }
-          }
-
-          // Add in the lower boundary term at the critical degree
-          if (l == mMax + 1) {
-            const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
-                            sqrtIntInv[l - n] * sqrtIntInv[l + n] *
-                            sqrtIntInv[l - m] * sqrtIntInv[l + m] /
-                            static_cast<Real>(l - 1);
-            *start++ = f1 * (*startMinusOne++);
-            m++;
-          }
-        }
-
-        // Apply two-term recusion for the interior orders.
-        {
-          const auto alpha =
-              (2 * l - 1) * l * cos * sqrtIntInv[l - n] * sqrtIntInv[l + n];
-          const auto beta = (2 * l - 1) * n * sqrtIntInv[l - n] *
-                            sqrtIntInv[l + n] / static_cast<Real>(l - 1);
-          const auto gamma = l * sqrtInt[l - 1 - n] * sqrtInt[l - 1 + n] *
-                             sqrtIntInv[l - n] * sqrtIntInv[l + n] /
-                             static_cast<Real>(l - 1);
-          std::transform(startMinusTwo, finishMinusTwo, startMinusOne, start,
-                         [&](auto &minusTwo, auto &minusOne) {
-                           auto denom = sqrtIntInv[l - m] * sqrtIntInv[l + m];
-                           auto f1 = (alpha - beta * m) * denom;
-                           auto f2 = gamma * sqrtInt[l - 1 - m] *
-                                     sqrtInt[l - 1 + m] * denom;
-                           m++;
-                           return f1 * minusOne - f2 * minusTwo;
-                         });
-        }
-
-        // Add in the upper boundary terms if still growing.
+      // Add in lower boundary terms if still growing.
+      if constexpr (std::same_as<MRange, All>) {
         if (l <= mMax) {
-          std::advance(start, m - mMin - 1);
-          // Add in m == l - 1 term using one-point recursion.
           {
+            // Add in the m == -l term.
+            *iter++ =
+                WignerMinOrder(l, n, logSinHalf, logCosHalf, atLeft, atRight);
+            m++;
+          }
+          {
+            // Now do the m == -l+1 term using one-point recursion.
             const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
                             sqrtIntInv[l - n] * sqrtIntInv[l + n] *
                             sqrtIntInv[l - m] * sqrtIntInv[l + m] /
                             static_cast<Real>(l - 1);
-            *start++ = f1 * (*startMinusOne++);
+            *iter++ = f1 * (*iterMinusOne++);
+            m++;
           }
-          // Now do m == l.
-          *start++ =
-              WignerMaxOrder(l, n, logSinHalf, logCosHalf, atLeft, atRight);
         }
 
-        // Add in the upper boundary term at the crtiical degree.
+        // Add in the lower boundary term at the critical degree
         if (l == mMax + 1) {
-          // Update the iterators.
-          std::advance(start, m - mMin - 1);
           const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
                           sqrtIntInv[l - n] * sqrtIntInv[l + n] *
                           sqrtIntInv[l - m] * sqrtIntInv[l + m] /
                           static_cast<Real>(l - 1);
-          *start++ = f1 * (*startMinusOne++);
+          *iter++ = f1 * (*iterMinusOne++);
+          m++;
         }
-        if (start != d(l).end())
-          std::cout << "Problem! " << n << " " << l << std::endl;
       }
 
-      // Normalise the values if required.
-      if constexpr (std::same_as<Norm, Ortho>) {
-        const auto factor =
-            std::numbers::inv_sqrtpi_v<Real> / static_cast<Real>(2);
-        for (auto l : d.Degrees()) {
-          auto start = d(l).begin();
-          auto finish = d(l).end();
+      // Apply two-term recusion for the interior orders.
+      {
+        const auto alpha =
+            (2 * l - 1) * l * cos * sqrtIntInv[l - n] * sqrtIntInv[l + n];
+        const auto beta = (2 * l - 1) * n * sqrtIntInv[l - n] *
+                          sqrtIntInv[l + n] / static_cast<Real>(l - 1);
+        const auto gamma = l * sqrtInt[l - 1 - n] * sqrtInt[l - 1 + n] *
+                           sqrtIntInv[l - n] * sqrtIntInv[l + n] /
+                           static_cast<Real>(l - 1);
 
-          /*
-          std::transform(start, finish, start, [l, factor](auto p) {
-            return factor * std::sqrt(static_cast<Real>(2 * l + 1)) * p;
-          });
-          */
+        while (iterMinusTwo != finishMinusTwo) {
+          auto denom = sqrtIntInv[l - m] * sqrtIntInv[l + m];
+          auto f1 = (alpha - beta * m) * denom;
+          auto f2 = gamma * sqrtInt[l - 1 - m] * sqrtInt[l - 1 + m] * denom;
+          *iter++ = f1 * *iterMinusOne++ - f2 * *iterMinusTwo++;
+          m++;
         }
+      }
+
+      // Add in the upper boundary terms if still growing.
+      if (l <= mMax) {
+        // Add in m == l - 1 term using one-point recursion.
+        {
+          const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
+                          sqrtIntInv[l - n] * sqrtIntInv[l + n] *
+                          sqrtIntInv[l - m] * sqrtIntInv[l + m] /
+                          static_cast<Real>(l - 1);
+          *iter++ = f1 * (*iterMinusOne++);
+          m++;
+        }
+        // Now do m == l.
+        *iter++ = WignerMaxOrder(l, n, logSinHalf, logCosHalf, atLeft, atRight);
+      }
+
+      // Add in the upper boundary term at the critical degree.
+      if (l == mMax + 1) {
+        // Update the iterators.
+
+        const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
+                        sqrtIntInv[l - n] * sqrtIntInv[l + n] *
+                        sqrtIntInv[l - m] * sqrtIntInv[l + m] /
+                        static_cast<Real>(l - 1);
+        *iter++ = f1 * (*iterMinusOne++);
       }
     }
+
+    // Normalise the values if needed.
+    if constexpr (std::same_as<Norm, Ortho>) {
+      const auto factor =
+          std::numbers::inv_sqrtpi_v<Real> / static_cast<Real>(2);
+      for (auto l : d.Degrees()) {
+        auto start = d(l).begin();
+        auto finish = d(l).end();
+
+        std::transform(start, finish, start, [l, factor](auto p) {
+          return factor * std::sqrt(static_cast<Real>(2 * l + 1)) * p;
+        });
+      }
+    }
+  }
 };
 
 }  // namespace GSHTrans

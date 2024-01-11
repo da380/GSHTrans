@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <iostream>
 #include <numeric>
 #include <ranges>
 
@@ -161,13 +162,23 @@ class GSHViewDegree {
     assert(_mMax >= 0);
   }
 
-  auto size() const {
+  auto Degree() const { return _l; }
+
+  auto MinOrder() const {
     if constexpr (std::same_as<MRange, All>) {
-      return _l > _mMax ? 2 * _l + 1 : 2 * _mMax + 1;
+      return -std::min(_l, _mMax);
     } else {
-      return _l > _mMax ? _l + 1 : _mMax + 1;
+      return difference_type{0};
     }
   }
+
+  auto MaxOrder() const { return std::min(_l, _mMax); }
+
+  auto Orders() const {
+    return std::ranges::views::iota(MinOrder(), MaxOrder() + 1);
+  }
+
+  auto size() const { return Orders().size(); }
 
   auto begin() { return _start; }
   auto end() { return std::next(_start, size()); }
@@ -186,22 +197,6 @@ class GSHViewDegree {
     } else {
       return _start[m];
     }
-  }
-
-  auto Degree() const { return _l; }
-
-  auto MinOrder() const {
-    if constexpr (std::same_as<MRange, All>) {
-      return -std::min(_l, _mMax);
-    } else {
-      return difference_type{0};
-    }
-  }
-
-  auto MaxOrder() const { return std::min(_l, _mMax); }
-
-  auto Orders() const {
-    return std::ranges::views::iota(MinOrder(), MaxOrder() + 1);
   }
 
  private:

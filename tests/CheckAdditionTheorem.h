@@ -25,22 +25,24 @@ int CheckAdditionTheorem() {
   std::uniform_real_distribution<Real> dist{static_cast<Real>(0),
                                             std::numbers::pi_v<Real>};
   auto theta = dist(gen);
+  auto d = Wigner<Real, All, All, FourPi>(lMax, lMax, lMax, theta);
 
-  // Define small number for comparison.
   constexpr auto eps = 1000 * std::numeric_limits<Real>::epsilon();
-  for (auto n = -nMax; n <= nMax; n++) {
-    Wigner<Real, All, FourPi> d1(lMax, mMax, n, theta);
-    for (auto np = 0; np <= nMax; np++) {
-      Wigner<Real, All, FourPi> d2(lMax, mMax, np, theta);
-      auto lstart = std::max(std::abs(n), std::abs(np));
-      for (auto l = lstart; l <= lMax; l++) {
-        auto sum = std::inner_product(d1.beginForDegree(l), d1.endForDegree(l),
-                                      d2.beginForDegree(l), Real{0});
+
+  for (auto n : d.UpperIndices()) {
+    auto d1 = d(n, 0);
+    for (auto np : d.UpperIndices()) {
+      auto d2 = d(np, 0);
+      auto lMin = std::max(std::abs(n), std::abs(np));
+      for (auto l = lMin; l <= lMax; l++) {
+        auto sum = std::inner_product(d1(l).begin(), d1(l).end(), d2(l).begin(),
+                                      Real{0});
         if (n == np) --sum;
         if (std::abs(sum) > eps) return 1;
       }
     }
   }
+
   return 0;
 }
 
