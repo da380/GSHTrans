@@ -3,7 +3,6 @@
 
 #include <omp.h>
 
-#include <Eigen/Core>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -26,8 +25,6 @@ template <RealFloatingPoint Real, OrderIndexRange MRange, IndexRange NRange,
 class Wigner {
   using Vector = std::vector<Real>;
   using Int = Vector::difference_type;
-  using Mat = Eigen::Matrix<Real, Eigen::Dynamic, Eigen::Dynamic>;
-  using RowVec = Eigen::Matrix<Real, 1, Eigen::Dynamic>;
 
  public:
   // Set member types.
@@ -45,11 +42,12 @@ class Wigner {
       : _lMax{lMax}, _mMax{mMax}, _nMax{nMax}, _nTheta(thetaRange.size()) {
     AllocateStorage();
     auto preCompute = PreCompute();
+
+#pragma omp parallel for collapse(2)
     for (auto n : UpperIndices()) {
-      auto iTheta = Int{0};
-      for (auto theta : thetaRange) {
-        auto d = operator()(n)(iTheta++);
-        Compute(n, theta, d, preCompute);
+      for (auto iTheta : AngleIndices()) {
+        auto d = operator()(n)(iTheta);
+        Compute(n, thetaRange[iTheta], d, preCompute);
       }
     }
   }
@@ -107,32 +105,11 @@ class Wigner {
     return operator()(_nMax);
   }
 
-  // Extract Wigner matrix at given angle and degree indices.
-  auto Matrix(Int iTheta, Int l) requires requires() {
-    std::same_as<MRange, All>;
-    std::same_as<NRange, All>;
-  }
-  {
-    auto mat = Mat(2 * l + 1, 2 * l + 1);
-    auto upperIndices =
-        UpperIndices() |
-        std::ranges::views::filter([l](auto n) { return std::abs(n) <= l; });
-    for (auto n : upperIndices) {
-      auto d = operator()(n)(iTheta);
-      auto i = n + l;
-      for (auto m : d(l).Orders()) {
-        auto j = m + l;
-        mat(i, j) = d(l)(m);
-      }
-    }
-    return mat;
-  }
-
  private:
-  Int _lMax;                // Maximum degree.
-  Int _mMax;                // Maximum order.
-  Int _nMax;                // Maximum upper index.
-  Int _nTheta;              // Number of colatitudes.
+  Int _lMax;    // Maximum degree.
+  Int _mMax;    // Maximum order.
+  Int _nMax;    // Maximum upper index.
+  Int _nTheta;  // Number of colatitudes.
 
   // Vector storing the values.
   Vector _data;
