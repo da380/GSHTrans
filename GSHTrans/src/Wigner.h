@@ -3,6 +3,7 @@
 
 #include <omp.h>
 
+#include <Eigen/Core>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -20,11 +21,13 @@
 
 namespace GSHTrans {
 
-template <RealFloatingPoint Real, IndexRange MRange, IndexRange NRange,
-          Normalisation Norm>
+template <RealFloatingPoint Real, OrderIndexRange MRange, IndexRange NRange,
+          Normalisation Norm = Ortho>
 class Wigner {
   using Vector = std::vector<Real>;
   using Int = Vector::difference_type;
+  using Mat = Eigen::Matrix<Real, Eigen::Dynamic, Eigen::Dynamic>;
+  using RowVec = Eigen::Matrix<Real, 1, Eigen::Dynamic>;
 
  public:
   // Set member types.
@@ -36,6 +39,7 @@ class Wigner {
 
   Wigner() = default;
 
+  // Constructors for a Upper index range.
   template <RealFloatingPointRange RealRange>
   Wigner(Int lMax, Int mMax, Int nMax, RealRange &&thetaRange)
       : _lMax{lMax}, _mMax{mMax}, _nMax{nMax}, _nTheta(thetaRange.size()) {
@@ -44,7 +48,7 @@ class Wigner {
     for (auto n : UpperIndices()) {
       auto iTheta = Int{0};
       for (auto theta : thetaRange) {
-        auto d = operator()(n, iTheta++);
+        auto d = operator()(n)(iTheta++);
         Compute(n, theta, d, preCompute);
       }
     }
@@ -57,6 +61,7 @@ class Wigner {
   auto MaxDegree() const { return _lMax; }
   auto MaxOrder() const { return _mMax; }
 
+  auto Degrees() const { return std::ranges::views::iota(0, _lMax + 1); }
   auto NumberOfAngles() const { return _nTheta; }
   auto size() const { return _data.size(); }
   auto begin() { return _data.begin(); }
@@ -65,11 +70,15 @@ class Wigner {
   auto MinUpperIndex() const {
     if constexpr (std::same_as<NRange, All>) {
       return -_nMax;
-    } else {
+    } else if constexpr (std::same_as<NRange, NonNegative>) {
       return Int{0};
+    } else {
+      return _nMax;
     }
   }
+
   auto MaxUpperIndex() const { return _nMax; }
+
   auto UpperIndices() const {
     return std::ranges::views::iota(MinUpperIndex(), MaxUpperIndex() + 1);
   }
@@ -79,18 +88,51 @@ class Wigner {
     return std::ranges::views::iota(Int{0}, _nTheta);
   }
 
-  // Return view to the data for given theta and upper index.
-  auto operator()(Int n, Int iTheta) {
-    auto offset = Offset(n, iTheta);
+  // Return view to all angles for given upper index.
+  auto operator()(Int n) {
+    auto upperIndices = UpperIndices() | std::ranges::views::filter(
+                                             [n](auto np) { return np < n; });
+    auto offset = std::accumulate(
+        upperIndices.begin(), upperIndices.end(), Int{0},
+        [this](auto acc, auto np) {
+          return acc +
+                 GSHIndices<MRange>(_lMax, _mMax, np).size() * NumberOfAngles();
+        });
     auto start = std::next(begin(), offset);
-    return GSHView<Real, MRange>(_lMax, _mMax, n, start);
+    return GSHViewAngleRange<Real, MRange>(_lMax, _mMax, n, _nTheta, start);
+  }
+
+  // Application operator in the case of a single upper index.
+  auto operator()() requires std::same_as<NRange, Single> {
+    return operator()(_nMax);
+  }
+
+  // Extract Wigner matrix at given angle and degree indices.
+  auto Matrix(Int iTheta, Int l) requires requires() {
+    std::same_as<MRange, All>;
+    std::same_as<NRange, All>;
+  }
+  {
+    auto mat = Mat(2 * l + 1, 2 * l + 1);
+    auto upperIndices =
+        UpperIndices() |
+        std::ranges::views::filter([l](auto n) { return std::abs(n) <= l; });
+    for (auto n : upperIndices) {
+      auto d = operator()(n)(iTheta);
+      auto i = n + l;
+      for (auto m : d(l).Orders()) {
+        auto j = m + l;
+        mat(i, j) = d(l)(m);
+      }
+    }
+    return mat;
   }
 
  private:
-  Int _lMax;    // Maximum degree.
-  Int _mMax;    // Maximum order.
-  Int _nMax;    // Maximum upper index.
-  Int _nTheta;  // Number of colatitudes.
+  Int _lMax;                // Maximum degree.
+  Int _mMax;                // Maximum order.
+  Int _nMax;                // Maximum upper index.
+  Int _nTheta;              // Number of colatitudes.
 
   // Vector storing the values.
   Vector _data;
@@ -105,20 +147,6 @@ class Wigner {
                  GSHIndices<MRange>(_lMax, _mMax, n).size() * NumberOfAngles();
         });
     _data.resize(size);
-  }
-
-  // Compute offset to the start of the data for given
-  // upper index and angle.
-  auto Offset(Int n, Int iTheta) const {
-    auto upperIndices = UpperIndices() | std::ranges::views::filter(
-                                             [n](auto np) { return np < n; });
-    return std::accumulate(
-        upperIndices.begin(), upperIndices.end(),
-        GSHIndices<MRange>(_lMax, _mMax, n).size() * iTheta,
-        [this](auto acc, auto np) {
-          return acc +
-                 GSHIndices<MRange>(_lMax, _mMax, np).size() * NumberOfAngles();
-        });
   }
 
   // Pre-compute some numerical terms used repeatedly within
@@ -140,7 +168,7 @@ class Wigner {
 
   constexpr auto MinusOneToPower(Int m) { return m % 2 ? -1 : 1; }
 
-  Real WignerMinOrder(Int l, Int n, Real logSinHalf, Real logCosHalf,
+  auto WignerMinOrder(Int l, Int n, Real logSinHalf, Real logCosHalf,
                       bool atLeft, bool atRight) {
     // Check the inputs.
     assert(l >= 0);
@@ -170,18 +198,18 @@ class Wigner {
         (Fl + Fn) * logSinHalf + (Fl - Fn) * logCosHalf);
   }
 
-  Real WignerMaxOrder(Int l, Int n, Real logSinHalf, Real logCosHalf,
+  auto WignerMaxOrder(Int l, Int n, Real logSinHalf, Real logCosHalf,
                       bool atLeft, bool atRight) {
     return MinusOneToPower(n + l) *
            WignerMinOrder(l, -n, logSinHalf, logCosHalf, atLeft, atRight);
   }
 
-  Real WignerMinUpperIndex(Int l, Int m, Real logSinHalf, Real logCosHalf,
+  auto WignerMinUpperIndex(Int l, Int m, Real logSinHalf, Real logCosHalf,
                            bool atLeft, bool atRight) {
     return WignerMaxOrder(l, -m, logSinHalf, logCosHalf, atLeft, atRight);
   }
 
-  Real WignerMaxUpperIndex(Int l, Int m, Real logSinHalf, Real logCosHalf,
+  auto WignerMaxUpperIndex(Int l, Int m, Real logSinHalf, Real logCosHalf,
                            bool atLeft, bool atRight) {
     return WignerMinOrder(l, -m, logSinHalf, logCosHalf, atLeft, atRight);
   }
@@ -364,7 +392,7 @@ class Wigner {
       }
     }
   }
-};
+};  // namespace GSHTrans
 
 }  // namespace GSHTrans
 

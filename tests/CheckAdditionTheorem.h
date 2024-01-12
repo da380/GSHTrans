@@ -1,6 +1,7 @@
 #ifndef CHECK_ADDITION_THEOREM_ZERO_GUARD
 #define CHECK_ADDITION_THEOREM_ZERO_GUARD
 
+#include <Eigen/Core>
 #include <GSHTrans/All>
 #include <algorithm>
 #include <cmath>
@@ -22,17 +23,18 @@ int CheckAdditionTheorem() {
   // Pick a random angle
   std::random_device rd{};
   std::mt19937_64 gen{rd()};
-  std::uniform_real_distribution<Real> dist{static_cast<Real>(0),
-                                            std::numbers::pi_v<Real>};
-  auto theta = dist(gen);
+  std::uniform_real_distribution<Real> dist1{static_cast<Real>(0),
+                                             std::numbers::pi_v<Real>};
+  auto theta = dist1(gen);
+
   auto d = Wigner<Real, All, All, FourPi>(lMax, lMax, lMax, theta);
 
   constexpr auto eps = 1000 * std::numeric_limits<Real>::epsilon();
 
   for (auto n : d.UpperIndices()) {
-    auto d1 = d(n, 0);
+    auto d1 = d(n)();
     for (auto np : d.UpperIndices()) {
-      auto d2 = d(np, 0);
+      auto d2 = d(np)();
       auto lMin = std::max(std::abs(n), std::abs(np));
       for (auto l = lMin; l <= lMax; l++) {
         auto sum = std::inner_product(d1(l).begin(), d1(l).end(), d2(l).begin(),

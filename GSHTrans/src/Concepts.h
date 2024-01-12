@@ -11,10 +11,19 @@ namespace GSHTrans {
 // Tag classes and concepts for order storage.
 struct All {};
 struct NonNegative {};
+struct Single {};
 
-template <typename Orders>
-concept IndexRange =
-    std::same_as<Orders, All> or std::same_as<Orders, NonNegative>;
+template <typename Indices>
+concept IndexRange = std::same_as<Indices, All> or
+    std::same_as<Indices, NonNegative> or std::same_as<Indices, Single>;
+
+template <typename Indices>
+concept OrderIndexRange =
+    std::same_as<Indices, All> or std::same_as<Indices, NonNegative>;
+
+template <typename Indices>
+concept AngleIndexRange =
+    std::same_as<Indices, NonNegative> or std::same_as<Indices, Single>;
 
 // Tag classes and concepts for normalisations.
 struct Ortho {};
