@@ -199,6 +199,9 @@ class GSHViewDegree {
   auto begin() { return _start; }
   auto end() { return std::next(_start, size()); }
 
+  auto cbegin() const { return _start; }
+  auto cend() const { return std::next(_start, size()); }
+
   auto operator()(Int m) const {
     if constexpr (std::same_as<MRange, All>) {
       return _start[_mMax + m];
@@ -241,8 +244,12 @@ class GSHView {
       : _indices{GSHIndices<MRange>(lMax, mMax, n)}, _start{&*start} {}
 
   auto size() const { return _indices.size(); }
+
   auto begin() { return _start; }
   auto end() { return std::next(_start, size()); }
+
+  auto cbegin() const { return _start; }
+  auto cend() const { return std::next(_start, size()); }
 
   auto MinDegree() const { return _indices.MinDegree(); }
   auto MaxDegree() const { return _indices.MaxDegree(); }
@@ -283,8 +290,12 @@ class GSHViewAngleRange {
       : _lMax{lMax}, _mMax{mMax}, _n{n}, _nTheta{nTheta}, _start{&*start} {}
 
   auto size() const { GSHIndices<MRange>(_lMax, _mMax, _n).size() * _nTheta; }
+
   auto begin() { return _start; }
   auto end() { return std::next(_start, size()); }
+
+  auto cbegin() const { return _start; }
+  auto cend() const { return std::next(_start, size()); }
 
   auto NumberOfAngles() const { return _nTheta; }
   auto AngleIndices() const { return std::ranges::views::iota(0, _nTheta); }

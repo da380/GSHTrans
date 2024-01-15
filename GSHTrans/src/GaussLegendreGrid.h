@@ -106,10 +106,12 @@ class GaussLegendreGrid {
   void ForwardTransformation(Int lMax, Int n, InIterator in,
                              OutIterator out) const {
     const auto nPhi = NumberOfLongitudes();
-    const auto scaleFactor =
-        2 * std::numbers::pi_v<Real> / static_cast<Real>(nPhi);
+    const auto scaleFactor = static_cast<Real>(2) * std::numbers::pi_v<Real> /
+                             static_cast<Real>(nPhi);
     auto work = FFTWork();
     auto outView = FFTWpp::DataView(work.begin(), work.end(), _outLayout);
+
+#pragma omp parallel for
     for (auto iTheta : CoLatitudeIndices()) {
       auto offset = iTheta * nPhi;
       auto inStart = std::next(in, offset);
@@ -118,12 +120,15 @@ class GaussLegendreGrid {
       auto plan =
           FFTWpp::Plan(inView, outView, FFTWpp::Forward, FFTWpp::WisdomOnly);
       plan.Execute();
-      auto d = _wigner->operator()(n)(iTheta);
-      auto w = _quad.X(iTheta) * scaleFactor;
+
+      const auto d = _wigner->operator()(n)(iTheta);
+      const auto w = _quad.X(iTheta) * scaleFactor;
+
       auto outIter = out;
-      auto wigIter = d.begin();
-      auto degrees = d.Degrees() | std::ranges::views::filter(
-                                       [lMax](auto l) { return l <= lMax; });
+      auto wigIter = d.cbegin();
+      const auto degrees =
+          d.Degrees() |
+          std::ranges::views::filter([lMax](auto l) { return l <= lMax; });
       for (auto l : degrees) {
         auto dl = d(l);
         if constexpr (std::same_as<Type, C2C>) {
