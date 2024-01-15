@@ -18,10 +18,10 @@ int main() {
 
   auto start_time = std::chrono::high_resolution_clock::now();
 
-  auto lMax = 512 * 2;
+  auto lMax = 128;
   auto nMax = 2;
 
-  auto grid = GaussLegendreGrid<Real, C2C>(lMax, nMax);
+  auto grid = GaussLegendreGrid<Real, C2C, Ortho>(lMax, nMax);
 
   auto end_time = std::chrono::high_resolution_clock::now();
 
@@ -29,19 +29,9 @@ int main() {
 
   std::cout << duration.count() << std::endl;
 
-  /*
-auto f = [](Real theta, Real phi) -> Real { return 1.0; };
+  auto f = [](Real theta, Real phi) -> Real { return 1.0; };
 
-auto integral = plan.Integrate(f);
+  auto integral = grid.Integrate(f);
 
-//  std::cout << integral / (4 * std::numbers::pi) << std::endl;
-
-auto nPhi = plan.NumberOfLongitudes();
-auto nTheta = plan.NumberOfCoLatitudes();
-
-std::vector<Complex> x(nTheta * nPhi);
-std::vector<Complex> y((lMax + 1) * (lMax + 1));
-
-plan.Execute(x, y, 0);
-  */
+  std::cout << integral / (4 * std::numbers::pi) << std::endl;
 }

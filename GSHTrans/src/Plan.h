@@ -23,8 +23,6 @@
 
 namespace GSHTrans {
 
-/*
-
 template <RealFloatingPoint Real = double, TransformType Type = C2C,
         Normalisation Norm = Ortho>
 class Plan {
@@ -61,8 +59,7 @@ Plan(int lMax, int nMax, FFTWpp::PlanFlag flag = FFTWpp::Measure)
     _inLayout = FFTWpp::DataLayout(1, std::vector{NumberOfLongitudes()}, 1,
                                    std::vector{NumberOfLongitudes()}, 1, 1);
     _outLayout = _inLayout;
-    FFTWpp::GenerateWisdom<Complex, Complex, true>(_inLayout, _outLayout,
-                                                   flag);
+    FFTWpp::GenerateWisdom<Complex, Complex, true>(_inLayout, _outLayout, flag);
   } else {
     _inLayout = FFTWpp::DataLayout(1, std::vector{NumberOfLongitudes()}, 1,
                                    std::vector{NumberOfLongitudes()}, 1, 1);
@@ -216,7 +213,7 @@ inStart = inFinish;
   WignerVector _d;
 };
 
-*/
+
 
 }  // namespace GSHTrans
 

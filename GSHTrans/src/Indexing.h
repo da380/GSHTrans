@@ -182,6 +182,18 @@ class GSHViewDegree {
     return std::ranges::views::iota(MinOrder(), MaxOrder() + 1);
   }
 
+  auto NonNegativeOrders() const {
+    return std::ranges::views::iota(0, MaxOrder() + 1);
+  }
+
+  auto NegativeOrders() const {
+    if constexpr (std::same_as<MRange, All>) {
+      return std::ranges::views::iota(MinOrder(), -1);
+    } else {
+      return std::ranges::views::empty<Int>();
+    }
+  }
+
   auto size() const { return Orders().size(); }
 
   auto begin() { return _start; }
@@ -289,6 +301,47 @@ class GSHViewAngleRange {
   Int _n;
   Int _nTheta;
   iterator _start;
+};
+
+template <StorageType Storage>
+class GLGIndices {
+  using Int = std::ptrdiff_t;
+
+ public:
+  GLGIndices() = default;
+
+  GLGIndices(Int lMax)
+      : _nTheta{lMax + 1}, _nPhi{2 * lMax}, _iTheta{0}, _iPhi{0} {}
+
+  // Return iterators to the begining and end.
+  const auto& begin() const { return *this; }
+  const auto& end() const { return *this; }
+
+  // Increment operator.
+  void operator++() {
+    if (++_iPhi == _nPhi) {
+      _iPhi = 0;
+      ++_iTheta;
+    }
+  }
+
+  // Dereference by returning (l,m) as a pair.
+  auto operator*() const {
+    if constexpr (std::same_as<Storage, ColMajor>) {
+      return std::pair(_iTheta, _iPhi);
+    } else {
+      return std::pair(_iPhi, _iTheta);
+    }
+  }
+
+  // Not equals required for terminating loops.
+  auto operator!=(const GLGIndices&) const { return _iTheta < _nTheta; }
+
+ private:
+  Int _iPhi;
+  Int _iTheta;
+  Int _nTheta;
+  Int _nPhi;
 };
 
 }  // namespace GSHTrans

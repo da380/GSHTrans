@@ -43,6 +43,15 @@ struct R2C {
 template <typename Type>
 concept TransformType = std::same_as<Type, C2C> or std::same_as<Type, R2C>;
 
+// Tag classes and concepts for storage orders.
+
+struct RowMajor {};
+struct ColMajor {};
+
+template <typename Storage>
+concept StorageType =
+    std::same_as<Storage, RowMajor> or std::same_as<Storage, ColMajor>;
+
 // Concepts for real or complex floating point types.
 template <typename T>
 struct IsComplexFloatingPoint : public std::false_type {};

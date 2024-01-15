@@ -102,7 +102,7 @@ auto WignerMaxUpperIndex(Int l, Int m, Arguments<Real> &arg) {
 }  // namespace Details
 
 template <RealFloatingPoint Real, OrderIndexRange MRange, IndexRange NRange,
-          Normalisation Norm = Ortho>
+          Normalisation Norm>
 class Wigner {
   using Vector = std::vector<Real>;
   using Int = Vector::difference_type;
