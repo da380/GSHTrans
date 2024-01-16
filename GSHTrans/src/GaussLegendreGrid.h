@@ -216,7 +216,7 @@ class GaussLegendreGrid {
   // Return vector to store function values.
   template <RealOrComplexFloatingPoint Scalar>
   auto FunctionVector() const {
-    return std::vector<Scalar>(NumberOfCoLatitudes() * NumberOfLongitudes());
+    return FFTWpp::vector<Scalar>(NumberOfCoLatitudes() * NumberOfLongitudes());
   }
 
   // Interpolation of function onto the grid.
@@ -237,7 +237,7 @@ class GaussLegendreGrid {
   // Return vector to store coefficients.
   auto CoefficientVector(Int n) const {
     auto size = GSHIndices<MRange>(_lMax, _lMax, n).size();
-    return std::vector<Complex>(size);
+    return FFTWpp::vector<Complex>(size);
   }
 
  private:
@@ -260,11 +260,11 @@ class GaussLegendreGrid {
   }
 
   auto FFTWork() const requires std::same_as<Type, C2C> {
-    return std::vector<Complex>(2 * _lMax);
+    return FFTWpp::vector<Complex>(2 * _lMax);
   }
 
   auto FFTWork() const requires std::same_as<Type, R2C> {
-    return std::vector<Complex>(_lMax + 1);
+    return FFTWpp::vector<Complex>(_lMax + 1);
   }
 };
 

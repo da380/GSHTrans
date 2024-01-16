@@ -23,11 +23,11 @@ int main() {
 
   auto grid = std::make_shared<Grid>(lMax, nMax);
 
-  ScalarField x(grid);
+  auto f = ScalarField(grid);
 
-  /*
-  ScalarField x(grid, [](auto theta, auto phi) -> Scalar { return 1; });
-  ScalarField y(grid, [](auto theta, auto phi) -> Scalar { return 1; });
-  std::cout << x + y;
-  */
+  auto g = ScalarFieldView(f, 2);
+
+  auto h = ScalarFieldView(g, 0.5);
+
+  std::cout << f(2, 2) << " " << g(2, 2) << " " << h(2, 2) << std::endl;
 }
