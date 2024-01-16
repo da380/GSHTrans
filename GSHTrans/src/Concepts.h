@@ -35,22 +35,19 @@ concept Normalisation = std::same_as<Norm, Ortho> or std::same_as<Norm, FourPi>;
 // Tag classes and concepts for transformation types.
 struct C2C {
   using IndexRange = All;
+
+  template <std::floating_point Real>
+  using Scalar = std::complex<Real>;
 };
 struct R2C {
   using IndexRange = NonNegative;
+
+  template <std::floating_point Real>
+  using Scalar = Real;
 };
 
 template <typename Type>
 concept TransformType = std::same_as<Type, C2C> or std::same_as<Type, R2C>;
-
-// Tag classes and concepts for storage orders.
-
-struct RowMajor {};
-struct ColMajor {};
-
-template <typename Storage>
-concept StorageType =
-    std::same_as<Storage, RowMajor> or std::same_as<Storage, ColMajor>;
 
 // Concepts for real or complex floating point types.
 template <typename T>
@@ -107,6 +104,23 @@ template <typename T>
 concept RealOrComplexFloatingPointRange = requires() {
   requires std::ranges::random_access_range<T>;
   requires RealOrComplexFloatingPoint<std::ranges::range_value_t<T>>;
+};
+
+// Concepts for scalar-valued functions.
+template <typename Func, typename Real>
+concept ScalarFunction2D = requires(Real theta, Real phi, Real w, Func f) {
+  RealFloatingPoint<Real>;
+  std::invocable<Func, Real, Real>;
+  { f(theta, phi) } -> RealOrComplexFloatingPoint<>;
+  { f(theta, phi) * w } -> RealOrComplexFloatingPoint<>;
+};
+
+// Concepts for grid classes.
+template <typename Grid>
+concept SphereGrid = requires(Grid grid) {
+  typename Grid::difference_type;
+  { grid.MaxDegree() } -> std::same_as<typename Grid::difference_type>;
+  { grid.MaxUpperIndex() } -> std::same_as<typename Grid::difference_type>;
 };
 
 }  // namespace GSHTrans

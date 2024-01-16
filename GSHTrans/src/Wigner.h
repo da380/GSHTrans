@@ -20,7 +20,7 @@
 
 namespace GSHTrans {
 
-namespace Details {
+namespace WignerDetails {
 
 template <RealFloatingPoint Real>
 class Arguments {
@@ -99,7 +99,7 @@ auto WignerMaxUpperIndex(Int l, Int m, Arguments<Real> &arg) {
   return WignerMinOrder(l, -m, arg);
 }
 
-}  // namespace Details
+}  // namespace WignerDetails
 
 template <RealFloatingPoint Real, OrderIndexRange MRange, IndexRange NRange,
           Normalisation Norm>
@@ -250,7 +250,7 @@ class Wigner {
     const auto nAbs = std::abs(n);
     const auto lMax = d.MaxDegree();
 
-    auto arg = Details::Arguments<Real>(theta);
+    auto arg = WignerDetails::Arguments<Real>(theta);
     const auto cos = std::cos(theta);
 
     // Set the values for l == |n|
@@ -261,11 +261,11 @@ class Wigner {
       auto finish = d(l).end();
       if (n >= 0) {
         while (iter != finish) {
-          *iter++ = Details::WignerMaxUpperIndex(l, m++, arg);
+          *iter++ = WignerDetails::WignerMaxUpperIndex(l, m++, arg);
         }
       } else {
         while (iter != finish) {
-          *iter++ = Details::WignerMinUpperIndex(l, m++, arg);
+          *iter++ = WignerDetails::WignerMinUpperIndex(l, m++, arg);
         }
       }
     }
@@ -285,7 +285,7 @@ class Wigner {
       // Add in value at m == -l if needed.
       if constexpr (std::same_as<MRange, All>) {
         if (l <= mMax) {
-          *iter++ = Details::WignerMinOrder(l, n, arg);
+          *iter++ = WignerDetails::WignerMinOrder(l, n, arg);
           m++;
         }
       }
@@ -296,7 +296,8 @@ class Wigner {
         const auto beta = (n < 0 ? -1 : 1) * (2 * l - 1) * sqrtIntInv[l + nAbs];
 
         while (iterMinusOne != finishMinusOne) {
-          auto f1 = (alpha - beta * m) * sqrtIntInv[l - m] * sqrtIntInv[l + m];
+          const auto f1 =
+              (alpha - beta * m) * sqrtIntInv[l - m] * sqrtIntInv[l + m];
           *iter++ = f1 * *iterMinusOne++;
           m++;
         }
@@ -304,7 +305,7 @@ class Wigner {
 
       // Add in value at m == l if needed
       if (l <= mMax) {
-        *iter++ = Details::WignerMaxOrder(l, n, arg);
+        *iter++ = WignerDetails::WignerMaxOrder(l, n, arg);
       }
     }
 
@@ -325,7 +326,7 @@ class Wigner {
         if (l <= mMax) {
           {
             // Add in the m == -l term.
-            *iter++ = Details::WignerMinOrder(l, n, arg);
+            *iter++ = WignerDetails::WignerMinOrder(l, n, arg);
             m++;
           }
           {
@@ -361,9 +362,10 @@ class Wigner {
                            static_cast<Real>(l - 1);
 
         while (iterMinusTwo != finishMinusTwo) {
-          auto denom = sqrtIntInv[l - m] * sqrtIntInv[l + m];
-          auto f1 = (alpha - beta * m) * denom;
-          auto f2 = gamma * sqrtInt[l - 1 - m] * sqrtInt[l - 1 + m] * denom;
+          const auto denom = sqrtIntInv[l - m] * sqrtIntInv[l + m];
+          const auto f1 = (alpha - beta * m) * denom;
+          const auto f2 =
+              gamma * sqrtInt[l - 1 - m] * sqrtInt[l - 1 + m] * denom;
           *iter++ = f1 * *iterMinusOne++ - f2 * *iterMinusTwo++;
           m++;
         }
@@ -381,7 +383,7 @@ class Wigner {
           m++;
         }
         // Now do m == l.
-        *iter++ = Details::WignerMaxOrder(l, n, arg);
+        *iter++ = WignerDetails::WignerMaxOrder(l, n, arg);
       }
 
       // Add in the upper boundary term at the critical degree.

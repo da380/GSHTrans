@@ -8,23 +8,24 @@
 #include <cmath>
 #include <concepts>
 #include <iterator>
-#include <limits>
-#include <memory>
 #include <numbers>
 #include <numeric>
 #include <ranges>
-#include <variant>
 #include <vector>
 
 #include "Concepts.h"
 #include "Indexing.h"
-#include "Legendre.h"
 #include "Wigner.h"
 
 namespace GSHTrans {
 
 template <RealFloatingPoint Real, TransformType Type, Normalisation Norm>
 class GaussLegendreGrid {
+ public:
+  using real_type = Real;
+  using scalar_type = typename Type::Scalar<Real>;
+
+ private:
   using Int = std::ptrdiff_t;
   using Complex = std::complex<Real>;
   using MRange = Type::IndexRange;
@@ -33,6 +34,7 @@ class GaussLegendreGrid {
   using QuadType = GaussQuad::Quadrature1D<Real>;
 
  public:
+  // Constructors.
   GaussLegendreGrid() = default;
 
   GaussLegendreGrid(int lMax, int nMax, FFTWpp::PlanFlag flag = FFTWpp::Measure)
@@ -63,8 +65,9 @@ class GaussLegendreGrid {
 
   GaussLegendreGrid& operator=(GaussLegendreGrid&&) = default;
 
-  auto MaxDegree() const { return _lMax; }
-  auto MaxUpperIndex() const { return _nMax; }
+  // Grid information.
+  Int MaxDegree() const { return _lMax; }
+  Int MaxUpperIndex() const { return _nMax; }
 
   auto CoLatitudes() const { return std::ranges::views::all(_quad.Points()); }
   auto NumberOfCoLatitudes() const { return CoLatitudes().size(); }
@@ -83,11 +86,9 @@ class GaussLegendreGrid {
   }
   auto NumberOfLongitudes() const { return Longitudes().size(); }
 
+  // Integration a function over the grid.
   template <typename Function>
-  requires requires(Function f, Real theta, Real phi, Real w) {
-    std::invocable<Function, Real, Real>;
-    {f(theta, phi) * w};
-  }
+  requires ScalarFunction2D<Function, Real>
   auto Integrate(Function f) {
     using FunctionValue = decltype(f(0, 0));
     auto thetaIntegrand = [this, &f](auto theta) {
@@ -101,55 +102,82 @@ class GaussLegendreGrid {
     return _quad.Integrate(thetaIntegrand);
   };
 
+  // Integration of discretised function over the grid.
+  template <RealOrComplexFloatingPointRange Range>
+  auto Integrate(Range&& range) const {
+    using Scalar = std::ranges::range_value_t<Range>;
+    auto nPhi = NumberOfLongitudes();
+    auto dPhi = LongitudeSpacing();
+    auto summand = [this,nPhi,dPhi,range](auto iTheta) {
+      auto start = std::next(range.begin(),iTheta*nPhi);
+      auto finish = std::next(start,nPhi);
+      return dPhi*std::accumulate(start,finish,Scalar{0});
+    };
+    return std::inner_product(CoLatitudeIndices().begin(), CoLatitudeIndices().end(),
+			      _quad.Weights().begin(),Scalar{0}, std::plus<>(),
+			      [this,nPhi,dPhi,range,summand](auto i, auto w){ return summand(i) * w ;});
+  }
+
+  // Fast transformations.
   template <RealOrComplexFloatingPointIterator InIterator,
             ComplexFloatingPointIterator OutIterator>
   void ForwardTransformation(Int lMax, Int n, InIterator in,
                              OutIterator out) const {
+    assert(std::abs(n) <= _nMax);
+
     const auto nPhi = NumberOfLongitudes();
     const auto scaleFactor = static_cast<Real>(2) * std::numbers::pi_v<Real> /
                              static_cast<Real>(nPhi);
     auto work = FFTWork();
     auto outView = FFTWpp::DataView(work.begin(), work.end(), _outLayout);
 
-#pragma omp parallel for
     for (auto iTheta : CoLatitudeIndices()) {
       auto offset = iTheta * nPhi;
       auto inStart = std::next(in, offset);
       auto inFinish = std::next(inStart, nPhi);
       auto inView = FFTWpp::DataView(inStart, inFinish, _inLayout);
       auto plan =
-          FFTWpp::Plan(inView, outView, FFTWpp::Forward, FFTWpp::WisdomOnly);
+          FFTWpp::Plan(inView, outView, FFTWpp::WisdomOnly, FFTWpp::Forward);
       plan.Execute();
 
-      const auto d = _wigner->operator()(n)(iTheta);
-      const auto w = _quad.X(iTheta) * scaleFactor;
+      auto d = (_wigner->operator()(n))(iTheta);
+      auto w = _quad.W(iTheta) * scaleFactor;
 
       auto outIter = out;
       auto wigIter = d.cbegin();
-      const auto degrees =
-          d.Degrees() |
-          std::ranges::views::filter([lMax](auto l) { return l <= lMax; });
+      auto degrees = d.Degrees() | std::ranges::views::filter(
+                                       [lMax](auto l) { return l <= lMax; });
+
       for (auto l : degrees) {
         auto dl = d(l);
+
         if constexpr (std::same_as<Type, C2C>) {
           auto workIter = std::prev(work.end(), l);
           for (auto m : dl.NegativeOrders()) {
-            *outIter++ += *wigIter++ * *work++ * w;
+            *outIter++ += *wigIter++ * *workIter++ * w;
           }
         }
+
         {
           auto workIter = work.begin();
           for (auto m : dl.NonNegativeOrders()) {
-            *outIter++ += *wigIter++ * *work++ * w;
+            *outIter++ += *wigIter++ * *workIter++ * w;
           }
         }
       }
     }
   }
 
+  template <RealOrComplexFloatingPointIterator InIterator,
+            ComplexFloatingPointIterator OutIterator>
+  void ForwardTransformation(Int n, InIterator in, OutIterator out) const {
+    ForwardTransformation(_lMax, n, in, out);
+  }
+
   template <ComplexFloatingPointIterator InIterator,
             RealOrComplexFloatingPointIterator OutIterator>
-  void InverseTransformation(Int lMax, Int n, InIterator in, OutIterator out) {
+  void InverseTransformation(Int lMax, Int n, InIterator in,
+                             OutIterator out) const {
     const auto nPhi = NumberOfLongitudes();
     auto work = FFTWork();
     auto inView = FFTWpp::DataView(work.begin(), work.end(), _outLayout);
@@ -180,14 +208,41 @@ class GaussLegendreGrid {
       auto outFinish = std::next(outStart, nPhi);
       auto outView = FFTWpp::DataView(outStart, outFinish, _inLayout);
       auto plan =
-          FFTWpp::Plan(outView, outView, FFTWpp::Backward, FFTWpp::WisdomOnly);
+          FFTWpp::Plan(inView, outView, FFTWpp::WisdomOnly, FFTWpp::Backward);
       plan.Execute();
     }
   }
 
+  // Return vector to store function values.
+  template <RealOrComplexFloatingPoint Scalar>
+  auto FunctionVector() const {
+    return std::vector<Scalar>(NumberOfCoLatitudes() * NumberOfLongitudes());
+  }
+
+  // Interpolation of function onto the grid.
+  template <typename Function>
+  requires ScalarFunction2D<Function, Real>
+  auto Interpolate(Function f) const {
+    using FunctionValue = decltype(f(0, 0));
+    auto vec = FunctionVector<FunctionValue>();
+    auto iter = vec.begin();
+    for (auto theta : CoLatitudes()) {
+      for (auto phi : Longitudes()) {
+        *iter++ = f(theta, phi);
+      }
+    }
+    return vec;
+  }
+
+  // Return vector to store coefficients.
+  auto CoefficientVector(Int n) const {
+    auto size = GSHIndices<MRange>(_lMax, _lMax, n).size();
+    return std::vector<Complex>(size);
+  }
+
  private:
-  int _lMax;
-  int _nMax;
+  Int _lMax;
+  Int _nMax;
 
   QuadType _quad;
 
@@ -205,11 +260,11 @@ class GaussLegendreGrid {
   }
 
   auto FFTWork() const requires std::same_as<Type, C2C> {
-    return FFTWpp::vector<Complex>(2 * _lMax);
+    return std::vector<Complex>(2 * _lMax);
   }
 
   auto FFTWork() const requires std::same_as<Type, R2C> {
-    return FFTWpp::vector<Complex>(_lMax + 1);
+    return std::vector<Complex>(_lMax + 1);
   }
 };
 

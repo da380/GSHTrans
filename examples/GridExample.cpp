@@ -14,11 +14,11 @@
 int main() {
   using namespace GSHTrans;
   using Real = double;
-  using Complex = std::complex<double>;
+  using Complex = std::complex<Real>;
 
   auto start_time = std::chrono::high_resolution_clock::now();
 
-  auto lMax = 128;
+  auto lMax = 8;
   auto nMax = 2;
 
   auto grid = GaussLegendreGrid<Real, C2C, Ortho>(lMax, nMax);
@@ -27,11 +27,21 @@ int main() {
 
   std::chrono::duration<Real> duration = end_time - start_time;
 
-  std::cout << duration.count() << std::endl;
+  //  std::cout << duration.count() << std::endl;
 
-  auto f = [](Real theta, Real phi) -> Real { return 1.0; };
+  auto f = grid.Interpolate([](Real theta, Real phi) -> Complex {
+    return std::cos(theta) * std::sin(phi);
+  });
+  auto n = 0;
+  auto flm = grid.CoefficientVector(n);
 
-  auto integral = grid.Integrate(f);
+  grid.ForwardTransformation(n, f.begin(), flm.begin());
 
-  std::cout << integral / (4 * std::numbers::pi) << std::endl;
+  auto g = grid.FunctionVector<Complex>();
+
+  grid.InverseTransformation(lMax, n, flm.begin(), g.begin());
+
+  auto fIter = f.begin();
+  auto gIter = g.begin();
+  while (fIter != f.end()) std::cout << *fIter++ - *gIter++ << std::endl;
 }

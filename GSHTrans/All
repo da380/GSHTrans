@@ -5,8 +5,7 @@
 #include "src/Concepts.h"
 #include "src/Indexing.h"
 #include "src/Wigner.h"
-#include "src/Legendre.h"
 #include "src/GaussLegendreGrid.h"
-
+#include "src/TensorField.h"
 
 #endif

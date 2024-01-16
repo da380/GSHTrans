@@ -188,7 +188,8 @@ class GSHViewDegree {
 
   auto NegativeOrders() const {
     if constexpr (std::same_as<MRange, All>) {
-      return std::ranges::views::iota(MinOrder(), -1);
+      return std::ranges::views::iota(MinOrder(), 0);
+
     } else {
       return std::ranges::views::empty<Int>();
     }
@@ -314,7 +315,6 @@ class GSHViewAngleRange {
   iterator _start;
 };
 
-template <StorageType Storage>
 class GLGIndices {
   using Int = std::ptrdiff_t;
 
@@ -337,13 +337,7 @@ class GLGIndices {
   }
 
   // Dereference by returning (l,m) as a pair.
-  auto operator*() const {
-    if constexpr (std::same_as<Storage, ColMajor>) {
-      return std::pair(_iTheta, _iPhi);
-    } else {
-      return std::pair(_iPhi, _iTheta);
-    }
-  }
+  auto operator*() const { return std::pair(_iTheta, _iPhi); }
 
   // Not equals required for terminating loops.
   auto operator!=(const GLGIndices&) const { return _iTheta < _nTheta; }
