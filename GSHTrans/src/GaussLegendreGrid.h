@@ -19,7 +19,7 @@
 
 namespace GSHTrans {
 
-template <RealFloatingPoint Real, TransformType Type, Normalisation Norm>
+template <RealFloatingPoint Real, TransformType Type>
 class GaussLegendreGrid {
  public:
   using real_type = Real;
@@ -30,7 +30,7 @@ class GaussLegendreGrid {
   using Complex = std::complex<Real>;
   using MRange = Type::IndexRange;
   using NRange = Type::IndexRange;
-  using WignerType = Wigner<Real, MRange, NRange, Norm>;
+  using WignerType = Wigner<Real, MRange, NRange, Ortho>;
   using QuadType = GaussQuad::Quadrature1D<Real>;
 
  public:

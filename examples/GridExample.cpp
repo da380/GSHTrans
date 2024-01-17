@@ -21,7 +21,7 @@ int main() {
   auto lMax = 8;
   auto nMax = 2;
 
-  auto grid = GaussLegendreGrid<Real, C2C, Ortho>(lMax, nMax);
+  auto grid = GaussLegendreGrid<Real, C2C>(lMax, nMax);
 
   auto end_time = std::chrono::high_resolution_clock::now();
 
@@ -30,7 +30,11 @@ int main() {
   //  std::cout << duration.count() << std::endl;
 
   auto f = grid.Interpolate([](Real theta, Real phi) -> Complex {
-    return std::cos(theta) * std::sin(phi);
+    constexpr auto ii = std::complex<Real>(0, 1);
+    using std::sin;
+    using std::cos;
+    using std::exp;
+    return sin(theta) * (5 * cos(theta) * cos(theta) - 1) * exp(ii * phi);
   });
   auto n = 0;
   auto flm = grid.CoefficientVector(n);

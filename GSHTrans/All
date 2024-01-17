@@ -6,6 +6,6 @@
 #include "src/Indexing.h"
 #include "src/Wigner.h"
 #include "src/GaussLegendreGrid.h"
-#include "src/TensorField.h"
+#include "src/Fields.h"
 
 #endif

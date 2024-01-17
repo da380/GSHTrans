@@ -15,7 +15,7 @@ int main() {
   using namespace GSHTrans;
   using Real = double;
   using Complex = std::complex<Real>;
-  using Grid = GaussLegendreGrid<Real, R2C, Ortho>;
+  using Grid = GaussLegendreGrid<Real, R2C>;
   using Scalar = Grid::scalar_type;
 
   auto lMax = 8;
@@ -24,10 +24,4 @@ int main() {
   auto grid = std::make_shared<Grid>(lMax, nMax);
 
   auto f = ScalarField(grid);
-
-  auto g = ScalarFieldView(f, 2);
-
-  auto h = ScalarFieldView(g, 0.5);
-
-  std::cout << f(2, 2) << " " << g(2, 2) << " " << h(2, 2) << std::endl;
 }
