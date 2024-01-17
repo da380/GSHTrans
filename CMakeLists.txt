@@ -17,16 +17,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # Location for cmake modules
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
-# add in Eigen3
-include(FetchContent)
-FetchContent_Declare(
-  Eigen3
-  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
-  GIT_TAG master
-)
-FetchContent_MakeAvailable(Eigen3)
-
-
 # add in GaussQuad
 include(FetchContent)
 FetchContent_Declare(
@@ -48,13 +38,16 @@ FetchContent_MakeAvailable(FFTWpp)
 # add in OMP
 find_package(OpenMP)
 
+# add in Boost
+find_package(Boost)
+
 # Set up the library
 add_library (GSHTrans INTERFACE)
 target_link_libraries(GSHTrans INTERFACE
-  Eigen3::Eigen
   FFTWpp
   GaussQuad
-  OpenMP::OpenMP_CXX)
+  OpenMP::OpenMP_CXX
+  Boost::boost)
 target_include_directories (GaussQuad INTERFACE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${INCLUDE_INSTALL_DIR}>
