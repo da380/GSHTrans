@@ -3,6 +3,7 @@
 #include <boost/range.hpp>
 #include <boost/range/adaptors.hpp>
 #include <boost/range/combine.hpp>
+#include <boost/range/sub_range.hpp>
 #include <boost/tuple/tuple.hpp>
 #include <chrono>
 #include <cmath>
@@ -36,11 +37,27 @@ int main() {
 
   auto h = ScalarFieldUnaryFunction(f, [](auto x) { return x + 1; });
 
+  auto k =
+      ScalarFieldBinaryFunction(f, g, [](auto x, auto y) { return x + y; });
+
+  std::cout << f(1, 1) << " " << g(1, 1) << " " << h(1, 1) << " " << k(1, 1)
+            << std::endl;
+
+  /*
+
+  auto h = ScalarFieldUnaryFunction(f, [](auto x) { return x + 1; });
+
   auto i = ScalarField<Grid>(h);
 
   auto j = ScalarFieldUnaryFunction(h, [](auto x) { return -x; });
 
-  std::cout << f(1, 1) << " " << h(1, 1) << " " << j(1, 1) << std::endl;
+  auto k =
+      ScalarFieldBinaryFunction(i, j, [](auto x, auto y) { return x + y; });
+
+  std::cout << f(1, 1) << " " << h(1, 1) << " " << j(1, 1) << " " << k(1, 1)
+            << std::endl;
+
+  */
 
   /*
   auto x = std::vector<double>(10, 1);

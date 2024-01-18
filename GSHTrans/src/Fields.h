@@ -5,6 +5,7 @@
 #include <boost/range.hpp>
 #include <boost/range/adaptors.hpp>
 #include <boost/range/combine.hpp>
+#include <boost/range/sub_range.hpp>
 #include <boost/tuple/tuple.hpp>
 #include <iostream>
 
@@ -112,7 +113,7 @@ class ScalarField : public ScalarFieldBase<ScalarField<Grid>> {
 
   auto& _GridReference() const { return *_grid; }
   auto _GridPointer() const { return _grid; }
-  auto _View() { return std::ranges::views::all(_data); }
+  auto _View() { return boost::sub_range<Vector>(_data); }
 
   friend class ScalarFieldBase<ScalarField<Grid>>;
 };
@@ -139,7 +140,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<Grid, Range>> {
 
   auto& _GridReference() const { return *_grid; }
   auto _GridPointer() const { return _grid; }
-  auto _View() { return std::ranges::views::all(_range); }
+  auto _View() { return boost::sub_range<Range>(_range); }
 
   friend class ScalarFieldBase<ScalarFieldView<Grid, Range>>;
 };
@@ -158,10 +159,40 @@ class ScalarFieldUnaryFunction
   auto& _GridReference() const { return _field.GridReference(); }
   auto _GridPointer() const { return _field.GridPointer(); }
   auto _View() {
-    return _field.View() | std::ranges::views::transform(_function);
+    return _field.View() | boost::adaptors::transformed(_function);
   }
 
   friend class ScalarFieldBase<ScalarFieldUnaryFunction<Field, Function>>;
+};
+
+template <typename Field1, typename Field2, typename Function>
+class ScalarFieldBinaryFunction
+    : public ScalarFieldBase<
+          ScalarFieldBinaryFunction<Field1, Field2, Function>> {
+ public:
+  ScalarFieldBinaryFunction(Field1& field1, Field2& field2, Function&& function)
+      : _field1{field1}, _field2{field2}, _function{function} {}
+
+ private:
+  Field1& _field1;
+  Field2& _field2;
+  Function& _function;
+
+  auto& _GridReference() const { return _field1.GridReference(); }
+
+  auto _GridPointer() const { return _field1.GridPointer(); }
+
+  auto _View() {
+    return boost::combine(_field1.View(), _field2.View()) |
+           boost::adaptors::transformed([this](auto pair) {
+             auto x = boost::get<0>(pair);
+             auto y = boost::get<1>(pair);
+             return _function(x, y);
+           });
+  }
+
+  friend class ScalarFieldBase<
+      ScalarFieldBinaryFunction<Field1, Field2, Function>>;
 };
 
 }  // namespace GSHTrans
