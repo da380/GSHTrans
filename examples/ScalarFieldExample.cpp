@@ -16,8 +16,6 @@
 #include <random>
 
 int main() {
-  /*
-
   using namespace GSHTrans;
   using Real = double;
   using Complex = std::complex<Real>;
@@ -29,12 +27,11 @@ int main() {
 
   auto f = ScalarField<Grid>(lMax);
 
-  for (auto& value : f) value = 2;
+  auto g = ScalarFieldView(f);
 
-  for (auto value : f) std::cout << value << std::endl;
+  g(1, 3) = 2;
 
-  */
-
+  /*
   auto x = std::vector<double>(10, 1);
   auto y = std::vector<double>(10, 2);
 
@@ -45,4 +42,6 @@ int main() {
            });
 
   for (auto value : z) std::cout << value << std::endl;
+
+  */
 }

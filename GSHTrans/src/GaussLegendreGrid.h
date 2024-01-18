@@ -170,9 +170,12 @@ class GaussLegendreGrid {
         }
       }
     }
+
     if constexpr (std::same_as<Type, C2C>) {
-      auto outView = GSHView<Complex, MRange>(_lMax, _lMax, n, out);
-      outView(_lMax)(_lMax) = 0;
+      if (lMax = _lMax) {
+        auto outView = GSHView<Complex, MRange>(_lMax, _lMax, n, out);
+        outView(_lMax)(_lMax) = 0;
+      }
     }
   }
 
@@ -232,49 +235,9 @@ class GaussLegendreGrid {
   auto FieldDimension() const {
     return NumberOfCoLatitudes() * NumberOfLongitudes();
   }
-
   auto CoefficientDimension(Int n) const {
     return GSHIndices<MRange>(_lMax, _lMax, n).size();
   }
-
-  /*
-
-  // Return vector to store function values.
-  template <typename Scalar>
-  auto FieldVector() const {
-    return FFTWpp::vector<Scalar>(NumberOfCoLatitudes() * NumberOfLongitudes());
-  }
-
-  // Return vector to store coefficients.
-  auto CoefficientVector(Int n) const {
-    auto size = GSHIndices<MRange>(_lMax, _lMax, n).size();
-    return FFTWpp::vector<Complex>(size);
-  }
-
-  // Return random coefficient vector.
-  auto RandomCoefficientVector(Int n) const {
-    // Generate random values.
-    auto data = CoefficientVector(n);
-    std::random_device rd{};
-    std::mt19937_64 gen{rd()};
-    std::normal_distribution<Real> d{0., 1.};
-    std::ranges::generate(data, [&gen, &d]() {
-      return Complex{d(gen), d(gen)};
-    });
-    // Apply necessary relations.
-    auto dataView = GSHView<Complex, MRange>(_lMax, _lMax, n, data.begin());
-    if constexpr (std::same_as<Type, C2C>) {
-      dataView(_lMax)(_lMax) = 0;
-    } else {
-      for (auto l : dataView.Degrees()) {
-        dataView(l)(0) = 0;
-      }
-      dataView(_lMax)(_lMax).imag(0);
-    }
-    return data;
-  }
-
-  */
 
  private:
   Int _lMax;
