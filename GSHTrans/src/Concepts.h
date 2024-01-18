@@ -68,6 +68,19 @@ template <typename T>
 concept RealOrComplexFloatingPoint =
     RealFloatingPoint<T> or ComplexFloatingPoint<T>;
 
+template <typename T>
+struct RemoveComplexHelper {
+  using value_type = T;
+};
+
+template <typename T>
+struct RemoveComplexHelper<std::complex<T>> {
+  using value_type = T;
+};
+
+template <typename T>
+using RemoveComplex = typename RemoveComplexHelper<T>::value_type;
+
 // Concepts for iterators with real or complex floating point values.
 template <typename T>
 concept RealFloatingPointIterator = requires() {

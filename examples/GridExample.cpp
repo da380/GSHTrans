@@ -15,37 +15,32 @@ int main() {
   using namespace GSHTrans;
   using Real = double;
   using Complex = std::complex<Real>;
+  using Type = C2C;
+  using MRange = Type::IndexRange;
+  using Grid = GaussLegendreGrid<Real, Type>;
+  using Scalar = Grid::scalar_type;
 
   auto start_time = std::chrono::high_resolution_clock::now();
 
-  auto lMax = 8;
+  auto lMax = 64;
   auto nMax = 2;
 
-  auto grid = GaussLegendreGrid<Real, C2C>(lMax, nMax);
+  auto n = -2;
+  auto grid = Grid(lMax, nMax);
+  auto f = grid.ScalarFieldVector<Scalar>();
+  auto flm = grid.RandomCoefficientVector(n);
+  auto glm = grid.CoefficientVector(n);
 
-  auto end_time = std::chrono::high_resolution_clock::now();
+  grid.InverseTransformation(n, flm.begin(), f.begin());
+  grid.ForwardTransformation(n, f.begin(), glm.begin());
 
-  std::chrono::duration<Real> duration = end_time - start_time;
+  auto flmView = GSHView<Complex, MRange>(lMax, lMax, n, flm.begin());
+  auto glmView = GSHView<Complex, MRange>(lMax, lMax, n, glm.begin());
 
-  //  std::cout << duration.count() << std::endl;
-
-  auto f = grid.Interpolate([](Real theta, Real phi) -> Complex {
-    constexpr auto ii = std::complex<Real>(0, 1);
-    using std::sin;
-    using std::cos;
-    using std::exp;
-    return sin(theta) * (5 * cos(theta) * cos(theta) - 1) * exp(ii * phi);
-  });
-  auto n = 0;
-  auto flm = grid.CoefficientVector(n);
-
-  grid.ForwardTransformation(n, f.begin(), flm.begin());
-
-  auto g = grid.FunctionVector<Complex>();
-
-  grid.InverseTransformation(lMax, n, flm.begin(), g.begin());
-
-  auto fIter = f.begin();
-  auto gIter = g.begin();
-  while (fIter != f.end()) std::cout << *fIter++ - *gIter++ << std::endl;
+  for (auto [l, m] : glmView.Indices()) {
+    auto err = std::abs(flmView(l)(m) - glmView(l)(m));
+    if (err > 1e-10)
+      std::cout << l << " " << m << " " << flmView(l)(m) << glmView(l)(m)
+                << std::endl;
+  }
 }

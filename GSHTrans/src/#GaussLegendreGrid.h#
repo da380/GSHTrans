@@ -143,7 +143,7 @@ class GaussLegendreGrid {
           FFTWpp::Plan(inView, outView, FFTWpp::WisdomOnly, FFTWpp::Forward);
       plan.Execute();
 
-      auto d = _wigner->operator()(n)(iTheta);
+      auto d = (_wigner->operator()(n))(iTheta);
       auto w = _quad.W(iTheta) * scaleFactor;
 
       auto outIter = out;
@@ -191,7 +191,7 @@ class GaussLegendreGrid {
     auto inView = FFTWpp::DataView(work.begin(), work.end(), _outLayout);
     for (auto iTheta : CoLatitudeIndices()) {
       for (auto& x : work) x = 0;
-      auto d = (*_wigner)(n)(iTheta);
+      auto d = (*_wigner)->operator()(n)(iTheta);
       auto inIter = in;
       auto wigIter = d.begin();
       auto degrees = d.Degrees() | std::ranges::views::filter(

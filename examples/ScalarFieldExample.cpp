@@ -1,9 +1,7 @@
 #include <GSHTrans/All>
 #include <algorithm>
-#include <boost/assign.hpp>
-#include <boost/range/adaptor/reversed.hpp>
-#include <boost/range/adaptor/transformed.hpp>
-#include <boost/range/algorithm/copy.hpp>
+#include <boost/range.hpp>
+#include <boost/range/adaptors.hpp>
 #include <boost/range/combine.hpp>
 #include <boost/tuple/tuple.hpp>
 #include <chrono>
@@ -41,7 +39,9 @@ int main() {
   auto y = std::vector<double>(10, 2);
 
   auto z = boost::combine(x, y) | boost::adaptors::transformed([](auto pair) {
-             return boost::get<0>(pair) + boost::get<1>(pair);
+             auto a = boost::get<0>(pair);
+             auto b = boost::get<1>(pair);
+             return a + b;
            });
 
   for (auto value : z) std::cout << value << std::endl;
