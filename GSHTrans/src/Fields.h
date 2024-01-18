@@ -13,12 +13,12 @@
 
 namespace GSHTrans {
 
+// Base class for scalar fields.
 template <typename Derived>
 class ScalarFieldBase {
   using Int = std::ptrdiff_t;
 
  public:
-  // Return grid information.
   auto& GridReference() const { return GetDerived()._GridReference(); }
   auto GridPointer() const { return GetDerived()._GridPointer(); }
 
@@ -38,34 +38,28 @@ class ScalarFieldBase {
     return GridReference().NumberOfLongitudes();
   }
 
-  // Return range.
-  auto DataView() { return GetDerived()._DataView(); }
+  auto View() { return GetDerived()._View(); }
 
-  // Return iterators.
-  auto begin() { return DataView().begin(); }
-  auto end() { return DataView().end(); }
+  auto begin() { return View().begin(); }
+  auto end() { return View().end(); }
 
-  // Return size.
-  auto size() { return DataView().size(); }
+  auto size() { return View().size(); }
 
-  // Index operators
-  auto operator[](Int i) { return DataView()[i]; }
+  auto operator[](Int i) { return View()[i]; }
 
-  // Return value of the field at the (iTheta,iPhi)th location.
   auto operator()(Int iTheta, Int iPhi) {
     auto i = NumberOfLongitudes() * iTheta + iPhi;
     return operator[](i);
   }
 
-  // Return the integral of the field.
-  auto Integrate() { return GridReference().Integrate(DataView()); }
+  auto Integrate() { return GridReference().Integrate(View()); }
 
  private:
-  // Return references to the instance of the derived class.
   auto& GetDerived() { return static_cast<Derived&>(*this); }
   const auto& GetDerived() const { return static_cast<const Derived&>(*this); }
 };
 
+// Scalar field class that owns its own data.
 template <typename Grid>
 class ScalarField : public ScalarFieldBase<ScalarField<Grid>> {
  public:
@@ -77,33 +71,27 @@ class ScalarField : public ScalarFieldBase<ScalarField<Grid>> {
   using Vector = FFTWpp::vector<scalar_type>;
 
  public:
-  // Set default constructors.
   ScalarField() = default;
   ScalarField(const ScalarField&) = default;
   ScalarField(ScalarField&&) = default;
 
-  // Constructor given a grid initialising values to zero.
   ScalarField(std::shared_ptr<Grid> grid)
       : _grid{grid},
         _data{Vector(_grid->NumberOfCoLatitudes() * _grid->NumberOfLongitudes(),
                      1)} {}
 
-  // Constructor given grid parameters.
   ScalarField(Int lMax, FFTWpp::PlanFlag flag = FFTWpp::Measure)
       : _grid{std::make_shared<Grid>(lMax, 0, flag)},
         _data{Vector(_grid->NumberOfCoLatitudes() * _grid->NumberOfLongitudes(),
                      1)} {}
 
-  // Copy constructor from other derived class.
   template <typename OtherDerived>
   ScalarField(ScalarFieldBase<OtherDerived>& other)
       : _grid{other.GridPointer()}, _data(other.begin(), other.end()) {}
 
-  // Set default assigment operators.
   ScalarField& operator=(ScalarField&) = default;
   ScalarField& operator=(ScalarField&&) = default;
 
-  // Copy assignment from other derived class.
   template <typename OtherDerived>
   ScalarField& operator=(ScalarFieldBase<OtherDerived>& other) {
     this->_grid = other.GridPointer();
@@ -124,33 +112,56 @@ class ScalarField : public ScalarFieldBase<ScalarField<Grid>> {
 
   auto& _GridReference() const { return *_grid; }
   auto _GridPointer() const { return _grid; }
-  auto _DataView() { return std::ranges::views::all(_data); }
+  auto _View() { return std::ranges::views::all(_data); }
 
   friend class ScalarFieldBase<ScalarField<Grid>>;
 };
 
-template <typename View>
-class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<View>> {
+// Scalar field class that does not own its own data.
+template <typename Grid, typename Range>
+class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<Grid, Range>> {
   using Int = std::ptrdiff_t;
 
  public:
-  ScalarFieldView(View& view) : _view{view} {}
+  ScalarFieldView(std::shared_ptr<Grid> grid, Range& range)
+      : _grid{grid}, _range{range} {}
 
-  auto& operator[](Int i) { return _view[i]; }
+  auto& operator[](Int i) { return _range[i]; }
 
   auto& operator()(Int iTheta, Int iPhi) {
-    auto i = _GridReference().NumberOfLongitudes() * iTheta + iPhi;
+    auto i = _grid->NumberOfLongitudes() * iTheta + iPhi;
     return operator[](i);
   }
 
  private:
-  View& _view;
+  std::shared_ptr<Grid> _grid;
+  Range& _range;
 
-  auto& _GridReference() const { return _view.GridReference(); }
-  auto _GridPointer() const { return _view.GridPointer(); }
-  auto _DataView() { return std::ranges::views::all(_view); }
+  auto& _GridReference() const { return *_grid; }
+  auto _GridPointer() const { return _grid; }
+  auto _View() { return std::ranges::views::all(_range); }
 
-  friend class ScalarFieldBase<ScalarFieldView<View>>;
+  friend class ScalarFieldBase<ScalarFieldView<Grid, Range>>;
+};
+
+template <typename Field, typename Function>
+class ScalarFieldUnaryFunction
+    : public ScalarFieldBase<ScalarFieldUnaryFunction<Field, Function>> {
+ public:
+  ScalarFieldUnaryFunction(Field& field, Function&& function)
+      : _field{field}, _function{function} {}
+
+ private:
+  Field& _field;
+  Function& _function;
+
+  auto& _GridReference() const { return _field.GridReference(); }
+  auto _GridPointer() const { return _field.GridPointer(); }
+  auto _View() {
+    return _field.View() | std::ranges::views::transform(_function);
+  }
+
+  friend class ScalarFieldBase<ScalarFieldUnaryFunction<Field, Function>>;
 };
 
 }  // namespace GSHTrans

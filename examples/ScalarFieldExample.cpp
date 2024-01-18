@@ -19,17 +19,28 @@ int main() {
   using namespace GSHTrans;
   using Real = double;
   using Complex = std::complex<Real>;
-  using Grid = GaussLegendreGrid<Real, R2C>;
+  using Type = R2C;
+  using Grid = GaussLegendreGrid<Real, Type>;
+
   using Scalar = Grid::scalar_type;
 
   auto lMax = 4;
   auto nMax = 2;
 
-  auto f = ScalarField<Grid>(lMax);
+  auto grid = std::make_shared<Grid>(lMax, nMax);
 
-  auto g = ScalarFieldView(f);
+  auto f = ScalarField(grid);
 
-  g(1, 3) = 2;
+  auto data = std::vector<Scalar>(grid->FieldDimension());
+  auto g = ScalarFieldView(grid, data);
+
+  auto h = ScalarFieldUnaryFunction(f, [](auto x) { return x + 1; });
+
+  auto i = ScalarField<Grid>(h);
+
+  auto j = ScalarFieldUnaryFunction(h, [](auto x) { return -x; });
+
+  std::cout << f(1, 1) << " " << h(1, 1) << " " << j(1, 1) << std::endl;
 
   /*
   auto x = std::vector<double>(10, 1);
