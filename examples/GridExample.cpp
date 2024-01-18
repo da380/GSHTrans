@@ -20,14 +20,14 @@ int main() {
   using Grid = GaussLegendreGrid<Real, Type>;
   using Scalar = Grid::scalar_type;
 
-  auto start_time = std::chrono::high_resolution_clock::now();
-
   auto lMax = 64;
   auto nMax = 2;
 
+  /*
+
   auto n = -2;
   auto grid = Grid(lMax, nMax);
-  auto f = grid.ScalarFieldVector<Scalar>();
+  auto f = grid.FieldVector<Scalar>();
   auto flm = grid.RandomCoefficientVector(n);
   auto glm = grid.CoefficientVector(n);
 
@@ -43,4 +43,6 @@ int main() {
       std::cout << l << " " << m << " " << flmView(l)(m) << glmView(l)(m)
                 << std::endl;
   }
+
+  */
 }

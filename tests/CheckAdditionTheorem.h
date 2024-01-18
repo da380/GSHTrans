@@ -1,7 +1,7 @@
 #ifndef CHECK_ADDITION_THEOREM_ZERO_GUARD
 #define CHECK_ADDITION_THEOREM_ZERO_GUARD
 
-#include <Eigen/Core>
+
 #include <GSHTrans/All>
 #include <algorithm>
 #include <cmath>

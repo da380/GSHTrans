@@ -24,11 +24,12 @@ template <RealFloatingPoint Real, TransformType Type>
 class GaussLegendreGrid {
  public:
   using real_type = Real;
+  using complex_type = std::complex<Real>;
   using scalar_type = typename Type::Scalar<Real>;
 
  private:
   using Int = std::ptrdiff_t;
-  using Complex = std::complex<Real>;
+  using Complex = complex_type;
   using MRange = Type::IndexRange;
   using NRange = Type::IndexRange;
   using WignerType = Wigner<Real, MRange, NRange, Ortho>;
@@ -227,9 +228,20 @@ class GaussLegendreGrid {
     InverseTransformation(_lMax, n, in, out);
   }
 
+  // Return dimensions for fields and coefficients.
+  auto FieldDimension() const {
+    return NumberOfCoLatitudes() * NumberOfLongitudes();
+  }
+
+  auto CoefficientDimension(Int n) const {
+    return GSHIndices<MRange>(_lMax, _lMax, n).size();
+  }
+
+  /*
+
   // Return vector to store function values.
-  template <RealOrComplexFloatingPoint Scalar>
-  auto ScalarFieldVector() const {
+  template <typename Scalar>
+  auto FieldVector() const {
     return FFTWpp::vector<Scalar>(NumberOfCoLatitudes() * NumberOfLongitudes());
   }
 
@@ -262,24 +274,26 @@ class GaussLegendreGrid {
     return data;
   }
 
-   private:
-    Int _lMax;
-    Int _nMax;
+  */
 
-    QuadType _quad;
+ private:
+  Int _lMax;
+  Int _nMax;
 
-    std::shared_ptr<WignerType> _wigner;
+  QuadType _quad;
 
-    FFTWpp::DataLayout _inLayout;
-    FFTWpp::DataLayout _outLayout;
+  std::shared_ptr<WignerType> _wigner;
 
-    auto FFTWorkDimension() const {
-      if constexpr (std::same_as<Type, C2C>) {
-        return 2 * _lMax;
-      } else {
-        return _lMax + 1;
-      }
+  FFTWpp::DataLayout _inLayout;
+  FFTWpp::DataLayout _outLayout;
+
+  auto FFTWorkDimension() const {
+    if constexpr (std::same_as<Type, C2C>) {
+      return 2 * _lMax;
+    } else {
+      return _lMax + 1;
     }
+  }
 
     auto FFTWork() const { return FFTWpp::vector<Complex>(FFTWorkDimension()); }
 };
