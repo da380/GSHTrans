@@ -26,17 +26,18 @@ auto RandomDegree() {
 auto RandomUpperIndex(Int nMax) {
   std::random_device rd;
   std::mt19937 gen(rd());
-  std::uniform_int_distribution<Int> d(-nMax, nMax);
+  std::uniform_int_distribution<Int> d(0, nMax);
   return d(gen);
 }
 
-template <RealFloatingPoint Real, TransformType Type>
+template <RealFloatingPoint Real, OrderIndexRange MRange, IndexRange NRange,
+          RealOrComplexFloatingPoint Scalar>
 auto Coeff2Coeff() {
-  //  using Type = C2C;
   using Complex = std::complex<Real>;
-  using MRange = Type::IndexRange;
-  using Grid = GaussLegendreGrid<Real, Type>;
-  using Scalar = Grid::scalar_type;
+  using Grid = GaussLegendreGrid<Real, MRange, NRange>;
+
+  constexpr auto realTransform = RealFloatingPoint<Scalar>;
+  constexpr auto complexTransform = ComplexFloatingPoint<Scalar>;
 
   auto lMax = RandomDegree();
   auto nMax = 4;
@@ -45,7 +46,13 @@ auto Coeff2Coeff() {
   auto grid = Grid(lMax, nMax);
 
   // Make a random coefficient.
-  auto flm = FFTWpp::vector<Complex>(grid.CoefficientDimension(n));
+  auto size = Int();
+  if constexpr (realTransform) {
+    size = GSHIndices<NonNegative>(lMax, lMax, n).size();
+  } else {
+    size = GSHIndices<All>(lMax, lMax, n).size();
+  }
+  auto flm = FFTWpp::vector<Complex>(size);
   {
     std::random_device rd{};
     std::mt19937_64 gen{rd()};
@@ -54,7 +61,7 @@ auto Coeff2Coeff() {
       return Complex{d(gen), d(gen)};
     });
     auto flmView = GSHView<Complex, MRange>(lMax, lMax, n, flm.begin());
-    if constexpr (std::same_as<Type, C2C>) {
+    if constexpr (complexTransform) {
       flmView(lMax)(lMax) = 0;
     } else {
       for (auto l : flmView.Degrees()) {
@@ -65,8 +72,9 @@ auto Coeff2Coeff() {
   }
 
   // Allocate other vectors
-  auto f = FFTWpp::vector<Scalar>(grid.FieldDimension());
-  auto glm = FFTWpp::vector<Complex>(grid.CoefficientDimension(n));
+  auto f = FFTWpp::vector<Scalar>(grid.NumberOfCoLatitudes() *
+                                  grid.NumberOfLongitudes());
+  auto glm = FFTWpp::vector<Complex>(size);
 
   grid.InverseTransformation(n, flm.begin(), f.begin());
   grid.ForwardTransformation(n, f.begin(), glm.begin());

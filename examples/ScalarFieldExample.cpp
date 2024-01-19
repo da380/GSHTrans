@@ -21,6 +21,9 @@ int main() {
   using Real = double;
   using Complex = std::complex<Real>;
   using Type = R2C;
+
+  /*
+
   using Grid = GaussLegendreGrid<Real, Type>;
 
   using Scalar = Grid::scalar_type;
@@ -42,6 +45,8 @@ int main() {
 
   std::cout << f(1, 1) << " " << g(1, 1) << " " << h(1, 1) << " " << k(1, 1)
             << std::endl;
+
+  */
 
   /*
 
