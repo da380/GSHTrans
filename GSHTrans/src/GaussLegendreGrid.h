@@ -23,12 +23,12 @@ namespace GSHTrans {
 template <RealFloatingPoint Real, OrderIndexRange MRange, IndexRange NRange>
 class GaussLegendreGrid {
  public:
-  using real_type = Real;
-  using complex_type = std::complex<Real>;
+  //  using real_type = Real;
+  //  using complex_type = std::complex<Real>;
 
  private:
   using Int = std::ptrdiff_t;
-  using Complex = complex_type;
+  using Complex = std::complex<Real>;
 
   using WignerType = Wigner<Real, MRange, NRange, Ortho>;
   using QuadType = GaussQuad::Quadrature1D<Real>;
@@ -52,22 +52,20 @@ class GaussLegendreGrid {
     //  Get the Winger values.
     _wigner = std::make_shared<WignerType>(_lMax, _lMax, _nMax, _quad.Points());
 
-    // Set data layouts for possible FFTs.
-    _inLayout = FFTWpp::DataLayout(1, std::vector{NumberOfLongitudes()}, 1,
-                                   std::vector{NumberOfLongitudes()}, 1, 1);
-    _outLayoutNonNegative = FFTWpp::DataLayout(1, std::vector{_lMax + 1}, 1,
-                                               std::vector{_lMax + 1}, 1, 1);
-    if constexpr (std::same_as<MRange, All>) {
-      _outLayoutAll = FFTWpp::DataLayout(1, std::vector{2 * _lMax}, 1,
-                                         std::vector{2 * _lMax}, 1, 1);
+    // Generate wisdom for FFTs.
+    auto in = FFTWpp::DataLayout(1, std::vector{NumberOfLongitudes()}, 1,
+                                 std::vector{NumberOfLongitudes()}, 1, 1);
+    {
+      // Real to complex case.
+      auto out = FFTWpp::DataLayout(1, std::vector{_lMax + 1}, 1,
+                                    std::vector{_lMax + 1}, 1, 1);
+      FFTWpp::GenerateWisdom<Real, Complex, true>(in, out, flag);
     }
-
-    // Generate FFT wisdom.
-    FFTWpp::GenerateWisdom<Real, Complex, true>(_inLayout,
-                                                _outLayoutNonNegative, flag);
-    if constexpr (std::same_as<MRange, All>) {
-      FFTWpp::GenerateWisdom<Complex, Complex, true>(_inLayout, _outLayoutAll,
-                                                     flag);
+    {
+      // Complex to complex case.
+      auto out = FFTWpp::DataLayout(1, std::vector{2 * _lMax}, 1,
+                                    std::vector{2 * _lMax}, 1, 1);
+      FFTWpp::GenerateWisdom<Complex, Complex, true>(in, out, flag);
     }
   }
 
@@ -148,20 +146,16 @@ class GaussLegendreGrid {
                                   auto i, auto w) { return summand(i) * w; });
   }
 
-  // Forward transformation.
+  //-----------------------------------------------------//
+  //                Forward transformation               //
+  //-----------------------------------------------------//
+
   template <RealOrComplexFloatingPointIterator InIterator,
             ComplexFloatingPointIterator OutIterator>
   void ForwardTransformation(Int lMax, Int n, InIterator in,
                              OutIterator out) const {
-    // Determine whether this is a transformation of real data.
-    constexpr auto realTransform = RealFloatingPointIterator<InIterator>;
-    constexpr auto complexTransform = ComplexFloatingPointIterator<InIterator>;
-
-    // Check appropriate orders are present.
-    if constexpr (complexTransform) {
-      constexpr auto all = std::same_as<MRange, All>;
-      assert(all);
-    }
+    // Get scalar type for field.
+    using Scalar = std::iter_value_t<InIterator>;
 
     // Check upper index is possible.
     assert(
@@ -173,7 +167,13 @@ class GaussLegendreGrid {
                              static_cast<Real>(nPhi);
 
     // Allocate work array for FFTs and form its FFTWpp view.
-    auto [work, outView] = FFTWork<realTransform>();
+    auto workSize = WorkSize<Scalar>();
+    auto work = FFTWpp::vector<Complex>(workSize);
+    auto inLayout = FFTWpp::DataLayout(1, std::vector{NumberOfLongitudes()}, 1,
+                                       std::vector{NumberOfLongitudes()}, 1, 1);
+    auto outLayout = FFTWpp::DataLayout(1, std::vector{workSize}, 1,
+                                        std::vector{workSize}, 1, 1);
+    auto outView = FFTWpp::DataView(work.begin(), work.end(), outLayout);
 
     // Loop over the colatitudes.
     for (auto iTheta : CoLatitudeIndices()) {
@@ -181,7 +181,7 @@ class GaussLegendreGrid {
       auto offset = iTheta * nPhi;
       auto inStart = std::next(in, offset);
       auto inFinish = std::next(inStart, nPhi);
-      auto inView = FFTWpp::DataView(inStart, inFinish, _inLayout);
+      auto inView = FFTWpp::DataView(inStart, inFinish, inLayout);
       auto plan =
           FFTWpp::Plan(inView, outView, FFTWpp::WisdomOnly, FFTWpp::Forward);
       plan.Execute();
@@ -197,14 +197,12 @@ class GaussLegendreGrid {
                                        [lMax](auto l) { return l <= lMax; });
       for (auto l : degrees) {
         auto dl = d(l);
-
-        if constexpr (complexTransform) {
+        if constexpr (ComplexFloatingPoint<Scalar>) {
           auto workIter = std::prev(work.end(), l);
           for (auto m : dl.NegativeOrders()) {
             *outIter++ += *wigIter++ * *workIter++ * w;
           }
         }
-
         {
           auto workIter = work.begin();
           for (auto m : dl.NonNegativeOrders()) {
@@ -214,8 +212,7 @@ class GaussLegendreGrid {
       }
     }
 
-    // Zero the (_lMax,_lMax) coefficient if needed.
-    if constexpr (complexTransform) {
+    if constexpr (ComplexFloatingPoint<Scalar>) {
       if (lMax = _lMax) {
         auto view = GSHView<Complex, MRange>(_lMax, _lMax, n, out);
         view(_lMax)(_lMax) = 0;
@@ -223,27 +220,15 @@ class GaussLegendreGrid {
     }
   }
 
-  template <RealOrComplexFloatingPointIterator InIterator,
-            ComplexFloatingPointIterator OutIterator>
-  void ForwardTransformation(Int n, InIterator in, OutIterator out) const {
-    ForwardTransformation(_lMax, n, in, out);
-  }
+  //------------------------------------------------//
+  //            Inverse  transformation             //
+  //------------------------------------------------//
 
-  // Inverse  transformation.
   template <ComplexFloatingPointIterator InIterator,
-            RealOrComplexFloatingPointIterator OutIterator>
+            ComplexFloatingPointIterator OutIterator>
+  requires std::same_as<MRange, All>
   void InverseTransformation(Int lMax, Int n, InIterator in,
                              OutIterator out) const {
-    // Determine whether this is a transformation of real data.
-    constexpr auto realTransform = RealFloatingPointIterator<OutIterator>;
-    constexpr auto complexTransform = ComplexFloatingPointIterator<OutIterator>;
-
-    // Check appropriate orders are present.
-    if constexpr (complexTransform) {
-      constexpr auto all = std::same_as<MRange, All>;
-      assert(all);
-    }
-
     // Check upper index is possible.
     assert(
         std::ranges::any_of(UpperIndices(), [n](auto np) { return n == np; }));
@@ -251,12 +236,18 @@ class GaussLegendreGrid {
     // Precompute constants
     const auto nPhi = NumberOfLongitudes();
 
-    // Allocate work array for FFTs and form its FFTWpp view.
-    auto [work, inView] = FFTWork<realTransform>();
+    // Set up for FFTs.
+    auto work = FFTWpp::vector<Complex>(2 * _lMax);
+    auto inLayout = FFTWpp::DataLayout(1, std::vector{2 * _lMax}, 1,
+                                       std::vector{2 * _lMax}, 1, 1);
+    auto outLayout =
+        FFTWpp::DataLayout(1, std::vector{NumberOfLongitudes()}, 1,
+                           std::vector{NumberOfLongitudes()}, 1, 1);
+    auto inView = FFTWpp::DataView(work.begin(), work.end(), inLayout);
 
     // Loop over the colatitudes.
     for (auto iTheta : CoLatitudeIndices()) {
-      std::ranges::for_each(work, [](auto x) { return 0; });
+      std::ranges::for_each(work, [](auto& x) { return x = 0; });
 
       // Get the Wigner values.
       auto d = (*_wigner)(n)(iTheta);
@@ -268,66 +259,40 @@ class GaussLegendreGrid {
                                        [lMax](auto l) { return l <= lMax; });
       for (auto l : degrees) {
         auto dl = d(l);
-        if constexpr (complexTransform) {
-          auto workIter = std::prev(work.end(), l);
-          for (auto m : dl.NegativeOrders()) {
-            *workIter++ += *inIter++ * *wigIter++;
-          }
+        auto workIter = std::prev(work.end(), l);
+        for (auto m : dl.NegativeOrders()) {
+          *workIter++ += *inIter++ * *wigIter++;
         }
-        {
-          auto workIter = work.begin();
-          for (auto m : dl.NonNegativeOrders()) {
-            *workIter++ += *inIter++ * *wigIter++;
-          }
+        workIter = work.begin();
+        for (auto m : dl.NonNegativeOrders()) {
+          *workIter++ += *inIter++ * *wigIter++;
         }
       }
-
-      for (auto val : work) std::cout << val << "    ";
-      std::cout << std::endl;
 
       // Perform FFT to recover field at the colatitude.
       auto offset = iTheta * nPhi;
       auto outStart = std::next(out, offset);
       auto outFinish = std::next(outStart, nPhi);
-      auto outView = FFTWpp::DataView(outStart, outFinish, _inLayout);
+      auto outView = FFTWpp::DataView(outStart, outFinish, outLayout);
       auto plan =
           FFTWpp::Plan(inView, outView, FFTWpp::WisdomOnly, FFTWpp::Backward);
       plan.Execute();
     }
   }
 
-  template <ComplexFloatingPointIterator InIterator,
-            RealOrComplexFloatingPointIterator OutIterator>
-  void InverseTransformation(Int n, InIterator in, OutIterator out) const {
-    InverseTransformation(_lMax, n, in, out);
-  }
-
  private:
   Int _lMax;
   Int _nMax;
-
   QuadType _quad;
-
   std::shared_ptr<WignerType> _wigner;
 
-  FFTWpp::DataLayout _inLayout;
-  FFTWpp::DataLayout _outLayoutAll;
-  FFTWpp::DataLayout _outLayoutNonNegative;
-
-  template <bool RealTransform>
-  auto FFTWork() const {
-    using Vector = FFTWpp::vector<Complex>;
-    using Iterator = Vector::iterator;
-    auto work = Vector();
-    auto view = FFTWpp::DataView<Iterator>();
-    if constexpr (RealTransform) {
-      work.resize(_lMax + 1);
-      view = FFTWpp::DataView(work.begin(), work.end(), _outLayoutNonNegative);
+  template <RealOrComplexFloatingPoint Scalar>
+  auto WorkSize() const {
+    if constexpr (RealFloatingPoint<Scalar>) {
+      return _lMax + 1;
     } else {
-      work.resize(2 * _lMax);
-      view = FFTWpp::DataView(work.begin(), work.end(), _outLayoutAll);
+      return 2 * _lMax;
     }
-    return std::pair(work, view);
   }
 };
 

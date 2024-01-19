@@ -33,28 +33,18 @@ auto RandomUpperIndex(Int nMin, Int nMax) {
 int main() {
   using Real = double;
   using Complex = std::complex<Real>;
+  using Scalar = Complex;
   using MRange = All;
   using NRange = All;
-  using Scalar = Complex;
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
 
-  constexpr auto realTransform = RealFloatingPoint<Scalar>;
-  constexpr auto complexTransform = ComplexFloatingPoint<Scalar>;
-
-  //  auto lMax = RandomDegree();
-  auto lMax = 4;
-  auto nMax = 0;
+  auto lMax = RandomDegree();
+  auto nMax = 4;
   auto grid = Grid(lMax, nMax);
-  //  auto n = RandomUpperIndex(grid.MinUpperIndex(), nMax);
-  auto n = 0;
+  auto n = RandomUpperIndex(-nMax, nMax);
 
   // Make a random coefficient.
-  auto size = Int();
-  if constexpr (realTransform) {
-    size = GSHIndices<NonNegative>(lMax, lMax, n).size();
-  } else {
-    size = GSHIndices<All>(lMax, lMax, n).size();
-  }
+  auto size = GSHIndices<All>(lMax, lMax, n).size();
   auto flm = FFTWpp::vector<Complex>(size);
   {
     std::random_device rd{};
@@ -64,39 +54,22 @@ int main() {
       return Complex{d(gen), d(gen)};
     });
     auto flmView = GSHView<Complex, MRange>(lMax, lMax, n, flm.begin());
-    if constexpr (complexTransform) {
-      flmView(lMax)(lMax) = 0;
-    } else {
-      for (auto l : flmView.Degrees()) {
-        flmView(l)(0) = 0;
-      }
-      flmView(lMax)(lMax).imag(0);
-    }
+    flmView(lMax)(lMax) = 0;
   }
 
-  // Allocate other vectors
   auto f = FFTWpp::vector<Scalar>(grid.NumberOfLongitudes() *
                                   grid.NumberOfCoLatitudes());
 
   auto glm = FFTWpp::vector<Complex>(size);
 
-  grid.InverseTransformation(n, flm.begin(), f.begin());
-
-  //  for (auto val : flm) std::cout << val << std::endl;
-
-  /*
-
-  grid.ForwardTransformation(n, f.begin(), glm.begin());
-
-
+  grid.InverseTransformation(lMax, n, flm.begin(), f.begin());
+  grid.ForwardTransformation(lMax, n, f.begin(), glm.begin());
 
   std::ranges::transform(flm, glm, flm.begin(),
                          [](auto f, auto g) { return f - g; });
 
-  auto check = std::ranges::all_of(flm, [](auto f) {
-    constexpr auto eps = 10000 * std::numeric_limits<Real>::epsilon();
-    return std::abs(f) < eps;
-  });
+  auto err = *std::ranges::max_element(
+      flm, [](auto a, auto b) { return std::abs(a) < std::abs(b); });
 
-  */
+  std::cout << std::abs(err) << std::endl;
 }
