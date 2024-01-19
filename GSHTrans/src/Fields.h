@@ -127,6 +127,13 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<Grid, Range>> {
   ScalarFieldView(std::shared_ptr<Grid> grid, Range& range)
       : _grid{grid}, _range{range} {}
 
+  template <typename OtherDerived>
+  ScalarFieldView& operator=(ScalarFieldBase<OtherDerived>& other) {
+    this->_grid = other.GridPointer();
+    std::ranges::copy(other, this->begin());
+    return *this;
+  }
+
   auto& operator[](Int i) { return _range[i]; }
 
   auto& operator()(Int iTheta, Int iPhi) {
@@ -145,6 +152,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<Grid, Range>> {
   friend class ScalarFieldBase<ScalarFieldView<Grid, Range>>;
 };
 
+// View to a scalar field produced by the action of a unary function.
 template <typename Field, typename Function>
 class ScalarFieldUnaryFunction
     : public ScalarFieldBase<ScalarFieldUnaryFunction<Field, Function>> {
@@ -165,6 +173,7 @@ class ScalarFieldUnaryFunction
   friend class ScalarFieldBase<ScalarFieldUnaryFunction<Field, Function>>;
 };
 
+// View to a scalar field produced by the action of a binary function.
 template <typename Field1, typename Field2, typename Function>
 class ScalarFieldBinaryFunction
     : public ScalarFieldBase<
