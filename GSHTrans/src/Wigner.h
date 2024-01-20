@@ -117,7 +117,7 @@ class Wigner {
 
   Wigner() = default;
 
-  // Constructors for a Upper index range.
+  // Constructors for a Upper index range with angles.
   template <RealFloatingPointRange RealRange>
   Wigner(Int lMax, Int mMax, Int nMax, RealRange &&thetaRange)
       : _lMax{lMax}, _mMax{mMax}, _nMax{nMax}, _nTheta(thetaRange.size()) {
@@ -127,6 +127,13 @@ class Wigner {
 
   Wigner(Int lMax, Int mMax, Int nMax, Real theta)
       : Wigner(lMax, mMax, nMax, Vector{theta}) {}
+
+  // Constructor that allocates space for a single angle but does not
+  // calculations.
+  Wigner(Int lMax, Int mMax, Int nMax)
+      : _lMax{lMax}, _mMax{mMax}, _nMax{nMax}, _nTheta{1} {
+    AllocateStorage();
+  }
 
   // Recompute values.
   template <RealFloatingPointRange RealRange>
