@@ -191,7 +191,7 @@ class GSHViewDegree {
       return std::ranges::views::iota(MinOrder(), 0);
 
     } else {
-      return std::ranges::views::empty<Int>();
+      return std::ranges::views::empty<Int>;
     }
   }
 

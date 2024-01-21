@@ -23,11 +23,17 @@ auto RandomDegree() {
   return std::pow(2, d(gen));
 }
 
-auto RandomUpperIndex(Int nMin, Int nMax) {
+template <IndexRange NRange>
+auto RandomUpperIndex(Int nMax) {
   std::random_device rd;
   std::mt19937 gen(rd());
-  std::uniform_int_distribution<Int> d(nMin, nMax);
-  return d(gen);
+  if constexpr (std::same_as<NRange, All>) {
+    std::uniform_int_distribution<Int> d(-nMax, nMax);
+    return d(gen);
+  } else {
+    std::uniform_int_distribution<Int> d(0, nMax);
+    return d(gen);
+  }
 }
 
 int main() {
@@ -35,16 +41,24 @@ int main() {
   using Complex = std::complex<Real>;
   using Scalar = Complex;
   using MRange = All;
-  using NRange = All;
+  using NRange = NonNegative;
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
 
   auto lMax = RandomDegree();
   auto nMax = 4;
   auto grid = Grid(lMax, nMax);
-  auto n = RandomUpperIndex(-nMax, nMax);
+  auto n = RandomUpperIndex<NRange>(nMax);
 
   // Make a random coefficient.
-  auto size = GSHIndices<All>(lMax, lMax, n).size();
+  auto getSize = [](auto lMax, auto n) {
+    if constexpr (RealFloatingPoint<Scalar>) {
+      return GSHIndices<NonNegative>(lMax, lMax, n).size();
+    } else {
+      return GSHIndices<All>(lMax, lMax, n).size();
+    }
+  };
+
+  auto size = getSize(lMax, n);
   auto flm = FFTWpp::vector<Complex>(size);
   {
     std::random_device rd{};
@@ -53,17 +67,25 @@ int main() {
     std::ranges::generate(flm, [&gen, &d]() {
       return Complex{d(gen), d(gen)};
     });
-    auto flmView = GSHView<Complex, MRange>(lMax, lMax, n, flm.begin());
-    flmView(lMax)(lMax) = 0;
+
+    if constexpr (ComplexFloatingPoint<Scalar>) {
+      auto flmView = GSHView<Complex, All>(lMax, lMax, n, flm.begin());
+      flmView(lMax)(lMax) = 0;
+    } else {
+      auto flmView = GSHView<Complex, NonNegative>(lMax, lMax, n, flm.begin());
+      for (auto l : flmView.Degrees()) {
+        flmView(l)(0).imag(0);
+      }
+      flmView(lMax)(lMax).imag(0);
+    }
   }
 
   auto f = FFTWpp::vector<Scalar>(grid.NumberOfLongitudes() *
                                   grid.NumberOfCoLatitudes());
-
   auto glm = FFTWpp::vector<Complex>(size);
 
-  grid.InverseTransformation(lMax, n, flm.begin(), f.begin());
-  grid.ForwardTransformation(lMax, n, f.begin(), glm.begin());
+  grid.InverseTransformation(lMax, n, flm, f);
+  grid.ForwardTransformation(lMax, n, f, glm);
 
   std::ranges::transform(flm, glm, flm.begin(),
                          [](auto f, auto g) { return f - g; });
