@@ -112,6 +112,19 @@ class GaussLegendreGrid {
   }
   auto NumberOfLongitudes() const { return Longitudes().size(); }
 
+  auto ComponentSize() const {
+    return NumberOfCoLatitudes() * NumberOfLongitudes();
+  }
+
+  template <RealOrComplexFloatingPoint Scalar>
+  auto CoefficientSize(Int lMax, Int n) const {
+    if constexpr (RealFloatingPoint<Scalar>) {
+      return GSHIndices<NonNegative>(lMax, lMax, n).size();
+    } else {
+      return GSHIndices<All>(lMax, lMax, n).size();
+    }
+  }
+
   // Integration a function over the grid.
   template <typename Function>
   requires ScalarFunction2D<Function, Real>
@@ -318,21 +331,21 @@ class GaussLegendreGrid {
     }
   }
 
-   private:
-    Int _lMax;
-    Int _nMax;
-    QuadType _quad;
-    std::shared_ptr<WignerType> _wigner;
+ private:
+  Int _lMax;
+  Int _nMax;
+  QuadType _quad;
+  std::shared_ptr<WignerType> _wigner;
 
-    template <RealOrComplexFloatingPoint Scalar>
-    auto WorkSize() const {
-      if constexpr (RealFloatingPoint<Scalar>) {
-        return _lMax + 1;
-      } else {
-        return 2 * _lMax;
-      }
+  template <RealOrComplexFloatingPoint Scalar>
+  auto WorkSize() const {
+    if constexpr (RealFloatingPoint<Scalar>) {
+      return _lMax + 1;
+    } else {
+      return 2 * _lMax;
     }
-  };
+    }
+};
 
   }  // namespace GSHTrans
 

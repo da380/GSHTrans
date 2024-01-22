@@ -14,9 +14,9 @@
 
 namespace GSHTrans {
 
-// Base class for scalar fields.
+// Base class for canonical components.
 template <typename Derived>
-class ScalarFieldBase {
+class CanonicalComponentBase {
   using Int = std::ptrdiff_t;
 
  public:
@@ -60,41 +60,32 @@ class ScalarFieldBase {
   const auto& GetDerived() const { return static_cast<const Derived&>(*this); }
 };
 
-// Scalar field class that owns its own data.
-template <typename Grid>
-class ScalarField : public ScalarFieldBase<ScalarField<Grid>> {
- public:
-  using real_type = Grid::real_type;
-  using scalar_type = Grid::scalar_type;
-
- private:
+// Canonical component class that owns its own data.
+template <RealOrComplexFloatingPoint Scalar, typename Grid>
+class CanonicalComponent
+    : public CanonicalComponentBase<CanonicalComponent<Scalar, Grid>> {
   using Int = std::ptrdiff_t;
-  using Vector = FFTWpp::vector<scalar_type>;
+  using Vector = FFTWpp::vector<Scalar>;
 
  public:
-  ScalarField() = default;
-  ScalarField(const ScalarField&) = default;
-  ScalarField(ScalarField&&) = default;
+  CanonicalComponent() = default;
+  CanonicalComponent(const CanonicalComponent&) = default;
+  CanonicalComponent(CanonicalComponent&&) = default;
 
-  ScalarField(std::shared_ptr<Grid> grid)
+  CanonicalComponent(std::shared_ptr<Grid> grid)
       : _grid{grid},
         _data{Vector(_grid->NumberOfCoLatitudes() * _grid->NumberOfLongitudes(),
                      1)} {}
 
-  ScalarField(Int lMax, FFTWpp::PlanFlag flag = FFTWpp::Measure)
-      : _grid{std::make_shared<Grid>(lMax, 0, flag)},
-        _data{Vector(_grid->NumberOfCoLatitudes() * _grid->NumberOfLongitudes(),
-                     1)} {}
-
   template <typename OtherDerived>
-  ScalarField(ScalarFieldBase<OtherDerived>& other)
+  CanonicalComponent(CanonicalComponentBase<OtherDerived>& other)
       : _grid{other.GridPointer()}, _data(other.begin(), other.end()) {}
 
-  ScalarField& operator=(ScalarField&) = default;
-  ScalarField& operator=(ScalarField&&) = default;
+  CanonicalComponent& operator=(CanonicalComponent&) = default;
+  CanonicalComponent& operator=(CanonicalComponent&&) = default;
 
   template <typename OtherDerived>
-  ScalarField& operator=(ScalarFieldBase<OtherDerived>& other) {
+  CanonicalComponent& operator=(CanonicalComponentBase<OtherDerived>& other) {
     this->_grid = other.GridPointer();
     this->_data = Vector(other.begin(), other.end());
     return *this;
@@ -103,7 +94,7 @@ class ScalarField : public ScalarFieldBase<ScalarField<Grid>> {
   auto& operator[](Int i) { return _data[i]; }
 
   auto& operator()(Int iTheta, Int iPhi) {
-    auto i = _grid->NumberOfLongitudes() * iTheta + iPhi;
+    auto i = this->NumberOfLongitudes() * iTheta + iPhi;
     return operator[](i);
   }
 
@@ -115,20 +106,22 @@ class ScalarField : public ScalarFieldBase<ScalarField<Grid>> {
   auto _GridPointer() const { return _grid; }
   auto _View() { return boost::sub_range<Vector>(_data); }
 
-  friend class ScalarFieldBase<ScalarField<Grid>>;
+  friend class CanonicalComponentBase<CanonicalComponent<Scalar, Grid>>;
 };
 
-// Scalar field class that does not own its own data.
+// Canonical component class that does not own its own data.
 template <typename Grid, typename Range>
-class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<Grid, Range>> {
+class CanonicalComponentView
+    : public CanonicalComponentBase<CanonicalComponentView<Grid, Range>> {
   using Int = std::ptrdiff_t;
 
  public:
-  ScalarFieldView(std::shared_ptr<Grid> grid, Range& range)
+  CanonicalComponentView(std::shared_ptr<Grid> grid, Range& range)
       : _grid{grid}, _range{range} {}
 
   template <typename OtherDerived>
-  ScalarFieldView& operator=(ScalarFieldBase<OtherDerived>& other) {
+  CanonicalComponentView& operator=(
+      CanonicalComponentBase<OtherDerived>& other) {
     this->_grid = other.GridPointer();
     std::ranges::copy(other, this->begin());
     return *this;
@@ -137,7 +130,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<Grid, Range>> {
   auto& operator[](Int i) { return _range[i]; }
 
   auto& operator()(Int iTheta, Int iPhi) {
-    auto i = _grid->NumberOfLongitudes() * iTheta + iPhi;
+    auto i = this->NumberOfLongitudes() * iTheta + iPhi;
     return operator[](i);
   }
 
@@ -149,15 +142,16 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<Grid, Range>> {
   auto _GridPointer() const { return _grid; }
   auto _View() { return boost::sub_range<Range>(_range); }
 
-  friend class ScalarFieldBase<ScalarFieldView<Grid, Range>>;
+  friend class CanonicalComponentBase<CanonicalComponentView<Grid, Range>>;
 };
 
-// View to a scalar field produced by the action of a unary function.
+// View to a canonical component produced by the action of a unary function.
 template <typename Field, typename Function>
-class ScalarFieldUnaryFunction
-    : public ScalarFieldBase<ScalarFieldUnaryFunction<Field, Function>> {
+class CanonicalComponentUnaryFunction
+    : public CanonicalComponentBase<
+          CanonicalComponentUnaryFunction<Field, Function>> {
  public:
-  ScalarFieldUnaryFunction(Field& field, Function&& function)
+  CanonicalComponentUnaryFunction(Field& field, Function&& function)
       : _field{field}, _function{function} {}
 
  private:
@@ -170,16 +164,18 @@ class ScalarFieldUnaryFunction
     return _field.View() | boost::adaptors::transformed(_function);
   }
 
-  friend class ScalarFieldBase<ScalarFieldUnaryFunction<Field, Function>>;
+  friend class CanonicalComponentBase<
+      CanonicalComponentUnaryFunction<Field, Function>>;
 };
 
-// View to a scalar field produced by the action of a binary function.
+// View to a canonical component produced by the action of a binary function.
 template <typename Field1, typename Field2, typename Function>
-class ScalarFieldBinaryFunction
-    : public ScalarFieldBase<
-          ScalarFieldBinaryFunction<Field1, Field2, Function>> {
+class CanonicalComponentBinaryFunction
+    : public CanonicalComponentBase<
+          CanonicalComponentBinaryFunction<Field1, Field2, Function>> {
  public:
-  ScalarFieldBinaryFunction(Field1& field1, Field2& field2, Function&& function)
+  CanonicalComponentBinaryFunction(Field1& field1, Field2& field2,
+                                   Function&& function)
       : _field1{field1}, _field2{field2}, _function{function} {}
 
  private:
@@ -200,8 +196,8 @@ class ScalarFieldBinaryFunction
            });
   }
 
-  friend class ScalarFieldBase<
-      ScalarFieldBinaryFunction<Field1, Field2, Function>>;
+  friend class CanonicalComponentBase<
+      CanonicalComponentBinaryFunction<Field1, Field2, Function>>;
 };
 
 }  // namespace GSHTrans

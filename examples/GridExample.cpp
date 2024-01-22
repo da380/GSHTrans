@@ -49,16 +49,7 @@ int main() {
   auto grid = Grid(lMax, nMax);
   auto n = RandomUpperIndex<NRange>(nMax);
 
-  // Make a random coefficient.
-  auto getSize = [](auto lMax, auto n) {
-    if constexpr (RealFloatingPoint<Scalar>) {
-      return GSHIndices<NonNegative>(lMax, lMax, n).size();
-    } else {
-      return GSHIndices<All>(lMax, lMax, n).size();
-    }
-  };
-
-  auto size = getSize(lMax, n);
+  auto size = grid.CoefficientSize<Scalar>(lMax, n);
   auto flm = FFTWpp::vector<Complex>(size);
   {
     std::random_device rd{};
@@ -80,8 +71,7 @@ int main() {
     }
   }
 
-  auto f = FFTWpp::vector<Scalar>(grid.NumberOfLongitudes() *
-                                  grid.NumberOfCoLatitudes());
+  auto f = FFTWpp::vector<Scalar>(grid.ComponentSize());
   auto glm = FFTWpp::vector<Complex>(size);
 
   grid.InverseTransformation(lMax, n, flm, f);
