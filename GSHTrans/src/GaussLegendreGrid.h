@@ -22,10 +22,6 @@ namespace GSHTrans {
 
 template <RealFloatingPoint Real, OrderIndexRange MRange, IndexRange NRange>
 class GaussLegendreGrid {
- public:
-  //  using real_type = Real;
-  //  using complex_type = std::complex<Real>;
-
  private:
   using Int = std::ptrdiff_t;
   using Complex = std::complex<Real>;
@@ -123,6 +119,39 @@ class GaussLegendreGrid {
     } else {
       return GSHIndices<All>(lMax, lMax, n).size();
     }
+  }
+
+  // Generate random coefficient values within a given range.
+  template <RealOrComplexFloatingPointRange Range,
+            typename Distribution = decltype(std::normal_distribution<Real>())>
+  void RandomComplexCoefficient(
+      Int lMax, Int n, Range& range,
+      Distribution dist = std::normal_distribution<Real>()) {
+    std::random_device rd{};
+    std::mt19937_64 gen{rd()};
+    std::ranges::generate(range, [&gen, &dist]() {
+      return Complex{dist(gen), dist(gen)};
+    });
+    auto view = GSHView<Complex, All>(lMax, lMax, n, range.begin());
+    if (lMax == _lMax) view(lMax)(lMax) = 0;
+  }
+
+  // Generate random coefficient values within a given range.
+  template <RealOrComplexFloatingPointRange Range,
+            typename Distribution = decltype(std::normal_distribution<Real>())>
+  void RandomRealCoefficient(
+      Int lMax, Int n, Range& range,
+      Distribution dist = std::normal_distribution<Real>()) {
+    std::random_device rd{};
+    std::mt19937_64 gen{rd()};
+    std::ranges::generate(range, [&gen, &dist]() {
+      return Complex{dist(gen), dist(gen)};
+    });
+    auto view = GSHView<Complex, NonNegative>(lMax, lMax, n, range.begin());
+    for (auto l : view.Degrees()) {
+      view(l)(0).imag(0);
+    }
+    if (lMax == _lMax) view(lMax)(lMax).imag(0);
   }
 
   // Integration a function over the grid.

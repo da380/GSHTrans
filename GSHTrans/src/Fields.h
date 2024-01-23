@@ -2,12 +2,15 @@
 #define GSH_TRANS_FIELDS_GUARD_H
 
 #include <FFTWpp/All>
+#include <algorithm>
 #include <boost/range.hpp>
 #include <boost/range/adaptors.hpp>
 #include <boost/range/combine.hpp>
 #include <boost/range/sub_range.hpp>
 #include <boost/tuple/tuple.hpp>
 #include <iostream>
+#include <numeric>
+#include <ranges>
 
 #include "Concepts.h"
 #include "Indexing.h"
@@ -23,8 +26,8 @@ class CanonicalComponentBase {
   auto& GridReference() const { return GetDerived()._GridReference(); }
   auto GridPointer() const { return GetDerived()._GridPointer(); }
 
-  Int MaxDegree() const { return GridReference().MaxDegree(); }
-  Int MaxUpperIndex() const { return GridReference().MaxUpperIndex(); }
+  auto MaxDegree() const { return GridReference().MaxDegree(); }
+  auto MaxUpperIndex() const { return GridReference().MaxUpperIndex(); }
 
   auto CoLatitudes() const { return GridReference().CoLatitudes(); }
   auto NumberOfCoLatitudes() const {

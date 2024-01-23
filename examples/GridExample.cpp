@@ -16,15 +16,15 @@ using namespace GSHTrans;
 
 using Int = std::ptrdiff_t;
 
-auto RandomDegree() {
+Int RandomDegree() {
   std::random_device rd;
   std::mt19937 gen(rd());
-  std::uniform_int_distribution<Int> d(3, 7);
-  return std::pow(2, d(gen));
+  std::uniform_int_distribution<Int> d(4, 128);
+  return d(gen);
 }
 
 template <IndexRange NRange>
-auto RandomUpperIndex(Int nMax) {
+Int RandomUpperIndex(Int nMax) {
   std::random_device rd;
   std::mt19937 gen(rd());
   if constexpr (std::same_as<NRange, All>) {
@@ -39,36 +39,22 @@ auto RandomUpperIndex(Int nMax) {
 int main() {
   using Real = double;
   using Complex = std::complex<Real>;
-  using Scalar = Complex;
+  using Scalar = Real;
   using MRange = All;
-  using NRange = NonNegative;
+  using NRange = All;
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
 
   auto lMax = RandomDegree();
-  auto nMax = 4;
+  auto nMax = std::min(lMax, Int(4));
   auto grid = Grid(lMax, nMax);
   auto n = RandomUpperIndex<NRange>(nMax);
 
   auto size = grid.CoefficientSize<Scalar>(lMax, n);
   auto flm = FFTWpp::vector<Complex>(size);
-  {
-    std::random_device rd{};
-    std::mt19937_64 gen{rd()};
-    std::normal_distribution<Real> d{0., 1.};
-    std::ranges::generate(flm, [&gen, &d]() {
-      return Complex{d(gen), d(gen)};
-    });
-
-    if constexpr (ComplexFloatingPoint<Scalar>) {
-      auto flmView = GSHView<Complex, All>(lMax, lMax, n, flm.begin());
-      flmView(lMax)(lMax) = 0;
-    } else {
-      auto flmView = GSHView<Complex, NonNegative>(lMax, lMax, n, flm.begin());
-      for (auto l : flmView.Degrees()) {
-        flmView(l)(0).imag(0);
-      }
-      flmView(lMax)(lMax).imag(0);
-    }
+  if constexpr (ComplexFloatingPoint<Scalar>) {
+    grid.RandomComplexCoefficient(lMax, n, flm);
+  } else {
+    grid.RandomRealCoefficient(lMax, n, flm);
   }
 
   auto f = FFTWpp::vector<Scalar>(grid.ComponentSize());
@@ -83,5 +69,5 @@ int main() {
   auto err = *std::ranges::max_element(
       flm, [](auto a, auto b) { return std::abs(a) < std::abs(b); });
 
-  std::cout << std::abs(err) << std::endl;
+  std::cout << lMax << " " << n << " " << std::abs(err) << std::endl;
 }
