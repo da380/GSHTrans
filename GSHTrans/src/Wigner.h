@@ -128,7 +128,7 @@ class Wigner {
   Wigner(Int lMax, Int mMax, Int nMax, Real theta)
       : Wigner(lMax, mMax, nMax, Vector{theta}) {}
 
-  // Constructor that allocates space for a single angle but does not
+  // Constructor that allocates space for a single angle but does no
   // calculations.
   Wigner(Int lMax, Int mMax, Int nMax)
       : _lMax{lMax}, _mMax{mMax}, _nMax{nMax}, _nTheta{1} {
@@ -347,7 +347,7 @@ class Wigner {
           }
         }
 
-        // Add in the lower boundary term at the critical degree
+        // Add in the lower boundary term at the critical degree.
         if (l == mMax + 1) {
           const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
                           sqrtIntInv[l - n] * sqrtIntInv[l + n] *

@@ -112,13 +112,20 @@ class GaussLegendreGrid {
     return NumberOfCoLatitudes() * NumberOfLongitudes();
   }
 
-  template <RealOrComplexFloatingPoint Scalar>
-  auto CoefficientSize(Int lMax, Int n) const {
-    if constexpr (RealFloatingPoint<Scalar>) {
-      return GSHIndices<NonNegative>(lMax, lMax, n).size();
-    } else {
-      return GSHIndices<All>(lMax, lMax, n).size();
-    }
+  auto RealCoefficientSize(Int lMax, Int n) const {
+    return GSHIndices<NonNegative>(lMax, lMax, n).size();
+  }
+
+  auto ComplexCoefficientSize(Int lMax, Int n) const {
+    return GSHIndices<All>(lMax, lMax, n).size();
+  }
+
+  auto RealCoefficientSize(Int n) const {
+    return GSHIndices<NonNegative>(_lMax, _lMax, n).size();
+  }
+
+  auto ComplexCoefficientSize(Int n) const {
+    return GSHIndices<All>(_lMax, _lMax, n).size();
   }
 
   // Generate random coefficient values within a given range.
@@ -127,6 +134,7 @@ class GaussLegendreGrid {
   void RandomComplexCoefficient(
       Int lMax, Int n, Range& range,
       Distribution dist = std::normal_distribution<Real>()) {
+    assert(range.size() == ComplexCoefficientSize(lMax, n));
     std::random_device rd{};
     std::mt19937_64 gen{rd()};
     std::ranges::generate(range, [&gen, &dist]() {
@@ -142,6 +150,7 @@ class GaussLegendreGrid {
   void RandomRealCoefficient(
       Int lMax, Int n, Range& range,
       Distribution dist = std::normal_distribution<Real>()) {
+    assert(range.size() == RealCoefficientSize(lMax, n));
     std::random_device rd{};
     std::mt19937_64 gen{rd()};
     std::ranges::generate(range, [&gen, &dist]() {
@@ -271,7 +280,7 @@ class GaussLegendreGrid {
 
       if constexpr (ComplexFloatingPoint<Scalar>) {
         // Zero the (_lMax,_lMax) coefficient.
-        if (lMax = _lMax) {
+        if (lMax == _lMax) {
           auto view = std::ranges::views::reverse(out);
           view[0] = 0;
         }
@@ -373,9 +382,9 @@ class GaussLegendreGrid {
     } else {
       return 2 * _lMax;
     }
-    }
+  }
 };
 
-  }  // namespace GSHTrans
+}  // namespace GSHTrans
 
 #endif  // GSH_TRANS_GAUSS_LEGENDRE_GRID_GUARD_H

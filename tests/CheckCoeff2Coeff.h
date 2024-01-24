@@ -16,10 +16,10 @@ using namespace GSHTrans;
 
 using Int = std::ptrdiff_t;
 
-Int RandomDegree() {
+Int RandomDegree(Int lMin, Int lMax) {
   std::random_device rd;
   std::mt19937 gen(rd());
-  std::uniform_int_distribution<Int> d(8, 128);
+  std::uniform_int_distribution<Int> d(lMin, lMax);
   return d(gen);
 }
 
@@ -43,9 +43,10 @@ auto Coeff2Coeff() {
   using Complex = std::complex<Real>;
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
 
-  auto lMax = RandomDegree();
-  auto nMax = 4;
-  auto grid = Grid(lMax, nMax);
+  auto lMaxGrid = RandomDegree(4, 256);
+  auto lMax = RandomDegree(4, lMaxGrid);
+  auto nMax = std::min(lMax, Int(4));
+  auto grid = Grid(lMaxGrid, nMax);
 
   auto n = RandomUpperIndex<NRange>(nMax);
 
