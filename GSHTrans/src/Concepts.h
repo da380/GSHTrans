@@ -69,6 +69,10 @@ concept RealOrComplexFloatingPoint =
     RealFloatingPoint<T> or ComplexFloatingPoint<T>;
 
 template <typename T>
+concept IntegerOrRealOrComplexFloatingPoint =
+    std::integral<T> or RealOrComplexFloatingPoint<T>;
+
+template <typename T>
 struct RemoveComplexHelper {
   using value_type = T;
 };

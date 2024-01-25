@@ -25,4 +25,15 @@ int main() {
   using NRange = All;
 
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
+
+  auto lMax = 4;
+  auto nMax = 2;
+
+  auto grid = Grid(lMax, nMax);
+
+  auto f = CanonicalComponent<Grid, Scalar>(grid, 0);
+
+  f = 2 * (f + 1);
+
+  for (auto val : f) std::cout << val << std::endl;
 }
