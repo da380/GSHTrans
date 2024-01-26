@@ -33,11 +33,14 @@ auto MakeView(Range&& range) {
 template <typename Derived>
 class CanonicalComponentBase;
 
-template <typename GSHGrid>
-class RealCanonicalComponent;
+template <typename GSHGrid, RealOrComplexValued ValueType>
+class CanonicalComponent;
 
 template <typename GSHGrid>
-class ComplexCanonicalComponent;
+using RealCanonicalComponent = CanonicalComponent<GSHGrid, RealValued>;
+
+template <typename GSHGrid>
+using ComplexCanonicalComponent = CanonicalComponent<GSHGrid, ComplexValued>;
 
 template <typename GSHGrid, std::ranges::common_range View>
 requires std::same_as < RemoveComplex<std::ranges::range_value_t<View>>,
@@ -116,116 +119,51 @@ class CanonicalComponentBase {
 };
 
 //--------------------------------------------------------//
-//               Real canonical component class           //
+//                Canonical component class               //
 //--------------------------------------------------------//
 
-template <typename GSHGrid>
-class RealCanonicalComponent
-    : public CanonicalComponentBase<RealCanonicalComponent<GSHGrid>> {
-  using Int = std::ptrdiff_t;
-  using Real = typename GSHGrid::real_type;
-  using Vector = FFTWpp::vector<Real>;
-
- public:
-  using value_type = Real;
-
-  RealCanonicalComponent(GSHGrid& grid)
-      : _grid{grid}, _data{Vector(grid.ComponentSize())} {}
-
-  RealCanonicalComponent(GSHGrid& grid, Real value)
-      : _grid{grid}, _data{Vector(grid.ComponentSize(), value)} {}
-
-  template <typename Function>
-  requires ScalarFunction2D<Function, Real, Real> RealCanonicalComponent(
-      GSHGrid& grid, Function&& f)
-      : RealCanonicalComponent(grid) {
-    this->Interpolate(f);
-  }
-
-  RealCanonicalComponent(RealCanonicalComponent&) = default;
-
-  RealCanonicalComponent(RealCanonicalComponent&&) = default;
-
-  template <typename Derived>
-  requires std::convertible_to<typename Derived::value_type, Real>
-  RealCanonicalComponent(CanonicalComponentBase<Derived>& other)
-      : _grid{other.Grid()}, _data{Vector(other.begin(), other.end())} {}
-
-  template <typename Derived>
-  requires std::convertible_to<typename Derived::value_type, Real>
-  RealCanonicalComponent(CanonicalComponentBase<Derived>&& other)
-      : _grid{other.Grid()}, _data{Vector(other.begin(), other.end())} {}
-
-  template <typename Derived>
-  requires std::convertible_to<typename Derived::value_type, Real>
-  auto& operator=(CanonicalComponentBase<Derived>& other) {
-    _grid = other.Grid();
-    _data = Vector(other.begin(), other.end());
-    return *this;
-  }
-
-  template <typename Derived>
-  requires std::convertible_to<typename Derived::value_type, Real>
-  auto& operator=(CanonicalComponentBase<Derived>&& other) {
-    _grid = other.Grid();
-    _data = Vector(other.begin(), other.end());
-    return *this;
-  }
-
- private:
-  Vector _data;
-  GSHGrid& _grid;
-
-  auto _DataView() { return MakeView(_data); }
-  auto& _Grid() const { return _grid; }
-
-  friend class CanonicalComponentBase<RealCanonicalComponent<GSHGrid>>;
-};
-
-//-----------------------------------------------------------//
-//               Complex canonical component class           //
-//-----------------------------------------------------------//
-
-template <typename GSHGrid>
-class ComplexCanonicalComponent
-    : public CanonicalComponentBase<ComplexCanonicalComponent<GSHGrid>> {
+template <typename GSHGrid, RealOrComplexValued ValueType>
+class CanonicalComponent
+    : public CanonicalComponentBase<CanonicalComponent<GSHGrid, ValueType>> {
   using Int = std::ptrdiff_t;
   using Real = typename GSHGrid::real_type;
   using Complex = typename GSHGrid::complex_type;
-  using Vector = FFTWpp::vector<Complex>;
+  using Scalar =
+      std::conditional_t<std::same_as<ValueType, RealValued>, Real, Complex>;
+  using Vector = FFTWpp::vector<Scalar>;
 
  public:
-  using value_type = Complex;
+  using value_type = Scalar;
 
-  ComplexCanonicalComponent(GSHGrid& grid)
+  CanonicalComponent(GSHGrid& grid)
       : _grid{grid}, _data{Vector(grid.ComponentSize())} {}
 
-  ComplexCanonicalComponent(GSHGrid& grid, Complex value)
+  CanonicalComponent(GSHGrid& grid, Scalar value)
       : _grid{grid}, _data{Vector(grid.ComponentSize(), value)} {}
 
   template <typename Function>
-  requires ScalarFunction2D<Function, Real, Complex> ComplexCanonicalComponent(
+  requires ScalarFunction2D<Function, Real, Scalar> CanonicalComponent(
       GSHGrid& grid, Function&& f)
-      : ComplexCanonicalComponent(grid) {
+      : CanonicalComponent(grid) {
     this->Interpolate(f);
   }
 
-  ComplexCanonicalComponent(ComplexCanonicalComponent&) = default;
+  CanonicalComponent(CanonicalComponent&) = default;
 
-  ComplexCanonicalComponent(ComplexCanonicalComponent&&) = default;
+  CanonicalComponent(CanonicalComponent&&) = default;
 
   template <typename Derived>
-  requires std::convertible_to<typename Derived::value_type, Complex>
-  ComplexCanonicalComponent(CanonicalComponentBase<Derived>& other)
+  requires std::convertible_to<typename Derived::value_type, Scalar>
+  CanonicalComponent(CanonicalComponentBase<Derived>& other)
       : _grid{other.Grid()}, _data{Vector(other.begin(), other.end())} {}
 
   template <typename Derived>
-  requires std::convertible_to<typename Derived::value_type, Complex>
-  ComplexCanonicalComponent(CanonicalComponentBase<Derived>&& other)
+  requires std::convertible_to<typename Derived::value_type, Scalar>
+  CanonicalComponent(CanonicalComponentBase<Derived>&& other)
       : _grid{other.Grid()}, _data{Vector(other.begin(), other.end())} {}
 
   template <typename Derived>
-  requires std::convertible_to<typename Derived::value_type, Complex>
+  requires std::convertible_to<typename Derived::value_type, Scalar>
   auto& operator=(CanonicalComponentBase<Derived>& other) {
     _grid = other.Grid();
     _data = Vector(other.begin(), other.end());
@@ -233,7 +171,7 @@ class ComplexCanonicalComponent
   }
 
   template <typename Derived>
-  requires std::convertible_to<typename Derived::value_type, Complex>
+  requires std::convertible_to<typename Derived::value_type, Scalar>
   auto& operator=(CanonicalComponentBase<Derived>&& other) {
     _grid = other.Grid();
     _data = Vector(other.begin(), other.end());
@@ -247,7 +185,7 @@ class ComplexCanonicalComponent
   auto _DataView() { return MakeView(_data); }
   auto& _Grid() const { return _grid; }
 
-  friend class CanonicalComponentBase<ComplexCanonicalComponent<GSHGrid>>;
+  friend class CanonicalComponentBase<CanonicalComponent<GSHGrid, ValueType>>;
 };
 
 //-----------------------------------------------------------------//
@@ -318,7 +256,7 @@ auto conj(CanonicalComponentBase<Derived>& view) {
     return CanonicalComponentUnaryOperation(
         view, [](auto x) { return std::conj(x); });
   } else {
-    return view;
+    return CanonicalComponentView(view.Grid(), view.DataView());
   }
 }
 
@@ -335,7 +273,7 @@ auto real(CanonicalComponentBase<Derived>& view) {
     return CanonicalComponentUnaryOperation(
         view, [](auto x) { return std::real(x); });
   } else {
-    return view;
+    return CanonicalComponentView(view.Grid(), view.DataView());
   }
 }
 
@@ -414,16 +352,19 @@ auto operator*(CanonicalComponentBase<Derived>& view, S a) {
 }
 
 template <typename Derived, typename S>
+requires std::integral<S> or RealOrComplexFloatingPoint<S>
 auto operator*(CanonicalComponentBase<Derived>&& view, S a) {
   return view * a;
 }
 
 template <typename Derived, typename S>
+requires std::integral<S> or RealOrComplexFloatingPoint<S>
 auto operator*(S a, CanonicalComponentBase<Derived>& view) {
   return view * a;
 }
 
 template <typename Derived, typename S>
+requires std::integral<S> or RealOrComplexFloatingPoint<S>
 auto operator*(S a, CanonicalComponentBase<Derived>&& view) {
   return view * a;
 }
@@ -448,16 +389,19 @@ auto operator+(CanonicalComponentBase<Derived>& view, S a) {
 }
 
 template <typename Derived, typename S>
+requires std::integral<S> or RealOrComplexFloatingPoint<S>
 auto operator+(CanonicalComponentBase<Derived>&& view, S a) {
   return view + a;
 }
 
 template <typename Derived, typename S>
+requires std::integral<S> or RealOrComplexFloatingPoint<S>
 auto operator+(S a, CanonicalComponentBase<Derived>& view) {
   return view + a;
 }
 
 template <typename Derived, typename S>
+requires std::integral<S> or RealOrComplexFloatingPoint<S>
 auto operator+(S a, CanonicalComponentBase<Derived>&& view) {
   return view + a;
 }
@@ -470,16 +414,19 @@ auto operator-(CanonicalComponentBase<Derived>& view, S a) {
 }
 
 template <typename Derived, typename S>
+requires std::integral<S> or RealOrComplexFloatingPoint<S>
 auto operator-(CanonicalComponentBase<Derived>&& view, S a) {
   return view - a;
 }
 
 template <typename Derived, typename S>
+requires std::integral<S> or RealOrComplexFloatingPoint<S>
 auto operator-(S a, CanonicalComponentBase<Derived>& view) {
   return view - a;
 }
 
 template <typename Derived, typename S>
+requires std::integral<S> or RealOrComplexFloatingPoint<S>
 auto operator-(S a, CanonicalComponentBase<Derived>&& view) {
   return view - a;
 }

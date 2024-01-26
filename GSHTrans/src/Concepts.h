@@ -136,6 +136,15 @@ concept SphereGrid = requires(Grid grid) {
   { grid.MaxUpperIndex() } -> std::same_as<typename Grid::difference_type>;
 };
 
+// Concepts and classes for dealing with real and complex fields
+
+struct RealValued {};
+struct ComplexValued {};
+
+template <typename T>
+concept RealOrComplexValued =
+    std::same_as<T, RealValued> or std::same_as<T, ComplexValued>;
+
 }  // namespace GSHTrans
 
 #endif  //  GSH_TRANS_CONCEPTS_GUARD_H

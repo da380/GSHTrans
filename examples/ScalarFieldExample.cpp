@@ -32,15 +32,11 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto size = grid.ComponentSize();
+  auto f = CanonicalComponent<Grid, RealValued>(grid, 1);
 
-  auto f = RealCanonicalComponent(grid, [](auto theta, auto phi) { return 1; });
+  auto g = RealCanonicalComponent(grid, [](auto theta, auto phi) { return 1; });
 
-  auto g = ComplexCanonicalComponent(grid, 1);
+  auto h = ComplexCanonicalComponent(grid, 4);
 
-  auto ii = Complex(0, 1);
-
-  f = 2 * real(g);
-
-  for (auto val : f) std::cout << val << std::endl;
+  for (auto val : real(h) + g * Complex(0, 1)) std::cout << val << std::endl;
 }
