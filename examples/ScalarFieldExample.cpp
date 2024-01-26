@@ -31,9 +31,12 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto f = CanonicalComponent<Grid, Scalar>(grid, 0);
+  auto f = CanonicalComponent<Grid, Scalar>(grid);
 
-  f = 2 * (f + 1);
+  auto g = f;
+  g.Interpolate([](auto theta, auto phi) -> Scalar {
+    return std::cos(theta) * std::sin(phi);
+  });
 
-  for (auto val : f) std::cout << val << std::endl;
+  std::cout << (g + 1).Integrate() << std::endl;
 }

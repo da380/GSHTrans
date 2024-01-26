@@ -107,19 +107,19 @@ concept RealOrComplexFloatingPointIterator = requires() {
 // Concepts for ranges with real or complex floating point values.
 template <typename T>
 concept RealFloatingPointRange = requires() {
-  requires std::ranges::random_access_range<T>;
+  requires std::ranges::common_range<T>;
   requires RealFloatingPoint<std::ranges::range_value_t<T>>;
 };
 
 template <typename T>
 concept ComplexFloatingPointRange = requires() {
-  requires std::ranges::random_access_range<T>;
+  requires std::ranges::common_range<T>;
   requires ComplexFloatingPoint<std::ranges::range_value_t<T>>;
 };
 
 template <typename T>
 concept RealOrComplexFloatingPointRange = requires() {
-  requires std::ranges::random_access_range<T>;
+  requires std::ranges::common_range<T>;
   requires RealOrComplexFloatingPoint<std::ranges::range_value_t<T>>;
 };
 

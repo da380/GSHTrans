@@ -30,6 +30,9 @@ class GaussLegendreGrid {
   using QuadType = GaussQuad::Quadrature1D<Real>;
 
  public:
+  using real_type = Real;
+  using complex_type = Complex;
+
   // Constructors.
   GaussLegendreGrid() = default;
 

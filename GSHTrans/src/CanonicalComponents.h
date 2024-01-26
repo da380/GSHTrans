@@ -1,5 +1,5 @@
-#ifndef GSH_TRANS_FIELDS_GUARD_H
-#define GSH_TRANS_FIELDS_GUARD_H
+#ifndef GSH_TRANS_CANONICAL_COMPONENTS_GUARD_H
+#define GSH_TRANS_CANONICAL_COMPONENTS_GUARD_H
 
 #include <FFTWpp/All>
 #include <algorithm>
@@ -57,6 +57,18 @@ class CanonicalComponentBase {
     return operator[](i);
   }
 
+  template <typename Function>
+  void Interpolate(Function&& f) {
+    auto i = Int{0};
+    for (auto theta : Grid().CoLatitudes()) {
+      for (auto phi : Grid().Longitudes()) {
+        operator[](i++) = f(theta, phi);
+      }
+    }
+  }
+
+  auto Integrate() { return Grid().Integrate(DataView()); }
+
  private:
   auto& GetDerived() { return static_cast<Derived&>(*this); }
   auto& GetDerived() const { return static_cast<const Derived&>(*this); }
@@ -64,7 +76,8 @@ class CanonicalComponentBase {
 
 // Canonical component class that owns its data.
 template <typename GSHGrid, RealOrComplexFloatingPoint Scalar>
-class CanonicalComponent
+requires std::same_as < RemoveComplex<Scalar>,
+typename GSHGrid::real_type > class CanonicalComponent
     : public CanonicalComponentBase<CanonicalComponent<GSHGrid, Scalar>> {
   using Int = std::ptrdiff_t;
   using Vector = FFTWpp::vector<Scalar>;
@@ -102,6 +115,12 @@ class CanonicalComponent
     return *this;
   }
 
+  template <IntegerOrRealOrComplexFloatingPoint OtherScalar>
+  auto& operator=(OtherScalar a) {
+    for (auto& val : _data) val = a;
+    return *this;
+  }
+
  private:
   Vector _data;
   GSHGrid& _grid;
@@ -114,7 +133,8 @@ class CanonicalComponent
 
 // Canonical component class that stores a view to its data.
 template <typename GSHGrid, std::ranges::common_range View>
-class CanonicalComponentView
+requires std::same_as<RemoveComplex<std::ranges::range_value_t<View>>,
+typename GSHGrid::real_type > class CanonicalComponentView
     : public CanonicalComponentBase<CanonicalComponentView<GSHGrid, View>> {
   using Int = std::ptrdiff_t;
 
@@ -123,19 +143,23 @@ class CanonicalComponentView
     assert(_grid.ComponentSize() == view.size());
   }
 
+  /*
   template <typename Derived>
   auto& operator=(CanonicalComponentBase<Derived>& other) {
-    _grid = other.Grid();
-    _view = other.DataView();
     return *this;
   }
 
   template <typename Derived>
   auto& operator=(CanonicalComponentBase<Derived>&& other) {
-    _grid = other.Grid();
-    _view = other.DataView();
     return *this;
   }
+
+  template <IntegerOrRealOrComplexFloatingPoint OtherScalar>
+  auto& operator=(OtherScalar a) {
+    for (auto& val : _DataView()) val = a;
+    return *this;
+  }
+  */
 
  private:
   GSHGrid& _grid;
@@ -371,4 +395,4 @@ auto operator-(CanonicalComponentBase<Derived1>&& view1,
 
 }  // namespace GSHTrans
 
-#endif  // GSH_TRANS_FIELDS_GUARD_H
+#endif  // GSH_TRANS_CANONICAL_COMPONENTS_GUARD_H
