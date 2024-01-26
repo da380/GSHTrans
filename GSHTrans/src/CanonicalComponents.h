@@ -20,7 +20,221 @@
 
 namespace GSHTrans {
 
-// Base class for canonical components.
+//----------------------------------------------------------//
+//             Forward declarations of the classes          //
+//----------------------------------------------------------//
+template <typename Derived>
+class CanonicalComponentBase;
+
+template <typename GSHGrid, RealOrComplexFloatingPoint Scalar>
+requires std::same_as < RemoveComplex<Scalar>,
+typename GSHGrid::real_type > class CanonicalComponent;
+
+template <typename GSHGrid, std::ranges::common_range View>
+requires std::same_as < RemoveComplex<std::ranges::range_value_t<View>>,
+typename GSHGrid::real_type > class CanonicalComponentView;
+
+//----------------------------------------------------------//
+//              Forward declare some functions              //
+//----------------------------------------------------------//
+template <typename Derived, typename Function>
+auto CanonicalComponentUnaryOperation(CanonicalComponentBase<Derived>& view,
+                                      Function f);
+
+template <typename Derived, typename Function>
+auto CanonicalComponentUnaryOperation(CanonicalComponentBase<Derived>&& view,
+                                      Function f);
+
+template <typename Derived>
+auto conj(CanonicalComponentBase<Derived>& view);
+
+template <typename Derived>
+auto conj(CanonicalComponentBase<Derived>&& view);
+
+template <typename Derived>
+auto real(CanonicalComponentBase<Derived>& view);
+
+template <typename Derived>
+auto real(CanonicalComponentBase<Derived>&& view);
+
+template <typename Derived>
+auto imag(CanonicalComponentBase<Derived>& view);
+
+template <typename Derived>
+auto imag(CanonicalComponentBase<Derived>&& view);
+
+template <typename Derived>
+auto abs(CanonicalComponentBase<Derived>& view);
+
+template <typename Derived>
+auto abs(CanonicalComponentBase<Derived>&& view);
+
+template <typename Derived>
+auto operator-(CanonicalComponentBase<Derived>& view);
+
+template <typename Derived>
+auto operator-(CanonicalComponentBase<Derived>&& view);
+
+template <typename Derived, typename S, typename Function>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto CanonicalComponentScalarOperation(CanonicalComponentBase<Derived>& view,
+                                       S a, Function f);
+
+template <typename Derived, typename S, typename Function>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto CanonicalComponentScalarOperation(CanonicalComponentBase<Derived>&& view,
+                                       S a, Function f);
+
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto operator*(CanonicalComponentBase<Derived>& view, S a);
+
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto operator*(CanonicalComponentBase<Derived>&& view, S a);
+
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto operator*(S a, CanonicalComponentBase<Derived>& view);
+
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto operator*(S a, CanonicalComponentBase<Derived>&& view);
+
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto operator/(CanonicalComponentBase<Derived>& view, S a);
+
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto operator/(CanonicalComponentBase<Derived>&& view, S a);
+
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto operator+(CanonicalComponentBase<Derived>& view, S a);
+
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto operator+(CanonicalComponentBase<Derived>&& view, S a);
+
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto operator+(S a, CanonicalComponentBase<Derived>& view);
+
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto operator+(S a, CanonicalComponentBase<Derived>&& view);
+
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto operator-(CanonicalComponentBase<Derived>& view, S a);
+
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto operator-(CanonicalComponentBase<Derived>&& view, S a);
+
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto operator-(S a, CanonicalComponentBase<Derived>& view);
+
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto operator-(S a, CanonicalComponentBase<Derived>&& view);
+
+template <typename Derived1, typename Derived2, typename Function>
+auto CanonicalComponentBinaryOperation(CanonicalComponentBase<Derived1>& view1,
+                                       CanonicalComponentBase<Derived2>& view2,
+                                       Function f);
+
+template <typename Derived1, typename Derived2>
+auto operator+(CanonicalComponentBase<Derived1>& view1,
+               CanonicalComponentBase<Derived2>& view2);
+
+template <typename Derived1, typename Derived2>
+auto operator+(CanonicalComponentBase<Derived1>&& view1,
+               CanonicalComponentBase<Derived2>& view2);
+
+template <typename Derived1, typename Derived2>
+auto operator+(CanonicalComponentBase<Derived1>& view1,
+               CanonicalComponentBase<Derived2>&& view2);
+
+template <typename Derived1, typename Derived2>
+auto operator+(CanonicalComponentBase<Derived1>&& view1,
+               CanonicalComponentBase<Derived2>&& view2);
+
+template <typename Derived1, typename Derived2>
+auto operator-(CanonicalComponentBase<Derived1>& view1,
+               CanonicalComponentBase<Derived2>& view2);
+
+template <typename Derived1, typename Derived2>
+auto operator-(CanonicalComponentBase<Derived1>&& view1,
+               CanonicalComponentBase<Derived2>& view2);
+
+template <typename Derived1, typename Derived2>
+auto operator-(CanonicalComponentBase<Derived1>& view1,
+               CanonicalComponentBase<Derived2>&& view2);
+
+template <typename Derived1, typename Derived2>
+auto operator-(CanonicalComponentBase<Derived1>&& view1,
+               CanonicalComponentBase<Derived2>&& view2);
+
+template <typename Derived1, typename Derived2>
+auto operator*(CanonicalComponentBase<Derived1>& view1,
+               CanonicalComponentBase<Derived2>& view2);
+
+template <typename Derived1, typename Derived2>
+auto operator*(CanonicalComponentBase<Derived1>&& view1,
+               CanonicalComponentBase<Derived2>& view2);
+
+template <typename Derived1, typename Derived2>
+auto operator*(CanonicalComponentBase<Derived1>& view1,
+               CanonicalComponentBase<Derived2>&& view2);
+
+template <typename Derived1, typename Derived2>
+auto operator*(CanonicalComponentBase<Derived1>&& view1,
+               CanonicalComponentBase<Derived2>&& view2);
+
+// Convert range into view within the Boost Framwork.
+template <std::ranges::common_range Range>
+auto MakeView(Range&& range) {
+  return boost::sub_range<Range>(range);
+}
+
+//-------------------------------------------------------//
+//          Base class for canonical components          //
+//-------------------------------------------------------//
 template <typename Derived>
 class CanonicalComponentBase {
   using Int = std::ptrdiff_t;
@@ -69,12 +283,19 @@ class CanonicalComponentBase {
 
   auto Integrate() { return Grid().Integrate(DataView()); }
 
+  auto L2Norm() {
+    auto f = *this * conj(*this);
+    return std::sqrt(real(f).Integrate());
+  }
+
  private:
   auto& GetDerived() { return static_cast<Derived&>(*this); }
   auto& GetDerived() const { return static_cast<const Derived&>(*this); }
 };
 
-// Canonical component class that owns its data.
+//--------------------------------------------------------//
+//      Canonical component class that owns its data      //
+//--------------------------------------------------------//
 template <typename GSHGrid, RealOrComplexFloatingPoint Scalar>
 requires std::same_as < RemoveComplex<Scalar>,
 typename GSHGrid::real_type > class CanonicalComponent
@@ -83,6 +304,8 @@ typename GSHGrid::real_type > class CanonicalComponent
   using Vector = FFTWpp::vector<Scalar>;
 
  public:
+  using value_type = Scalar;
+
   CanonicalComponent(GSHGrid& grid)
       : _grid{grid}, _data{Vector(grid.ComponentSize())} {}
 
@@ -115,51 +338,46 @@ typename GSHGrid::real_type > class CanonicalComponent
     return *this;
   }
 
-  template <IntegerOrRealOrComplexFloatingPoint OtherScalar>
-  auto& operator=(OtherScalar a) {
-    for (auto& val : _data) val = a;
-    return *this;
-  }
-
  private:
   Vector _data;
   GSHGrid& _grid;
 
-  auto _DataView() { return boost::sub_range<Vector>(_data); }
+  auto _DataView() { return MakeView(_data); }
   auto& _Grid() const { return _grid; }
 
   friend class CanonicalComponentBase<CanonicalComponent<GSHGrid, Scalar>>;
 };
 
-// Canonical component class that stores a view to its data.
+//-----------------------------------------------------------------//
+//    Canonical component class that stores a view to its data     //
+//-----------------------------------------------------------------//
 template <typename GSHGrid, std::ranges::common_range View>
-requires std::same_as<RemoveComplex<std::ranges::range_value_t<View>>,
+requires std::same_as < RemoveComplex<std::ranges::range_value_t<View>>,
 typename GSHGrid::real_type > class CanonicalComponentView
     : public CanonicalComponentBase<CanonicalComponentView<GSHGrid, View>> {
   using Int = std::ptrdiff_t;
+  using Scalar = std::ranges::range_value_t<View>;
 
  public:
+  using value_type = Scalar;
+
   CanonicalComponentView(GSHGrid& grid, View view) : _grid{grid}, _view{view} {
     assert(_grid.ComponentSize() == view.size());
   }
 
-  /*
   template <typename Derived>
-  auto& operator=(CanonicalComponentBase<Derived>& other) {
+  auto operator=(CanonicalComponentBase<Derived>& other) {
+    assert(other.size() == _view.size());
+    std::ranges::copy(other.DataView(), _view.begin());
     return *this;
   }
 
   template <typename Derived>
-  auto& operator=(CanonicalComponentBase<Derived>&& other) {
+  auto operator=(CanonicalComponentBase<Derived>&& other) {
+    assert(other.size() == _view.size());
+    std::ranges::copy(other.DataView(), _view.begin());
     return *this;
   }
-
-  template <IntegerOrRealOrComplexFloatingPoint OtherScalar>
-  auto& operator=(OtherScalar a) {
-    for (auto& val : _DataView()) val = a;
-    return *this;
-  }
-  */
 
  private:
   GSHGrid& _grid;
@@ -170,6 +388,10 @@ typename GSHGrid::real_type > class CanonicalComponentView
 
   friend class CanonicalComponentBase<CanonicalComponentView<GSHGrid, View>>;
 };
+
+//-------------------------------------------------------------//
+//   Define functions to transform canonical component views   //
+//-------------------------------------------------------------//
 
 // Transform a view using unary operation.
 template <typename Derived, typename Function>
@@ -188,8 +410,7 @@ auto CanonicalComponentUnaryOperation(CanonicalComponentBase<Derived>&& view,
 // View of the Complex conjugation.
 template <typename Derived>
 auto conj(CanonicalComponentBase<Derived>& view) {
-  using Range = decltype(view.DataView());
-  using T = std::ranges::range_value_t<Range>;
+  using T = typename Derived::value_type;
   if constexpr (ComplexFloatingPoint<T>) {
     return CanonicalComponentUnaryOperation(
         view, [](auto x) { return std::conj(x); });
@@ -206,8 +427,7 @@ auto conj(CanonicalComponentBase<Derived>&& view) {
 // View of the real part.
 template <typename Derived>
 auto real(CanonicalComponentBase<Derived>& view) {
-  using Range = decltype(view.DataView());
-  using T = std::ranges::range_value_t<Range>;
+  using T = typename Derived::value_type;
   if constexpr (ComplexFloatingPoint<T>) {
     return CanonicalComponentUnaryOperation(
         view, [](auto x) { return std::real(x); });
@@ -224,7 +444,7 @@ auto real(CanonicalComponentBase<Derived>&& view) {
 // View of the imaginary part.
 template <typename Derived>
 auto imag(CanonicalComponentBase<Derived>& view) {
-  using T = std::ranges::range_value_t<CanonicalComponentBase<Derived>>;
+  using T = typename Derived::value_type;
   if constexpr (ComplexFloatingPoint<T>) {
     return CanonicalComponentUnaryOperation(
         view, [](auto x) { return std::imag(x); });
@@ -236,6 +456,18 @@ auto imag(CanonicalComponentBase<Derived>& view) {
 template <typename Derived>
 auto imag(CanonicalComponentBase<Derived>&& view) {
   return imag(view);
+}
+
+// View of the absolute value.
+template <typename Derived>
+auto abs(CanonicalComponentBase<Derived>& view) {
+  return CanonicalComponentUnaryOperation(view,
+                                          [](auto x) { return std::abs(x); });
+}
+
+template <typename Derived>
+auto abs(CanonicalComponentBase<Derived>&& view) {
+  return abs(view);
 }
 
 // Overloads for unary minus.
@@ -250,84 +482,121 @@ auto operator-(CanonicalComponentBase<Derived>&& view) {
 }
 
 // View formed from component-wise scalar operator
-template <typename Derived, IntegerOrRealOrComplexFloatingPoint S,
-          typename Function>
+template <typename Derived, typename S, typename Function>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
 auto CanonicalComponentScalarOperation(CanonicalComponentBase<Derived>& view,
                                        S a, Function f) {
-  using T = std::ranges::range_value_t<CanonicalComponentBase<Derived>>;
+  using T = typename Derived::value_type;
   auto g = std::function<T(T)>([a, f](T x) { return f(x, static_cast<T>(a)); });
   return CanonicalComponentUnaryOperation(view, g);
 }
 
-template <typename Derived, IntegerOrRealOrComplexFloatingPoint S,
-          typename Function>
+template <typename Derived, typename S, typename Function>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
 auto CanonicalComponentScalarOperation(CanonicalComponentBase<Derived>&& view,
                                        S a, Function f) {
   return CanonicalComponentScalarOperation(view, a, f);
 }
 
 // Overloads for scalar multiplication.
-template <typename Derived, IntegerOrRealOrComplexFloatingPoint S>
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
 auto operator*(CanonicalComponentBase<Derived>& view, S a) {
   return CanonicalComponentScalarOperation(view, a, std::multiplies<>());
 }
 
-template <typename Derived, IntegerOrRealOrComplexFloatingPoint S>
-auto operator*(CanonicalComponentBase<Derived>&& view, S a) {
-  return view * a;
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto operator*(CanonicalComponentBase<Derived>&& view, S a) { return view * a; }
+
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto operator*(S a, CanonicalComponentBase<Derived>& view) { return view * a; }
+
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto operator*(S a, CanonicalComponentBase<Derived>&& view) { return view * a; }
+
+// Overloads for scalar division.
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
+auto operator/(CanonicalComponentBase<Derived>& view, S a) {
+  return CanonicalComponentScalarOperation(view, a, std::divides<>());
 }
 
-template <typename Derived, IntegerOrRealOrComplexFloatingPoint S>
-auto operator*(S a, CanonicalComponentBase<Derived>& view) {
-  return view * a;
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
 }
-
-template <typename Derived, IntegerOrRealOrComplexFloatingPoint S>
-auto operator*(S a, CanonicalComponentBase<Derived>&& view) {
-  return view * a;
-}
+auto operator/(CanonicalComponentBase<Derived>&& view, S a) { return view / a; }
 
 // Overloads for scalar addition.
-template <typename Derived, IntegerOrRealOrComplexFloatingPoint S>
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
 auto operator+(CanonicalComponentBase<Derived>& view, S a) {
   return CanonicalComponentScalarOperation(view, a, std::plus<>());
 }
 
-template <typename Derived, IntegerOrRealOrComplexFloatingPoint S>
-auto operator+(CanonicalComponentBase<Derived>&& view, S a) {
-  return view + a;
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
 }
+auto operator+(CanonicalComponentBase<Derived>&& view, S a) { return view + a; }
 
-template <typename Derived, IntegerOrRealOrComplexFloatingPoint S>
-auto operator+(S a, CanonicalComponentBase<Derived>& view) {
-  return view + a;
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
 }
+auto operator+(S a, CanonicalComponentBase<Derived>& view) { return view + a; }
 
-template <typename Derived, IntegerOrRealOrComplexFloatingPoint S>
-auto operator+(S a, CanonicalComponentBase<Derived>&& view) {
-  return view + a;
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
 }
+auto operator+(S a, CanonicalComponentBase<Derived>&& view) { return view + a; }
 
 // Overloads for scalar subtraction.
-template <typename Derived, IntegerOrRealOrComplexFloatingPoint S>
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
+}
 auto operator-(CanonicalComponentBase<Derived>& view, S a) {
   return CanonicalComponentScalarOperation(view, a, std::minus<>());
 }
 
-template <typename Derived, IntegerOrRealOrComplexFloatingPoint S>
-auto operator-(CanonicalComponentBase<Derived>&& view, S a) {
-  return view - a;
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
 }
+auto operator-(CanonicalComponentBase<Derived>&& view, S a) { return view - a; }
 
-template <typename Derived, IntegerOrRealOrComplexFloatingPoint S>
-auto operator-(S a, CanonicalComponentBase<Derived>& view) {
-  return view - a;
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
 }
+auto operator-(S a, CanonicalComponentBase<Derived>& view) { return view - a; }
 
-template <typename Derived, IntegerOrRealOrComplexFloatingPoint S>
-auto operator-(S a, CanonicalComponentBase<Derived>&& view) {
-  return view - a;
+template <typename Derived, typename S>
+requires requires {
+  requires std::convertible_to<S, typename Derived::value_type>;
 }
+auto operator-(S a, CanonicalComponentBase<Derived>&& view) { return view - a; }
 
 // Transform a pair of views using a binary operation.
 template <typename Derived1, typename Derived2, typename Function>
@@ -391,6 +660,31 @@ template <typename Derived1, typename Derived2>
 auto operator-(CanonicalComponentBase<Derived1>&& view1,
                CanonicalComponentBase<Derived2>&& view2) {
   return view1 - view2;
+}
+
+// Overloads for mulitplication.
+template <typename Derived1, typename Derived2>
+auto operator*(CanonicalComponentBase<Derived1>& view1,
+               CanonicalComponentBase<Derived2>& view2) {
+  return CanonicalComponentBinaryOperation(view1, view2, std::multiplies<>());
+}
+
+template <typename Derived1, typename Derived2>
+auto operator*(CanonicalComponentBase<Derived1>&& view1,
+               CanonicalComponentBase<Derived2>& view2) {
+  return view1 * view2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator*(CanonicalComponentBase<Derived1>& view1,
+               CanonicalComponentBase<Derived2>&& view2) {
+  return view1 * view2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator*(CanonicalComponentBase<Derived1>&& view1,
+               CanonicalComponentBase<Derived2>&& view2) {
+  return view1 * view2;
 }
 
 }  // namespace GSHTrans

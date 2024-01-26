@@ -69,10 +69,6 @@ concept RealOrComplexFloatingPoint =
     RealFloatingPoint<T> or ComplexFloatingPoint<T>;
 
 template <typename T>
-concept IntegerOrRealOrComplexFloatingPoint =
-    std::integral<T> or RealOrComplexFloatingPoint<T>;
-
-template <typename T>
 struct RemoveComplexHelper {
   using value_type = T;
 };
@@ -126,8 +122,8 @@ concept RealOrComplexFloatingPointRange = requires() {
 // Concepts for scalar-valued functions.
 template <typename Func, typename Real>
 concept ScalarFunction2D = requires(Real theta, Real phi, Real w, Func f) {
-  RealFloatingPoint<Real>;
-  std::invocable<Func, Real, Real>;
+  requires RealFloatingPoint<Real>;
+  requires std::invocable<Func, Real, Real>;
   { f(theta, phi) } -> RealOrComplexFloatingPoint<>;
   { f(theta, phi) * w } -> RealOrComplexFloatingPoint<>;
 };

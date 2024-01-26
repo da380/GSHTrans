@@ -23,6 +23,7 @@ int main() {
   using Scalar = Complex;
   using MRange = All;
   using NRange = All;
+  using Vector = std::vector<Scalar>;
 
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
 
@@ -31,12 +32,14 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto f = CanonicalComponent<Grid, Scalar>(grid);
+  auto size = grid.ComponentSize();
+  auto data = Vector(size);
+  auto dataView = MakeView(data);
+  auto f = CanonicalComponentView(grid, dataView);
 
-  auto g = f;
-  g.Interpolate([](auto theta, auto phi) -> Scalar {
-    return std::cos(theta) * std::sin(phi);
-  });
+  f.Interpolate([](auto theta, auto phi) { return 1; });
 
-  std::cout << (g + 1).Integrate() << std::endl;
+  for (auto val : f) std::cout << val << std::endl;
+
+  std::cout << f.L2Norm() << std::endl;
 }
