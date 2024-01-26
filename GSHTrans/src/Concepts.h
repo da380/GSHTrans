@@ -120,12 +120,12 @@ concept RealOrComplexFloatingPointRange = requires() {
 };
 
 // Concepts for scalar-valued functions.
-template <typename Func, typename Real>
+template <typename Func, typename Real, typename Scalar>
 concept ScalarFunction2D = requires(Real theta, Real phi, Real w, Func f) {
   requires RealFloatingPoint<Real>;
-  requires std::invocable<Func, Real, Real>;
-  { f(theta, phi) } -> RealOrComplexFloatingPoint<>;
-  { f(theta, phi) * w } -> RealOrComplexFloatingPoint<>;
+  requires RealOrComplexFloatingPoint<Scalar>;
+  { f(theta, phi) } -> std::convertible_to<Scalar>;
+  { f(theta, phi) * w } -> std::convertible_to<Scalar>;
 };
 
 // Concepts for grid classes.

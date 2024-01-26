@@ -168,7 +168,8 @@ class GaussLegendreGrid {
 
   // Integration a function over the grid.
   template <typename Function>
-  requires ScalarFunction2D<Function, Real>
+  requires ScalarFunction2D<Function, Real, Real> or
+      ScalarFunction2D<Function, Real, Complex>
   auto Integrate(Function f) {
     using FunctionValue = decltype(f(0, 0));
     auto thetaIntegrand = [this, &f](auto theta) {

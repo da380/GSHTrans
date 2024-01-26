@@ -33,13 +33,14 @@ int main() {
   auto grid = Grid(lMax, nMax);
 
   auto size = grid.ComponentSize();
-  auto data = Vector(size);
-  auto dataView = MakeView(data);
-  auto f = CanonicalComponentView(grid, dataView);
 
-  f.Interpolate([](auto theta, auto phi) { return 1; });
+  auto f = RealCanonicalComponent(grid, [](auto theta, auto phi) { return 1; });
+
+  auto g = ComplexCanonicalComponent(grid, 1);
+
+  auto ii = Complex(0, 1);
+
+  f = 2 * real(g);
 
   for (auto val : f) std::cout << val << std::endl;
-
-  std::cout << f.L2Norm() << std::endl;
 }
