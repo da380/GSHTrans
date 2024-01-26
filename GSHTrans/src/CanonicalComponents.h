@@ -449,7 +449,7 @@ auto imag(CanonicalComponentBase<Derived>& view) {
     return CanonicalComponentUnaryOperation(
         view, [](auto x) { return std::imag(x); });
   } else {
-    return view;
+    return CanonicalComponentUnaryOperation(view, [](auto x) { return 0; });
   }
 }
 
