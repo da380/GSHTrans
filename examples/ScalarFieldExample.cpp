@@ -48,10 +48,7 @@ int main() {
 
   using View = decltype(flm.DataView());
 
-  auto glm =
-      CanonicalCoefficientView(lMax, n, grid, flm.DataView(), ComplexValued());
+  for (auto& val : flm) val = 1;
 
-  flm.UpperIndex();
-
-  for (auto val : glm.Degrees()) std::cout << val << std::endl;
+  for (auto val : 2 * (-flm / 3 + Complex(1, 1))) std::cout << val << std::endl;
 }

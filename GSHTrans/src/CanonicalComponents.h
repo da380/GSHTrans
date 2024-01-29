@@ -223,7 +223,7 @@ typename GSHGrid::real_type > class CanonicalComponentView
 };
 
 //-------------------------------------------------------------//
-//   Define functions to transform canonical component views   //
+//       Functions to transform canonical component views      //
 //-------------------------------------------------------------//
 
 // Transform a view using unary operation.
