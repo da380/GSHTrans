@@ -7,5 +7,6 @@
 #include "src/Wigner.h"
 #include "src/GaussLegendreGrid.h"
 #include "src/CanonicalComponents.h"
+#include "src/CanonicalCoefficients.h"
 
 #endif

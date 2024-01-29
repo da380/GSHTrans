@@ -38,5 +38,20 @@ int main() {
 
   auto h = ComplexCanonicalComponent(grid, 4);
 
-  for (auto val : real(h) + g * Complex(0, 1)) std::cout << val << std::endl;
+  f = 2 * g;
+
+  auto k = RealCanonicalComponent<Grid>(2 * g);
+
+  auto n = 0;
+
+  auto flm = CanonicalCoefficient<Grid, ComplexValued>(lMax, n, grid);
+
+  using View = decltype(flm.DataView());
+
+  auto glm =
+      CanonicalCoefficientView(lMax, n, grid, flm.DataView(), ComplexValued());
+
+  flm.UpperIndex();
+
+  for (auto val : glm.Degrees()) std::cout << val << std::endl;
 }

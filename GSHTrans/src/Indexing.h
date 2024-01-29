@@ -259,6 +259,8 @@ class GSHView {
     return std::ranges::views::iota(MinDegree(), MaxDegree() + 1);
   }
 
+  auto UpperIndex() const { return _indices.UpperIndex(); }
+
   auto operator()(Int l) {
     auto offset = _indices(l, _indices.MinOrder(l));
     auto start = std::next(_start, offset);

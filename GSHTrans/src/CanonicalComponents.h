@@ -11,7 +11,6 @@
 #include <complex>
 #include <functional>
 #include <iostream>
-#include <numeric>
 #include <ranges>
 #include <type_traits>
 
@@ -19,12 +18,6 @@
 #include "Indexing.h"
 
 namespace GSHTrans {
-
-// Convert range into view within the Boost Framwork.
-template <std::ranges::common_range Range>
-auto MakeView(Range&& range) {
-  return boost::sub_range<Range>(range);
-}
 
 //----------------------------------------------------------//
 //             Forward declarations of the classes          //
@@ -160,12 +153,12 @@ class CanonicalComponent
   template <typename Derived>
   requires std::convertible_to<typename Derived::value_type, Scalar>
   CanonicalComponent(CanonicalComponentBase<Derived>&& other)
-      : _grid{other.Grid()}, _data{Vector(other.begin(), other.end())} {}
+      : CanonicalComponent(other) {}
 
   template <typename Derived>
   requires std::convertible_to<typename Derived::value_type, Scalar>
   auto& operator=(CanonicalComponentBase<Derived>& other) {
-    _grid = other.Grid();
+    assert(_grid.ComponentSize() == other.Grid().ComponentSize());
     _data = Vector(other.begin(), other.end());
     return *this;
   }
@@ -173,8 +166,7 @@ class CanonicalComponent
   template <typename Derived>
   requires std::convertible_to<typename Derived::value_type, Scalar>
   auto& operator=(CanonicalComponentBase<Derived>&& other) {
-    _grid = other.Grid();
-    _data = Vector(other.begin(), other.end());
+    *this = other;
     return *this;
   }
 
@@ -182,7 +174,7 @@ class CanonicalComponent
   Vector _data;
   GSHGrid& _grid;
 
-  auto _DataView() { return MakeView(_data); }
+  auto _DataView() { return boost::sub_range<Vector>(_data); }
   auto& _Grid() const { return _grid; }
 
   friend class CanonicalComponentBase<CanonicalComponent<GSHGrid, ValueType>>;
@@ -353,21 +345,15 @@ auto operator*(CanonicalComponentBase<Derived>& view, S a) {
 
 template <typename Derived, typename S>
 requires std::integral<S> or RealOrComplexFloatingPoint<S>
-auto operator*(CanonicalComponentBase<Derived>&& view, S a) {
-  return view * a;
-}
+auto operator*(CanonicalComponentBase<Derived>&& view, S a) { return view * a; }
 
 template <typename Derived, typename S>
 requires std::integral<S> or RealOrComplexFloatingPoint<S>
-auto operator*(S a, CanonicalComponentBase<Derived>& view) {
-  return view * a;
-}
+auto operator*(S a, CanonicalComponentBase<Derived>& view) { return view * a; }
 
 template <typename Derived, typename S>
 requires std::integral<S> or RealOrComplexFloatingPoint<S>
-auto operator*(S a, CanonicalComponentBase<Derived>&& view) {
-  return view * a;
-}
+auto operator*(S a, CanonicalComponentBase<Derived>&& view) { return view * a; }
 
 // Overloads for scalar division.
 template <typename Derived, typename S>
@@ -390,21 +376,15 @@ auto operator+(CanonicalComponentBase<Derived>& view, S a) {
 
 template <typename Derived, typename S>
 requires std::integral<S> or RealOrComplexFloatingPoint<S>
-auto operator+(CanonicalComponentBase<Derived>&& view, S a) {
-  return view + a;
-}
+auto operator+(CanonicalComponentBase<Derived>&& view, S a) { return view + a; }
 
 template <typename Derived, typename S>
 requires std::integral<S> or RealOrComplexFloatingPoint<S>
-auto operator+(S a, CanonicalComponentBase<Derived>& view) {
-  return view + a;
-}
+auto operator+(S a, CanonicalComponentBase<Derived>& view) { return view + a; }
 
 template <typename Derived, typename S>
 requires std::integral<S> or RealOrComplexFloatingPoint<S>
-auto operator+(S a, CanonicalComponentBase<Derived>&& view) {
-  return view + a;
-}
+auto operator+(S a, CanonicalComponentBase<Derived>&& view) { return view + a; }
 
 // Overloads for scalar subtraction.
 template <typename Derived, typename S>
@@ -415,21 +395,15 @@ auto operator-(CanonicalComponentBase<Derived>& view, S a) {
 
 template <typename Derived, typename S>
 requires std::integral<S> or RealOrComplexFloatingPoint<S>
-auto operator-(CanonicalComponentBase<Derived>&& view, S a) {
-  return view - a;
-}
+auto operator-(CanonicalComponentBase<Derived>&& view, S a) { return view - a; }
 
 template <typename Derived, typename S>
 requires std::integral<S> or RealOrComplexFloatingPoint<S>
-auto operator-(S a, CanonicalComponentBase<Derived>& view) {
-  return view - a;
-}
+auto operator-(S a, CanonicalComponentBase<Derived>& view) { return view - a; }
 
 template <typename Derived, typename S>
 requires std::integral<S> or RealOrComplexFloatingPoint<S>
-auto operator-(S a, CanonicalComponentBase<Derived>&& view) {
-  return view - a;
-}
+auto operator-(S a, CanonicalComponentBase<Derived>&& view) { return view - a; }
 
 // Transform a pair of views using a binary operation.
 template <typename Derived1, typename Derived2, typename Function>

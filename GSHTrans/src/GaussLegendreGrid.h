@@ -32,6 +32,8 @@ class GaussLegendreGrid {
  public:
   using real_type = Real;
   using complex_type = Complex;
+  using MRange_type = MRange;
+  using NRange_type = NRange;
 
   // Constructors.
   GaussLegendreGrid() = default;
