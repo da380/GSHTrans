@@ -40,15 +40,9 @@ int main() {
 
   f = 2 * g;
 
-  auto k = RealCanonicalComponent<Grid>(2 * g);
-
   auto n = 0;
 
-  auto flm = CanonicalCoefficient<Grid, ComplexValued>(lMax, n, grid);
-
-  using View = decltype(flm.DataView());
+  auto flm = RealCanonicalCoefficient(lMax, n, grid);
 
   for (auto& val : flm) val = 1;
-
-  for (auto val : 2 * (-flm / 3 + Complex(1, 1))) std::cout << val << std::endl;
 }

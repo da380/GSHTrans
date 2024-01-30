@@ -14,13 +14,13 @@ namespace GSHTrans {
 
 template <IndexRange MRange>
 class GSHIndices {
-  using Integer = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;
 
  public:
   GSHIndices() = delete;
 
   // General constructor taking in lMax, mMax, and n.
-  GSHIndices(Integer lMax, Integer mMax, Integer n)
+  GSHIndices(Int lMax, Int mMax, Int n)
       : _lMax{lMax}, _mMax{mMax}, _n{n}, _nAbs{std::abs(_n)} {
     assert(_lMax >= 0);
     assert(_mMax <= _lMax);
@@ -34,10 +34,10 @@ class GSHIndices {
   }
 
   // Reduced constructor that assumes that mMax = lMax;
-  GSHIndices(Integer lMax, Integer n) : GSHIndices(lMax, lMax, n) {}
+  GSHIndices(Int lMax, Int n) : GSHIndices(lMax, lMax, n) {}
 
   // Reduced constructor that assumes mMax = lMax and nMax = 0;
-  GSHIndices(Integer lMax) : GSHIndices(lMax, lMax, 0) {}
+  GSHIndices(Int lMax) : GSHIndices(lMax, lMax, 0) {}
 
   // Return iterators to the begining and end.
   const auto& begin() const { return *this; }
@@ -64,8 +64,7 @@ class GSHIndices {
   auto operator*() const { return std::pair(_l, _m); }
 
   // Application operator returns the index of the (l,m)th value.
-  auto operator()(Integer l,
-                  Integer m) const requires std::same_as<MRange, All> {
+  auto operator()(Int l, Int m) const requires std::same_as<MRange, All> {
     assert(l >= _nAbs && l <= _lMax);
     assert(m >= -l && m <= l);
     if (_mMax >= _nAbs) {
@@ -77,8 +76,8 @@ class GSHIndices {
     }
   }
 
-  auto operator()(Integer l,
-                  Integer m) const requires std::same_as<MRange, NonNegative> {
+  auto operator()(Int l,
+                  Int m) const requires std::same_as<MRange, NonNegative> {
     assert(l >= _nAbs && l <= _lMax);
     assert(m >= 0 && m <= l);
     if (_mMax >= _nAbs) {
@@ -101,26 +100,30 @@ class GSHIndices {
   // Return the minimum and maximum degrees.
   auto MinDegree() const { return _nAbs; }
   auto MaxDegree() const { return _lMax; }
+  auto Degrees() const {
+    return std::ranges::views::iota(MinDegree(), MaxDegree() + 1);
+  }
 
-  // Return minimum order for given degree.
-  auto MinOrder(Integer l) const {
+  // Return minimum and maximum orders for a given degree.
+  auto MinOrder(Int l) const {
     if constexpr (std::same_as<MRange, All>) {
       return -std::min(l, _mMax);
     } else {
       return 0;
     }
   }
-
-  // Return maximum order for given degree.
-  auto MaxOrder(Integer l) const { return std::min(l, _mMax); }
+  auto MaxOrder(Int l) const { return std::min(l, _mMax); }
+  auto Orders(Int l) const {
+    return std::ranges::views::iota(MinOrder(l), MaxOrder(l) + 1);
+  }
 
   // Return offset for values at degree l.
-  auto OffsetForDegree(Integer l) const {
+  auto OffsetForDegree(Int l) const {
     return l == 0 ? 0 : operator()(l - 1, MinOrder(l));
   }
 
   // Return size for value at degree l.
-  auto sizeForDegree(Integer l) const {
+  auto sizeForDegree(Int l) const {
     if constexpr (std::same_as<MRange, All>) {
       if (l < _mMax) {
         return 2 * l + 1;
@@ -137,12 +140,12 @@ class GSHIndices {
   }
 
  private:
-  Integer _lMax;
-  Integer _mMax;
-  Integer _n;
-  Integer _nAbs;
-  Integer _l;
-  Integer _m;
+  Int _lMax;
+  Int _mMax;
+  Int _n;
+  Int _nAbs;
+  Int _l;
+  Int _m;
 };
 
 template <RealOrComplexFloatingPoint Scalar, IndexRange MRange>

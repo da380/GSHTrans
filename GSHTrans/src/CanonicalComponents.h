@@ -39,16 +39,6 @@ template <typename GSHGrid, std::ranges::common_range View>
 requires std::same_as < RemoveComplex<std::ranges::range_value_t<View>>,
 typename GSHGrid::real_type > class CanonicalComponentView;
 
-//----------------------------------------------------------//
-//              Forward declare some functions              //
-//----------------------------------------------------------//
-
-template <typename Derived>
-auto conj(CanonicalComponentBase<Derived>& view);
-
-template <typename Derived>
-auto conj(CanonicalComponentBase<Derived>&& view);
-
 //-------------------------------------------------------//
 //          Base class for canonical components          //
 //-------------------------------------------------------//
@@ -65,46 +55,19 @@ class CanonicalComponentBase {
   auto end() { return DataView().end(); }
   auto size() { return DataView().size(); }
 
-  auto& operator[](Int i) const {
+  auto operator[](Int i) {
     assert(i >= 0 && i < size());
     return DataView()[i];
   }
 
-  auto& operator[](Int i) {
-    assert(i >= 0 && i < size());
-    return DataView()[i];
-  }
-
-  auto& operator()(Int iTheta, Int iPhi) const {
+  auto operator()(Int iTheta, Int iPhi) {
     assert(iTheta >= 0 && iTheta < Grid().NumberOfCoLatitudes());
     assert(iPhi >= 0 && iPhi < Grid().NumberOfLongitudes());
     auto i = Grid().NumberOfLongitudes() * iTheta + iPhi;
     return operator[](i);
-  }
-
-  auto& operator()(Int iTheta, Int iPhi) {
-    assert(iTheta >= 0 && iTheta < Grid().NumberOfCoLatitudes());
-    assert(iPhi >= 0 && iPhi < Grid().NumberOfLongitudes());
-    auto i = Grid().NumberOfLongitudes() * iTheta + iPhi;
-    return operator[](i);
-  }
-
-  template <typename Function>
-  void Interpolate(Function&& f) {
-    auto i = Int{0};
-    for (auto theta : Grid().CoLatitudes()) {
-      for (auto phi : Grid().Longitudes()) {
-        operator[](i++) = f(theta, phi);
-      }
-    }
   }
 
   auto Integrate() { return Grid().Integrate(DataView()); }
-
-  auto L2Norm() {
-    auto f = *this * conj(*this);
-    return std::sqrt(real(f).Integrate());
-  }
 
  private:
   auto& GetDerived() { return static_cast<Derived&>(*this); }
@@ -168,6 +131,16 @@ class CanonicalComponent
   auto& operator=(CanonicalComponentBase<Derived>&& other) {
     *this = other;
     return *this;
+  }
+
+  template <typename Function>
+  void Interpolate(Function&& f) {
+    auto i = Int{0};
+    for (auto theta : _grid.CoLatitudes()) {
+      for (auto phi : _grid.Longitudes()) {
+        _data[i++] = f(theta, phi);
+      }
+    }
   }
 
  private:
@@ -410,6 +383,7 @@ template <typename Derived1, typename Derived2, typename Function>
 auto CanonicalComponentBinaryOperation(CanonicalComponentBase<Derived1>& view1,
                                        CanonicalComponentBase<Derived2>& view2,
                                        Function f) {
+  assert(view1.size() == view2.size());
   auto view = boost::combine(view1.DataView(), view2.DataView()) |
               boost::adaptors::transformed([f](auto pair) {
                 auto x = boost::get<0>(pair);
