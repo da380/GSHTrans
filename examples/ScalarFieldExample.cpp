@@ -35,10 +35,11 @@ int main() {
   auto f = CanonicalComponent<Grid, RealValued>(
       grid, [](auto theta, auto phi) { return 1; });
 
-  auto g = CanonicalComponentAffineView(grid, f.DataView(), 1.0, 0.0);
+  f = f * 2;
 
-  std::cout << g[0] << std::endl;
-  // for (auto val : g) std::cout << val << std::endl;
+  std::cout << f[0] << std::endl;
+
+  // for (auto val : g * 2.) std::cout << val << std::endl;
 
   /*
 

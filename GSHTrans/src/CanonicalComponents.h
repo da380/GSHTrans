@@ -279,16 +279,29 @@ auto operator-(CanonicalComponentBase<Derived>&& view) {
   return -view;
 }
 
+template <typename Derived, typename S>
+requires std::integral<S> or RealOrComplexFloatingPoint<S>
+auto operator*(CanonicalComponentBase<Derived>& view, S s) {
+  using namespace std::placeholders;
+  using T = typename Derived::value_type;
+
+  auto f = [](auto x) { return x; };
+
+  return CanonicalComponentView(
+      view.Grid(), view.DataView() | std::ranges::views::transform(f));
+}
+
 // Transform a pair of views using a binary operation.
 template <typename Derived1, typename Derived2, typename Function>
 requires std::convertible_to<typename Derived1::value_type,
                              typename Derived2::value_type>
 auto CanonicalComponentBinaryOperation(CanonicalComponentBase<Derived1>& view1,
                                        CanonicalComponentBase<Derived2>& view2,
-                                       Function f) {
+                                       Function&& f) {
   assert(view1.size() == view2.size());
   auto view =
-      std::ranges::views::zip_transform(f, view1.DataView(), view2.DataView()) |
+      std::ranges::views::zip_transform(std::forward<Function>(f),
+                                        view1.DataView(), view2.DataView()) |
       std::ranges::views::as_const;
   return CanonicalComponentView(view1.Grid(), view);
 }
@@ -298,8 +311,9 @@ requires std::convertible_to<typename Derived1::value_type,
                              typename Derived2::value_type>
 auto CanonicalComponentBinaryOperation(CanonicalComponentBase<Derived1>&& view1,
                                        CanonicalComponentBase<Derived2>& view2,
-                                       Function f) {
-  return CanonicalComponentBinaryOperation(view1, view2, f);
+                                       Function&& f) {
+  return CanonicalComponentBinaryOperation(view1, view2,
+                                           std::forward<Function>(f));
 }
 
 template <typename Derived1, typename Derived2, typename Function>
@@ -307,8 +321,9 @@ requires std::convertible_to<typename Derived1::value_type,
                              typename Derived2::value_type>
 auto CanonicalComponentBinaryOperation(CanonicalComponentBase<Derived1>& view1,
                                        CanonicalComponentBase<Derived2>&& view2,
-                                       Function f) {
-  return CanonicalComponentBinaryOperation(view1, view2, f);
+                                       Function&& f) {
+  return CanonicalComponentBinaryOperation(view1, view2,
+                                           std::forward<Function>(f));
 }
 
 template <typename Derived1, typename Derived2, typename Function>
@@ -316,8 +331,9 @@ requires std::convertible_to<typename Derived1::value_type,
                              typename Derived2::value_type>
 auto CanonicalComponentBinaryOperation(CanonicalComponentBase<Derived1>&& view1,
                                        CanonicalComponentBase<Derived2>&& view2,
-                                       Function f) {
-  return CanonicalComponentBinaryOperation(view1, view2, f);
+                                       Function&& f) {
+  return CanonicalComponentBinaryOperation(view1, view2,
+                                           std::forward<Function>(f));
 }
 
 // Overloads for addition.
@@ -393,67 +409,6 @@ template <typename Derived1, typename Derived2>
 auto operator*(CanonicalComponentBase<Derived1>&& view1,
                CanonicalComponentBase<Derived2>&& view2) {
   return view1 * view2;
-}
-
-template <typename GSHGrid, std::ranges::random_access_range View,
-          typename Scalar>
-requires std::same_as<RemoveComplex<std::ranges::range_value_t<View>>,
-                      typename GSHGrid::real_type>
-class CanonicalComponentAffineView
-    : public CanonicalComponentBase<
-          CanonicalComponentAffineView<GSHGrid, View, Scalar>> {
-  using Int = std::ptrdiff_t;
-
- public:
-  using value_type = std::ranges::range_value_t<View>;
-  using coefficient_type = std::conditional_t<RealFloatingPoint<value_type>,
-                                              RealValued, ComplexValued>;
-
-  CanonicalComponentAffineView(GSHGrid& grid, View view, Scalar scale,
-                               Scalar shift)
-      : _grid{grid}, _view{view}, _scale{scale}, _shift{shift} {}
-
-  template <typename Derived>
-  requires std::convertible_to<typename Derived::value_type, value_type>
-  auto& operator=(CanonicalComponentBase<Derived>& other) {
-    assert(other.size() == this->size());
-    std::ranges::copy(other, this->begin());
-    return *this;
-  }
-
- private:
-  GSHGrid& _grid;
-  View _view;
-  Scalar _scale;
-  Scalar _shift;
-
-  value_type _AffineTransform(value_type x) { return _scale * x + _shift; }
-
-  auto _DataView() {
-    using T = value_type;
-    std::function<T(T)> f = _AffineTransform;
-
-    // return _view | std::ranges::views::transform(f);
-
-    return _view;
-  }
-
-  auto _DataView() const {
-    return _view | std::ranges::views::transform(
-                       [this](auto x) -> value_type { return x; });
-  }
-
-  auto& _Grid() const { return _grid; }
-
-  friend class CanonicalComponentBase<
-      CanonicalComponentAffineView<GSHGrid, View, Scalar>>;
-};
-
-// Overloads for scalar multiplication.
-template <typename Derived, typename Scalar>
-auto operator*(CanonicalComponentBase<Derived>& view, Scalar a) {
-  return CanonicalComponentAffineView(view.Grid(), view.DataView(), a,
-                                      Scalar{0});
 }
 
 }  // namespace GSHTrans
