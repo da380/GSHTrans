@@ -6,7 +6,7 @@ project(GSHTrans
         LANGUAGES CXX
         )
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 
@@ -39,15 +39,14 @@ FetchContent_MakeAvailable(FFTWpp)
 find_package(OpenMP)
 
 # add in Boost
-find_package(Boost)
+#find_package(Boost)
 
 # Set up the library
 add_library (GSHTrans INTERFACE)
 target_link_libraries(GSHTrans INTERFACE
   FFTWpp
   GaussQuad
-  OpenMP::OpenMP_CXX
-  Boost::boost)
+  OpenMP::OpenMP_CXX)
 target_include_directories (GaussQuad INTERFACE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${INCLUDE_INSTALL_DIR}>

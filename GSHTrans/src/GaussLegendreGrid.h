@@ -138,7 +138,7 @@ class GaussLegendreGrid {
             typename Distribution = decltype(std::normal_distribution<Real>())>
   void RandomComplexCoefficient(
       Int lMax, Int n, Range& range,
-      Distribution dist = std::normal_distribution<Real>()) {
+      Distribution dist = std::normal_distribution<Real>()) const {
     assert(range.size() == ComplexCoefficientSize(lMax, n));
     std::random_device rd{};
     std::mt19937_64 gen{rd()};
@@ -154,7 +154,7 @@ class GaussLegendreGrid {
             typename Distribution = decltype(std::normal_distribution<Real>())>
   void RandomRealCoefficient(
       Int lMax, Int n, Range& range,
-      Distribution dist = std::normal_distribution<Real>()) {
+      Distribution dist = std::normal_distribution<Real>()) const {
     assert(range.size() == RealCoefficientSize(lMax, n));
     std::random_device rd{};
     std::mt19937_64 gen{rd()};
@@ -171,8 +171,8 @@ class GaussLegendreGrid {
   // Integration a function over the grid.
   template <typename Function>
   requires ScalarFunction2D<Function, Real, Real> or
-      ScalarFunction2D<Function, Real, Complex>
-  auto Integrate(Function f) {
+           ScalarFunction2D<Function, Real, Complex>
+  auto Integrate(Function f) const {
     using FunctionValue = decltype(f(0, 0));
     auto thetaIntegrand = [this, &f](auto theta) {
       return LongitudeSpacing() *
@@ -208,9 +208,10 @@ class GaussLegendreGrid {
   //-----------------------------------------------------//
   template <RealOrComplexFloatingPointRange InRange,
             ComplexFloatingPointRange OutRange>
-  requires(std::same_as<MRange, All>and ComplexFloatingPointRange<InRange>) or
-      RealFloatingPointRange<InRange> void ForwardTransformation(
-          Int lMax, Int n, InRange&& in, OutRange& out) const {
+  requires(std::same_as<MRange, All> and ComplexFloatingPointRange<InRange>) or
+          RealFloatingPointRange<InRange>
+  void ForwardTransformation(Int lMax, Int n, InRange&& in,
+                             OutRange& out) const {
     // Get scalar type for field.
     using Scalar = std::ranges::range_value_t<InRange>;
 
@@ -299,9 +300,10 @@ class GaussLegendreGrid {
   //------------------------------------------------//
   template <ComplexFloatingPointRange InRange,
             RealOrComplexFloatingPointRange OutRange>
-  requires(std::same_as<MRange, All>and ComplexFloatingPointRange<OutRange>) or
-      RealFloatingPointRange<OutRange> void InverseTransformation(
-          Int lMax, Int n, InRange&& in, OutRange& out) const {
+  requires(std::same_as<MRange, All> and ComplexFloatingPointRange<OutRange>) or
+          RealFloatingPointRange<OutRange>
+  void InverseTransformation(Int lMax, Int n, InRange&& in,
+                             OutRange& out) const {
     // Get scalar type for field.
     using Scalar = std::ranges::range_value_t<OutRange>;
 

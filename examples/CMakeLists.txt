@@ -11,3 +11,7 @@ target_link_libraries(ScalarFieldExample GSHTrans)
 
 
 
+
+
+add_executable(Views Views.cpp)
+target_link_libraries(Views GSHTrans)

@@ -19,6 +19,8 @@
 
 namespace GSHTrans {
 
+/*
+
 //----------------------------------------------------//
 //        Forward declarations of some classes        //
 //----------------------------------------------------//
@@ -38,17 +40,20 @@ using ComplexCanonicalCoefficient =
 
 template <typename GSHGrid, RealOrComplexValued ValueType,
           std::ranges::common_range View>
-requires std::same_as < RemoveComplex<std::ranges::range_value_t<View>>,
-typename GSHGrid::real_type > class CanonicalCoefficientView;
+requires std::same_as<RemoveComplex<std::ranges::range_value_t<View>>,
+                      typename GSHGrid::real_type>
+class CanonicalCoefficientView;
 
 template <typename GSHGrid, std::ranges::common_range View>
-requires std::same_as < RemoveComplex<std::ranges::range_value_t<View>>,
-typename GSHGrid::real_type > using RealCanonicalCoefficientView =
+requires std::same_as<RemoveComplex<std::ranges::range_value_t<View>>,
+                      typename GSHGrid::real_type>
+using RealCanonicalCoefficientView =
     CanonicalCoefficientView<GSHGrid, RealValued, View>;
 
 template <typename GSHGrid, std::ranges::common_range View>
-requires std::same_as < RemoveComplex<std::ranges::range_value_t<View>>,
-typename GSHGrid::real_type > using ComplexCanonicalCoefficientView =
+requires std::same_as<RemoveComplex<std::ranges::range_value_t<View>>,
+                      typename GSHGrid::real_type>
+using ComplexCanonicalCoefficientView =
     CanonicalCoefficientView<GSHGrid, ComplexValued, View>;
 
 //----------------------------------------------------//
@@ -145,7 +150,7 @@ class CanonicalCoefficient : public CanonicalCoefficientBase<
   template <typename Derived>
   requires std::same_as<typename Derived::coefficient_type,
                         coefficient_type> and
-      std::same_as<typename Derived::value_type, value_type>
+           std::same_as<typename Derived::value_type, value_type>
   auto& operator=(CanonicalCoefficientBase<Derived>& other) {
     assert(_lMax == other.MaxDegree());
     assert(std::abs(_n) == other.UpperIndex());
@@ -157,7 +162,7 @@ class CanonicalCoefficient : public CanonicalCoefficientBase<
   template <typename Derived>
   requires std::same_as<typename Derived::coefficient_type,
                         coefficient_type> and
-      std::same_as<typename Derived::value_type, value_type>
+           std::same_as<typename Derived::value_type, value_type>
   auto& operator=(CanonicalCoefficientBase<Derived>&& other) {
     *this = other;
     return *this;
@@ -184,8 +189,9 @@ class CanonicalCoefficient : public CanonicalCoefficientBase<
 
 template <typename GSHGrid, RealOrComplexValued ValueType,
           std::ranges::common_range View>
-requires std::same_as < RemoveComplex<std::ranges::range_value_t<View>>,
-typename GSHGrid::real_type > class CanonicalCoefficientView
+requires std::same_as<RemoveComplex<std::ranges::range_value_t<View>>,
+                      typename GSHGrid::real_type>
+class CanonicalCoefficientView
     : public CanonicalCoefficientBase<
           CanonicalCoefficientView<GSHGrid, ValueType, View>> {
   using Int = std::ptrdiff_t;
@@ -210,7 +216,7 @@ typename GSHGrid::real_type > class CanonicalCoefficientView
   template <typename Derived>
   requires std::same_as<typename Derived::coefficient_type,
                         coefficient_type> and
-      std::same_as<typename Derived::value_type, value_type>
+           std::same_as<typename Derived::value_type, value_type>
   auto& operator=(CanonicalCoefficientBase<Derived>& other) {
     assert(_lMax == other.MaxDegree());
     assert(std::abs(_n) == other.UpperIndex());
@@ -268,9 +274,10 @@ auto operator-(CanonicalCoefficientBase<Derived>&& view) {
 // View formed from component-wise scalar operator
 template <typename Derived, typename S, typename Function>
 requires requires() {
-  std::integral<S> or RealFloatingPoint<S> or
-      (ComplexFloatingPoint<S> and
-       std::same_as<typename Derived::coefficient_type, ComplexValued>);
+  requires std::integral<S> or RealFloatingPoint<S> or
+               (ComplexFloatingPoint<S> and
+                std::same_as<typename Derived::coefficient_type,
+                             ComplexValued>);
 }
 auto CanonicalCoefficientScalarOperation(
     CanonicalCoefficientBase<Derived>& view, S a, Function f) {
@@ -396,6 +403,8 @@ auto operator-(CanonicalCoefficientBase<Derived1>&& view1,
                CanonicalCoefficientBase<Derived2>&& view2) {
   return view1 - view2;
 }
+
+*/
 
 }  // namespace GSHTrans
 

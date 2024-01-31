@@ -32,17 +32,28 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto f = CanonicalComponent<Grid, RealValued>(grid, 1);
+  auto f = CanonicalComponent<Grid, RealValued>(
+      grid, [](auto theta, auto phi) { return 1; });
 
-  auto g = RealCanonicalComponent(grid, [](auto theta, auto phi) { return 1; });
+  auto g = CanonicalComponentAffineView(grid, f.DataView(), 1.0, 0.0);
 
-  auto h = ComplexCanonicalComponent(grid, 4);
+  std::cout << g[0] << std::endl;
+  // for (auto val : g) std::cout << val << std::endl;
 
-  f = 2 * g;
+  /*
 
-  auto n = 0;
+    auto g = RealCanonicalComponent(grid, [](auto theta, auto phi) { return 1;
+    });
 
-  auto flm = RealCanonicalCoefficient(lMax, n, grid);
+    auto h = ComplexCanonicalComponent(grid, 4);
 
-  for (auto& val : flm) val = 1;
+    f = 2 * g;
+
+    auto n = 0;
+
+    auto flm = RealCanonicalCoefficient(lMax, n, grid);
+
+    for (auto& val : flm) val = 1;
+
+    */
 }
