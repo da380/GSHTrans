@@ -32,29 +32,6 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto f = CanonicalComponent<Grid, RealValued>(
-      grid, [](auto theta, auto phi) { return 1; });
-
-  f = f * 2;
-
-  std::cout << f[0] << std::endl;
-
-  // for (auto val : g * 2.) std::cout << val << std::endl;
-
-  /*
-
-    auto g = RealCanonicalComponent(grid, [](auto theta, auto phi) { return 1;
-    });
-
-    auto h = ComplexCanonicalComponent(grid, 4);
-
-    f = 2 * g;
-
-    auto n = 0;
-
-    auto flm = RealCanonicalCoefficient(lMax, n, grid);
-
-    for (auto& val : flm) val = 1;
-
-    */
+  auto size = grid.ComponentSize();
+  auto data = std::vector<Real>(size);
 }

@@ -19,8 +19,6 @@
 
 namespace GSHTrans {
 
-/*
-
 //----------------------------------------------------//
 //        Forward declarations of some classes        //
 //----------------------------------------------------//
@@ -403,8 +401,6 @@ auto operator-(CanonicalCoefficientBase<Derived1>&& view1,
                CanonicalCoefficientBase<Derived2>&& view2) {
   return view1 - view2;
 }
-
-*/
 
 }  // namespace GSHTrans
 

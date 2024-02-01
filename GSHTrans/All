@@ -2,11 +2,12 @@
 #define GSH_TRANS_ALL_MODULE_H
 
 // Header files to include for use of GHSTrans library
-#include "src/Concepts.h"
-#include "src/Indexing.h"
-#include "src/Wigner.h"
-#include "src/GaussLegendreGrid.h"
-#include "src/CanonicalComponents.h"
 #include "src/CanonicalCoefficients.h"
+#include "src/CanonicalComponents.h"
+#include "src/Concepts.h"
+#include "src/GaussLegendreGrid.h"
+#include "src/Indexing.h"
+#include "src/Views.h"
+#include "src/Wigner.h"
 
 #endif

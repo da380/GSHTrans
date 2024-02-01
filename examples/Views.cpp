@@ -1,3 +1,6 @@
+#include <GSHTrans/All>
+#include <algorithm>
+#include <cassert>
 #include <concepts>
 #include <functional>
 #include <iostream>
@@ -5,46 +8,49 @@
 #include <type_traits>
 #include <vector>
 
-template <typename T>
-class AffineTransformation {
- public:
-  AffineTransformation() : _scale{1}, _shift{0} {}
-  AffineTransformation(T scale, T shift) : _scale{scale}, _shift{shift} {}
-  // AffineTransformation(AffineTransformation&) = default;
-  //  AffineTransformation(AffineTransformation&&) = default;
-  T operator()(T x) const { return _scale * x + _shift; }
-
- private:
-  T _scale;
-  T _shift;
-};
-
-template <typename T>
-class Vector {
+template <typename Iter>
+class Container : public std::ranges::view_interface<Container<Iter>> {
   using Int = std::ptrdiff_t;
 
  public:
-  explicit Vector(Int n) : _data{Vector(n)} {}
+  using value_type = std::iter_value_t<Iter>;
+
+  Container(Iter start, Iter finish) : _start{start}, _finish{finish} {}
+
+  Container(Iter start, Int size) : Container(start, std::next(start, size)) {}
+
+  Container(const Container&) = default;
+  Container(Container&&) = default;
+
+  Container& operator=(const Container&) = default;
+  Container& operator=(Container&&) = default;
+
+  template <std::ranges::view View>
+  requires std::convertible_to<std::ranges::range_value_t<View>, value_type>
+  auto& operator=(View&& view) {
+    assert(view.size() == this->size());
+    std::ranges::copy(view, _start);
+    return *this;
+  }
+
+  auto begin() { return _start; }
+  auto end() { return _finish; }
 
  private:
-  std::vector<T> _data;
+  Iter _start;
+  Iter _finish;
 };
 
-template <std::ranges::view View, typename Function>
-auto UnaryTransform(View view, Function f) {
-  return view | std::ranges::views::transform(f);
-}
-
-template <std::ranges::view View, typename T>
-auto operator+(View view, T t) {
-  return UnaryTransform(view, AffineTransformation<T>(1, t));
-  // return UnaryTransform(view, [t](auto x) { return x + t; });
-}
-
 int main() {
+  using namespace GSHTrans::Views;
+
   auto x = std::vector<double>(10);
 
-  auto view = std::ranges::views::all(x);
+  auto i = 0;
+  for (auto& val : x) val = i++;
 
-  for (auto val : (view + 1) + 3) std::cout << val << std::endl;
+  auto v = Container(x.begin(), x.end());
+
+  for (auto [x1, x2] : std::ranges::views::zip(x, 4 * v / 7))
+    std::cout << x1 << " " << x2 << std::endl;
 }

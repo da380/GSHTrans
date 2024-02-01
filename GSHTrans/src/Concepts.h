@@ -14,8 +14,9 @@ struct NonNegative {};
 struct Single {};
 
 template <typename Indices>
-concept IndexRange = std::same_as<Indices, All> or
-    std::same_as<Indices, NonNegative> or std::same_as<Indices, Single>;
+concept IndexRange =
+    std::same_as<Indices, All> or std::same_as<Indices, NonNegative> or
+    std::same_as<Indices, Single>;
 
 template <typename Indices>
 concept OrderIndexRange =
@@ -80,6 +81,9 @@ struct RemoveComplexHelper<std::complex<T>> {
 
 template <typename T>
 using RemoveComplex = typename RemoveComplexHelper<T>::value_type;
+
+template <typename T>
+concept Field = std::integral<T> or RealOrComplexFloatingPoint<T>;
 
 // Concepts for iterators with real or complex floating point values.
 template <typename T>
