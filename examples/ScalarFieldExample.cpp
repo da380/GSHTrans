@@ -30,8 +30,16 @@ int main() {
   auto lMax = 4;
   auto nMax = 2;
 
-  auto grid = Grid(lMax, nMax);
+  auto grid = std::make_shared<Grid>(lMax, nMax);
 
-  auto size = grid.ComponentSize();
+  auto size = grid->ComponentSize();
   auto data = std::vector<Real>(size);
+
+  auto v = CanonicalComponentView(data, grid);
+
+  // for (auto val : v) std::cout << val << std::endl;
+
+  std::cout << v.GridReference().NumberOfLongitudes() << std::endl;
+
+  auto ptr = v.GridPointer();
 }
