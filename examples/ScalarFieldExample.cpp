@@ -36,6 +36,11 @@ int main() {
   auto data = std::vector<Real>(size, 1);
 
   auto v = std::ranges::views::all(data) | Views::CanonicalComponent(grid);
+  auto w = 2 * v;
 
-  for (auto val : -v* v) std::cout << val << std::endl;
+  std::cout << data[0] << std::endl;
+
+  v = w;
+
+  std::cout << data[0] << std::endl;
 }

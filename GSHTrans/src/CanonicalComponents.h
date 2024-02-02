@@ -59,13 +59,34 @@ class CanonicalComponentView
   using Int = std::ptrdiff_t;
 
  public:
-  using coefficient_type =
-      std::conditional_t<RealFloatingPoint<std::ranges::range_value_t<View>>,
-                         RealValued, ComplexValued>;
+  using value_type = std::ranges::range_value_t<View>;
+  using coefficient_type = std::conditional_t<RealFloatingPoint<value_type>,
+                                              RealValued, ComplexValued>;
 
   CanonicalComponentView(View view, std::shared_ptr<Grid> grid)
       : _view{std::move(view)}, _grid{std::move(grid)} {
     assert(_grid->ComponentSize() == _view.size());
+  }
+
+  CanonicalComponentView(const CanonicalComponentView&) = default;
+  CanonicalComponentView(CanonicalComponentView&&) = default;
+
+  template <std::ranges::view OtherView>
+  requires std::convertible_to<std::ranges::range_value_t<OtherView>,
+                               value_type>
+  CanonicalComponentView(CanonicalComponentView<OtherView, Grid> view)
+      : _view{std::move(view)}, _grid{view.GridPointer()} {}
+
+  CanonicalComponentView& operator=(const CanonicalComponentView&) = default;
+  CanonicalComponentView& operator=(CanonicalComponentView&&) = default;
+
+  template <std::ranges::view OtherView>
+  requires std::convertible_to<std::ranges::range_value_t<OtherView>,
+                               value_type>
+  auto& operator=(CanonicalComponentView<OtherView, Grid> view) {
+    assert(view.size() == _view.size());
+    std::ranges::copy(view, _view.begin());
+    return *this;
   }
 
   auto begin() { return _view.begin(); }
@@ -84,7 +105,6 @@ CanonicalComponentView(R&&, std::shared_ptr<Grid>)
     -> CanonicalComponentView<std::ranges::views::all_t<R>, Grid>;
 
 namespace Views {
-
 //------------------------------------------------------------//
 //                    Range adaptor closure                   //
 //------------------------------------------------------------//
@@ -129,6 +149,11 @@ auto operator*(CanonicalComponentView<View, Grid> v, S s) {
 template <std::ranges::view View, typename Grid, Field S>
 auto operator*(S s, CanonicalComponentView<View, Grid> v) {
   return v * s;
+}
+
+template <std::ranges::view View, typename Grid, Field S>
+auto operator/(CanonicalComponentView<View, Grid> v, S s) {
+  return CanonicalComponentViewUnary(v, [s](auto x) { return x / s; });
 }
 
 template <std::ranges::view View1, std::ranges::view View2, typename Grid,
