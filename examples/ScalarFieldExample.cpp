@@ -33,13 +33,9 @@ int main() {
   auto grid = std::make_shared<Grid>(lMax, nMax);
 
   auto size = grid->ComponentSize();
-  auto data = std::vector<Real>(size);
+  auto data = std::vector<Real>(size, 1);
 
-  auto v = CanonicalComponentView(data, grid);
+  auto v = std::ranges::views::all(data) | Views::CanonicalComponent(grid);
 
-  // for (auto val : v) std::cout << val << std::endl;
-
-  std::cout << v.GridReference().NumberOfLongitudes() << std::endl;
-
-  auto ptr = v.GridPointer();
+  for (auto val : -v* v) std::cout << val << std::endl;
 }
