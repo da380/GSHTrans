@@ -33,14 +33,15 @@ int main() {
   auto grid = std::make_shared<Grid>(lMax, nMax);
 
   auto size = grid->ComponentSize();
-  auto data = std::vector<Real>(size, 1);
+  auto data = std::vector<Complex>(size, 1);
 
-  auto v = std::ranges::views::all(data) | Views::CanonicalComponent(grid);
-  auto w = 2 * v;
+  //  auto v = std::ranges::views::all(data) | Views::CanonicalComponent(grid);
+  auto v = CanonicalComponentView(data, grid);
+  auto w = 2 * v * (v + v / 3);
 
-  std::cout << data[0] << std::endl;
+  auto z = MakeRealCanonicalComponent(grid);
 
-  v = w;
+  for (auto& val : z) val = 1;
 
-  std::cout << data[0] << std::endl;
+  for (auto val : z) std::cout << val << std::endl;
 }

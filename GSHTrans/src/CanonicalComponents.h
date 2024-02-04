@@ -20,42 +20,16 @@
 
 namespace GSHTrans {
 
-//----------------------------------------------------------------//
-//                    Base class to set interface                 //
-//----------------------------------------------------------------//
-template <typename Derived>
-class CanonicalComponentBase {
-  using Int = std::ptrdiff_t;
-
- public:
-  // Return grid information.
-  auto GridPointer() const { return _Derived()._grid; }
-  auto& GridReference() const { return *_Derived()._grid; }
-
-  auto NumberOfCoLatitudes() const {
-    return GridPointer()->NumberOfCoLatitudes();
-  }
-
-  auto NumberOfLongitudes() const {
-    return GridPointer()->NumberOfLongitudes();
-  }
-
- private:
-  auto _Derived() { return static_cast<Derived&>(*this); }
-  auto _Derived() const { return static_cast<const Derived&>(*this); }
-};
-
 //---------------------------------------------------------------//
 //                     View class definition                     //
 //---------------------------------------------------------------//
 template <std::ranges::view View, typename Grid>
 requires requires() {
-  requires std::same_as<std::ranges::range_value_t<View>,
+  requires std::same_as<RemoveComplex<std::ranges::range_value_t<View>>,
                         typename Grid::real_type>;
 }
 class CanonicalComponentView
-    : public CanonicalComponentBase<CanonicalComponentView<View, Grid>>,
-      public std::ranges::view_interface<CanonicalComponentView<View, Grid>> {
+    : public std::ranges::view_interface<CanonicalComponentView<View, Grid>> {
   using Int = std::ptrdiff_t;
 
  public:
@@ -92,11 +66,20 @@ class CanonicalComponentView
   auto begin() { return _view.begin(); }
   auto end() { return _view.end(); }
 
+  auto GridPointer() const { return _grid; }
+  auto& GridReference() const { return _grid; }
+
+  auto NumberOfCoLatitudes() const {
+    return GridPointer()->NumberOfCoLatitudes();
+  }
+
+  auto NumberOfLongitudes() const {
+    return GridPointer()->NumberOfLongitudes();
+  }
+
  private:
   View _view;
   std::shared_ptr<Grid> _grid;
-
-  friend class CanonicalComponentBase<CanonicalComponentView<View, Grid>>;
 };
 
 // Deduction guide to allow construction from ranges.
@@ -181,6 +164,30 @@ template <std::ranges::view View1, std::ranges::view View2, typename Grid>
 auto operator*(CanonicalComponentView<View1, Grid> v1,
                CanonicalComponentView<View2, Grid> v2) {
   return CanonicalComponentViewBinary(v1, v2, std::multiplies<>());
+}
+
+//----------------------------------------------------------------------------//
+//           Helper functions to build canonical component views              //
+//----------------------------------------------------------------------------//
+
+template <typename Grid, RealOrComplexValued Type>
+auto MakeCanonicalComponent(std::shared_ptr<Grid> grid) {
+  using Scalar =
+      std::conditional_t<std::same_as<Type, RealValued>,
+                         typename Grid::real_type, typename Grid::complex_type>;
+  auto size = grid->ComponentSize();
+  auto data = std::make_shared<FFTWpp::vector<Scalar>>(size);
+  return CanonicalComponentView(*data, grid);
+}
+
+template <typename Grid>
+auto MakeRealCanonicalComponent(std::shared_ptr<Grid> grid) {
+  return MakeCanonicalComponent<Grid, RealValued>(grid);
+}
+
+template <typename Grid>
+auto MakeComplexCanonicalComponent(std::shared_ptr<Grid> grid) {
+  return MakeCanonicalComponent<Grid, ComplexValued>(grid);
 }
 
 }  // namespace GSHTrans
