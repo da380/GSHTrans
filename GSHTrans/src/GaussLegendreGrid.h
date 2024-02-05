@@ -113,6 +113,15 @@ class GaussLegendreGrid {
   }
   auto NumberOfLongitudes() const { return Longitudes().size(); }
 
+  auto Points() const {
+    return std::ranges::views::cartesian_product(CoLatitudes(), Longitudes());
+  }
+
+  auto PointIndices() const {
+    return std::ranges::views::cartesian_product(CoLatitudeIndices(),
+                                                 LongitudeIndices());
+  }
+
   auto ComponentSize() const {
     return NumberOfCoLatitudes() * NumberOfLongitudes();
   }
