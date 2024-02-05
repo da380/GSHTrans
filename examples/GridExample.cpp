@@ -44,6 +44,10 @@ int main() {
   using NRange = NonNegative;
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
 
+  auto grid = Grid(0, 0);
+
+  /*
+
   auto lMaxGrid = RandomDegree(4, 256);
   auto lMax = RandomDegree(4, lMaxGrid);
   auto nMax = std::min(lMax, Int(4));
@@ -78,4 +82,7 @@ int main() {
 
   std::cout << lMaxGrid << " " << lMax << " " << n << " " << std::abs(err)
             << std::endl;
+
+
+            */
 }

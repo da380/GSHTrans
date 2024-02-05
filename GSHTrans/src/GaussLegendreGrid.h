@@ -53,20 +53,22 @@ class GaussLegendreGrid {
     //  Get the Winger values.
     _wigner = std::make_shared<WignerType>(_lMax, _lMax, _nMax, _quad.Points());
 
-    // Generate wisdom for FFTs.
-    auto in = FFTWpp::DataLayout(1, std::vector{NumberOfLongitudes()}, 1,
-                                 std::vector{NumberOfLongitudes()}, 1, 1);
-    {
-      // Real to complex case.
-      auto out = FFTWpp::DataLayout(1, std::vector{_lMax + 1}, 1,
-                                    std::vector{_lMax + 1}, 1, 1);
-      FFTWpp::GenerateWisdom<Real, Complex, true>(in, out, flag);
-    }
-    {
-      // Complex to complex case.
-      auto out = FFTWpp::DataLayout(1, std::vector{2 * _lMax}, 1,
-                                    std::vector{2 * _lMax}, 1, 1);
-      FFTWpp::GenerateWisdom<Complex, Complex, true>(in, out, flag);
+    if (_lMax > 0) {
+      // Generate wisdom for FFTs.
+      auto in = FFTWpp::DataLayout(1, std::vector{NumberOfLongitudes()}, 1,
+                                   std::vector{NumberOfLongitudes()}, 1, 1);
+      {
+        // Real to complex case.
+        auto out = FFTWpp::DataLayout(1, std::vector{_lMax + 1}, 1,
+                                      std::vector{_lMax + 1}, 1, 1);
+        FFTWpp::GenerateWisdom<Real, Complex, true>(in, out, flag);
+      }
+      {
+        // Complex to complex case.
+        auto out = FFTWpp::DataLayout(1, std::vector{2 * _lMax}, 1,
+                                      std::vector{2 * _lMax}, 1, 1);
+        FFTWpp::GenerateWisdom<Complex, Complex, true>(in, out, flag);
+      }
     }
   }
 
@@ -236,6 +238,12 @@ class GaussLegendreGrid {
       assert(out.size() == GSHIndices<All>(lMax, lMax, n).size());
     }
 
+    // Deal with lMax = 0
+    if (lMax == 0) {
+      out[0] = in[0] * std::numbers::inv_sqrtpi_v<Real> / static_cast<Real>(2);
+      return;
+    }
+
     // Pre compute some constants.
     const auto nPhi = NumberOfLongitudes();
     const auto scaleFactor = static_cast<Real>(2) * std::numbers::pi_v<Real> /
@@ -327,6 +335,12 @@ class GaussLegendreGrid {
       assert(in.size() == GSHIndices<All>(lMax, lMax, n).size());
     }
     assert(out.size() == NumberOfCoLatitudes() * NumberOfLongitudes());
+
+    // Deal with lMax = 0
+    if (lMax == 0) {
+      out[0] = in[0] * static_cast<Real>(2) / std::numbers::inv_sqrtpi_v<Real>;
+      return;
+    }
 
     // Precompute constants
     const auto nPhi = NumberOfLongitudes();
