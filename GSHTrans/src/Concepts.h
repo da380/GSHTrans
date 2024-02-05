@@ -8,7 +8,11 @@
 
 namespace GSHTrans {
 
-// Tag classes and concepts for order storage.
+//-------------------------------------------------------------------------//
+//                                 Tag classes                              //
+//--------------------------------------------------------------------------//
+
+// Index storage options.
 struct All {};
 struct NonNegative {};
 struct Single {};
@@ -26,31 +30,22 @@ template <typename Indices>
 concept AngleIndexRange =
     std::same_as<Indices, NonNegative> or std::same_as<Indices, Single>;
 
-// Tag classes and concepts for normalisations.
+// Normalisation options.
 struct Ortho {};
 struct FourPi {};
 
 template <typename Norm>
 concept Normalisation = std::same_as<Norm, Ortho> or std::same_as<Norm, FourPi>;
 
-// Tag classes and concepts for transformation types.
-struct C2C {
-  using IndexRange = All;
+// Value type options.
+struct RealValued {};
+struct ComplexValued {};
 
-  template <std::floating_point Real>
-  using Scalar = std::complex<Real>;
-};
-struct R2C {
-  using IndexRange = NonNegative;
+template <typename T>
+concept RealOrComplexValued =
+    std::same_as<T, RealValued> or std::same_as<T, ComplexValued>;
 
-  template <std::floating_point Real>
-  using Scalar = Real;
-};
-
-template <typename Type>
-concept TransformType = std::same_as<Type, C2C> or std::same_as<Type, R2C>;
-
-// Concepts for real or complex floating point types.
+// Concepts for fields.
 template <typename T>
 struct IsComplexFloatingPoint : public std::false_type {};
 
@@ -139,15 +134,6 @@ concept SphereGrid = requires(Grid grid) {
   { grid.MaxDegree() } -> std::same_as<typename Grid::difference_type>;
   { grid.MaxUpperIndex() } -> std::same_as<typename Grid::difference_type>;
 };
-
-// Concepts and classes for dealing with real and complex fields
-
-struct RealValued {};
-struct ComplexValued {};
-
-template <typename T>
-concept RealOrComplexValued =
-    std::same_as<T, RealValued> or std::same_as<T, ComplexValued>;
 
 }  // namespace GSHTrans
 
