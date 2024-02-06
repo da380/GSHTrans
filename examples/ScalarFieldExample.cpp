@@ -29,20 +29,12 @@ int main() {
 
   auto grid = std::make_shared<Grid>(lMax, lMax);
 
-  auto data = std::vector<Real>(grid->ComponentSize(), 1);
+  auto data = std::vector<Real>(grid->ComponentSize());
 
   auto v = std::ranges::views::all(data) | CanonicalComponent(grid);
 
-  v.Interpolate([](auto theta, auto phi) { return 1; });
+  v = InterpolateCanonicalComponent(
+      grid, [](auto theta, auto phi) -> Real { return 1; });
 
-  auto w = 2 * v;
-
-  // std::cout << w.Integrate() << std::endl;
-
-  std::cout << w.Integrate() << std::endl;
-
-  // for (auto [dArea, val] : p) {
-  //   auto [dTheta, dPhi] = dArea;
-  //   std::cout << dTheta << " " << dPhi << " " << val << std::endl;
-  // }
+  std::cout << Integrate(v + 7) << std::endl;
 }

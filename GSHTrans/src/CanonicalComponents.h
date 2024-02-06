@@ -67,6 +67,18 @@ class CanonicalComponentView
 
   auto Points() const { return GridPointer()->Points(); }
 
+  auto operator()(Int iTheta, Int iPhi) const {
+    auto i = iTheta * NumberOfLongitudes() + iPhi;
+    return this->operator[](i);
+  }
+
+  auto& operator()(Int iTheta, Int iPhi)
+  requires std::ranges::output_range<View, std::ranges::range_value_t<View>>
+  {
+    auto i = iTheta * NumberOfLongitudes() + iPhi;
+    return this->operator[](i);
+  }
+
   template <typename Function>
   requires ScalarFunction2D<Function, typename Grid::real_type, value_type> and
            std::ranges::output_range<View, std::ranges::range_value_t<View>>
@@ -76,20 +88,6 @@ class CanonicalComponentView
       auto [theta, phi] = *iter++;
       val = f(theta, phi);
     }
-  }
-
-  auto Integrate() {
-    auto dPhi = std::ranges::views::repeat(GridPointer()->LongitudeSpacing(),
-                                           GridPointer()->NumberOfLongitudes());
-    auto dTheta = GridPointer()->CoLatitudeWeights();
-    auto dArea = std::ranges::views::cartesian_product(dTheta, dPhi);
-
-    return std::ranges::fold_left(std::ranges::views::zip(dArea, _view),
-                                  value_type{0}, [](auto acc, auto term) {
-                                    auto [dArea, val] = term;
-                                    auto [dTheta, dPhi] = dArea;
-                                    return acc + val * dTheta * dPhi;
-                                  });
   }
 
  private:
@@ -264,6 +262,32 @@ template <std::ranges::view View1, std::ranges::view View2, typename Grid>
 auto operator*(CanonicalComponentView<View1, Grid> v1,
                CanonicalComponentView<View2, Grid> v2) {
   return CanonicalComponentViewBinary(v1, v2, std::multiplies<>());
+}
+
+template <std::ranges::view View, typename Grid>
+auto Integrate(CanonicalComponentView<View, Grid> v) {
+  using T = std::ranges::range_value_t<View>;
+  auto dPhi = std::ranges::views::repeat(v.GridPointer()->LongitudeSpacing(),
+                                         v.GridPointer()->NumberOfLongitudes());
+  auto dTheta = v.GridPointer()->CoLatitudeWeights();
+  auto dArea = std::ranges::views::cartesian_product(dTheta, dPhi) |
+               std::ranges::views::transform([](auto pair) {
+                 return std::get<0>(pair) * std::get<1>(pair);
+               });
+  return std::ranges::fold_left(std::ranges::views::zip(dArea, v), T{0},
+                                [](auto acc, auto term) {
+                                  auto [dArea, val] = term;
+                                  return acc + val * dArea;
+                                });
+}
+
+template <typename Grid, typename Function>
+auto InterpolateCanonicalComponent(std::shared_ptr<Grid> grid, Function f) {
+  return grid->Points() | std::ranges::views::transform([f](auto pair) {
+           auto [theta, phi] = pair;
+           return f(theta, phi);
+         }) |
+         CanonicalComponent(grid);
 }
 
 }  // namespace GSHTrans
