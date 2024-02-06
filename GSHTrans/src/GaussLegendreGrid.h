@@ -51,7 +51,7 @@ class GaussLegendreGrid {
                     [](auto x) { return 1; });
 
     //  Get the Winger values.
-    _wigner = std::make_shared<WignerType>(_lMax, _lMax, _nMax, _quad.Points());
+    _wigner = WignerType(_lMax, _lMax, _nMax, _quad.Points());
 
     if (_lMax > 0) {
       // Generate wisdom for FFTs.
@@ -100,7 +100,11 @@ class GaussLegendreGrid {
 
   auto CoLatitudes() const { return std::ranges::views::all(_quad.Points()); }
   auto NumberOfCoLatitudes() const { return CoLatitudes().size(); }
-  auto CoLatitudeIndices() const { return _wigner->AngleIndices(); }
+  auto CoLatitudeIndices() const { return _wigner.AngleIndices(); }
+
+  auto CoLatitudeWeights() const {
+    return std::ranges::views::all(_quad.Weights());
+  }
 
   auto LongitudeSpacing() const {
     return 2 * std::numbers::pi_v<Real> / static_cast<Real>(2 * _lMax);
@@ -179,41 +183,6 @@ class GaussLegendreGrid {
     if (lMax == _lMax) view(lMax)(lMax).imag(0);
   }
 
-  // Integration a function over the grid.
-  template <typename Function>
-  requires ScalarFunction2D<Function, Real, Real> or
-           ScalarFunction2D<Function, Real, Complex>
-  auto Integrate(Function f) const {
-    using FunctionValue = decltype(f(0, 0));
-    auto thetaIntegrand = [this, &f](auto theta) {
-      return LongitudeSpacing() *
-             std::accumulate(Longitudes().begin(), Longitudes().end(),
-                             FunctionValue{0},
-                             [&theta, &f](auto acc, auto phi) {
-                               return acc + f(theta, phi);
-                             });
-    };
-    return _quad.Integrate(thetaIntegrand);
-  };
-
-  // Integration of discretised function over the grid.
-  template <RealOrComplexFloatingPointRange Range>
-  auto Integrate(Range&& range) const {
-    using Scalar = std::ranges::range_value_t<Range>;
-    auto nPhi = NumberOfLongitudes();
-    auto dPhi = LongitudeSpacing();
-    auto summand = [this, nPhi, dPhi, range](auto iTheta) {
-      auto start = std::next(range.begin(), iTheta * nPhi);
-      auto finish = std::next(start, nPhi);
-      return dPhi * std::accumulate(start, finish, Scalar{0});
-    };
-    return std::inner_product(CoLatitudeIndices().begin(),
-                              CoLatitudeIndices().end(),
-                              _quad.Weights().begin(), Scalar{0}, std::plus<>(),
-                              [this, nPhi, dPhi, range, summand](
-                                  auto i, auto w) { return summand(i) * w; });
-  }
-
   //-----------------------------------------------------//
   //                Forward transformation               //
   //-----------------------------------------------------//
@@ -221,8 +190,7 @@ class GaussLegendreGrid {
             ComplexFloatingPointRange OutRange>
   requires(std::same_as<MRange, All> and ComplexFloatingPointRange<InRange>) or
           RealFloatingPointRange<InRange>
-  void ForwardTransformation(Int lMax, Int n, InRange&& in,
-                             OutRange& out) const {
+  void ForwardTransformation(Int lMax, Int n, InRange&& in, OutRange& out) {
     // Get scalar type for field.
     using Scalar = std::ranges::range_value_t<InRange>;
 
@@ -240,7 +208,8 @@ class GaussLegendreGrid {
 
     // Deal with lMax = 0
     if (lMax == 0) {
-      out[0] = in[0] * std::numbers::inv_sqrtpi_v<Real> / static_cast<Real>(2);
+      // out[0] = in[0] * std::numbers::inv_sqrtpi_v<Real> /
+      // static_cast<Real>(2);
       return;
     }
 
@@ -270,7 +239,7 @@ class GaussLegendreGrid {
       plan.Execute();
 
       // Get the Wigner values and quadrature weight.
-      auto d = _wigner->operator()(n)(iTheta);
+      auto d = _wigner(n)(iTheta);
       auto w = _quad.W(iTheta) * scaleFactor;
 
       // Loop over the spherical harmonic coefficients
@@ -319,8 +288,7 @@ class GaussLegendreGrid {
             RealOrComplexFloatingPointRange OutRange>
   requires(std::same_as<MRange, All> and ComplexFloatingPointRange<OutRange>) or
           RealFloatingPointRange<OutRange>
-  void InverseTransformation(Int lMax, Int n, InRange&& in,
-                             OutRange& out) const {
+  void InverseTransformation(Int lMax, Int n, InRange&& in, OutRange& out) {
     // Get scalar type for field.
     using Scalar = std::ranges::range_value_t<OutRange>;
 
@@ -338,7 +306,8 @@ class GaussLegendreGrid {
 
     // Deal with lMax = 0
     if (lMax == 0) {
-      out[0] = in[0] * static_cast<Real>(2) / std::numbers::inv_sqrtpi_v<Real>;
+      // out[0] = in[0] * static_cast<Real>(2) /
+      // std::numbers::inv_sqrtpi_v<Real>;
       return;
     }
 
@@ -360,7 +329,7 @@ class GaussLegendreGrid {
       std::ranges::for_each(work, [](auto& x) { return x = 0; });
 
       // Get the Wigner values.
-      auto d = (*_wigner)(n)(iTheta);
+      auto d = _wigner(n)(iTheta);
 
       // Loop over the coefficients.
       auto inIter = in.begin();
@@ -404,7 +373,7 @@ class GaussLegendreGrid {
   Int _lMax;
   Int _nMax;
   QuadType _quad;
-  std::shared_ptr<WignerType> _wigner;
+  WignerType _wigner;
 
   template <RealOrComplexFloatingPoint Scalar>
   auto WorkSize() const {

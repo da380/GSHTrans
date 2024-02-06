@@ -44,45 +44,42 @@ int main() {
   using NRange = NonNegative;
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
 
-  auto grid = Grid(0, 0);
+  {
+    auto lMaxGrid = RandomDegree(4, 256);
+    auto lMax = RandomDegree(4, lMaxGrid);
+    auto nMax = std::min(lMax, Int(4));
+    auto grid = Grid(lMaxGrid, nMax);
+    auto n = RandomUpperIndex<NRange>(nMax);
 
-  /*
+    Int size;
+    if constexpr (ComplexFloatingPoint<Scalar>) {
+      size = grid.ComplexCoefficientSize(lMax, n);
+    } else {
+      size = grid.RealCoefficientSize(lMax, n);
+    }
+    auto flm = FFTWpp::vector<Complex>(size);
+    if constexpr (ComplexFloatingPoint<Scalar>) {
+      grid.RandomComplexCoefficient(lMax, n, flm);
+    } else {
+      grid.RandomRealCoefficient(lMax, n, flm);
+    }
 
-  auto lMaxGrid = RandomDegree(4, 256);
-  auto lMax = RandomDegree(4, lMaxGrid);
-  auto nMax = std::min(lMax, Int(4));
-  auto grid = Grid(lMaxGrid, nMax);
-  auto n = RandomUpperIndex<NRange>(nMax);
+    auto f = FFTWpp::vector<Scalar>(grid.ComponentSize());
+    auto glm = FFTWpp::vector<Complex>(size);
 
-  Int size;
-  if constexpr (ComplexFloatingPoint<Scalar>) {
-    size = grid.ComplexCoefficientSize(lMax, n);
-  } else {
-    size = grid.RealCoefficientSize(lMax, n);
+    grid.InverseTransformation(lMax, n, flm, f);
+
+    grid.ForwardTransformation(lMax, n, f, glm);
+
+    std::ranges::transform(flm, glm, flm.begin(),
+                           [](auto f, auto g) { return f - g; });
+
+    auto err = *std::ranges::max_element(
+        flm, [](auto a, auto b) { return std::abs(a) < std::abs(b); });
+
+    std::cout << lMaxGrid << " " << lMax << " " << n << " " << std::abs(err)
+              << std::endl;
   }
-  auto flm = FFTWpp::vector<Complex>(size);
-  if constexpr (ComplexFloatingPoint<Scalar>) {
-    grid.RandomComplexCoefficient(lMax, n, flm);
-  } else {
-    grid.RandomRealCoefficient(lMax, n, flm);
-  }
 
-  auto f = FFTWpp::vector<Scalar>(grid.ComponentSize());
-  auto glm = FFTWpp::vector<Complex>(size);
-
-  grid.InverseTransformation(lMax, n, flm, f);
-
-  grid.ForwardTransformation(lMax, n, f, glm);
-
-  std::ranges::transform(flm, glm, flm.begin(),
-                         [](auto f, auto g) { return f - g; });
-
-  auto err = *std::ranges::max_element(
-      flm, [](auto a, auto b) { return std::abs(a) < std::abs(b); });
-
-  std::cout << lMaxGrid << " " << lMax << " " << n << " " << std::abs(err)
-            << std::endl;
-
-
-            */
+  FFTWpp::CleanUp();
 }

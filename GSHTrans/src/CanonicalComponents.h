@@ -56,7 +56,6 @@ class CanonicalComponentView
   auto end() { return _view.end(); }
 
   auto GridPointer() const { return _grid; }
-  auto& GridReference() const { return _grid; }
 
   auto NumberOfCoLatitudes() const {
     return GridPointer()->NumberOfCoLatitudes();
@@ -64,6 +63,33 @@ class CanonicalComponentView
 
   auto NumberOfLongitudes() const {
     return GridPointer()->NumberOfLongitudes();
+  }
+
+  auto Points() const { return GridPointer()->Points(); }
+
+  template <typename Function>
+  requires ScalarFunction2D<Function, typename Grid::real_type, value_type> and
+           std::ranges::output_range<View, std::ranges::range_value_t<View>>
+  void Interpolate(Function&& f) {
+    auto iter = Points().begin();
+    for (auto& val : *this) {
+      auto [theta, phi] = *iter++;
+      val = f(theta, phi);
+    }
+  }
+
+  auto Integrate() {
+    auto dPhi = std::ranges::views::repeat(GridPointer()->LongitudeSpacing(),
+                                           GridPointer()->NumberOfLongitudes());
+    auto dTheta = GridPointer()->CoLatitudeWeights();
+    auto dArea = std::ranges::views::cartesian_product(dTheta, dPhi);
+
+    return std::ranges::fold_left(std::ranges::views::zip(dArea, _view),
+                                  value_type{0}, [](auto acc, auto term) {
+                                    auto [dArea, val] = term;
+                                    auto [dTheta, dPhi] = dArea;
+                                    return acc + val * dTheta * dPhi;
+                                  });
   }
 
  private:
@@ -76,9 +102,8 @@ template <std::ranges::viewable_range R, typename Grid>
 CanonicalComponentView(R&&, std::shared_ptr<Grid>)
     -> CanonicalComponentView<std::ranges::views::all_t<R>, Grid>;
 
-namespace Views {
 //------------------------------------------------------------//
-//                    Range adaptor closure                   //
+//                    Range adaptor closures                  //
 //------------------------------------------------------------//
 
 template <typename Grid>
@@ -95,7 +120,17 @@ class CanonicalComponent
   std::shared_ptr<Grid> _grid;
 };
 
-}  // namespace Views
+class PointsAndValues
+    : public std::ranges::range_adaptor_closure<PointsAndValues> {
+ public:
+  PointsAndValues() = default;
+
+  template <std::ranges::view View, typename Grid>
+  auto operator()(CanonicalComponentView<View, Grid> v) {
+    auto points = v.GridPointer()->Points();
+    return std::ranges::views::zip(points, v);
+  }
+};
 
 //--------------------------------------------------------------//
 //          Operations on canonical compoenent views            //
@@ -115,7 +150,7 @@ template <std::ranges::view View, typename Grid, typename Function>
 auto CanonicalComponentViewUnary(CanonicalComponentView<View, Grid> v,
                                  Function f) {
   return v | std::ranges::views::transform(f) |
-         Views::CanonicalComponent(v.GridPointer());
+         CanonicalComponent(v.GridPointer());
 }
 
 template <std::ranges::view View, typename Grid>
@@ -138,7 +173,7 @@ auto imag(CanonicalComponentView<View, Grid> v) {
   using T = std::ranges::range_value_t<View>;
   if constexpr (RealFloatingPoint<T>) {
     return std::ranges::views::repeat(T{0}, v.size()) |
-           Views::CanonicalComponent(v.GridPointer());
+           CanonicalComponent(v.GridPointer());
   } else {
     return CanonicalComponentViewUnary(v, [](auto x) { return std::imag(x); });
   }
@@ -210,7 +245,7 @@ auto CanonicalComponentViewBinary(CanonicalComponentView<View1, Grid> v1,
                                   CanonicalComponentView<View2, Grid> v2,
                                   Function f) {
   return std::ranges::zip_transform_view(f, v1, v2) |
-         Views::CanonicalComponent(v1.GridPointer());
+         CanonicalComponent(v1.GridPointer());
 }
 
 template <std::ranges::view View1, std::ranges::view View2, typename Grid>

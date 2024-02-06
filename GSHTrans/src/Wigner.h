@@ -128,13 +128,6 @@ class Wigner {
   Wigner(Int lMax, Int mMax, Int nMax, Real theta)
       : Wigner(lMax, mMax, nMax, Vector{theta}) {}
 
-  // Constructor that allocates space for a single angle but does no
-  // calculations.
-  Wigner(Int lMax, Int mMax, Int nMax)
-      : _lMax{lMax}, _mMax{mMax}, _nMax{nMax}, _nTheta{1} {
-    AllocateStorage();
-  }
-
   // Recompute values.
   template <RealFloatingPointRange RealRange>
   void ReCompute(RealRange &&thetaRange) {
@@ -193,7 +186,9 @@ class Wigner {
   }
 
   // Application operator in the case of a single upper index.
-  auto operator()() requires std::same_as<NRange, Single> {
+  auto operator()()
+  requires std::same_as<NRange, Single>
+  {
     return operator()(_nMax);
   }
 
@@ -221,7 +216,7 @@ class Wigner {
   template <RealFloatingPointRange RealRange>
   void ComputeValues(RealRange &&thetaRange) {
     auto preCompute = PreCompute();
-#pragma omp parallel for collapse(2)
+    // #pragma omp parallel for collapse(2)
     for (auto n : UpperIndices()) {
       for (auto iTheta : AngleIndices()) {
         auto d = operator()(n)(iTheta);

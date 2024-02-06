@@ -25,16 +25,24 @@ int main() {
   auto lMax = 4;
   auto nMax = 2;
 
-  auto grid = std::make_shared<Grid>(lMax, nMax);
+  // auto grid = std::make_shared<Grid>(lMax, nMax);
 
-  for (auto [theta, phi] : grid->Points())
-    std::cout << theta << " " << phi << std::endl;
+  auto grid = std::make_shared<Grid>(lMax, lMax);
 
-  auto data = std::vector<Complex>(grid->ComponentSize(), 1);
+  auto data = std::vector<Real>(grid->ComponentSize(), 1);
 
-  auto v = std::ranges::views::all(data) | Views::CanonicalComponent(grid);
+  auto v = std::ranges::views::all(data) | CanonicalComponent(grid);
 
-  auto w = 2 * v + 1;
+  v.Interpolate([](auto theta, auto phi) { return 1; });
 
-  // for (auto val : w) std::cout << val << std::endl;
+  auto w = 2 * v;
+
+  // std::cout << w.Integrate() << std::endl;
+
+  std::cout << w.Integrate() << std::endl;
+
+  // for (auto [dArea, val] : p) {
+  //   auto [dTheta, dPhi] = dArea;
+  //   std::cout << dTheta << " " << dPhi << " " << val << std::endl;
+  // }
 }

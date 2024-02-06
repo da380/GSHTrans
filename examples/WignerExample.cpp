@@ -19,4 +19,10 @@ int main() {
   int lMax = 3;
   int mMax = lMax;
   int nMax = lMax;
+
+  auto theta = double(1);
+
+  auto d = Wigner<double, All, All, Ortho>(lMax, mMax, mMax, theta);
+
+  auto p = d(0)(0);
 }
