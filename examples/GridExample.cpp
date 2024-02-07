@@ -40,14 +40,18 @@ int main() {
   using Real = double;
   using Complex = std::complex<Real>;
   using Scalar = Real;
-  using MRange = NonNegative;
-  using NRange = NonNegative;
+  using MRange = All;
+  using NRange = All;
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
 
   {
     auto lMaxGrid = RandomDegree(4, 256);
     auto lMax = RandomDegree(4, lMaxGrid);
     auto nMax = std::min(lMax, Int(4));
+    lMaxGrid = 256;
+    lMax = 256;
+    nMax = 2;
+
     auto grid = Grid(lMaxGrid, nMax);
     auto n = RandomUpperIndex<NRange>(nMax);
 
@@ -67,15 +71,18 @@ int main() {
     auto f = FFTWpp::vector<Scalar>(grid.ComponentSize());
     auto glm = FFTWpp::vector<Complex>(size);
 
-    grid.InverseTransformation(lMax, n, flm, f);
+    grid.InverseTransformation(lMax, n, std::ranges::views::all(flm), f);
 
-    grid.ForwardTransformation(lMax, n, f, glm);
+    grid.ForwardTransformation(
+        lMax, n,
+        std::ranges::views::all(f) |
+            std::ranges::views::transform([](auto x) { return x; }),
+        glm);
 
-    std::ranges::transform(flm, glm, flm.begin(),
-                           [](auto f, auto g) { return f - g; });
+    auto errors = std::ranges::views::zip_transform(
+        [](auto x, auto y) { return std::abs(x - y); }, flm, glm);
 
-    auto err = *std::ranges::max_element(
-        flm, [](auto a, auto b) { return std::abs(a) < std::abs(b); });
+    auto err = *std::ranges::max_element(errors);
 
     std::cout << lMaxGrid << " " << lMax << " " << n << " " << std::abs(err)
               << std::endl;

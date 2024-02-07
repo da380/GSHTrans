@@ -186,10 +186,20 @@ class GaussLegendreGrid {
   //-----------------------------------------------------//
   //                Forward transformation               //
   //-----------------------------------------------------//
-  template <RealOrComplexFloatingPointRange InRange,
-            ComplexFloatingPointRange OutRange>
-  requires(std::same_as<MRange, All> and ComplexFloatingPointRange<InRange>) or
-          RealFloatingPointRange<InRange>
+  template <std::ranges::range InRange, std::ranges::range OutRange>
+  requires requires() {
+    requires(std::same_as<MRange, All> and
+             ComplexFloatingPoint<std::ranges::range_value_t<InRange>>) or
+                RealFloatingPoint<std::ranges::range_value_t<InRange>>;
+    requires std::ranges::input_range<InRange>;
+    requires std::same_as<RemoveComplex<std::ranges::range_value_t<InRange>>,
+                          Real>;
+    requires ComplexFloatingPoint<std::ranges::range_value_t<OutRange>>;
+    requires std::ranges::output_range<OutRange,
+                                       std::ranges::range_value_t<OutRange>>;
+    requires std::same_as<RemoveComplex<std::ranges::range_value_t<OutRange>>,
+                          Real>;
+  }
   void ForwardTransformation(Int lMax, Int n, InRange&& in, OutRange& out) {
     // Get scalar type for field.
     using Scalar = std::ranges::range_value_t<InRange>;
@@ -208,8 +218,7 @@ class GaussLegendreGrid {
 
     // Deal with lMax = 0
     if (lMax == 0) {
-      // out[0] = in[0] * std::numbers::inv_sqrtpi_v<Real> /
-      // static_cast<Real>(2);
+      out[0] = in[0] * std::numbers::inv_sqrtpi_v<Real> / static_cast<Real>(2);
       return;
     }
 
@@ -218,25 +227,32 @@ class GaussLegendreGrid {
     const auto scaleFactor = static_cast<Real>(2) * std::numbers::pi_v<Real> /
                              static_cast<Real>(nPhi);
 
-    // Allocate work array for FFTs and form its FFTWpp view.
-    auto workSize = WorkSize<Scalar>();
-    auto work = FFTWpp::vector<Complex>(workSize);
-    auto inLayout = FFTWpp::DataLayout(1, std::vector{NumberOfLongitudes()}, 1,
-                                       std::vector{NumberOfLongitudes()}, 1, 1);
-    auto outLayout = FFTWpp::DataLayout(1, std::vector{workSize}, 1,
-                                        std::vector{workSize}, 1, 1);
-    auto outView = FFTWpp::DataView(work.begin(), work.end(), outLayout);
+    // Allocate work array for FFTs set up the FFT plan.
+    auto inWork = FFTWpp::vector<Scalar>(nPhi);
+    auto inLayout =
+        FFTWpp::DataLayout(1, std::vector{nPhi}, 1, std::vector{nPhi}, 1, 1);
+    auto inView = FFTWpp::DataView(inWork.begin(), inWork.end(), inLayout);
+    auto outWorkSize = WorkSize<Scalar>();
+    auto outWork = FFTWpp::vector<Complex>(outWorkSize);
+    auto outLayout = FFTWpp::DataLayout(1, std::vector{outWorkSize}, 1,
+                                        std::vector{outWorkSize}, 1, 1);
+    auto outView = FFTWpp::DataView(outWork.begin(), outWork.end(), outLayout);
+    auto plan =
+        FFTWpp::Plan(inView, outView, FFTWpp::WisdomOnly, FFTWpp::Forward);
 
     // Loop over the colatitudes.
     for (auto iTheta : CoLatitudeIndices()) {
-      // Form FFT of current data slice.
+      // FFT the current data slice.
       auto offset = iTheta * nPhi;
       auto inStart = std::next(in.begin(), offset);
       auto inFinish = std::next(inStart, nPhi);
-      auto inView = FFTWpp::DataView(inStart, inFinish, inLayout);
-      auto plan =
-          FFTWpp::Plan(inView, outView, FFTWpp::WisdomOnly, FFTWpp::Forward);
-      plan.Execute();
+      if constexpr (std::ranges::output_range<InRange, Scalar>) {
+        auto inView = FFTWpp::DataView(inStart, inFinish, inLayout);
+        plan.Execute(inView, outView);
+      } else {
+        std::copy(inStart, inFinish, inWork.begin());
+        plan.Execute();
+      }
 
       // Get the Wigner values and quadrature weight.
       auto d = _wigner(n)(iTheta);
@@ -252,16 +268,16 @@ class GaussLegendreGrid {
         auto dl = d(l);
 
         if constexpr (ComplexFloatingPoint<Scalar>) {
-          auto workIter = std::prev(work.end(), l);
+          auto workIter = std::prev(outWork.end(), l);
           for (auto m : dl.NegativeOrders()) {
             *outIter++ += *wigIter++ * *workIter++ * w;
           }
-          workIter = work.begin();
+          workIter = outWork.begin();
           for (auto m : dl.NonNegativeOrders()) {
             *outIter++ += *wigIter++ * *workIter++ * w;
           }
         } else {
-          auto workIter = work.begin();
+          auto workIter = outWork.begin();
           if constexpr (std::same_as<MRange, All>) {
             std::advance(wigIter, l);
           }
@@ -284,10 +300,20 @@ class GaussLegendreGrid {
   //------------------------------------------------//
   //            Inverse  transformation             //
   //------------------------------------------------//
-  template <ComplexFloatingPointRange InRange,
-            RealOrComplexFloatingPointRange OutRange>
-  requires(std::same_as<MRange, All> and ComplexFloatingPointRange<OutRange>) or
-          RealFloatingPointRange<OutRange>
+  template <std::ranges::range InRange, std::ranges::range OutRange>
+  requires requires() {
+    requires ComplexFloatingPoint<std::ranges::range_value_t<InRange>>;
+    requires std::ranges::input_range<InRange>;
+    requires std::same_as<RemoveComplex<std::ranges::range_value_t<InRange>>,
+                          Real>;
+    requires(std::same_as<MRange, All> and
+             ComplexFloatingPoint<std::ranges::range_value_t<OutRange>>) or
+                RealFloatingPoint<std::ranges::range_value_t<OutRange>>;
+    requires std::ranges::output_range<OutRange,
+                                       std::ranges::range_value_t<OutRange>>;
+    requires std::same_as<RemoveComplex<std::ranges::range_value_t<OutRange>>,
+                          Real>;
+  }
   void InverseTransformation(Int lMax, Int n, InRange&& in, OutRange& out) {
     // Get scalar type for field.
     using Scalar = std::ranges::range_value_t<OutRange>;
@@ -306,8 +332,13 @@ class GaussLegendreGrid {
 
     // Deal with lMax = 0
     if (lMax == 0) {
-      // out[0] = in[0] * static_cast<Real>(2) /
-      // std::numbers::inv_sqrtpi_v<Real>;
+      if constexpr (RealFloatingPoint<Scalar>) {
+        out[0] = std::real(in[0]) * static_cast<Real>(2) /
+                 std::numbers::inv_sqrtpi_v<Real>;
+      } else {
+        out[0] =
+            in[0] * static_cast<Real>(2) / std::numbers::inv_sqrtpi_v<Real>;
+      }
       return;
     }
 
@@ -315,18 +346,21 @@ class GaussLegendreGrid {
     const auto nPhi = NumberOfLongitudes();
 
     // Set up for FFTs.
-    auto workSize = WorkSize<Scalar>();
-    auto work = FFTWpp::vector<Complex>(workSize);
-    auto inLayout = FFTWpp::DataLayout(1, std::vector{workSize}, 1,
-                                       std::vector{workSize}, 1, 1);
+    auto inWorkSize = WorkSize<Scalar>();
+    auto inWork = FFTWpp::vector<Complex>(inWorkSize);
+    auto inLayout = FFTWpp::DataLayout(1, std::vector{inWorkSize}, 1,
+                                       std::vector{inWorkSize}, 1, 1);
+    auto inView = FFTWpp::DataView(inWork.begin(), inWork.end(), inLayout);
+    auto outWork = FFTWpp::vector<Scalar>(nPhi);
     auto outLayout =
-        FFTWpp::DataLayout(1, std::vector{NumberOfLongitudes()}, 1,
-                           std::vector{NumberOfLongitudes()}, 1, 1);
-    auto inView = FFTWpp::DataView(work.begin(), work.end(), inLayout);
+        FFTWpp::DataLayout(1, std::vector{nPhi}, 1, std::vector{nPhi}, 1, 1);
+    auto outView = FFTWpp::DataView(outWork.begin(), outWork.end(), outLayout);
+    auto plan =
+        FFTWpp::Plan(inView, outView, FFTWpp::WisdomOnly, FFTWpp::Backward);
 
     // Loop over the colatitudes.
     for (auto iTheta : CoLatitudeIndices()) {
-      std::ranges::for_each(work, [](auto& x) { return x = 0; });
+      std::ranges::for_each(inWork, [](auto& x) { return x = 0; });
 
       // Get the Wigner values.
       auto d = _wigner(n)(iTheta);
@@ -339,16 +373,16 @@ class GaussLegendreGrid {
       for (auto l : degrees) {
         auto dl = d(l);
         if constexpr (ComplexFloatingPoint<Scalar>) {
-          auto workIter = std::prev(work.end(), l);
+          auto workIter = std::prev(inWork.end(), l);
           for (auto m : dl.NegativeOrders()) {
             *workIter++ += *inIter++ * *wigIter++;
           }
-          workIter = work.begin();
+          workIter = inWork.begin();
           for (auto m : dl.NonNegativeOrders()) {
             *workIter++ += *inIter++ * *wigIter++;
           }
         } else {
-          auto workIter = work.begin();
+          auto workIter = inWork.begin();
           if constexpr (std::same_as<MRange, All>) {
             std::advance(wigIter, l);
           }
@@ -363,9 +397,7 @@ class GaussLegendreGrid {
       auto outStart = std::next(out.begin(), offset);
       auto outFinish = std::next(outStart, nPhi);
       auto outView = FFTWpp::DataView(outStart, outFinish, outLayout);
-      auto plan =
-          FFTWpp::Plan(inView, outView, FFTWpp::WisdomOnly, FFTWpp::Backward);
-      plan.Execute();
+      plan.Execute(inView, outView);
     }
   }
 

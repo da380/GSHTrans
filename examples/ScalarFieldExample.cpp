@@ -25,16 +25,16 @@ int main() {
   auto lMax = 4;
   auto nMax = 2;
 
-  // auto grid = std::make_shared<Grid>(lMax, nMax);
-
   auto grid = std::make_shared<Grid>(lMax, lMax);
 
   auto data = std::vector<Real>(grid->ComponentSize());
 
   auto v = std::ranges::views::all(data) | CanonicalComponent(grid);
 
-  v = InterpolateCanonicalComponent(
-      grid, [](auto theta, auto phi) -> Real { return 1; });
+  auto w =
+      InterpolateCanonicalComponent(grid, [](auto theta, auto phi) -> Real {
+        return std::sin(phi) * std::cos(theta);
+      });
 
-  std::cout << Integrate(v + 7) << std::endl;
+  std::cout << Integrate(w * w) << std::endl;
 }
