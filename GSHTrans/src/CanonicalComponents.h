@@ -53,15 +53,6 @@ class CanonicalComponentBase
     return this->operator[](i);
   }
 
-  template <typename Function>
-  void Interpolate(Function&& f) {
-    auto iter = Points().begin();
-    for (auto& val : *this) {
-      auto [theta, phi] = *iter++;
-      val = f(theta, phi);
-    }
-  }
-
  private:
   auto& _Derived() const { return static_cast<const Derived&>(*this); }
   auto& _Derived() { return static_cast<Derived&>(*this); }
@@ -85,6 +76,21 @@ class CanonicalComponent
 
   CanonicalComponent(std::shared_ptr<Grid> grid)
       : _grid{std::move(grid)}, _data{Vector(_grid->ComponentSize())} {}
+
+  CanonicalComponent(std::shared_ptr<Grid> grid, Scalar s)
+      : _grid{std::move(grid)}, _data{Vector(_grid->ComponentSize(), s)} {}
+
+  template <typename Function>
+  requires ScalarFunction2D<Function, typename Grid::real_type, Scalar>
+  CanonicalComponent(std::shared_ptr<Grid> grid, Function f)
+      : CanonicalComponent(grid) {
+    auto iter = _data.begin();
+    for (auto theta : this->GridPointer()->CoLatitudes()) {
+      for (auto phi : this->GridPointer()->Longitudes()) {
+        *iter++ = f(theta, phi);
+      }
+    }
+  }
 
   CanonicalComponent(const CanonicalComponent&) = default;
   CanonicalComponent(CanonicalComponent&&) = default;
@@ -127,6 +133,12 @@ class CanonicalComponent
 
   friend class CanonicalComponentBase<CanonicalComponent<Grid, Type>>;
 };
+
+template <typename Grid>
+using RealCanonicalComponent = CanonicalComponent<Grid, RealValued>;
+
+template <typename Grid>
+using ComplexCanonicalComponent = CanonicalComponent<Grid, ComplexValued>;
 
 //----------------------------------------------------------------//
 //            Canonical component with view to its data           //

@@ -27,14 +27,12 @@ int main() {
 
   auto grid = std::make_shared<Grid>(lMax, lMax);
 
-  auto x = CanonicalComponent<Grid, RealValued>(grid);
+  auto x = ComplexCanonicalComponent(grid, [](auto theta, auto phi) {
+    auto ii = Complex(0, 1);
+    auto fac = std::sqrt(static_cast<Real>(3) / static_cast<Real>(8)) *
+               std::numbers::inv_sqrtpi_v<Real>;
+    return fac * std::sin(theta) * std::exp(ii * phi);
+  });
 
-  auto data = std::vector<Real>(grid->ComponentSize(), 1);
-
-  auto y = std::ranges::views::all(data) | PairWithGrid(grid);
-
-  x = 2 * y;
-  auto z = x * y;
-
-  std::cout << Integrate(z) << std::endl;
+  std::cout << Integrate(x * conj(x)) << std::endl;
 }
