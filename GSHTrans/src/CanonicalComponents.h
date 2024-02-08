@@ -15,47 +15,23 @@
 
 namespace GSHTrans {
 
-//---------------------------------------------------------------//
-//                     View class definition                     //
-//---------------------------------------------------------------//
-template <std::ranges::view View, typename Grid>
-requires requires() {
-  requires std::same_as<RemoveComplex<std::ranges::range_value_t<View>>,
-                        typename Grid::real_type>;
-}
-class CanonicalComponentView
-    : public std::ranges::view_interface<CanonicalComponentView<View, Grid>> {
+//----------------------------------------------------------------//
+//                      Define the base class                     //
+//----------------------------------------------------------------//
+
+template <typename Derived>
+class CanonicalComponentBase
+    : public std::ranges::view_interface<CanonicalComponentBase<Derived>> {
   using Int = std::ptrdiff_t;
 
  public:
-  using value_type = std::ranges::range_value_t<View>;
-  using coefficient_type = std::conditional_t<RealFloatingPoint<value_type>,
-                                              RealValued, ComplexValued>;
+  auto begin() { return _Derived()._begin(); }
+  auto end() { return _Derived()._end(); }
 
-  CanonicalComponentView(View view, std::shared_ptr<Grid> grid)
-      : _view{std::move(view)}, _grid{std::move(grid)} {
-    assert(_grid->ComponentSize() == _view.size());
-  }
+  auto GridPointer() const { return _Derived()._grid; }
 
-  CanonicalComponentView(const CanonicalComponentView&) = default;
-  CanonicalComponentView(CanonicalComponentView&&) = default;
-
-  CanonicalComponentView& operator=(const CanonicalComponentView&) = default;
-  CanonicalComponentView& operator=(CanonicalComponentView&&) = default;
-
-  template <std::ranges::view OtherView>
-  requires std::ranges::output_range<View,
-                                     std::ranges::range_value_t<OtherView>>
-  auto& operator=(CanonicalComponentView<OtherView, Grid> view) {
-    assert(view.size() == _view.size());
-    std::ranges::copy(view, _view.begin());
-    return *this;
-  }
-
-  auto begin() { return _view.begin(); }
-  auto end() { return _view.end(); }
-
-  auto GridPointer() const { return _grid; }
+  auto View() const { return _Derived()._View(); }
+  auto View() { return _Derived()._View(); }
 
   auto NumberOfCoLatitudes() const {
     return GridPointer()->NumberOfCoLatitudes();
@@ -72,16 +48,12 @@ class CanonicalComponentView
     return this->operator[](i);
   }
 
-  auto& operator()(Int iTheta, Int iPhi)
-  requires std::ranges::output_range<View, std::ranges::range_value_t<View>>
-  {
+  auto& operator()(Int iTheta, Int iPhi) {
     auto i = iTheta * NumberOfLongitudes() + iPhi;
     return this->operator[](i);
   }
 
   template <typename Function>
-  requires ScalarFunction2D<Function, typename Grid::real_type, value_type> and
-           std::ranges::output_range<View, std::ranges::range_value_t<View>>
   void Interpolate(Function&& f) {
     auto iter = Points().begin();
     for (auto& val : *this) {
@@ -91,48 +63,147 @@ class CanonicalComponentView
   }
 
  private:
-  View _view;
+  auto& _Derived() const { return static_cast<const Derived&>(*this); }
+  auto& _Derived() { return static_cast<Derived&>(*this); }
+};
+
+//----------------------------------------------------------------//
+//             Canonical component storing its data               //
+//----------------------------------------------------------------//
+
+template <typename Grid, RealOrComplexValued Type>
+class CanonicalComponent
+    : public CanonicalComponentBase<CanonicalComponent<Grid, Type>> {
+  using Int = std::ptrdiff_t;
+  using Scalar =
+      std::conditional_t<std::same_as<Type, RealValued>,
+                         typename Grid::real_type, typename Grid::complex_type>;
+  using Vector = FFTWpp::vector<Scalar>;
+
+ public:
+  CanonicalComponent() = default;
+
+  CanonicalComponent(std::shared_ptr<Grid> grid)
+      : _grid{std::move(grid)}, _data{Vector(_grid->ComponentSize())} {}
+
+  CanonicalComponent(const CanonicalComponent&) = default;
+  CanonicalComponent(CanonicalComponent&&) = default;
+
+  template <typename Derived>
+  CanonicalComponent(CanonicalComponentBase<Derived>& other)
+      : _grid{other.GridPointer()},
+        _data{Vector(other.cbegin(), other.cend())} {}
+
+  template <typename Derived>
+  CanonicalComponent(CanonicalComponentBase<Derived>&& other)
+      : CanonicalComponent(other) {}
+
+  CanonicalComponent& operator=(const CanonicalComponent&) = default;
+  CanonicalComponent& operator=(CanonicalComponent&&) = default;
+
+  template <typename Derived>
+  CanonicalComponent& operator=(CanonicalComponentBase<Derived>& other) {
+    std::ranges::copy(other, _data.begin());
+    return *this;
+  }
+
+  template <typename Derived>
+  CanonicalComponent& operator=(CanonicalComponentBase<Derived>&& other) {
+    *this = other;
+    return *this;
+  }
+
+ private:
   std::shared_ptr<Grid> _grid;
+  Vector _data;
+
+  auto _begin() { return _data.begin(); }
+  auto _end() { return _data.end(); }
+
+  auto _View() { return std::ranges::views::all(_data); }
+  auto _View() const {
+    return std::ranges::views::all(_data) | std::ranges::views::as_const;
+  }
+
+  friend class CanonicalComponentBase<CanonicalComponent<Grid, Type>>;
+};
+
+//----------------------------------------------------------------//
+//            Canonical component with view to its data           //
+//----------------------------------------------------------------//
+
+template <typename Grid, std::ranges::view View>
+class CanonicalComponentView
+    : public CanonicalComponentBase<CanonicalComponentView<Grid, View>> {
+  using Int = std::ptrdiff_t;
+
+ public:
+  using view_type = View;
+
+  CanonicalComponentView() = default;
+
+  CanonicalComponentView(std::shared_ptr<Grid> grid, View view)
+      : _grid{std::move(grid)}, _view{std::move(view)} {}
+
+  CanonicalComponentView(const CanonicalComponentView&) = default;
+  CanonicalComponentView(CanonicalComponentView&&) = default;
+
+  CanonicalComponentView& operator=(const CanonicalComponentView&) = default;
+  CanonicalComponentView& operator=(CanonicalComponentView&&) = default;
+
+  template <typename Derived>
+  CanonicalComponentView& operator=(CanonicalComponentBase<Derived>& other) {
+    // std::ranges::copy(other, _view.begin());
+    auto iter = _view.begin();
+    for (auto val : other) *iter++ = val;
+    return *this;
+  }
+
+  template <typename Derived>
+  CanonicalComponentView& operator=(CanonicalComponentBase<Derived>&& other) {
+    *this = other;
+    return *this;
+  }
+
+ private:
+  std::shared_ptr<Grid> _grid;
+  View _view;
+
+  auto _begin() { return _view.begin(); }
+  auto _end() { return _view.end(); }
+
+  auto _View() { return *this; }
+  auto _View() const { return *this; }
+
+  friend class CanonicalComponentBase<CanonicalComponentView<Grid, View>>;
 };
 
 // Deduction guide to allow construction from ranges.
-template <std::ranges::viewable_range R, typename Grid>
-CanonicalComponentView(R&&, std::shared_ptr<Grid>)
-    -> CanonicalComponentView<std::ranges::views::all_t<R>, Grid>;
+template <typename Grid, std::ranges::viewable_range R>
+CanonicalComponentView(std::shared_ptr<Grid>, R&&)
+    -> CanonicalComponentView<Grid, std::ranges::views::all_t<R>>;
 
-//------------------------------------------------------------//
-//                    Range adaptor closures                  //
-//------------------------------------------------------------//
-
+// Range adaptor to form CanonicalComponentView from a view.
 template <typename Grid>
-class CanonicalComponent
-    : public std::ranges::range_adaptor_closure<CanonicalComponent<Grid>> {
+class PairWithGrid
+    : public std::ranges::range_adaptor_closure<PairWithGrid<Grid>> {
  public:
-  CanonicalComponent(std::shared_ptr<Grid> grid) : _grid{std::move(grid)} {}
+  PairWithGrid(std::shared_ptr<Grid> grid) : _grid{std::move(grid)} {}
+
   template <std::ranges::view View>
   auto operator()(View v) {
-    return CanonicalComponentView(v, _grid);
+    return CanonicalComponentView(_grid, v);
   }
 
  private:
   std::shared_ptr<Grid> _grid;
 };
 
-class PointsAndValues
-    : public std::ranges::range_adaptor_closure<PointsAndValues> {
- public:
-  PointsAndValues() = default;
+//--------------------------------------------------------//
+//           Functions defined on the base class          //
+//--------------------------------------------------------//
 
-  template <std::ranges::view View, typename Grid>
-  auto operator()(CanonicalComponentView<View, Grid> v) {
-    auto points = v.GridPointer()->Points();
-    return std::ranges::views::zip(points, v);
-  }
-};
-
-//--------------------------------------------------------------//
-//          Operations on canonical compoenent views            //
-//--------------------------------------------------------------//
+namespace CanonicalComponentDetails {
 
 template <Field S, Field T>
 struct ReturnValueHelper {
@@ -144,128 +215,265 @@ struct ReturnValueHelper {
 template <Field S, Field T>
 using ReturnValue = typename ReturnValueHelper<S, T>::type;
 
-template <std::ranges::view View, typename Grid, typename Function>
-auto CanonicalComponentViewUnary(CanonicalComponentView<View, Grid> v,
+}  // namespace CanonicalComponentDetails
+
+// Unary operations.
+
+template <typename Derived, typename Function>
+auto CanonicalComponentViewUnary(CanonicalComponentBase<Derived>& v,
                                  Function f) {
-  return v | std::ranges::views::transform(f) |
-         CanonicalComponent(v.GridPointer());
+  return v.View() | std::ranges::views::transform(f) |
+         PairWithGrid(v.GridPointer());
 }
 
-template <std::ranges::view View, typename Grid>
-auto operator-(CanonicalComponentView<View, Grid> v) {
+template <typename Derived>
+auto operator-(CanonicalComponentBase<Derived>& v) {
   return CanonicalComponentViewUnary(v, [](auto x) { return -x; });
 }
 
-template <std::ranges::view View, typename Grid>
-auto real(CanonicalComponentView<View, Grid> v) {
-  using T = std::ranges::range_value_t<View>;
+template <typename Derived>
+auto operator-(CanonicalComponentBase<Derived>&& v) {
+  return -v;
+}
+
+template <typename Derived>
+auto real(CanonicalComponentBase<Derived>& v) {
+  using T = std::ranges::range_value_t<CanonicalComponentBase<Derived>>;
   if constexpr (RealFloatingPoint<T>) {
-    return v;
+    return CanonicalComponentView(v.GridPointer(), v.View());
   } else {
     return CanonicalComponentViewUnary(v, [](auto x) { return std::real(x); });
   }
 }
 
-template <std::ranges::view View, typename Grid>
-auto imag(CanonicalComponentView<View, Grid> v) {
-  using T = std::ranges::range_value_t<View>;
+template <typename Derived>
+auto real(CanonicalComponentBase<Derived>&& v) {
+  return real(v);
+}
+
+template <typename Derived>
+auto imag(CanonicalComponentBase<Derived>& v) {
+  using T = std::ranges::range_value_t<CanonicalComponentBase<Derived>>;
   if constexpr (RealFloatingPoint<T>) {
     return std::ranges::views::repeat(T{0}, v.size()) |
-           CanonicalComponent(v.GridPointer());
+           PairWithGrid(v.GridPointer());
   } else {
     return CanonicalComponentViewUnary(v, [](auto x) { return std::imag(x); });
   }
 }
 
-template <std::ranges::view View, typename Grid>
-auto conj(CanonicalComponentView<View, Grid> v) {
-  using T = std::ranges::range_value_t<View>;
+template <typename Derived>
+auto imag(CanonicalComponentBase<Derived>&& v) {
+  return imag(v);
+}
+
+template <typename Derived>
+auto conj(CanonicalComponentBase<Derived>& v) {
+  using T = std::ranges::range_value_t<CanonicalComponentBase<Derived>>;
   if constexpr (RealFloatingPoint<T>) {
-    return v;
+    return CanonicalComponentView(v.GridPointer(), v.View());
   } else {
     return CanonicalComponentViewUnary(v, [](auto x) { return std::conj(x); });
   }
 }
 
-template <std::ranges::view View, typename Grid>
-auto abs(CanonicalComponentView<View, Grid> v) {
+template <typename Derived>
+auto conj(CanonicalComponentBase<Derived>&& v) {
+  return conj(v);
+}
+
+template <typename Derived>
+auto abs(CanonicalComponentBase<Derived>& v) {
   return CanonicalComponentViewUnary(v, [](auto x) { return std::abs(x); });
 }
 
-template <std::ranges::view View, typename Grid, Field S>
-auto operator*(CanonicalComponentView<View, Grid> v, S s) {
-  using T = ReturnValue<S, std::ranges::range_value_t<View>>;
+template <typename Derived>
+auto abs(CanonicalComponentBase<Derived>&& v) {
+  return abs(v);
+}
+
+// Unary operations involving a scalar.
+
+template <typename Derived, Field S>
+auto operator*(CanonicalComponentBase<Derived>& v, S s) {
+  using View = CanonicalComponentBase<Derived>;
+  using T =
+      CanonicalComponentDetails::ReturnValue<S,
+                                             std::ranges::range_value_t<View>>;
   auto t = T(s);
   return CanonicalComponentViewUnary(v, [t](auto x) { return t * x; });
 }
 
-template <std::ranges::view View, typename Grid, Field S>
-auto operator*(S s, CanonicalComponentView<View, Grid> v) {
+template <typename Derived, Field S>
+auto operator*(CanonicalComponentBase<Derived>&& v, S s) {
   return v * s;
 }
 
-template <std::ranges::view View, typename Grid, Field S>
-auto operator+(CanonicalComponentView<View, Grid> v, S s) {
-  using T = ReturnValue<S, std::ranges::range_value_t<View>>;
+template <typename Derived, Field S>
+auto operator*(S s, CanonicalComponentBase<Derived>& v) {
+  return v * s;
+}
+
+template <typename Derived, Field S>
+auto operator*(S s, CanonicalComponentBase<Derived>&& v) {
+  return v * s;
+}
+
+template <typename Derived, Field S>
+auto operator+(CanonicalComponentBase<Derived>& v, S s) {
+  using View = CanonicalComponentBase<Derived>;
+  using T =
+      CanonicalComponentDetails::ReturnValue<S,
+                                             std::ranges::range_value_t<View>>;
   auto t = T(s);
   return CanonicalComponentViewUnary(v, [t](auto x) { return t + x; });
 }
 
-template <std::ranges::view View, typename Grid, Field S>
-auto operator+(S s, CanonicalComponentView<View, Grid> v) {
+template <typename Derived, Field S>
+auto operator+(CanonicalComponentBase<Derived>&& v, S s) {
   return v + s;
 }
 
-template <std::ranges::view View, typename Grid, Field S>
-auto operator-(CanonicalComponentView<View, Grid> v, S s) {
-  using T = ReturnValue<S, std::ranges::range_value_t<View>>;
+template <typename Derived, Field S>
+auto operator+(S s, CanonicalComponentBase<Derived>& v) {
+  return v + s;
+}
+
+template <typename Derived, Field S>
+auto operator+(S s, CanonicalComponentBase<Derived>&& v) {
+  return v + s;
+}
+
+template <typename Derived, Field S>
+auto operator-(CanonicalComponentBase<Derived>& v, S s) {
+  using View = CanonicalComponentBase<Derived>;
+  using T =
+      CanonicalComponentDetails::ReturnValue<S,
+                                             std::ranges::range_value_t<View>>;
   auto t = T(s);
   return CanonicalComponentViewUnary(v, [t](auto x) { return x - t; });
 }
 
-template <std::ranges::view View, typename Grid, Field S>
-auto operator/(CanonicalComponentView<View, Grid> v, S s) {
-  using T = ReturnValue<S, std::ranges::range_value_t<View>>;
+template <typename Derived, Field S>
+auto operator-(CanonicalComponentBase<Derived>&& v, S s) {
+  return v - s;
+}
+
+template <typename Derived, Field S>
+auto operator/(CanonicalComponentBase<Derived>& v, S s) {
+  using View = CanonicalComponentBase<Derived>;
+  using T =
+      CanonicalComponentDetails::ReturnValue<S,
+                                             std::ranges::range_value_t<View>>;
   auto t = T(s);
   return CanonicalComponentViewUnary(v, [t](auto x) { return x / t; });
 }
 
-template <std::ranges::view View, typename Grid, Field S>
-auto pow(CanonicalComponentView<View, Grid> v, S s) {
-  using T = ReturnValue<S, std::ranges::range_value_t<View>>;
+template <typename Derived, Field S>
+auto operator/(CanonicalComponentBase<Derived>&& v, S s) {
+  return v / s;
+}
+
+template <typename Derived, Field S>
+auto pow(CanonicalComponentBase<Derived>& v, S s) {
+  using View = CanonicalComponentBase<Derived>;
+  using T =
+      CanonicalComponentDetails::ReturnValue<S,
+                                             std::ranges::range_value_t<View>>;
   auto t = T(s);
-  return CanonicalComponentViewUnary(v, [t](auto x) { return pow(x, t); });
+  return CanonicalComponentViewUnary(v, [t](auto x) { return std::pow(x, t); });
 }
 
-template <std::ranges::view View1, std::ranges::view View2, typename Grid,
-          typename Function>
-auto CanonicalComponentViewBinary(CanonicalComponentView<View1, Grid> v1,
-                                  CanonicalComponentView<View2, Grid> v2,
-                                  Function f) {
-  return std::ranges::zip_transform_view(f, v1, v2) |
-         CanonicalComponent(v1.GridPointer());
+template <typename Derived, Field S>
+auto pow(CanonicalComponentBase<Derived>&& v, S s) {
+  return pow(v, s);
 }
 
-template <std::ranges::view View1, std::ranges::view View2, typename Grid>
-auto operator+(CanonicalComponentView<View1, Grid> v1,
-               CanonicalComponentView<View2, Grid> v2) {
-  return CanonicalComponentViewBinary(v1, v2, std::plus<>());
+template <typename Derived1, typename Derived2, typename Function>
+auto CanonicalComponentViewBinary(Function f,
+                                  CanonicalComponentBase<Derived1>& v1,
+                                  CanonicalComponentBase<Derived2>& v2) {
+  return std::ranges::zip_transform_view(f, v1.View(), v2.View()) |
+         PairWithGrid(v1.GridPointer());
 }
 
-template <std::ranges::view View1, std::ranges::view View2, typename Grid>
-auto operator-(CanonicalComponentView<View1, Grid> v1,
-               CanonicalComponentView<View2, Grid> v2) {
-  return CanonicalComponentViewBinary(v1, v2, std::minus<>());
+template <typename Derived1, typename Derived2>
+auto operator+(CanonicalComponentBase<Derived1>& v1,
+               CanonicalComponentBase<Derived2>& v2) {
+  return CanonicalComponentViewBinary(std::plus<>(), v1, v2);
 }
 
-template <std::ranges::view View1, std::ranges::view View2, typename Grid>
-auto operator*(CanonicalComponentView<View1, Grid> v1,
-               CanonicalComponentView<View2, Grid> v2) {
-  return CanonicalComponentViewBinary(v1, v2, std::multiplies<>());
+template <typename Derived1, typename Derived2>
+auto operator+(CanonicalComponentBase<Derived1>&& v1,
+               CanonicalComponentBase<Derived2>& v2) {
+  return v1 + v2;
 }
 
-template <std::ranges::view View, typename Grid>
-auto Integrate(CanonicalComponentView<View, Grid> v) {
+template <typename Derived1, typename Derived2>
+auto operator+(CanonicalComponentBase<Derived1>& v1,
+               CanonicalComponentBase<Derived2>&& v2) {
+  return v1 + v2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator+(CanonicalComponentBase<Derived1>&& v1,
+               CanonicalComponentBase<Derived2>&& v2) {
+  return v1 + v2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator-(CanonicalComponentBase<Derived1>& v1,
+               CanonicalComponentBase<Derived2>& v2) {
+  return CanonicalComponentViewBinary(std::minus<>(), v1, v2);
+}
+
+template <typename Derived1, typename Derived2>
+auto operator-(CanonicalComponentBase<Derived1>&& v1,
+               CanonicalComponentBase<Derived2>& v2) {
+  return v1 - v2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator-(CanonicalComponentBase<Derived1>& v1,
+               CanonicalComponentBase<Derived2>&& v2) {
+  return v1 - v2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator-(CanonicalComponentBase<Derived1>&& v1,
+               CanonicalComponentBase<Derived2>&& v2) {
+  return v1 - v2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator*(CanonicalComponentBase<Derived1>& v1,
+               CanonicalComponentBase<Derived2>& v2) {
+  return CanonicalComponentViewBinary(std::multiplies<>(), v1, v2);
+}
+
+template <typename Derived1, typename Derived2>
+auto operator*(CanonicalComponentBase<Derived1>&& v1,
+               CanonicalComponentBase<Derived2>& v2) {
+  return v1 * v2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator*(CanonicalComponentBase<Derived1>& v1,
+               CanonicalComponentBase<Derived2>&& v2) {
+  return v1 * v2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator*(CanonicalComponentBase<Derived1>&& v1,
+               CanonicalComponentBase<Derived2>&& v2) {
+  return v1 * v2;
+}
+
+// Integrate component over S2.
+
+template <typename Derived>
+auto Integrate(const CanonicalComponentBase<Derived>& v) {
+  using View = CanonicalComponentBase<Derived>;
   using T = std::ranges::range_value_t<View>;
   auto dPhi = std::ranges::views::repeat(v.GridPointer()->LongitudeSpacing(),
                                          v.GridPointer()->NumberOfLongitudes());
@@ -274,20 +482,16 @@ auto Integrate(CanonicalComponentView<View, Grid> v) {
                std::ranges::views::transform([](auto pair) {
                  return std::get<0>(pair) * std::get<1>(pair);
                });
-  return std::ranges::fold_left(std::ranges::views::zip(dArea, v), T{0},
+  return std::ranges::fold_left(std::ranges::views::zip(dArea, v.View()), T{0},
                                 [](auto acc, auto term) {
                                   auto [dArea, val] = term;
                                   return acc + val * dArea;
                                 });
 }
 
-template <typename Grid, typename Function>
-auto InterpolateCanonicalComponent(std::shared_ptr<Grid> grid, Function f) {
-  return grid->Points() | std::ranges::views::transform([f](auto pair) {
-           auto [theta, phi] = pair;
-           return f(theta, phi);
-         }) |
-         CanonicalComponent(grid);
+template <typename Derived>
+auto Integrate(CanonicalComponentBase<Derived>&& v) {
+  return Integrate(v);
 }
 
 }  // namespace GSHTrans

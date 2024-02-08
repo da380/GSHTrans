@@ -23,7 +23,7 @@ class OrdersView
     assert(_l >= 0);
     assert(_mMax >= 0);
     if constexpr (std::same_as<MRange, All>) {
-      assert(this->size() == 2 * _mMax + 1;);
+      assert(this->size() == 2 * _mMax + 1);
     } else {
       assert(this->size() == _mMax + 1);
     }

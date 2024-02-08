@@ -8,7 +8,6 @@
 #include "src/GaussLegendreGrid.h"
 #include "src/Indexing.h"
 #include "src/IndexingNew.h"
-#include "src/Views.h"
 #include "src/Wigner.h"
 
 #endif

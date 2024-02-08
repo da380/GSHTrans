@@ -38,8 +38,6 @@ FetchContent_MakeAvailable(FFTWpp)
 # add in OMP
 find_package(OpenMP)
 
-# add in Boost
-#find_package(Boost)
 
 # Set up the library
 add_library (GSHTrans INTERFACE)
