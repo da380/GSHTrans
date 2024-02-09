@@ -216,7 +216,7 @@ class Wigner {
   template <RealFloatingPointRange RealRange>
   void ComputeValues(RealRange &&thetaRange) {
     auto preCompute = PreCompute();
-    // #pragma omp parallel for collapse(2)
+#pragma omp parallel for collapse(2)
     for (auto n : UpperIndices()) {
       for (auto iTheta : AngleIndices()) {
         auto d = operator()(n)(iTheta);

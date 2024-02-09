@@ -482,7 +482,6 @@ auto operator*(CanonicalComponentBase<Derived1>&& v1,
 }
 
 // Integrate component over S2.
-
 template <typename Derived>
 auto Integrate(const CanonicalComponentBase<Derived>& v) {
   using View = CanonicalComponentBase<Derived>;
