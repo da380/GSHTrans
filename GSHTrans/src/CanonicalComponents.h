@@ -36,11 +36,11 @@ class CanonicalComponentBase
   auto NumberOfCoLatitudes() const {
     return GridPointer()->NumberOfCoLatitudes();
   }
-
   auto NumberOfLongitudes() const {
     return GridPointer()->NumberOfLongitudes();
   }
-
+  auto CoLatitudes() const { return GridPointer()->CoLatitudes(); }
+  auto Longitudes() const { return GridPointer()->Longitudes(); }
   auto Points() const { return GridPointer()->Points(); }
 
   auto operator()(Int iTheta, Int iPhi) const {
@@ -84,12 +84,12 @@ class CanonicalComponent
   requires ScalarFunction2D<Function, typename Grid::real_type, Scalar>
   CanonicalComponent(std::shared_ptr<Grid> grid, Function f)
       : CanonicalComponent(grid) {
-    auto iter = _data.begin();
-    for (auto theta : this->GridPointer()->CoLatitudes()) {
-      for (auto phi : this->GridPointer()->Longitudes()) {
-        *iter++ = f(theta, phi);
-      }
-    }
+    auto fView =
+        this->Points() | std::ranges::views::transform([f](auto point) {
+          auto [theta, phi] = point;
+          return f(theta, phi);
+        });
+    std::ranges::copy(fView, _data.begin());
   }
 
   CanonicalComponent(const CanonicalComponent&) = default;
