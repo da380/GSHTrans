@@ -142,6 +142,12 @@ class CanonicalComponent
     return *this;
   }
 
+  CanonicalComponent& operator=(Scalar s) {
+    std::ranges::copy(std::ranges::views::repeat(s, this->size()),
+                      _data.begin());
+    return *this;
+  }
+
  private:
   std::shared_ptr<Grid> _grid;
   Int _n;
@@ -189,6 +195,7 @@ requires requires() {
 class CanonicalComponentView
     : public CanonicalComponentBase<CanonicalComponentView<Grid, View>> {
   using Int = std::ptrdiff_t;
+  using Real = typename Grid::real_type;
   using Scalar = std::ranges::range_value_t<View>;
 
  public:
@@ -226,6 +233,15 @@ class CanonicalComponentView
   template <typename Derived>
   CanonicalComponentView& operator=(CanonicalComponentBase<Derived>&& other) {
     *this = other;
+    return *this;
+  }
+
+  CanonicalComponentView& operator=(Scalar s)
+  requires std::ranges::output_range<View, Scalar>
+  {
+    std::ranges::copy(std::ranges::views::repeat(s, this->size()),
+                      _view.begin());
+
     return *this;
   }
 
