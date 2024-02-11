@@ -35,12 +35,8 @@ int main() {
   };
 
   auto data = std::vector<Complex>(grid->ComponentSize());
-  auto y = std::ranges::views::all(data) | FormCanonicalComponentView(grid, 0);
-  auto x = ComplexCanonicalComponent(grid, 0);
-  y = 1;
-  x = (y + y) / 2;
-
-  x = 1;
+  auto y = grid->InterpolateFunction(f) | FormCanonicalComponentView(grid, 0);
+  auto x = ComplexCanonicalComponent(grid, 0, f);
 
   std::cout << Integrate(x * conj(y)) << std::endl;
 }

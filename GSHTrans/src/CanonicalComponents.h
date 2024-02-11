@@ -102,12 +102,7 @@ class CanonicalComponent
   requires ScalarFunction2D<Function, typename Grid::real_type, Scalar>
   CanonicalComponent(std::shared_ptr<Grid> grid, Int n, Function f)
       : CanonicalComponent(grid, n) {
-    auto fView = this->Points() |
-                 std::ranges::views::transform([f](auto point) -> Scalar {
-                   auto [theta, phi] = point;
-                   return f(theta, phi);
-                 });
-    std::ranges::copy(fView, _data.begin());
+    std::ranges::copy(grid->InterpolateFunction(f), _data.begin());
   }
 
   CanonicalComponent(const CanonicalComponent&) = default;
@@ -241,7 +236,6 @@ class CanonicalComponentView
   {
     std::ranges::copy(std::ranges::views::repeat(s, this->size()),
                       _view.begin());
-
     return *this;
   }
 
@@ -262,6 +256,7 @@ class CanonicalComponentView
 };
 
 // Deduction guide to allow construction from ranges.
+
 template <typename Grid, std::ranges::viewable_range R>
 CanonicalComponentView(std::shared_ptr<Grid>, R&&)
     -> CanonicalComponentView<Grid, std::ranges::views::all_t<R>>;
@@ -288,6 +283,7 @@ class FormCanonicalComponentView : public std::ranges::range_adaptor_closure<
   Int _n;
 };
 
+// Range adaptors to form a constant CanonicalComponentView from a view.
 template <typename Grid>
 class FormConstantCanonicalComponentView
     : public std::ranges::range_adaptor_closure<
@@ -309,16 +305,6 @@ class FormConstantCanonicalComponentView
   std::shared_ptr<Grid> _grid;
   Int _n;
 };
-
-template <typename Grid, typename Function>
-auto InterpolateCanonicalComponentView(std::shared_ptr<Grid> grid,
-                                       std::ptrdiff_t n, Function f) {
-  return grid->Points() | std::ranges::views::transform([f](auto point) {
-           auto [theta, phi] = point;
-           return f(theta, phi);
-         }) |
-         FormCanonicalComponentView(grid, n);
-}
 
 //--------------------------------------------------------//
 //           Functions defined on the base class          //

@@ -148,6 +148,15 @@ class GaussLegendreGrid {
     return GSHIndices<All>(_lMax, _lMax, n).size();
   }
 
+  // Return view to function evaluated on the grid.
+  template <typename Function>
+  auto InterpolateFunction(Function f) {
+    return Points() | std::ranges::views::transform([f](auto pair) {
+             auto [theta, phi] = pair;
+             return f(theta, phi);
+           });
+  }
+
   // Generate random coefficient values within a given range.
   template <RealOrComplexFloatingPointRange Range,
             typename Distribution = decltype(std::normal_distribution<Real>())>
