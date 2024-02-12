@@ -64,7 +64,9 @@ class GSHIndices {
   auto operator*() const { return std::pair(_l, _m); }
 
   // Application operator returns the index of the (l,m)th value.
-  auto operator()(Int l, Int m) const requires std::same_as<MRange, All> {
+  auto operator()(Int l, Int m) const
+  requires std::same_as<MRange, All>
+  {
     assert(l >= _nAbs && l <= _lMax);
     assert(m >= -l && m <= l);
     if (_mMax >= _nAbs) {
@@ -76,8 +78,9 @@ class GSHIndices {
     }
   }
 
-  auto operator()(Int l,
-                  Int m) const requires std::same_as<MRange, NonNegative> {
+  auto operator()(Int l, Int m) const
+  requires std::same_as<MRange, NonNegative>
+  {
     assert(l >= _nAbs && l <= _lMax);
     assert(m >= 0 && m <= l);
     if (_mMax >= _nAbs) {
