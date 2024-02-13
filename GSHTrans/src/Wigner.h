@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "Concepts.h"
+#include "IndexingNew.h"
 
 namespace GSHTrans {
 

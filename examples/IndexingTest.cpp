@@ -12,20 +12,20 @@ int main() {
   using Complex = std::complex<Real>;
   using Scalar = Real;
   using Vector = FFTWpp::vector<Scalar>;
-  using MRange = All;
+  using MRange = NonNegative;
 
-  Int l = 20;
-  Int mMax = 4;
+  Int lMax = 5;
+  Int mMax = 3;
+  Int n = 4;
 
-  auto Size = [](auto l, auto mMax) {
-    if constexpr (std::same_as<MRange, All>) {
-      return 2 * std::min(l, mMax) + 1;
-    } else {
-      return std::min(l, mMax) + 1;
+  auto indices = Testing::GSHIndices<MRange>(lMax, mMax, n);
+
+  auto count = 0;
+  for (auto l : indices.Degrees()) {
+    auto [offset, subindices] = indices.Index(l);
+    for (auto m : subindices.Orders()) {
+      std::cout << l << " " << m << " "
+                << offset + subindices.Index(m) - count++ << std::endl;
     }
-  };
-
-  auto size = Size(l, mMax);
-  auto data = Vector(size);
-  auto view = CoefficientSubView(l, mMax, data, MRange{});
+  }
 }
