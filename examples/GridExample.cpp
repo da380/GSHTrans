@@ -48,9 +48,6 @@ int main() {
     auto lMaxGrid = RandomDegree(4, 256);
     auto lMax = RandomDegree(4, lMaxGrid);
     auto nMax = std::min(lMax, Int(4));
-    lMaxGrid = 256;
-    lMax = 256;
-    nMax = 2;
 
     auto grid = Grid(lMaxGrid, nMax);
     auto n = RandomUpperIndex<NRange>(nMax);

@@ -3,16 +3,11 @@
 
 #include <omp.h>
 
-#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <concepts>
-#include <iostream>
-#include <iterator>
 #include <limits>
-#include <memory>
 #include <numbers>
-#include <numeric>
 #include <ranges>
 #include <vector>
 
@@ -20,87 +15,6 @@
 #include "Indexing.h"
 
 namespace GSHTrans {
-
-namespace WignerDetails {
-
-template <RealFloatingPoint Real>
-class Arguments {
- public:
-  Arguments() = default;
-
-  Arguments(Real theta) {
-    constexpr auto half = static_cast<Real>(1) / static_cast<Real>(2);
-    _logSinHalf = std::sin(half * theta);
-    _logCosHalf = std::cos(half * theta);
-    _atLeft = _logSinHalf < std::numeric_limits<Real>::min();
-    _atRight = _logCosHalf < std::numeric_limits<Real>::min();
-    _logSinHalf = _atLeft ? static_cast<Real>(0) : std::log(_logSinHalf);
-    _logCosHalf = _atRight ? static_cast<Real>(0) : std::log(_logCosHalf);
-  }
-
-  auto AtLeft() const { return _atLeft; }
-  auto AtRight() const { return _atRight; }
-
-  auto LogSinHalf() const { return _logSinHalf; }
-  auto LogCosHalf() const { return _logCosHalf; }
-
- private:
-  Real _logSinHalf;
-  Real _logCosHalf;
-  bool _atLeft;
-  bool _atRight;
-};
-
-using Int = std::ptrdiff_t;
-
-constexpr auto MinusOneToPower(Int m) { return m % 2 ? -1 : 1; }
-
-template <RealFloatingPoint Real>
-auto WignerMinOrder(Int l, Int n, Arguments<Real> &arg) {
-  // Check the inputs.
-  assert(l >= 0);
-  assert(std::abs(n) <= l);
-
-  // Deal with l == 0 case
-  if (l == 0) return static_cast<Real>(1);
-
-  // Deal with special case at the left boundary.
-  if (arg.AtLeft()) {
-    return n == -l ? static_cast<Real>(1) : static_cast<Real>(0);
-  }
-
-  // Deal with special case at the right boundary.
-  if (arg.AtRight()) {
-    return n == l ? static_cast<Real>(1) : static_cast<Real>(0);
-  }
-
-  // Deal with the general case.
-  constexpr auto half = static_cast<Real>(1) / static_cast<Real>(2);
-  auto Fl = static_cast<Real>(l);
-  auto Fn = static_cast<Real>(n);
-  using std::exp;
-  using std::lgamma;
-  return exp(
-      half * (lgamma(2 * Fl + 1) - lgamma(Fl - Fn + 1) - lgamma(Fl + Fn + 1)) +
-      (Fl + Fn) * arg.LogSinHalf() + (Fl - Fn) * arg.LogCosHalf());
-}
-
-template <RealFloatingPoint Real>
-auto WignerMaxOrder(Int l, Int n, Arguments<Real> &arg) {
-  return MinusOneToPower(n + l) * WignerMinOrder(l, -n, arg);
-}
-
-template <RealFloatingPoint Real>
-auto WignerMinUpperIndex(Int l, Int m, Arguments<Real> &arg) {
-  return WignerMaxOrder(l, -m, arg);
-}
-
-template <RealFloatingPoint Real>
-auto WignerMaxUpperIndex(Int l, Int m, Arguments<Real> &arg) {
-  return WignerMinOrder(l, -m, arg);
-}
-
-}  // namespace WignerDetails
 
 template <RealFloatingPoint Real, OrderIndexRange MRange, IndexRange NRange,
           Normalisation Norm>
@@ -170,6 +84,33 @@ class Wigner {
     }
   };
 
+  class Arguments {
+   public:
+    Arguments() = default;
+
+    Arguments(Real theta) {
+      constexpr auto half = static_cast<Real>(1) / static_cast<Real>(2);
+      _logSinHalf = std::sin(half * theta);
+      _logCosHalf = std::cos(half * theta);
+      _atLeft = _logSinHalf < std::numeric_limits<Real>::min();
+      _atRight = _logCosHalf < std::numeric_limits<Real>::min();
+      _logSinHalf = _atLeft ? static_cast<Real>(0) : std::log(_logSinHalf);
+      _logCosHalf = _atRight ? static_cast<Real>(0) : std::log(_logCosHalf);
+    }
+
+    auto AtLeft() const { return _atLeft; }
+    auto AtRight() const { return _atRight; }
+
+    auto LogSinHalf() const { return _logSinHalf; }
+    auto LogCosHalf() const { return _logCosHalf; }
+
+   private:
+    Real _logSinHalf;
+    Real _logCosHalf;
+    bool _atLeft;
+    bool _atRight;
+  };
+
  public:
   using value_type = Real;
 
@@ -186,24 +127,11 @@ class Wigner {
   Wigner(Int lMax, Int mMax, Int nMax, Real theta)
       : Wigner(lMax, mMax, nMax, Vector{theta}) {}
 
-  // Recompute values.
-  template <RealFloatingPointRange RealRange>
-  void ReCompute(RealRange &&thetaRange) {
-    assert(thetaRange.size() == _nTheta);
-    ComputeValues(thetaRange);
-  }
-
-  void ReCompute(Real theta) {
-    assert(_nTheta == 1);
-    ComputeValues(Vector{theta});
-  }
-
   // Return basic information.
   auto MaxDegree() const { return _lMax; }
   auto MaxOrder() const { return _mMax; }
-
-  auto Degrees() const { return std::ranges::views::iota(0, _lMax + 1); }
   auto NumberOfAngles() const { return _nTheta; }
+
   auto size() const { return _data.size(); }
   auto begin() { return _data.begin(); }
   auto end() { return _data.end(); }
@@ -303,7 +231,7 @@ class Wigner {
     const auto nAbs = std::abs(n);
     const auto lMax = d.MaxDegree();
 
-    auto arg = WignerDetails::Arguments<Real>(theta);
+    auto arg = Arguments(theta);
     const auto cos = std::cos(theta);
 
     // Set the values for l == |n|
@@ -314,11 +242,11 @@ class Wigner {
       auto finish = d(l).end();
       if (n >= 0) {
         while (iter != finish) {
-          *iter++ = WignerDetails::WignerMaxUpperIndex(l, m++, arg);
+          *iter++ = WignerMaxUpperIndex(l, m++, arg);
         }
       } else {
         while (iter != finish) {
-          *iter++ = WignerDetails::WignerMinUpperIndex(l, m++, arg);
+          *iter++ = WignerMinUpperIndex(l, m++, arg);
         }
       }
     }
@@ -338,7 +266,7 @@ class Wigner {
       // Add in value at m == -l if needed.
       if constexpr (std::same_as<MRange, All>) {
         if (l <= mMax) {
-          *iter++ = WignerDetails::WignerMinOrder(l, n, arg);
+          *iter++ = WignerMinOrder(l, n, arg);
           m++;
         }
       }
@@ -358,7 +286,7 @@ class Wigner {
 
       // Add in value at m == l if needed
       if (l <= mMax) {
-        *iter++ = WignerDetails::WignerMaxOrder(l, n, arg);
+        *iter++ = WignerMaxOrder(l, n, arg);
       }
     }
 
@@ -379,7 +307,7 @@ class Wigner {
         if (l <= mMax) {
           {
             // Add in the m == -l term.
-            *iter++ = WignerDetails::WignerMinOrder(l, n, arg);
+            *iter++ = WignerMinOrder(l, n, arg);
             m++;
           }
           {
@@ -436,7 +364,7 @@ class Wigner {
           m++;
         }
         // Now do m == l.
-        *iter++ = WignerDetails::WignerMaxOrder(l, n, arg);
+        *iter++ = WignerMaxOrder(l, n, arg);
       }
 
       // Add in the upper boundary term at the critical degree.
@@ -464,6 +392,49 @@ class Wigner {
         });
       }
     }
+  }
+
+  constexpr auto MinusOneToPower(Int m) { return m % 2 ? -1 : 1; }
+
+  auto WignerMinOrder(Int l, Int n, Arguments &arg) {
+    // Check the inputs.
+    assert(l >= 0);
+    assert(std::abs(n) <= l);
+
+    // Deal with l == 0 case
+    if (l == 0) return static_cast<Real>(1);
+
+    // Deal with special case at the left boundary.
+    if (arg.AtLeft()) {
+      return n == -l ? static_cast<Real>(1) : static_cast<Real>(0);
+    }
+
+    // Deal with special case at the right boundary.
+    if (arg.AtRight()) {
+      return n == l ? static_cast<Real>(1) : static_cast<Real>(0);
+    }
+
+    // Deal with the general case.
+    constexpr auto half = static_cast<Real>(1) / static_cast<Real>(2);
+    auto Fl = static_cast<Real>(l);
+    auto Fn = static_cast<Real>(n);
+    using std::exp;
+    using std::lgamma;
+    return exp(half * (lgamma(2 * Fl + 1) - lgamma(Fl - Fn + 1) -
+                       lgamma(Fl + Fn + 1)) +
+               (Fl + Fn) * arg.LogSinHalf() + (Fl - Fn) * arg.LogCosHalf());
+  }
+
+  auto WignerMaxOrder(Int l, Int n, Arguments &arg) {
+    return MinusOneToPower(n + l) * WignerMinOrder(l, -n, arg);
+  }
+
+  auto WignerMinUpperIndex(Int l, Int m, Arguments &arg) {
+    return WignerMaxOrder(l, -m, arg);
+  }
+
+  auto WignerMaxUpperIndex(Int l, Int m, Arguments &arg) {
+    return WignerMinOrder(l, -m, arg);
   }
 };
 

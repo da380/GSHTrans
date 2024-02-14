@@ -4,14 +4,11 @@
 #include <FFTWpp/All>
 #include <algorithm>
 #include <complex>
-#include <functional>
 #include <iostream>
 #include <memory>
 #include <ranges>
-#include <type_traits>
 
 #include "Concepts.h"
-#include "Indexing.h"
 
 namespace GSHTrans {
 
@@ -25,26 +22,10 @@ class CanonicalComponentBase
   using Int = std::ptrdiff_t;
 
  public:
-  // Return upper index.
-  auto UpperIndex() const { return _Derived()._UpperIndex(); }
-
-  // Return grid information,
-  auto GridPointer() const { return _Derived()._grid; }
-
+  // Data access functions.
   auto View() const { return _Derived()._View(); }
   auto View() { return _Derived()._View(); }
 
-  auto NumberOfCoLatitudes() const {
-    return GridPointer()->NumberOfCoLatitudes();
-  }
-  auto NumberOfLongitudes() const {
-    return GridPointer()->NumberOfLongitudes();
-  }
-  auto CoLatitudes() const { return GridPointer()->CoLatitudes(); }
-  auto Longitudes() const { return GridPointer()->Longitudes(); }
-  auto Points() const { return GridPointer()->Points(); }
-
-  // Data access functions.
   auto begin() { return _Derived()._begin(); }
   auto end() { return _Derived()._end(); }
 
@@ -61,6 +42,22 @@ class CanonicalComponentBase
     auto i = iTheta * NumberOfLongitudes() + iPhi;
     return this->operator[](i);
   }
+
+  // Return upper index.
+  auto UpperIndex() const { return _Derived()._UpperIndex(); }
+
+  // Return grid information,
+  auto GridPointer() const { return _Derived()._grid; }
+
+  auto NumberOfCoLatitudes() const {
+    return GridPointer()->NumberOfCoLatitudes();
+  }
+  auto NumberOfLongitudes() const {
+    return GridPointer()->NumberOfLongitudes();
+  }
+  auto CoLatitudes() const { return GridPointer()->CoLatitudes(); }
+  auto Longitudes() const { return GridPointer()->Longitudes(); }
+  auto Points() const { return GridPointer()->Points(); }
 
  private:
   auto& _Derived() const { return static_cast<const Derived&>(*this); }
@@ -578,20 +575,13 @@ auto operator*(CanonicalComponentBase<Derived1>&& v1,
 // Integrate component over S2.
 template <typename Derived>
 auto Integrate(const CanonicalComponentBase<Derived>& v) {
-  using View = CanonicalComponentBase<Derived>;
-  using T = std::ranges::range_value_t<View>;
-  auto dPhi = std::ranges::views::repeat(v.GridPointer()->LongitudeSpacing(),
-                                         v.GridPointer()->NumberOfLongitudes());
-  auto dTheta = v.GridPointer()->CoLatitudeWeights();
-  auto dArea = std::ranges::views::cartesian_product(dTheta, dPhi) |
-               std::ranges::views::transform([](auto pair) {
-                 return std::get<0>(pair) * std::get<1>(pair);
-               });
-  return std::ranges::fold_left(std::ranges::views::zip(dArea, v.View()), T{0},
-                                [](auto acc, auto term) {
-                                  auto [dArea, val] = term;
-                                  return acc + val * dArea;
-                                });
+  using T = std::ranges::range_value_t<CanonicalComponentBase<Derived>>;
+  return std::ranges::fold_left(
+      std::ranges::views::zip(v.GridPointer()->Weights(), v.View()), T{0},
+      [](auto acc, auto term) {
+        auto [w, val] = term;
+        return acc + val * w;
+      });
 }
 
 template <typename Derived>

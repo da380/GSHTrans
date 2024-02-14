@@ -15,13 +15,15 @@
 #include <vector>
 
 #include "Concepts.h"
+#include "Grid.h"
 #include "Indexing.h"
 #include "Wigner.h"
 
 namespace GSHTrans {
 
 template <RealFloatingPoint Real, OrderIndexRange MRange, IndexRange NRange>
-class GaussLegendreGrid {
+class GaussLegendreGrid
+    : public GridBase<GaussLegendreGrid<Real, MRange, NRange>> {
  private:
   using Int = std::ptrdiff_t;
   using Complex = std::complex<Real>;
@@ -43,7 +45,7 @@ class GaussLegendreGrid {
     // Check the inputs.
     assert(MaxDegree() >= 0);
     assert(MaxUpperIndex() <= MaxDegree());
-    assert(std::abs(MinUpperIndex()) <= MaxDegree());
+    assert(std::abs(this->MinUpperIndex()) <= MaxDegree());
 
     // Get the quadrature points.
     _quad = GaussQuad::GaussLegendreQuadrature1D<Real>(_lMax + 1);
@@ -55,8 +57,9 @@ class GaussLegendreGrid {
 
     if (_lMax > 0) {
       // Generate wisdom for FFTs.
-      auto in = FFTWpp::DataLayout(1, std::vector{NumberOfLongitudes()}, 1,
-                                   std::vector{NumberOfLongitudes()}, 1, 1);
+      auto in =
+          FFTWpp::DataLayout(1, std::vector{this->NumberOfLongitudes()}, 1,
+                             std::vector{this->NumberOfLongitudes()}, 1, 1);
       {
         // Real to complex case.
         auto out = FFTWpp::DataLayout(1, std::vector{_lMax + 1}, 1,
@@ -80,28 +83,10 @@ class GaussLegendreGrid {
 
   GaussLegendreGrid& operator=(GaussLegendreGrid&&) = default;
 
-  // Grid information.
   auto MaxDegree() const { return _lMax; }
   auto MaxUpperIndex() const { return _nMax; }
-  auto MinUpperIndex() const {
-    if constexpr (std::same_as<NRange, All>) {
-      return -_nMax;
-    }
-    if constexpr (std::same_as<NRange, NonNegative>) {
-      return 0;
-    }
-    if constexpr (std::same_as<NRange, Single>) {
-      return _nMax;
-    }
-  }
-  auto UpperIndices() const {
-    return std::ranges::views::iota(MinUpperIndex(), MaxUpperIndex() + 1);
-  }
 
   auto CoLatitudes() const { return std::ranges::views::all(_quad.Points()); }
-  auto NumberOfCoLatitudes() const { return CoLatitudes().size(); }
-  auto CoLatitudeIndices() const { return _wigner.AngleIndices(); }
-
   auto CoLatitudeWeights() const {
     return std::ranges::views::all(_quad.Weights());
   }
@@ -109,95 +94,14 @@ class GaussLegendreGrid {
   auto LongitudeSpacing() const {
     return 2 * std::numbers::pi_v<Real> / static_cast<Real>(2 * _lMax);
   }
-  auto LongitudeIndices() const {
-    return std::ranges::views::iota(0, 2 * _lMax);
-  }
   auto Longitudes() const {
     auto dPhi = LongitudeSpacing();
-    return LongitudeIndices() |
+    return std::ranges::views::iota(0, 2 * _lMax) |
            std::ranges::views::transform([dPhi](auto i) { return i * dPhi; });
   }
-  auto NumberOfLongitudes() const { return Longitudes().size(); }
-
-  auto Points() const {
-    return std::ranges::views::cartesian_product(CoLatitudes(), Longitudes());
-  }
-
-  auto PointIndices() const {
-    return std::ranges::views::cartesian_product(CoLatitudeIndices(),
-                                                 LongitudeIndices());
-  }
-
-  auto ComponentSize() const {
-    return NumberOfCoLatitudes() * NumberOfLongitudes();
-  }
-
-  auto RealCoefficientSize(Int lMax, Int n) const {
-    return GSHIndices<NonNegative>(lMax, lMax, n).size();
-  }
-
-  auto ComplexCoefficientSize(Int lMax, Int n) const {
-    return GSHIndices<All>(lMax, lMax, n).size();
-  }
-
-  auto RealCoefficientSize(Int n) const {
-    return GSHIndices<NonNegative>(_lMax, _lMax, n).size();
-  }
-
-  auto ComplexCoefficientSize(Int n) const {
-    return GSHIndices<All>(_lMax, _lMax, n).size();
-  }
-
-  // Return view to function evaluated on the grid.
-  template <typename Function>
-  auto InterpolateFunction(Function f) {
-    return Points() | std::ranges::views::transform([f](auto pair) {
-             auto [theta, phi] = pair;
-             return f(theta, phi);
-           });
-  }
-
-  // Generate random coefficient values within a given range.
-  template <RealOrComplexFloatingPointRange Range,
-            typename Distribution = decltype(std::normal_distribution<Real>())>
-  void RandomComplexCoefficient(
-      Int lMax, Int n, Range& range,
-      Distribution dist = std::normal_distribution<Real>()) const {
-    assert(range.size() == ComplexCoefficientSize(lMax, n));
-    std::random_device rd{};
-    std::mt19937_64 gen{rd()};
-    std::ranges::generate(range, [&gen, &dist]() {
-      return Complex{dist(gen), dist(gen)};
-    });
-
-    if (lMax == _lMax) {
-      auto i = GSHIndices<All>(lMax, lMax, n).Index(lMax, lMax);
-      range[i] = 0;
-    }
-  }
-
-  // Generate random coefficient values within a given range.
-  template <RealOrComplexFloatingPointRange Range,
-            typename Distribution = decltype(std::normal_distribution<Real>())>
-  void RandomRealCoefficient(
-      Int lMax, Int n, Range& range,
-      Distribution dist = std::normal_distribution<Real>()) const {
-    assert(range.size() == RealCoefficientSize(lMax, n));
-    std::random_device rd{};
-    std::mt19937_64 gen{rd()};
-    std::ranges::generate(range, [&gen, &dist]() {
-      return Complex{dist(gen), dist(gen)};
-    });
-
-    auto indices = GSHIndices<NonNegative>(lMax, lMax, n);
-    for (auto l : indices.Degrees()) {
-      auto i = indices.Index(l, 0);
-      range[i].imag(0);
-    }
-    if (lMax == _lMax) {
-      auto i = indices.Index(lMax, lMax);
-      range[i].imag(0);
-    }
+  auto LongitudeWeights() const {
+    auto dPhi = LongitudeSpacing();
+    return std::ranges::views::repeat(dPhi, 2 * _lMax);
   }
 
   //-----------------------------------------------------//
@@ -222,11 +126,10 @@ class GaussLegendreGrid {
     using Scalar = std::ranges::range_value_t<InRange>;
 
     // Check upper index is possible.
-    assert(
-        std::ranges::any_of(UpperIndices(), [n](auto np) { return n == np; }));
+    assert(std::ranges::contains(this->UpperIndices(), n));
 
     // Check dimensions of ranges.
-    assert(in.size() == NumberOfCoLatitudes() * NumberOfLongitudes());
+    assert(in.size() == this->ComponentSize());
     if constexpr (RealFloatingPoint<Scalar>) {
       assert(out.size() == GSHIndices<NonNegative>(lMax, lMax, n).size());
     } else {
@@ -240,7 +143,7 @@ class GaussLegendreGrid {
     }
 
     // Pre compute some constants.
-    const auto nPhi = NumberOfLongitudes();
+    const auto nPhi = this->NumberOfLongitudes();
     const auto scaleFactor = static_cast<Real>(2) * std::numbers::pi_v<Real> /
                              static_cast<Real>(nPhi);
 
@@ -258,7 +161,7 @@ class GaussLegendreGrid {
         FFTWpp::Plan(inView, outView, FFTWpp::WisdomOnly, FFTWpp::Forward);
 
     // Loop over the colatitudes.
-    for (auto iTheta : CoLatitudeIndices()) {
+    for (auto iTheta : this->CoLatitudeIndices()) {
       // FFT the current data slice.
       auto offset = iTheta * nPhi;
       auto inStart = std::next(in.begin(), offset);
@@ -336,8 +239,7 @@ class GaussLegendreGrid {
     using Scalar = std::ranges::range_value_t<OutRange>;
 
     // Check upper index is possible.
-    assert(
-        std::ranges::any_of(UpperIndices(), [n](auto np) { return n == np; }));
+    assert(std::ranges::contains(this->UpperIndices(), n));
 
     // Check dimensions of ranges.
     if constexpr (RealFloatingPoint<Scalar>) {
@@ -345,7 +247,7 @@ class GaussLegendreGrid {
     } else {
       assert(in.size() == GSHIndices<All>(lMax, lMax, n).size());
     }
-    assert(out.size() == NumberOfCoLatitudes() * NumberOfLongitudes());
+    assert(out.size() == this->ComponentSize());
 
     // Deal with lMax = 0
     if (lMax == 0) {
@@ -360,7 +262,7 @@ class GaussLegendreGrid {
     }
 
     // Precompute constants
-    const auto nPhi = NumberOfLongitudes();
+    const auto nPhi = this->NumberOfLongitudes();
 
     // Set up for FFTs.
     auto inWorkSize = WorkSize<Scalar>();
@@ -376,7 +278,7 @@ class GaussLegendreGrid {
         FFTWpp::Plan(inView, outView, FFTWpp::WisdomOnly, FFTWpp::Backward);
 
     // Loop over the colatitudes.
-    for (auto iTheta : CoLatitudeIndices()) {
+    for (auto iTheta : this->CoLatitudeIndices()) {
       std::ranges::for_each(inWork, [](auto& x) { return x = 0; });
 
       // Get the Wigner values.
