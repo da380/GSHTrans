@@ -16,13 +16,11 @@ int main() {
   using Real = double;
 
   // Set the degree, order and upper index
-  int lMax = 3;
-  int mMax = lMax;
-  int nMax = lMax;
+  int lMax = 10;
+  int mMax = 5;
+  int nMax = 2;
 
   auto theta = double(1);
 
-  auto d = Wigner<double, All, All, Ortho>(lMax, mMax, mMax, theta);
-
-  auto p = d(0)(0);
+  auto d = Wigner<double, NonNegative, All, Ortho>(lMax, mMax, mMax, theta);
 }

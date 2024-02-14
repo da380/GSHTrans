@@ -1,7 +1,6 @@
 #ifndef CHECK_ADDITION_THEOREM_ZERO_GUARD
 #define CHECK_ADDITION_THEOREM_ZERO_GUARD
 
-
 #include <GSHTrans/All>
 #include <algorithm>
 #include <cmath>
@@ -32,9 +31,9 @@ int CheckAdditionTheorem() {
   constexpr auto eps = 1000 * std::numeric_limits<Real>::epsilon();
 
   for (auto n : d.UpperIndices()) {
-    auto d1 = d(n)();
+    auto d1 = d(n, 0);
     for (auto np : d.UpperIndices()) {
-      auto d2 = d(np)();
+      auto d2 = d(np, 0);
       auto lMin = std::max(std::abs(n), std::abs(np));
       for (auto l = lMin; l <= lMax; l++) {
         auto sum = std::inner_product(d1(l).begin(), d1(l).end(), d2(l).begin(),

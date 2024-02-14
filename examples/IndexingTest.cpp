@@ -12,20 +12,9 @@ int main() {
   using Complex = std::complex<Real>;
   using Scalar = Real;
   using Vector = FFTWpp::vector<Scalar>;
-  using MRange = NonNegative;
+  using MRange = All;
 
   Int lMax = 5;
   Int mMax = 3;
-  Int n = 4;
-
-  auto indices = Testing::GSHIndices<MRange>(lMax, mMax, n);
-
-  auto count = 0;
-  for (auto l : indices.Degrees()) {
-    auto [offset, subindices] = indices.Index(l);
-    for (auto m : subindices.Orders()) {
-      std::cout << l << " " << m << " "
-                << offset + subindices.Index(m) - count++ << std::endl;
-    }
-  }
+  Int n = 1;
 }

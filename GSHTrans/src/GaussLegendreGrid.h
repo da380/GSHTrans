@@ -169,8 +169,11 @@ class GaussLegendreGrid {
     std::ranges::generate(range, [&gen, &dist]() {
       return Complex{dist(gen), dist(gen)};
     });
-    auto view = GSHView<Complex, All>(lMax, lMax, n, range.begin());
-    if (lMax == _lMax) view(lMax)(lMax) = 0;
+
+    if (lMax == _lMax) {
+      auto i = GSHIndices<All>(lMax, lMax, n).Index(lMax, lMax);
+      range[i] = 0;
+    }
   }
 
   // Generate random coefficient values within a given range.
@@ -185,11 +188,16 @@ class GaussLegendreGrid {
     std::ranges::generate(range, [&gen, &dist]() {
       return Complex{dist(gen), dist(gen)};
     });
-    auto view = GSHView<Complex, NonNegative>(lMax, lMax, n, range.begin());
-    for (auto l : view.Degrees()) {
-      view(l)(0).imag(0);
+
+    auto indices = GSHIndices<NonNegative>(lMax, lMax, n);
+    for (auto l : indices.Degrees()) {
+      auto i = indices.Index(l, 0);
+      range[i].imag(0);
     }
-    if (lMax == _lMax) view(lMax)(lMax).imag(0);
+    if (lMax == _lMax) {
+      auto i = indices.Index(lMax, lMax);
+      range[i].imag(0);
+    }
   }
 
   //-----------------------------------------------------//
@@ -264,7 +272,7 @@ class GaussLegendreGrid {
       }
 
       // Get the Wigner values and quadrature weight.
-      auto d = _wigner(n)(iTheta);
+      auto d = _wigner(n, iTheta);
       auto w = _quad.W(iTheta) * scaleFactor;
 
       // Loop over the spherical harmonic coefficients
@@ -372,7 +380,7 @@ class GaussLegendreGrid {
       std::ranges::for_each(inWork, [](auto& x) { return x = 0; });
 
       // Get the Wigner values.
-      auto d = _wigner(n)(iTheta);
+      auto d = _wigner(n, iTheta);
 
       // Loop over the coefficients.
       auto inIter = in.begin();

@@ -17,7 +17,7 @@
 #include <vector>
 
 #include "Concepts.h"
-#include "IndexingNew.h"
+#include "Indexing.h"
 
 namespace GSHTrans {
 
@@ -105,16 +105,73 @@ auto WignerMaxUpperIndex(Int l, Int m, Arguments<Real> &arg) {
 template <RealFloatingPoint Real, OrderIndexRange MRange, IndexRange NRange,
           Normalisation Norm>
 class Wigner {
+  using Int = std::ptrdiff_t;
   using Vector = std::vector<Real>;
-  using Int = Vector::difference_type;
+
+  template <std::ranges::view V>
+  class SubView : public std::ranges::view_interface<SubView<V>>,
+                  public GSHSubIndices<MRange> {
+    using Indices = GSHSubIndices<MRange>;
+    using std::ranges::view_interface<SubView<V>>::size;
+
+   public:
+    SubView(Int l, Int mMax, V view)
+        : Indices(l, mMax), _view{std::move(view)} {}
+
+    auto begin() { return _view.begin(); }
+    auto end() { return _view.end(); }
+
+    auto operator()(Int m) const {
+      auto i = this->Index(m);
+      return this->operator[](i);
+    }
+
+    auto &operator()(Int m) {
+      auto i = this->Index(m);
+      return this->operator[](i);
+    }
+
+   private:
+    V _view;
+  };
+
+  template <std::ranges::view V>
+  class View : public std::ranges::view_interface<View<V>>,
+               public GSHIndices<MRange> {
+    using Indices = GSHIndices<MRange>;
+    using std::ranges::view_interface<View<V>>::size;
+
+   public:
+    View(Int lMax, Int mMax, Int n, V view)
+        : Indices(lMax, mMax, n), _view{view} {}
+
+    auto begin() { return _view.begin(); }
+    auto end() { return _view.end(); }
+
+    auto operator()(Int l) const {
+      auto view = MakeSubRange(l);
+      return SubView(l, this->MaxOrder(), view | std::ranges::views::as_const);
+    }
+
+    auto operator()(Int l) {
+      auto view = MakeSubRange(l);
+      return SubView(l, this->MaxOrder(), view);
+    }
+
+   private:
+    V _view;
+
+    auto MakeSubRange(Int l) {
+      auto [offset, indices] = this->Index(l);
+      auto size = indices.size();
+      auto start = std::next(begin(), offset);
+      auto end = std::next(start, size);
+      return std::ranges::subrange(start, end);
+    }
+  };
 
  public:
-  // Set member types.
   using value_type = Real;
-  using iterator = Vector::iterator;
-  using const_iterator = Vector::const_iterator;
-  using difference_type = Vector::difference_type;
-  using size_type = Vector::size_type;
 
   Wigner() = default;
 
@@ -172,25 +229,19 @@ class Wigner {
     return std::ranges::views::iota(Int{0}, _nTheta);
   }
 
-  // Return view to all angles for given upper index.
-  auto operator()(Int n) {
+  auto operator()(Int n, Int iTheta) {
     auto upperIndices = UpperIndices() | std::ranges::views::filter(
                                              [n](auto np) { return np < n; });
-    auto offset = std::accumulate(
-        upperIndices.begin(), upperIndices.end(), Int{0},
-        [this](auto acc, auto np) {
-          return acc +
-                 GSHIndices<MRange>(_lMax, _mMax, np).size() * NumberOfAngles();
-        });
+    auto size = GSHIndices<MRange>(_lMax, _mMax, n).size();
+    auto offset =
+        size * iTheta +
+        std::ranges::fold_left(upperIndices, Int{0}, [this](auto acc, auto np) {
+          return acc + GSHIndices<MRange>(_lMax, _mMax, np).size();
+        }) * NumberOfAngles();
     auto start = std::next(begin(), offset);
-    return GSHViewAngleRange<Real, MRange>(_lMax, _mMax, n, _nTheta, start);
-  }
-
-  // Application operator in the case of a single upper index.
-  auto operator()()
-  requires std::same_as<NRange, Single>
-  {
-    return operator()(_nMax);
+    auto finish = std::next(start, size);
+    auto view = std::ranges::subrange(start, finish);
+    return View(_lMax, _mMax, n, view);
   }
 
  private:
@@ -205,12 +256,12 @@ class Wigner {
   // Compute the necessary storage capacity.
   void AllocateStorage() {
     auto upperIndices = UpperIndices();
-    auto size = std::accumulate(
-        upperIndices.begin(), upperIndices.end(), Int{0},
-        [this](auto acc, auto n) {
-          return acc +
-                 GSHIndices<MRange>(_lMax, _mMax, n).size() * NumberOfAngles();
-        });
+    auto size = std::ranges::fold_left(
+                    upperIndices, Int{0},
+                    [this](auto acc, auto n) {
+                      return acc + GSHIndices<MRange>(_lMax, _mMax, n).size();
+                    }) *
+                NumberOfAngles();
     _data.resize(size);
   }
 
@@ -220,7 +271,7 @@ class Wigner {
 #pragma omp parallel for collapse(2)
     for (auto n : UpperIndices()) {
       for (auto iTheta : AngleIndices()) {
-        auto d = operator()(n)(iTheta);
+        auto d = operator()(n, iTheta);
         Compute(n, thetaRange[iTheta], d, preCompute);
       }
     }
@@ -243,8 +294,7 @@ class Wigner {
                       std::make_shared<Vector>(sqrtIntInv));
   }
 
-  void Compute(Int n, Real theta, GSHView<Real, MRange> d,
-               const auto preCompute) {
+  void Compute(Int n, Real theta, auto d, const auto preCompute) {
     // Get references to the pre-computed values.
     auto &sqrtInt = *std::get<0>(preCompute);
     auto &sqrtIntInv = *std::get<1>(preCompute);

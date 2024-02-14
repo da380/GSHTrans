@@ -24,19 +24,21 @@ int CheckLegendre() {
 
   // Construct the normalised Wigner values
   auto d = Wigner<Real, All, Single, Ortho>(lMax, lMax, 0, theta);
-  auto p = d()();
+  auto p = d(0, 0);
 
   // Define small numbers for comparison.
   constexpr auto eps = 100000 * std::numeric_limits<Real>::epsilon();
   constexpr auto tiny = 1000 * std::numeric_limits<Real>::min();
 
   // Compare values to std library function
-  for (auto [l, m] : p.Indices()) {
-    Real plm = p(l)(m);
-    Real plmSTD = std::sph_legendre(l, m, theta);
-    if (auto norm = std::abs(plmSTD) > tiny) {
-      Real diff = std::abs(plm - plmSTD) / norm;
-      if (diff > eps) return 1;
+  for (auto l : p.Degrees()) {
+    for (auto m : p(l).Orders()) {
+      Real plm = p(l)(m);
+      Real plmSTD = std::sph_legendre(l, m, theta);
+      if (auto norm = std::abs(plmSTD) > tiny) {
+        Real diff = std::abs(plm - plmSTD) / norm;
+        if (diff > eps) return 1;
+      }
     }
   }
 
