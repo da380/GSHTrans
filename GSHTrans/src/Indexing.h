@@ -1,5 +1,5 @@
-#ifndef GSH_TRANS_INDEXING_NEW_GUARD_H
-#define GSH_TRANS_INDEXING_NEW_GUARD_H
+#ifndef GSH_TRANS_INDEXING_GUARD_H
+#define GSH_TRANS_INDEXING_GUARD_H
 
 #include <algorithm>
 #include <cassert>
@@ -148,4 +148,4 @@ class GSHIndices {
 
 }  // namespace GSHTrans
 
-#endif  // GSH_TRANS_INDEXING_NEW_GUARD_H
+#endif  // GSH_TRANS_INDEXING_GUARD_H

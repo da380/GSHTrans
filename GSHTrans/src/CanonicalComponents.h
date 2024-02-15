@@ -9,6 +9,7 @@
 #include <ranges>
 
 #include "Concepts.h"
+#include "Grid.h"
 
 namespace GSHTrans {
 
@@ -69,6 +70,7 @@ class CanonicalComponentBase
 //----------------------------------------------------------------//
 
 template <typename Grid, RealOrComplexValued Type>
+requires std::derived_from<Grid, GridBase<Grid>>
 class CanonicalComponent
     : public CanonicalComponentBase<CanonicalComponent<Grid, Type>> {
   using Int = std::ptrdiff_t;
@@ -180,6 +182,7 @@ using ComplexCanonicalComponent = CanonicalComponent<Grid, ComplexValued>;
 
 template <typename Grid, std::ranges::view View>
 requires requires() {
+  requires std::derived_from<Grid, GridBase<Grid>>;
   requires std::ranges::input_range<View>;
   requires std::same_as<RemoveComplex<std::ranges::range_value_t<View>>,
                         typename Grid::real_type>;
@@ -260,6 +263,7 @@ CanonicalComponentView(std::shared_ptr<Grid>, R&&)
 
 // Range adaptors to form CanonicalComponentView from a view.
 template <typename Grid>
+requires std::derived_from<Grid, GridBase<Grid>>
 class FormCanonicalComponentView : public std::ranges::range_adaptor_closure<
                                        FormCanonicalComponentView<Grid>> {
   using Int = std::ptrdiff_t;
@@ -282,6 +286,7 @@ class FormCanonicalComponentView : public std::ranges::range_adaptor_closure<
 
 // Range adaptors to form a constant CanonicalComponentView from a view.
 template <typename Grid>
+requires std::derived_from<Grid, GridBase<Grid>>
 class FormConstantCanonicalComponentView
     : public std::ranges::range_adaptor_closure<
           FormConstantCanonicalComponentView<Grid>> {
