@@ -67,7 +67,6 @@ class GSHIndices {
 
  public:
   GSHIndices() = default;
-
   GSHIndices(Int lMax, Int mMax, Int n)
       : _lMax{lMax}, _mMax{std::min(lMax, mMax)}, _n{n} {
     assert(_lMax >= 0);

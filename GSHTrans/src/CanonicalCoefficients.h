@@ -28,9 +28,7 @@ requires std::derived_from<Grid, GridBase<Grid>>
 class CanonicalCoefficient
     : public CanonicalCoefficientBase<CanonicalCoefficient<Grid, Type>>,
       public GSHIndices<std::conditional_t<std::same_as<Type, ComplexValued>,
-                                           All, NonNegative>>
-
-{};
+                                           All, NonNegative>> {};
 
 }  // namespace GSHTrans
 

@@ -16,6 +16,10 @@ namespace GSHTrans {
 struct All {};
 struct NonNegative {};
 struct Single {};
+struct Multiple {};
+
+struct UpperIndexFirst {};
+struct AngleFirst {};
 
 template <typename Indices>
 concept IndexRange =
@@ -28,7 +32,11 @@ concept OrderIndexRange =
 
 template <typename Indices>
 concept AngleIndexRange =
-    std::same_as<Indices, NonNegative> or std::same_as<Indices, Single>;
+    std::same_as<Indices, Multiple> or std::same_as<Indices, Single>;
+
+template <typename Type>
+concept WignerStorageType =
+    std::same_as<Type, UpperIndexFirst> or std::same_as<Type, AngleFirst>;
 
 // Normalisation options.
 struct Ortho {};
