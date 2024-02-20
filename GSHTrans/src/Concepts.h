@@ -12,6 +12,14 @@ namespace GSHTrans {
 //                                 Tag classes                              //
 //--------------------------------------------------------------------------//
 
+// Matrix storage options.
+struct ColumnMajor {};
+struct RowMajor {};
+
+template <typename T>
+concept MatrixStorage =
+    std::same_as<T, ColumnMajor> or std::same_as<T, RowMajor>;
+
 // Index storage options.
 struct All {};
 struct NonNegative {};
@@ -33,10 +41,6 @@ concept OrderIndexRange =
 template <typename Indices>
 concept AngleIndexRange =
     std::same_as<Indices, Multiple> or std::same_as<Indices, Single>;
-
-template <typename Type>
-concept WignerStorageType =
-    std::same_as<Type, UpperIndexFirst> or std::same_as<Type, AngleFirst>;
 
 // Normalisation options.
 struct Ortho {};

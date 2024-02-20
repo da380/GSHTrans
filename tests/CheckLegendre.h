@@ -23,17 +23,16 @@ int CheckLegendre() {
   auto theta = dist(gen);
 
   // Construct the normalised Wigner values
-  auto d = Wigner<Real, All, Single, Ortho>(lMax, lMax, 0, theta);
-  auto p = d(0, 0);
+  auto d = Testing::Wigner(lMax, lMax, 0, theta);
 
   // Define small numbers for comparison.
   constexpr auto eps = 100000 * std::numeric_limits<Real>::epsilon();
   constexpr auto tiny = 1000 * std::numeric_limits<Real>::min();
 
   // Compare values to std library function
-  for (auto l : p.Degrees()) {
-    for (auto m : p(l).Orders()) {
-      Real plm = p(l)(m);
+  for (auto l : d.Degrees()) {
+    for (auto m : d(l).Orders()) {
+      Real plm = d(l)(m);
       Real plmSTD = std::sph_legendre(l, m, theta);
       if (auto norm = std::abs(plmSTD) > tiny) {
         Real diff = std::abs(plm - plmSTD) / norm;

@@ -16,11 +16,18 @@ int main() {
   using Real = double;
 
   // Set the degree, order and upper index
-  int lMax = 10;
-  int mMax = 5;
-  int nMax = 2;
+  int lMax = 4;
+  int mMax = 4;
+  int nMax = 0;
 
   auto theta = double(1);
 
-  auto d = Wigner<double, NonNegative, All, Ortho>(lMax, mMax, mMax, theta);
+  auto d = Testing::Wigner<double, All, Ortho, Single, Single, ColumnMajor>(
+      lMax, mMax, nMax, theta);
+
+  for (auto l : d.Degrees()) {
+    for (auto m : d(l).Orders()) {
+      std::cout << l << " " << m << " " << d(l)(m) << std::endl;
+    }
+  }
 }

@@ -36,7 +36,7 @@ int main() {
 
   auto data = std::vector<Complex>(grid->ComponentSize());
   auto y = grid->InterpolateFunction(f) | FormCanonicalComponentView(grid, 0);
-  auto x = ComplexCanonicalComponent(grid, 0, f);
+  auto x = CanonicalComponent<Grid, ComplexValued>(grid, 0, f);
 
-  std::cout << Integrate(x * conj(y)) << std::endl;
+  std::cout << Integrate((x - 1) * conj(y)) << std::endl;
 }

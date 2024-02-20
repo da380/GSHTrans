@@ -440,9 +440,10 @@ class Wigner {
 
 namespace Testing {
 
-template <RealFloatingPoint Real, Normalisation Norm, OrderIndexRange MRange,
-          IndexRange NRange, AngleIndexRange AngleRange,
-          WignerStorageType Storage>
+template <RealFloatingPoint Real, OrderIndexRange MRange = All,
+          Normalisation Norm = Ortho, IndexRange NRange = Single,
+          AngleIndexRange AngleRange = Single,
+          MatrixStorage Storage = ColumnMajor>
 class Wigner {
   using Int = std::ptrdiff_t;
   using Vector = std::vector<Real>;
@@ -537,10 +538,29 @@ class Wigner {
   };
 
  public:
+  Wigner() = default;
+
+  template <RealFloatingPointRange RealRange>
+  Wigner(Int lMax, Int mMax, Int nMax, RealRange &&thetaRange)
+      : _lMax{lMax}, _mMax{mMax}, _nMax{nMax}, _nTheta(thetaRange.size()) {
+    AllocateStorage();
+    ComputeValues(thetaRange);
+  }
+
+  Wigner(Int lMax, Int mMax, Int nMax, Real theta)
+  requires std::same_as<AngleRange, Single>
+      : Wigner(lMax, mMax, nMax, std::vector(1, theta)) {}
+
   // Return basic information.
   auto MaxDegree() const { return _lMax; }
   auto MaxOrder() const { return _mMax; }
   auto NumberOfAngles() const { return _nTheta; }
+
+  auto Degrees() const
+  requires std::same_as<NRange, Single>
+  {
+    return GSHIndices<MRange>(_lMax, _mMax, _nMax).Degrees();
+  }
 
   auto size() const { return _data.size(); }
   auto begin() { return _data.begin(); }
@@ -567,8 +587,19 @@ class Wigner {
     return std::ranges::views::iota(Int{0}, _nTheta);
   }
 
+  // Return pairs of (n,iTheta) in the storage order.
+  auto Indices() const {
+    if constexpr (std::same_as<Storage, ColumnMajor>) {
+      return std::ranges::views::cartesian_product(UpperIndices(),
+                                                   AngleIndices());
+    } else {
+      return std::ranges::views::cartesian_product(AngleIndices(),
+                                                   UpperIndices());
+    }
+  }
+
   auto operator()(Int n, Int iTheta)
-  requires std::same_as<Storage, UpperIndexFirst>
+  requires std::same_as<Storage, ColumnMajor>
   {
     auto upperIndices = UpperIndices() | std::ranges::views::filter(
                                              [n](auto np) { return np < n; });
@@ -584,8 +615,8 @@ class Wigner {
     return View(_lMax, _mMax, n, view);
   }
 
-  auto operator()(Int iTheta, Int n)
-  requires std::same_as<Storage, AngleFirst>
+  auto operator()(Int n, Int iTheta)
+  requires std::same_as<Storage, RowMajor>
   {
     auto size = GSHIndices<MRange>(_lMax, _mMax, n).size();
     auto offset = std::ranges::fold_left(
@@ -609,31 +640,19 @@ class Wigner {
   auto operator()(Int n)
   requires std::same_as<AngleRange, Single>
   {
-    if constexpr (std::same_as<Storage, UpperIndexFirst>) {
-      return operator()(n, 0);
-    } else {
-      return operator()(0, n);
-    }
+    return operator()(n, 0);
   }
 
   auto operator()(Int iTheta)
   requires std::same_as<NRange, Single>
   {
-    if constexpr (std::same_as<Storage, UpperIndexFirst>) {
-      return operator()(_nMax, iTheta);
-    } else {
-      return operator()(iTheta, _nMax);
-    }
+    return operator()(_nMax, iTheta);
   }
 
   auto operator()(Int l)
   requires std::same_as<NRange, Single> and std::same_as<AngleRange, Single>
   {
-    if constexpr (std::same_as<Storage, UpperIndexFirst>) {
-      return operator()(_nMax, 0)(l);
-    } else {
-      return operator()(0, _nMax)(l);
-    }
+    return operator()(_nMax, 0)(l);
   }
 
  private:
@@ -660,23 +679,10 @@ class Wigner {
   template <RealFloatingPointRange RealRange>
   void ComputeValues(RealRange &&thetaRange) {
     auto preCompute = PreCompute();
-
-    if constexpr (std::same_as<Storage, UpperIndexFirst>) {
-#pragma omp parallel for collapse(2)
-      for (auto n : UpperIndices()) {
-        for (auto iTheta : AngleIndices()) {
-          auto d = operator()(n, iTheta);
-          Compute(n, thetaRange[iTheta], d, preCompute);
-        }
-      }
-    } else {
-#pragma omp parallel for collapse(2)
-      for (auto iTheta : AngleIndices()) {
-        for (auto n : UpperIndices()) {
-          auto d = operator()(iTheta, n);
-          Compute(n, thetaRange[iTheta], d, preCompute);
-        }
-      }
+#pragma omp parallel for
+    for (auto [n, iTheta] : Indices()) {
+      auto d = operator()(n, iTheta);
+      Compute(n, thetaRange[iTheta], d, preCompute);
     }
   }
 
