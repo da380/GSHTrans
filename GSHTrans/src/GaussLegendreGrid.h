@@ -28,7 +28,7 @@ class GaussLegendreGrid
   using Int = std::ptrdiff_t;
   using Complex = std::complex<Real>;
 
-  using WignerType = Wigner<Real, MRange, NRange, Ortho>;
+  using WignerType = Wigner<Real, MRange, Ortho, NRange, Multiple, ColumnMajor>;
   using QuadType = GaussQuad::Quadrature1D<Real>;
 
  public:

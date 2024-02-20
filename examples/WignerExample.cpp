@@ -22,8 +22,8 @@ int main() {
 
   auto theta = double(1);
 
-  auto d = Testing::Wigner<double, All, Ortho, Single, Single, ColumnMajor>(
-      lMax, mMax, nMax, theta);
+  auto d = Wigner<double, All, Ortho, Single, Single, ColumnMajor>(lMax, mMax,
+                                                                   nMax, theta);
 
   for (auto l : d.Degrees()) {
     for (auto m : d(l).Orders()) {

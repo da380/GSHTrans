@@ -23,7 +23,7 @@ int CheckLegendre() {
   auto theta = dist(gen);
 
   // Construct the normalised Wigner values
-  auto d = Testing::Wigner(lMax, lMax, 0, theta);
+  auto d = Wigner(lMax, lMax, 0, theta);
 
   // Define small numbers for comparison.
   constexpr auto eps = 100000 * std::numeric_limits<Real>::epsilon();
