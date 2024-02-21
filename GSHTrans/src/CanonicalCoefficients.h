@@ -28,7 +28,32 @@ requires std::derived_from<Grid, GridBase<Grid>>
 class CanonicalCoefficient
     : public CanonicalCoefficientBase<CanonicalCoefficient<Grid, Type>>,
       public GSHIndices<std::conditional_t<std::same_as<Type, ComplexValued>,
-                                           All, NonNegative>> {};
+                                           All, NonNegative>> {
+  using std::ranges::view_interface<
+      CanonicalCoefficientBase<CanonicalCoefficient<Grid, Type>>>::size;
+
+  using Int = std::ptrdiff_t;
+  using Scalar = typename Grid::complex_type;
+  using Vector = FFTWpp::vector<Scalar>;
+  using Indices = GSHIndices<
+      std::conditional_t<std::same_as<Type, ComplexValued>, All, NonNegative>>;
+
+ public:
+  using grid_type = Grid;
+  using view_type = std::ranges::views::all_t<Vector>;
+
+  CanonicalCoefficient() = default;
+
+  CanonicalCoefficient(std::shared_ptr<Grid> grid, Int n)
+      : _grid{grid},
+        _data{
+            Vector(Indices(_grid->MaxDegree(), _grid->MaxDegree(), n).size())} {
+  }
+
+ private:
+  std::shared_ptr<Grid> _grid;
+  Vector _data;
+};
 
 }  // namespace GSHTrans
 

@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <cmath>
 #include <concepts>
-#include <execution>
 #include <limits>
 #include <memory>
 #include <numbers>

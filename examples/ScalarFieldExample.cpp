@@ -3,7 +3,6 @@
 #include <chrono>
 #include <cmath>
 #include <concepts>
-#include <execution>
 #include <fstream>
 #include <iostream>
 #include <limits>
