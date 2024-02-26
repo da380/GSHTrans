@@ -14,7 +14,7 @@
 #include <vector>
 
 #include "Concepts.h"
-#include "Grid.h"
+#include "GridBase.h"
 #include "Indexing.h"
 #include "Wigner.h"
 

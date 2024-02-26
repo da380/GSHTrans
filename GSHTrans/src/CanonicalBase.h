@@ -4,35 +4,30 @@
 #include <ranges>
 
 #include "Concepts.h"
-#include "Grid.h"
+#include "GridBase.h"
 
 namespace GSHTrans {
 
 template <typename Derived>
-class CanonicalBase
-    : public std::ranges::view_interface<CanonicalBase<Derived>> {
+class GridInterface {
   using Int = std::ptrdiff_t;
 
  public:
-  // Data access functions.
-  auto View() const { return _Derived()._View(); }
-  auto View() { return _Derived()._View(); }
-
-  auto begin() { return _Derived()._begin(); }
-  auto end() { return _Derived()._end(); }
-
-  // Return grid information,
-  auto GridPointer() const { return _Derived()._grid; }
-
   auto NumberOfCoLatitudes() const {
-    return GridPointer()->NumberOfCoLatitudes();
+    return _Derived().Grid().NumberOfCoLatitudes();
   }
   auto NumberOfLongitudes() const {
-    return GridPointer()->NumberOfLongitudes();
+    return _Derived().Grid().NumberOfLongitudes();
   }
-  auto CoLatitudes() const { return GridPointer()->CoLatitudes(); }
-  auto Longitudes() const { return GridPointer()->Longitudes(); }
-  auto Points() const { return GridPointer()->Points(); }
+  auto CoLatitudes() const { return _Derived().Grid().CoLatitudes(); }
+  auto Longitudes() const { return _Derived().Grid().Longitudes(); }
+  auto Points() const { return _Derived().Grid().Points(); }
+
+  auto CoLatitudeIndices() const {
+    return _Derived().Grid().CoLatitudeIndices();
+  }
+  auto LongitudeIndices() const { return _Derived().Grid().LongitudeIndices(); }
+  auto PointIndices() const { return _Derived().Grid().PointIndices(); }
 
  private:
   auto& _Derived() const { return static_cast<const Derived&>(*this); }

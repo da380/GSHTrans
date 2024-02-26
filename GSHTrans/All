@@ -7,7 +7,7 @@
 #include "src/CanonicalComponents.h"
 #include "src/Concepts.h"
 #include "src/GaussLegendreGrid.h"
-#include "src/Grid.h"
+#include "src/GridBase.h"
 #include "src/Indexing.h"
 #include "src/Wigner.h"
 

@@ -37,5 +37,7 @@ int main() {
   auto y = grid.InterpolateFunction(f) | FormCanonicalComponentView(grid, 0);
   auto x = CanonicalComponent<Grid, ComplexValued>(grid, 0, f);
 
-  std::cout << Integrate((x)*conj(y)) << std::endl;
+  auto z = y + x / 2;
+
+  std::cout << Integrate(z * conj(y)) << std::endl;
 }

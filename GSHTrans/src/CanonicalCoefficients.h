@@ -8,8 +8,9 @@
 #include <memory>
 #include <ranges>
 
+#include "CanonicalBase.h"
 #include "Concepts.h"
-#include "Grid.h"
+#include "GridBase.h"
 #include "Indexing.h"
 
 namespace GSHTrans {}  // namespace GSHTrans
