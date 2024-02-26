@@ -26,7 +26,7 @@ int CheckAdditionTheorem() {
                                              std::numbers::pi_v<Real>};
   auto theta = dist1(gen);
 
-  auto d = Wigner<Real, All, FourPi, All>(lMax, lMax, lMax, theta);
+  auto d = Wigner<Real, FourPi, All, All>(lMax, lMax, lMax, theta);
 
   constexpr auto eps = 1000 * std::numeric_limits<Real>::epsilon();
 

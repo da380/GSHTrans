@@ -7,10 +7,9 @@
 #include <cassert>
 #include <cmath>
 #include <concepts>
-#include <iterator>
+#include <memory>
 #include <numbers>
 #include <numeric>
-#include <random>
 #include <ranges>
 #include <vector>
 
@@ -28,7 +27,7 @@ class GaussLegendreGrid
   using Int = std::ptrdiff_t;
   using Complex = std::complex<Real>;
 
-  using WignerType = Wigner<Real, MRange, Ortho, NRange, Multiple, ColumnMajor>;
+  using WignerType = Wigner<Real, Ortho, MRange, NRange, Multiple, ColumnMajor>;
   using QuadType = GaussQuad::Quadrature1D<Real>;
 
  public:
@@ -48,12 +47,15 @@ class GaussLegendreGrid
     assert(std::abs(this->MinUpperIndex()) <= MaxDegree());
 
     // Get the quadrature points.
-    _quad = GaussQuad::GaussLegendreQuadrature1D<Real>(_lMax + 1);
-    _quad.Transform([](auto x) { return std::acos(-x); },
-                    [](auto x) { return 1; });
+    _quadPointer = std::make_shared<QuadType>(
+        GaussQuad::LegendrePolynomial<Real>{}.GaussQuadrature(_lMax + 1));
+
+    _quadPointer->Transform([](auto x) { return std::acos(-x); },
+                            [](auto x) { return 1; });
 
     //  Get the Winger values.
-    _wigner = WignerType(_lMax, _lMax, _nMax, _quad.Points());
+    _wignerPointer = std::make_shared<WignerType>(_lMax, _lMax, _nMax,
+                                                  _quadPointer->Points());
 
     if (_lMax > 0) {
       // Generate wisdom for FFTs.
@@ -86,9 +88,11 @@ class GaussLegendreGrid
   auto MaxDegree() const { return _lMax; }
   auto MaxUpperIndex() const { return _nMax; }
 
-  auto CoLatitudes() const { return std::ranges::views::all(_quad.Points()); }
+  auto CoLatitudes() const {
+    return std::ranges::views::all(_quadPointer->Points());
+  }
   auto CoLatitudeWeights() const {
-    return std::ranges::views::all(_quad.Weights());
+    return std::ranges::views::all(_quadPointer->Weights());
   }
 
   auto LongitudeSpacing() const {
@@ -175,8 +179,8 @@ class GaussLegendreGrid
       }
 
       // Get the Wigner values and quadrature weight.
-      auto d = _wigner(n, iTheta);
-      auto w = _quad.W(iTheta) * scaleFactor;
+      auto d = _wignerPointer->operator()(n, iTheta);
+      auto w = _quadPointer->W(iTheta) * scaleFactor;
 
       // Loop over the spherical harmonic coefficients
       auto outIter = out.begin();
@@ -282,7 +286,7 @@ class GaussLegendreGrid
       std::ranges::for_each(inWork, [](auto& x) { return x = 0; });
 
       // Get the Wigner values.
-      auto d = _wigner(n, iTheta);
+      auto d = _wignerPointer->operator()(n, iTheta);
 
       // Loop over the coefficients.
       auto inIter = in.begin();
@@ -323,8 +327,9 @@ class GaussLegendreGrid
  private:
   Int _lMax;
   Int _nMax;
-  QuadType _quad;
-  WignerType _wigner;
+
+  std::shared_ptr<QuadType> _quadPointer;
+  std::shared_ptr<WignerType> _wignerPointer;
 
   template <RealOrComplexFloatingPoint Scalar>
   auto WorkSize() const {

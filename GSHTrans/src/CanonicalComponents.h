@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <complex>
 #include <iostream>
-#include <memory>
 #include <ranges>
 
 #include "Concepts.h"
@@ -48,17 +47,13 @@ class CanonicalComponentBase
   auto UpperIndex() const { return _Derived()._UpperIndex(); }
 
   // Return grid information,
-  auto GridPointer() const { return _Derived()._grid; }
+  auto Grid() const { return _Derived()._grid; }
 
-  auto NumberOfCoLatitudes() const {
-    return GridPointer()->NumberOfCoLatitudes();
-  }
-  auto NumberOfLongitudes() const {
-    return GridPointer()->NumberOfLongitudes();
-  }
-  auto CoLatitudes() const { return GridPointer()->CoLatitudes(); }
-  auto Longitudes() const { return GridPointer()->Longitudes(); }
-  auto Points() const { return GridPointer()->Points(); }
+  auto NumberOfCoLatitudes() const { return Grid().NumberOfCoLatitudes(); }
+  auto NumberOfLongitudes() const { return Grid().NumberOfLongitudes(); }
+  auto CoLatitudes() const { return Grid().CoLatitudes(); }
+  auto Longitudes() const { return Grid().Longitudes(); }
+  auto Points() const { return Grid().Points(); }
 
  private:
   auto& _Derived() const { return static_cast<const Derived&>(*this); }
@@ -69,39 +64,37 @@ class CanonicalComponentBase
 //             Canonical component storing its data               //
 //----------------------------------------------------------------//
 
-template <typename Grid, RealOrComplexValued Type>
-requires std::derived_from<Grid, GridBase<Grid>>
+template <typename GSHGrid, RealOrComplexValued Type>
+requires std::derived_from<GSHGrid, GridBase<GSHGrid>>
 class CanonicalComponent
-    : public CanonicalComponentBase<CanonicalComponent<Grid, Type>> {
+    : public CanonicalComponentBase<CanonicalComponent<GSHGrid, Type>> {
   using Int = std::ptrdiff_t;
-  using Scalar =
-      std::conditional_t<std::same_as<Type, RealValued>,
-                         typename Grid::real_type, typename Grid::complex_type>;
+  using Scalar = std::conditional_t<std::same_as<Type, RealValued>,
+                                    typename GSHGrid::real_type,
+                                    typename GSHGrid::complex_type>;
   using Vector = FFTWpp::vector<Scalar>;
 
  public:
-  using grid_type = Grid;
+  using grid_type = GSHGrid;
   using view_type = std::ranges::views::all_t<Vector>;
 
   CanonicalComponent() = default;
 
-  CanonicalComponent(std::shared_ptr<Grid> grid, Int n)
-      : _grid{std::move(grid)}, _n{n}, _data{Vector(_grid->ComponentSize())} {
-    assert(std::ranges::contains(this->GridPointer()->UpperIndices(), _n));
+  CanonicalComponent(GSHGrid grid, Int n)
+      : _grid{grid}, _n{n}, _data{Vector(_grid.ComponentSize())} {
+    assert(std::ranges::contains(this->Grid().UpperIndices(), _n));
   }
 
-  CanonicalComponent(std::shared_ptr<Grid> grid, Int n, Scalar s)
-      : _grid{std::move(grid)},
-        _n{n},
-        _data{Vector(_grid->ComponentSize(), s)} {
-    assert(std::ranges::contains(this->GridPointer()->UpperIndices(), _n));
+  CanonicalComponent(GSHGrid grid, Int n, Scalar s)
+      : _grid{grid}, _n{n}, _data{Vector(_grid.ComponentSize(), s)} {
+    assert(std::ranges::contains(this->Grid().UpperIndices(), _n));
   }
 
   template <typename Function>
-  requires ScalarFunction2D<Function, typename Grid::real_type, Scalar>
-  CanonicalComponent(std::shared_ptr<Grid> grid, Int n, Function f)
+  requires ScalarFunction2D<Function, typename GSHGrid::real_type, Scalar>
+  CanonicalComponent(GSHGrid grid, Int n, Function f)
       : CanonicalComponent(grid, n) {
-    std::ranges::copy(grid->InterpolateFunction(f), _data.begin());
+    std::ranges::copy(_grid.InterpolateFunction(f), _data.begin());
   }
 
   CanonicalComponent(const CanonicalComponent&) = default;
@@ -109,7 +102,7 @@ class CanonicalComponent
 
   template <typename Derived>
   CanonicalComponent(const CanonicalComponentBase<Derived>& other)
-      : _grid{other.GridPointer()},
+      : _grid{other.Grid()},
         _n{other.UpperIndex()},
         _data{Vector(other.View().cbegin(), other.View().cend())} {}
 
@@ -143,7 +136,7 @@ class CanonicalComponent
   }
 
  private:
-  std::shared_ptr<Grid> _grid;
+  GSHGrid _grid;
   Int _n;
   Vector _data;
 
@@ -157,7 +150,7 @@ class CanonicalComponent
     return std::ranges::views::all(_data) | std::ranges::views::as_const;
   }
 
-  friend class CanonicalComponentBase<CanonicalComponent<Grid, Type>>;
+  friend class CanonicalComponentBase<CanonicalComponent<GSHGrid, Type>>;
 };
 
 // Deduction guide for construction from another base type.
@@ -170,38 +163,38 @@ CanonicalComponent(CanonicalComponentBase<Derived>& other)
                            RealValued, ComplexValued>>;
 
 // Type aliases for real and complex valued components.
-template <typename Grid>
-using RealCanonicalComponent = CanonicalComponent<Grid, RealValued>;
+template <typename GSHGrid>
+using RealCanonicalComponent = CanonicalComponent<GSHGrid, RealValued>;
 
-template <typename Grid>
-using ComplexCanonicalComponent = CanonicalComponent<Grid, ComplexValued>;
+template <typename GSHGrid>
+using ComplexCanonicalComponent = CanonicalComponent<GSHGrid, ComplexValued>;
 
 //----------------------------------------------------------------//
 //            Canonical component with view to its data           //
 //----------------------------------------------------------------//
 
-template <typename Grid, std::ranges::view View>
+template <typename GSHGrid, std::ranges::view View>
 requires requires() {
-  requires std::derived_from<Grid, GridBase<Grid>>;
+  requires std::derived_from<GSHGrid, GridBase<GSHGrid>>;
   requires std::ranges::input_range<View>;
   requires std::same_as<RemoveComplex<std::ranges::range_value_t<View>>,
-                        typename Grid::real_type>;
+                        typename GSHGrid::real_type>;
 }
 class CanonicalComponentView
-    : public CanonicalComponentBase<CanonicalComponentView<Grid, View>> {
+    : public CanonicalComponentBase<CanonicalComponentView<GSHGrid, View>> {
   using Int = std::ptrdiff_t;
-  using Real = typename Grid::real_type;
+  using Real = typename GSHGrid::real_type;
   using Scalar = std::ranges::range_value_t<View>;
 
  public:
   using view_type = View;
-  using grid_type = Grid;
+  using grid_type = GSHGrid;
 
   CanonicalComponentView() = default;
 
-  CanonicalComponentView(std::shared_ptr<Grid> grid, Int n, View view)
+  CanonicalComponentView(GSHGrid grid, Int n, View view)
       : _grid{std::move(grid)}, _n{n}, _view{std::move(view)} {
-    assert(std::ranges::contains(this->GridPointer()->UpperIndices(), _n));
+    assert(std::ranges::contains(this->Grid().UpperIndices(), _n));
   }
 
   CanonicalComponentView(const CanonicalComponentView&) = default;
@@ -240,7 +233,7 @@ class CanonicalComponentView
   }
 
  private:
-  std::shared_ptr<Grid> _grid;
+  GSHGrid _grid;
   Int _n;
   View _view;
 
@@ -252,26 +245,26 @@ class CanonicalComponentView
   auto _View() { return *this; }
   auto _View() const { return *this; }
 
-  friend class CanonicalComponentBase<CanonicalComponentView<Grid, View>>;
+  friend class CanonicalComponentBase<CanonicalComponentView<GSHGrid, View>>;
 };
 
 // Deduction guide to allow construction from ranges.
 
-template <typename Grid, std::ranges::viewable_range R>
-CanonicalComponentView(std::shared_ptr<Grid>, R&&)
-    -> CanonicalComponentView<Grid, std::ranges::views::all_t<R>>;
+template <typename GSHGrid, std::ranges::viewable_range R>
+CanonicalComponentView(GSHGrid, R&&)
+    -> CanonicalComponentView<GSHGrid, std::ranges::views::all_t<R>>;
 
 // Range adaptors to form CanonicalComponentView from a view.
-template <typename Grid>
-requires std::derived_from<Grid, GridBase<Grid>>
+template <typename GSHGrid>
+requires std::derived_from<GSHGrid, GridBase<GSHGrid>>
 class FormCanonicalComponentView : public std::ranges::range_adaptor_closure<
-                                       FormCanonicalComponentView<Grid>> {
+                                       FormCanonicalComponentView<GSHGrid>> {
   using Int = std::ptrdiff_t;
 
  public:
-  FormCanonicalComponentView(std::shared_ptr<Grid> grid, Int n)
+  FormCanonicalComponentView(GSHGrid grid, Int n)
       : _grid{std::move(grid)}, _n{n} {
-    assert(std::ranges::contains(_grid->UpperIndices(), _n));
+    assert(std::ranges::contains(_grid.UpperIndices(), _n));
   }
 
   template <std::ranges::view View>
@@ -280,22 +273,22 @@ class FormCanonicalComponentView : public std::ranges::range_adaptor_closure<
   }
 
  private:
-  std::shared_ptr<Grid> _grid;
+  GSHGrid _grid;
   Int _n;
 };
 
 // Range adaptors to form a constant CanonicalComponentView from a view.
-template <typename Grid>
-requires std::derived_from<Grid, GridBase<Grid>>
+template <typename GSHGrid>
+requires std::derived_from<GSHGrid, GridBase<GSHGrid>>
 class FormConstantCanonicalComponentView
     : public std::ranges::range_adaptor_closure<
-          FormConstantCanonicalComponentView<Grid>> {
+          FormConstantCanonicalComponentView<GSHGrid>> {
   using Int = std::ptrdiff_t;
 
  public:
-  FormConstantCanonicalComponentView(std::shared_ptr<Grid> grid, Int n)
+  FormConstantCanonicalComponentView(GSHGrid grid, Int n)
       : _grid{std::move(grid)}, _n{n} {
-    assert(std::ranges::contains(_grid->UpperIndices(), _n));
+    assert(std::ranges::contains(_grid.UpperIndices(), _n));
   }
 
   template <std::ranges::view View>
@@ -304,7 +297,7 @@ class FormConstantCanonicalComponentView
   }
 
  private:
-  std::shared_ptr<Grid> _grid;
+  GSHGrid _grid;
   Int _n;
 };
 
@@ -331,7 +324,7 @@ template <typename Derived, typename Function>
 auto CanonicalComponentViewUnary(const CanonicalComponentBase<Derived>& v,
                                  Function f) {
   return v.View() | std::ranges::views::transform(f) |
-         FormCanonicalComponentView(v.GridPointer(), v.UpperIndex());
+         FormCanonicalComponentView(v.Grid(), v.UpperIndex());
 }
 
 template <typename Derived>
@@ -348,7 +341,7 @@ template <typename Derived>
 auto real(CanonicalComponentBase<Derived>& v) {
   using T = std::ranges::range_value_t<CanonicalComponentBase<Derived>>;
   if constexpr (RealFloatingPoint<T>) {
-    return CanonicalComponentView(v.GridPointer(), v.UpperIndex(), v.View());
+    return CanonicalComponentView(v.Grid(), v.UpperIndex(), v.View());
   } else {
     return CanonicalComponentViewUnary(v, [](auto x) { return std::real(x); });
   }
@@ -364,7 +357,7 @@ auto imag(CanonicalComponentBase<Derived>& v) {
   using T = std::ranges::range_value_t<CanonicalComponentBase<Derived>>;
   if constexpr (RealFloatingPoint<T>) {
     return std::ranges::views::repeat(T{0}, v.size()) |
-           FormCanonicalComponentView(v.GridPointer(), v.UpperIndex());
+           FormCanonicalComponentView(v.Grid(), v.UpperIndex());
   } else {
     return CanonicalComponentViewUnary(v, [](auto x) { return std::imag(x); });
   }
@@ -379,7 +372,7 @@ template <typename Derived>
 auto conj(const CanonicalComponentBase<Derived>& v) {
   using T = std::ranges::range_value_t<CanonicalComponentBase<Derived>>;
   if constexpr (RealFloatingPoint<T>) {
-    return CanonicalComponentView(v.GridPointer(), v.UpperIndex(), v.View());
+    return CanonicalComponentView(v.Grid(), v.UpperIndex(), v.View());
   } else {
     return CanonicalComponentViewUnary(v, [](auto x) { return std::conj(x); });
   }
@@ -502,7 +495,7 @@ auto CanonicalComponentViewBinary(Function f,
                                   CanonicalComponentBase<Derived1>& v1,
                                   CanonicalComponentBase<Derived2>& v2) {
   return std::ranges::zip_transform_view(f, v1.View(), v2.View()) |
-         FormCanonicalComponentView(v1.GridPointer(), v1.UpperIndex());
+         FormCanonicalComponentView(v1.Grid(), v1.UpperIndex());
 }
 
 template <typename Derived1, typename Derived2>
@@ -582,7 +575,7 @@ template <typename Derived>
 auto Integrate(const CanonicalComponentBase<Derived>& v) {
   using T = std::ranges::range_value_t<CanonicalComponentBase<Derived>>;
   return std::ranges::fold_left(
-      std::ranges::views::zip(v.GridPointer()->Weights(), v.View()), T{0},
+      std::ranges::views::zip(v.Grid().Weights(), v.View()), T{0},
       [](auto acc, auto term) {
         auto [w, val] = term;
         return acc + val * w;

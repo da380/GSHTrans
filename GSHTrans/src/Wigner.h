@@ -16,8 +16,8 @@
 
 namespace GSHTrans {
 
-template <RealFloatingPoint Real, OrderIndexRange MRange = All,
-          Normalisation Norm = Ortho, IndexRange NRange = Single,
+template <RealFloatingPoint Real, Normalisation Norm = Ortho,
+          OrderIndexRange MRange = All, IndexRange NRange = Single,
           AngleIndexRange AngleRange = Single,
           MatrixStorage Storage = ColumnMajor>
 class Wigner {

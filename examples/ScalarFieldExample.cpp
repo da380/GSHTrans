@@ -24,7 +24,7 @@ int main() {
   auto lMax = 4;
   auto nMax = 2;
 
-  auto grid = std::make_shared<Grid>(lMax, lMax);
+  auto grid = Grid(lMax, lMax);
 
   auto f = [](auto theta, auto phi) {
     auto ii = Complex(0, 1);
@@ -33,9 +33,9 @@ int main() {
     return fac * std::sin(theta) * std::exp(ii * phi);
   };
 
-  auto data = std::vector<Complex>(grid->ComponentSize());
-  auto y = grid->InterpolateFunction(f) | FormCanonicalComponentView(grid, 0);
+  auto data = std::vector<Complex>(grid.ComponentSize());
+  auto y = grid.InterpolateFunction(f) | FormCanonicalComponentView(grid, 0);
   auto x = CanonicalComponent<Grid, ComplexValued>(grid, 0, f);
 
-  std::cout << Integrate((x - 1) * conj(y)) << std::endl;
+  std::cout << Integrate((x)*conj(y)) << std::endl;
 }

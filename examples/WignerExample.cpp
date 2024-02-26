@@ -22,7 +22,7 @@ int main() {
 
   auto theta = double(1);
 
-  auto d = Wigner<double, All, Ortho, Single, Single, ColumnMajor>(lMax, mMax,
+  auto d = Wigner<double, Ortho, All, Single, Single, ColumnMajor>(lMax, mMax,
                                                                    nMax, theta);
 
   for (auto l : d.Degrees()) {
