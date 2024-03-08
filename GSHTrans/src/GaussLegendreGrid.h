@@ -125,7 +125,8 @@ class GaussLegendreGrid
     requires std::same_as<RemoveComplex<std::ranges::range_value_t<OutRange>>,
                           Real>;
   }
-  void ForwardTransformation(Int lMax, Int n, InRange&& in, OutRange& out) {
+  void ForwardTransformation(Int lMax, Int n, InRange&& in,
+                             OutRange& out) const {
     // Get scalar type for field.
     using Scalar = std::ranges::range_value_t<InRange>;
 
@@ -238,7 +239,8 @@ class GaussLegendreGrid
     requires std::same_as<RemoveComplex<std::ranges::range_value_t<OutRange>>,
                           Real>;
   }
-  void InverseTransformation(Int lMax, Int n, InRange&& in, OutRange& out) {
+  void InverseTransformation(Int lMax, Int n, InRange&& in,
+                             OutRange& out) const {
     // Get scalar type for field.
     using Scalar = std::ranges::range_value_t<OutRange>;
 
