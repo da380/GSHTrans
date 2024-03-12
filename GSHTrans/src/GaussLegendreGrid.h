@@ -1,7 +1,8 @@
 #ifndef GSH_TRANS_GAUSS_LEGENDRE_GRID_GUARD_H
 #define GSH_TRANS_GAUSS_LEGENDRE_GRID_GUARD_H
 
-#include <FFTWpp/All>
+#include <FFTWpp/Core>
+#include <FFTWpp/Ranges>
 #include <GaussQuad/All>
 #include <algorithm>
 #include <cassert>
@@ -39,7 +40,7 @@ class GaussLegendreGrid
   // Constructors.
   GaussLegendreGrid() = default;
 
-  GaussLegendreGrid(int lMax, int nMax, FFTWpp::PlanFlag flag = FFTWpp::Measure)
+  GaussLegendreGrid(int lMax, int nMax, FFTWpp::Flag flag = FFTWpp::Measure)
       : _lMax{lMax}, _nMax{nMax} {
     // Check the inputs.
     assert(MaxDegree() >= 0);
@@ -51,7 +52,7 @@ class GaussLegendreGrid
         GaussQuad::LegendrePolynomial<Real>{}.GaussQuadrature(_lMax + 1));
 
     _quadPointer->Transform([](auto x) { return std::acos(-x); },
-                            [](auto x) { return 1; });
+                            [](auto x) -> Real { return 1; });
 
     //  Get the Winger values.
     _wignerPointer = std::make_shared<WignerType>(_lMax, _lMax, _nMax,
@@ -59,20 +60,17 @@ class GaussLegendreGrid
 
     if (_lMax > 0) {
       // Generate wisdom for FFTs.
-      auto in =
-          FFTWpp::DataLayout(1, std::vector{this->NumberOfLongitudes()}, 1,
-                             std::vector{this->NumberOfLongitudes()}, 1, 1);
+      auto nPhi = this->NumberOfLongitudes();
+      auto in = FFTWpp::Ranges::Layout(nPhi);
       {
         // Real to complex case.
-        auto out = FFTWpp::DataLayout(1, std::vector{_lMax + 1}, 1,
-                                      std::vector{_lMax + 1}, 1, 1);
-        FFTWpp::GenerateWisdom<Real, Complex, true>(in, out, flag);
+        auto out = FFTWpp::Ranges::Layout(nPhi / 2 + 1);
+        FFTWpp::GenerateWisdom<Real, Complex>(in, out, flag, true, true);
       }
       {
         // Complex to complex case.
-        auto out = FFTWpp::DataLayout(1, std::vector{2 * _lMax}, 1,
-                                      std::vector{2 * _lMax}, 1, 1);
-        FFTWpp::GenerateWisdom<Complex, Complex, true>(in, out, flag);
+        auto out = FFTWpp::Ranges::Layout(nPhi);
+        FFTWpp::GenerateWisdom<Complex, Complex>(in, out, flag, true, true);
       }
     }
   }
@@ -152,18 +150,21 @@ class GaussLegendreGrid
     const auto scaleFactor = static_cast<Real>(2) * std::numbers::pi_v<Real> /
                              static_cast<Real>(nPhi);
 
-    // Allocate work array for FFTs set up the FFT plan.
-    auto inWork = FFTWpp::vector<Scalar>(nPhi);
-    auto inLayout =
-        FFTWpp::DataLayout(1, std::vector{nPhi}, 1, std::vector{nPhi}, 1, 1);
-    auto inView = FFTWpp::DataView(inWork.begin(), inWork.end(), inLayout);
-    auto outWorkSize = WorkSize<Scalar>();
-    auto outWork = FFTWpp::vector<Complex>(outWorkSize);
-    auto outLayout = FFTWpp::DataLayout(1, std::vector{outWorkSize}, 1,
-                                        std::vector{outWorkSize}, 1, 1);
-    auto outView = FFTWpp::DataView(outWork.begin(), outWork.end(), outLayout);
-    auto plan =
-        FFTWpp::Plan(inView, outView, FFTWpp::WisdomOnly, FFTWpp::Forward);
+    // Make the FFT plan.
+    auto [inSize, outSize] = FFTWpp::DataSize<Scalar, Complex>(nPhi);
+    auto inWork = FFTWpp::vector<Scalar>(inSize);
+    auto outWork = FFTWpp::vector<Complex>(outSize);
+    auto inView = FFTWpp::Ranges::View(inWork);
+    auto outView = FFTWpp::Ranges::View(outWork);
+    auto planFunction = [](auto in, auto out) {
+      if constexpr (ComplexFloatingPoint<Scalar>) {
+        return FFTWpp::Ranges::Plan(in, out, FFTWpp::WisdomOnly,
+                                    FFTWpp::Forward);
+      } else {
+        return FFTWpp::Ranges::Plan(in, out, FFTWpp::WisdomOnly);
+      }
+    };
+    auto plan = planFunction(inView, outView);
 
     // Loop over the colatitudes.
     for (auto iTheta : this->CoLatitudeIndices()) {
@@ -172,7 +173,7 @@ class GaussLegendreGrid
       auto inStart = std::next(in.begin(), offset);
       auto inFinish = std::next(inStart, nPhi);
       if constexpr (std::ranges::output_range<InRange, Scalar>) {
-        auto inView = FFTWpp::DataView(inStart, inFinish, inLayout);
+        auto inView = std::ranges::subrange(inStart, inFinish);
         plan.Execute(inView, outView);
       } else {
         std::copy(inStart, inFinish, inWork.begin());
@@ -270,18 +271,21 @@ class GaussLegendreGrid
     // Precompute constants
     const auto nPhi = this->NumberOfLongitudes();
 
-    // Set up for FFTs.
-    auto inWorkSize = WorkSize<Scalar>();
-    auto inWork = FFTWpp::vector<Complex>(inWorkSize);
-    auto inLayout = FFTWpp::DataLayout(1, std::vector{inWorkSize}, 1,
-                                       std::vector{inWorkSize}, 1, 1);
-    auto inView = FFTWpp::DataView(inWork.begin(), inWork.end(), inLayout);
-    auto outWork = FFTWpp::vector<Scalar>(nPhi);
-    auto outLayout =
-        FFTWpp::DataLayout(1, std::vector{nPhi}, 1, std::vector{nPhi}, 1, 1);
-    auto outView = FFTWpp::DataView(outWork.begin(), outWork.end(), outLayout);
-    auto plan =
-        FFTWpp::Plan(inView, outView, FFTWpp::WisdomOnly, FFTWpp::Backward);
+    // Make the FFT plan.
+    auto [inSize, outSize] = FFTWpp::DataSize<Complex, Scalar>(nPhi);
+    auto inWork = FFTWpp::vector<Complex>(inSize);
+    auto outWork = FFTWpp::vector<Scalar>(outSize);
+    auto inView = FFTWpp::Ranges::View(inWork);
+    auto outView = FFTWpp::Ranges::View(outWork);
+    auto planFunction = [](auto in, auto out) {
+      if constexpr (ComplexFloatingPoint<Scalar>) {
+        return FFTWpp::Ranges::Plan(in, out, FFTWpp::WisdomOnly,
+                                    FFTWpp::Backward);
+      } else {
+        return FFTWpp::Ranges::Plan(in, out, FFTWpp::WisdomOnly);
+      }
+    };
+    auto plan = planFunction(inView, outView);
 
     // Loop over the colatitudes.
     for (auto iTheta : this->CoLatitudeIndices()) {
@@ -321,7 +325,7 @@ class GaussLegendreGrid
       auto offset = iTheta * nPhi;
       auto outStart = std::next(out.begin(), offset);
       auto outFinish = std::next(outStart, nPhi);
-      auto outView = FFTWpp::DataView(outStart, outFinish, outLayout);
+      auto outView = std::ranges::subrange(outStart, outFinish);
       plan.Execute(inView, outView);
     }
   }

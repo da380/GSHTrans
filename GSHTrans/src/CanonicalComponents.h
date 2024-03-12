@@ -1,7 +1,7 @@
 #ifndef GSH_TRANS_CANONICAL_COMPONENTS_GUARD_H
 #define GSH_TRANS_CANONICAL_COMPONENTS_GUARD_H
 
-#include <FFTWpp/All>
+#include <FFTWpp/Core>
 #include <algorithm>
 #include <complex>
 #include <iostream>

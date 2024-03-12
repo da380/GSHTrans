@@ -1,7 +1,7 @@
 #ifndef CHECK_COEFF_2_COEFF_GUARD_H
 #define CHECK_COEFF_2_COEFF_GUARD_H
 
-#include <FFTWpp/All>
+#include <FFTWpp/Core>
 #include <GSHTrans/All>
 #include <algorithm>
 #include <cmath>
