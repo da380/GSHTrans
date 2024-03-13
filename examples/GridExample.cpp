@@ -75,12 +75,12 @@ int main() {
             std::ranges::views::transform([](auto x) { return x; }),
         glm);
 
-    auto errors = std::ranges::views::zip_transform(
-        [](auto x, auto y) { return std::abs(x - y); }, flm, glm);
+    auto error = std::ranges::max(std::ranges::views::zip_transform(
+        [](auto x, auto y) { return std::abs(x - y); }, flm, glm));
 
-    auto err = *std::ranges::max_element(errors);
+    ;
 
-    std::cout << lMaxGrid << " " << lMax << " " << n << " " << std::abs(err)
+    std::cout << lMaxGrid << " " << lMax << " " << n << " " << error
               << std::endl;
   }
 

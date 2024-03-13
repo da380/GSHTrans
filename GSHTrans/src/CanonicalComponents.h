@@ -7,7 +7,6 @@
 #include <iostream>
 #include <ranges>
 
-#include "CanonicalBase.h"
 #include "Concepts.h"
 #include "GridBase.h"
 
@@ -18,21 +17,17 @@ namespace GSHTrans {
 //----------------------------------------------------------------//
 
 template <typename Derived>
-class CanonicalComponentBase
-    : public GridInterface<CanonicalComponentBase<Derived>> {
+class CanonicalComponentBase {
   using Int = std::ptrdiff_t;
 
  public:
-  // Methods required for CanonicalBase
+  // Data access methods.
   auto View() const { return _Derived().View(); }
   auto View() { return _Derived().View(); }
   auto begin() { return _Derived().View().begin(); }
   auto end() { return _Derived().View().end(); }
   auto size() { return _Derived().View().size(); }
-  auto UpperIndex() const { return _Derived().UpperIndex(); }
-  auto Grid() const { return _Derived().Grid(); }
 
-  //  Additional methods.
   auto operator()(Int iTheta, Int iPhi) const {
     auto i = iTheta * this->NumberOfLongitudes() + iPhi;
     return this->operator[](i);
@@ -46,6 +41,26 @@ class CanonicalComponentBase
     auto i = iTheta * this->NumberOfLongitudes() + iPhi;
     return this->operator[](i);
   }
+
+  // Grid access methods.
+  auto Grid() const { return _Derived().Grid(); }
+
+  auto UpperIndex() const { return _Derived().UpperIndex(); }
+  auto MaxDegree() const { return Grid().MaxDegree(); }
+
+  auto NumberOfCoLatitudes() const {
+    return _Derived().Grid().NumberOfCoLatitudes();
+  }
+  auto NumberOfLongitudes() const {
+    return _Derived().Grid().NumberOfLongitudes();
+  }
+  auto CoLatitudes() const { return Grid().CoLatitudes(); }
+  auto Longitudes() const { return Grid().Longitudes(); }
+  auto Points() const { return Grid().Points(); }
+
+  auto CoLatitudeIndices() const { return Grid().CoLatitudeIndices(); }
+  auto LongitudeIndices() const { return Grid().LongitudeIndices(); }
+  auto PointIndices() const { return Grid().PointIndices(); }
 
  private:
   auto& _Derived() const { return static_cast<const Derived&>(*this); }

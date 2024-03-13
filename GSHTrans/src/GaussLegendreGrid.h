@@ -65,12 +65,12 @@ class GaussLegendreGrid
       {
         // Real to complex case.
         auto out = FFTWpp::Ranges::Layout(nPhi / 2 + 1);
-        FFTWpp::GenerateWisdom<Real, Complex>(in, out, flag, true, true);
+        FFTWpp::GenerateWisdom<Real, Complex>(in, out, flag);
       }
       {
         // Complex to complex case.
         auto out = FFTWpp::Ranges::Layout(nPhi);
-        FFTWpp::GenerateWisdom<Complex, Complex>(in, out, flag, true, true);
+        FFTWpp::GenerateWisdom<Complex, Complex>(in, out, flag);
       }
     }
   }
@@ -83,6 +83,9 @@ class GaussLegendreGrid
 
   GaussLegendreGrid& operator=(GaussLegendreGrid&&) = default;
 
+  //------------------------------------------------//
+  //    Methods needed to inherit from GridBase     //
+  //------------------------------------------------//
   auto MaxDegree() const { return _lMax; }
   auto MaxUpperIndex() const { return _nMax; }
 
@@ -93,16 +96,14 @@ class GaussLegendreGrid
     return std::ranges::views::all(_quadPointer->Weights());
   }
 
-  auto LongitudeSpacing() const {
-    return 2 * std::numbers::pi_v<Real> / static_cast<Real>(2 * _lMax);
-  }
   auto Longitudes() const {
-    auto dPhi = LongitudeSpacing();
+    auto dPhi = 2 * std::numbers::pi_v<Real> / static_cast<Real>(2 * _lMax);
     return std::ranges::views::iota(0, 2 * _lMax) |
            std::ranges::views::transform([dPhi](auto i) { return i * dPhi; });
   }
   auto LongitudeWeights() const {
-    auto dPhi = LongitudeSpacing();
+    auto dPhi = 2 * std::numbers::pi_v<Real> / static_cast<Real>(2 * _lMax);
+    ;
     return std::ranges::views::repeat(dPhi, 2 * _lMax);
   }
 
