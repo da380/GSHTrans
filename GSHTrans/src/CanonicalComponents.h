@@ -17,7 +17,8 @@ namespace GSHTrans {
 //----------------------------------------------------------------//
 
 template <typename Derived>
-class CanonicalComponentBase {
+class CanonicalComponentBase
+    : public std::ranges::view_interface<CanonicalComponentBase<Derived>> {
   using Int = std::ptrdiff_t;
 
  public:
@@ -26,9 +27,8 @@ class CanonicalComponentBase {
   auto View() { return _Derived().View(); }
   auto begin() { return _Derived().View().begin(); }
   auto end() { return _Derived().View().end(); }
-  auto size() { return _Derived().View().size(); }
 
-  auto operator()(Int iTheta, Int iPhi) const {
+  auto& operator()(Int iTheta, Int iPhi) const {
     auto i = iTheta * this->NumberOfLongitudes() + iPhi;
     return this->operator[](i);
   }
@@ -183,9 +183,7 @@ requires requires() {
                         typename GSHGrid::real_type>;
 }
 class CanonicalComponentView
-    : public CanonicalComponentBase<CanonicalComponentView<GSHGrid, DataView>>,
-      public std::ranges::view_interface<
-          CanonicalComponentView<GSHGrid, DataView>> {
+    : public CanonicalComponentBase<CanonicalComponentView<GSHGrid, DataView>> {
   using Int = std::ptrdiff_t;
   using Real = typename GSHGrid::real_type;
   using Scalar = std::ranges::range_value_t<DataView>;
