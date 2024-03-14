@@ -27,7 +27,7 @@ int main() {
   auto grid = Grid(lMax, lMax);
 
   auto f = [](auto theta, auto phi) {
-    auto ii = Complex(0, 1);
+    constexpr auto ii = Complex(0, 1);
     auto fac = std::sqrt(static_cast<Real>(3) / static_cast<Real>(8)) *
                std::numbers::inv_sqrtpi_v<Real>;
     return fac * std::sin(theta) * std::exp(ii * phi);
@@ -37,9 +37,10 @@ int main() {
   auto y = grid.InterpolateFunction(f) | FormCanonicalComponentView(grid, 0);
   auto x = CanonicalComponent<Grid, ComplexValued>(grid, 0, f);
 
-  auto z = y + x * x / 2;
+  x(2, 1) = 2;
+  auto z = 2 * x;
 
   std::cout << Integrate(z * conj(y)) << std::endl;
 
-  // std::cout << y(1, 2) << std::endl;
+  std::cout << z(1, 2) << std::endl;
 }

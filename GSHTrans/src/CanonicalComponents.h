@@ -17,20 +17,20 @@ namespace GSHTrans {
 //----------------------------------------------------------------//
 
 template <typename Derived>
-class CanonicalComponentBase
-    : public std::ranges::view_interface<CanonicalComponentBase<Derived>> {
+class CanonicalComponentBase {
   using Int = std::ptrdiff_t;
 
  public:
   // Data access methods.
   auto View() const { return _Derived().View(); }
   auto View() { return _Derived().View(); }
+
   auto begin() { return _Derived().View().begin(); }
   auto end() { return _Derived().View().end(); }
 
-  auto& operator()(Int iTheta, Int iPhi) const {
+  auto operator()(Int iTheta, Int iPhi) const {
     auto i = iTheta * this->NumberOfLongitudes() + iPhi;
-    return this->operator[](i);
+    return _Derived()[i];
   }
 
   auto& operator()(Int iTheta, Int iPhi)
@@ -39,7 +39,7 @@ class CanonicalComponentBase
       std::ranges::range_value_t<typename Derived::view_type>>
   {
     auto i = iTheta * this->NumberOfLongitudes() + iPhi;
-    return this->operator[](i);
+    return _Derived()[i];
   }
 
   // Grid access methods.
@@ -90,6 +90,8 @@ class CanonicalComponent
   auto Grid() const { return _grid; }
   auto View() { return std::ranges::views::all(_data); }
   auto View() const { return std::ranges::views::all(_data); }
+  auto operator[](Int i) const { return _data[i]; }
+  auto& operator[](Int i) { return _data[i]; }
 
   // Constructors and assignement operators.
   CanonicalComponent() = default;
@@ -183,7 +185,9 @@ requires requires() {
                         typename GSHGrid::real_type>;
 }
 class CanonicalComponentView
-    : public CanonicalComponentBase<CanonicalComponentView<GSHGrid, DataView>> {
+    : public CanonicalComponentBase<CanonicalComponentView<GSHGrid, DataView>>,
+      public std::ranges::view_interface<
+          CanonicalComponentView<GSHGrid, DataView>> {
   using Int = std::ptrdiff_t;
   using Real = typename GSHGrid::real_type;
   using Scalar = std::ranges::range_value_t<DataView>;
@@ -197,6 +201,8 @@ class CanonicalComponentView
   auto Grid() const { return _grid; }
   auto View() { return _view; }
   auto View() const { return _view; }
+  auto operator[](Int i) const { return _view[i]; }
+  auto& operator[](Int i) { return _view[i]; }
 
   // Constructors and assigment operators.
   CanonicalComponentView() = default;
