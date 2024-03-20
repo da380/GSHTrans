@@ -337,15 +337,6 @@ class GaussLegendreGrid
 
   std::shared_ptr<QuadType> _quadPointer;
   std::shared_ptr<WignerType> _wignerPointer;
-
-  template <RealOrComplexFloatingPoint Scalar>
-  auto WorkSize() const {
-    if constexpr (RealFloatingPoint<Scalar>) {
-      return _lMax + 1;
-    } else {
-      return 2 * _lMax;
-    }
-  }
 };
 
 }  // namespace GSHTrans

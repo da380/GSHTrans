@@ -71,18 +71,19 @@ class CanonicalComponentBase {
 //             Canonical component storing its data               //
 //----------------------------------------------------------------//
 
-template <typename GSHGrid, RealOrComplexValued Type>
-requires std::derived_from<GSHGrid, GridBase<GSHGrid>>
+template <typename _Grid, RealOrComplexValued Type>
+requires std::derived_from<_Grid, GridBase<_Grid>>
 class CanonicalComponent
-    : public CanonicalComponentBase<CanonicalComponent<GSHGrid, Type>> {
+    : public CanonicalComponentBase<CanonicalComponent<_Grid, Type>> {
   using Int = std::ptrdiff_t;
   using Scalar = std::conditional_t<std::same_as<Type, RealValued>,
-                                    typename GSHGrid::real_type,
-                                    typename GSHGrid::complex_type>;
+                                    typename _Grid::real_type,
+                                    typename _Grid::complex_type>;
   using Vector = FFTWpp::vector<Scalar>;
 
  public:
-  using grid_type = GSHGrid;
+  using grid_type = _Grid;
+  using real_or_complex_type = Type;
   using view_type = std::ranges::views::all_t<Vector>;
 
   // Methods required for CanonicalComponentBase.
@@ -96,19 +97,19 @@ class CanonicalComponent
   // Constructors and assignement operators.
   CanonicalComponent() = default;
 
-  CanonicalComponent(GSHGrid grid, Int n)
+  CanonicalComponent(_Grid grid, Int n)
       : _grid{grid}, _n{n}, _data{Vector(_grid.ComponentSize())} {
     assert(std::ranges::contains(this->Grid().UpperIndices(), _n));
   }
 
-  CanonicalComponent(GSHGrid grid, Int n, Scalar s)
+  CanonicalComponent(_Grid grid, Int n, Scalar s)
       : _grid{grid}, _n{n}, _data{Vector(_grid.ComponentSize(), s)} {
     assert(std::ranges::contains(this->Grid().UpperIndices(), _n));
   }
 
   template <typename Function>
-  requires ScalarFunction2D<Function, typename GSHGrid::real_type, Scalar>
-  CanonicalComponent(GSHGrid grid, Int n, Function f)
+  requires ScalarFunction2D<Function, typename _Grid::real_type, Scalar>
+  CanonicalComponent(_Grid grid, Int n, Function f)
       : CanonicalComponent(grid, n) {
     std::ranges::copy(_grid.InterpolateFunction(f), _data.begin());
   }
@@ -152,7 +153,7 @@ class CanonicalComponent
   }
 
  private:
-  GSHGrid _grid;
+  _Grid _grid;
   Int _n;
   Vector _data;
 };
@@ -160,41 +161,44 @@ class CanonicalComponent
 // Deduction guide for construction from another base type.
 template <typename Derived>
 CanonicalComponent(CanonicalComponentBase<Derived>& other)
-    -> CanonicalComponent<
-        typename Derived::grid_type,
-        std::conditional_t<RealFloatingPoint<std::ranges::range_value_t<
-                               typename Derived::view_type>>,
-                           RealValued, ComplexValued>>;
+    -> CanonicalComponent<typename Derived::grid_type,
+                          typename Derived::real_or_complex_type>;
+
+template <typename Derived>
+CanonicalComponent(CanonicalComponentBase<Derived>&& other)
+    -> CanonicalComponent<typename Derived::grid_type,
+                          typename Derived::real_or_complex_type>;
 
 // Type aliases for real and complex valued components.
-template <typename GSHGrid>
-using RealCanonicalComponent = CanonicalComponent<GSHGrid, RealValued>;
+template <typename _Grid>
+using RealCanonicalComponent = CanonicalComponent<_Grid, RealValued>;
 
-template <typename GSHGrid>
-using ComplexCanonicalComponent = CanonicalComponent<GSHGrid, ComplexValued>;
+template <typename _Grid>
+using ComplexCanonicalComponent = CanonicalComponent<_Grid, ComplexValued>;
 
 //----------------------------------------------------------------//
 //            Canonical component with view to its data           //
 //----------------------------------------------------------------//
 
-template <typename GSHGrid, std::ranges::view DataView>
+template <typename _Grid, std::ranges::view _View>
 requires requires() {
-  requires std::derived_from<GSHGrid, GridBase<GSHGrid>>;
-  requires std::ranges::input_range<DataView>;
-  requires std::same_as<RemoveComplex<std::ranges::range_value_t<DataView>>,
-                        typename GSHGrid::real_type>;
+  requires std::derived_from<_Grid, GridBase<_Grid>>;
+  requires std::ranges::input_range<_View>;
+  requires std::same_as<RemoveComplex<std::ranges::range_value_t<_View>>,
+                        typename _Grid::real_type>;
 }
 class CanonicalComponentView
-    : public CanonicalComponentBase<CanonicalComponentView<GSHGrid, DataView>>,
-      public std::ranges::view_interface<
-          CanonicalComponentView<GSHGrid, DataView>> {
+    : public CanonicalComponentBase<CanonicalComponentView<_Grid, _View>>,
+      public std::ranges::view_interface<CanonicalComponentView<_Grid, _View>> {
   using Int = std::ptrdiff_t;
-  using Real = typename GSHGrid::real_type;
-  using Scalar = std::ranges::range_value_t<DataView>;
+  using Real = typename _Grid::real_type;
+  using Scalar = std::ranges::range_value_t<_View>;
 
  public:
-  using view_type = DataView;
-  using grid_type = GSHGrid;
+  using view_type = _View;
+  using real_or_complex_type =
+      std::conditional_t<RealFloatingPoint<Scalar>, RealValued, ComplexValued>;
+  using grid_type = _Grid;
 
   // Methods required for CanonicalComponentBase.
   auto UpperIndex() const { return _n; }
@@ -207,7 +211,7 @@ class CanonicalComponentView
   // Constructors and assigment operators.
   CanonicalComponentView() = default;
 
-  CanonicalComponentView(GSHGrid grid, Int n, DataView view)
+  CanonicalComponentView(_Grid grid, Int n, _View view)
       : _grid{std::move(grid)}, _n{n}, _view{std::move(view)} {
     assert(std::ranges::contains(this->Grid().UpperIndices(), _n));
   }
@@ -220,12 +224,14 @@ class CanonicalComponentView
 
   template <typename Derived>
   requires requires() {
-    requires std::ranges::output_range<DataView, Scalar>;
+    requires std::ranges::output_range<_View, Scalar>;
     requires std::convertible_to<std::ranges::range_value_t<Derived>, Scalar>;
   }
   CanonicalComponentView& operator=(
       const CanonicalComponentBase<Derived>& other) {
-    assert(other.View().size() == this->size());
+    assert(other.size() == this->size());
+    assert(
+        std::ranges::contains(this->Grid().UpperIndices(), other.UpperIndex()));
     std::ranges::copy(other.View() | std::ranges::views::transform(
                                          [](auto x) -> Scalar { return x; }),
                       _view.begin());
@@ -240,7 +246,7 @@ class CanonicalComponentView
   }
 
   CanonicalComponentView& operator=(Scalar s)
-  requires std::ranges::output_range<DataView, Scalar>
+  requires std::ranges::output_range<_View, Scalar>
   {
     std::ranges::copy(std::ranges::views::repeat(s, this->size()),
                       _view.begin());
@@ -248,25 +254,25 @@ class CanonicalComponentView
   }
 
  private:
-  GSHGrid _grid;
+  _Grid _grid;
   Int _n;
-  DataView _view;
+  _View _view;
 };
 
 // Deduction guide to allow construction from ranges.
-template <typename GSHGrid, std::ranges::viewable_range R>
-CanonicalComponentView(GSHGrid, R&&)
-    -> CanonicalComponentView<GSHGrid, std::ranges::views::all_t<R>>;
+template <typename _Grid, std::ranges::viewable_range R>
+CanonicalComponentView(_Grid, std::ptrdiff_t, R&&)
+    -> CanonicalComponentView<_Grid, std::ranges::views::all_t<R>>;
 
 // Range adaptors to form CanonicalComponentView from a view.
-template <typename GSHGrid>
-requires std::derived_from<GSHGrid, GridBase<GSHGrid>>
+template <typename _Grid>
+requires std::derived_from<_Grid, GridBase<_Grid>>
 class FormCanonicalComponentView : public std::ranges::range_adaptor_closure<
-                                       FormCanonicalComponentView<GSHGrid>> {
+                                       FormCanonicalComponentView<_Grid>> {
   using Int = std::ptrdiff_t;
 
  public:
-  FormCanonicalComponentView(GSHGrid grid, Int n)
+  FormCanonicalComponentView(_Grid grid, Int n)
       : _grid{std::move(grid)}, _n{n} {
     assert(std::ranges::contains(_grid.UpperIndices(), _n));
   }
@@ -277,20 +283,20 @@ class FormCanonicalComponentView : public std::ranges::range_adaptor_closure<
   }
 
  private:
-  GSHGrid _grid;
+  _Grid _grid;
   Int _n;
 };
 
 // Range adaptors to form a constant CanonicalComponentView from a view.
-template <typename GSHGrid>
-requires std::derived_from<GSHGrid, GridBase<GSHGrid>>
+template <typename _Grid>
+requires std::derived_from<_Grid, GridBase<_Grid>>
 class FormConstantCanonicalComponentView
     : public std::ranges::range_adaptor_closure<
-          FormConstantCanonicalComponentView<GSHGrid>> {
+          FormConstantCanonicalComponentView<_Grid>> {
   using Int = std::ptrdiff_t;
 
  public:
-  FormConstantCanonicalComponentView(GSHGrid grid, Int n)
+  FormConstantCanonicalComponentView(_Grid grid, Int n)
       : _grid{std::move(grid)}, _n{n} {
     assert(std::ranges::contains(_grid.UpperIndices(), _n));
   }
@@ -301,7 +307,7 @@ class FormConstantCanonicalComponentView
   }
 
  private:
-  GSHGrid _grid;
+  _Grid _grid;
   Int _n;
 };
 

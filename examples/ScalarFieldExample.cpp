@@ -14,17 +14,17 @@ int main() {
   using namespace GSHTrans;
   using Real = double;
   using Complex = std::complex<Real>;
-  using Scalar = Complex;
+  using Scalar = Real;
   using MRange = All;
   using NRange = All;
   using Vector = std::vector<Scalar>;
 
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
 
-  auto lMax = 4;
-  auto nMax = 2;
+  auto lMax = 8;
+  auto nMax = 1;
 
-  auto grid = Grid(lMax, lMax);
+  auto grid = Grid(lMax, nMax);
 
   auto f = [](auto theta, auto phi) {
     constexpr auto ii = Complex(0, 1);
@@ -40,7 +40,16 @@ int main() {
   x(2, 1) = 2;
   auto z = 2 * x;
 
+  auto x2 = CanonicalComponent(2 * x);
+
   std::cout << Integrate(z * conj(y)) << std::endl;
 
-  std::cout << z(1, 2) << std::endl;
+  std::cout << z(1, 2) - x2(1, 2) << std::endl;
+
+  auto flm =
+      ComplexCanonicalCoefficient(grid, 1, [](auto l, auto m) { return 1; });
+
+  auto glm = imag(-flm);
+
+  for (auto val : glm) std::cout << val << std::endl;
 }
