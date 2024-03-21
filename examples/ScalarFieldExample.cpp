@@ -22,14 +22,16 @@ int main() {
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
 
   auto lMax = 8;
-  auto nMax = 1;
+  auto nMax = 0;
 
   auto grid = Grid(lMax, nMax);
 
-  auto x = CanonicalComponent<Grid, ComplexValued>(grid, 0, 1);
+  auto x =
+      Testing::Component<Grid, Testing::Coefficient, Testing::RealValued>(grid);
 
-  x(2, 1) = 2;
-  auto z = x * 2.0;
+  for (auto val : x) std::cout << val << std::endl;
 
-  for (auto val : z) std::cout << val << std::endl;
+  // auto x = Component<Grid, RealValued>(grid);
+
+  // std::cout << x.UpperIndex() << std::endl;
 }

@@ -80,12 +80,12 @@ class GridBase {
   }
 
   auto RealCoefficientSize(Int n) const {
-    auto lMax = this->MaxDegree();
+    auto lMax = _Derived().MaxDegree();
     return GSHIndices<NonNegative>(lMax, lMax, n).size();
   }
 
   auto ComplexCoefficientSize(Int n) const {
-    auto lMax = this->MaxDegree();
+    auto lMax = _Derived().MaxDegree();
     return GSHIndices<All>(lMax, lMax, n).size();
   }
 

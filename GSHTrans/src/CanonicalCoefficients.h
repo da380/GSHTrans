@@ -14,6 +14,8 @@
 
 namespace GSHTrans {
 
+/*
+
 //---------------------------------------------//
 //             Define the base class           //
 //---------------------------------------------//
@@ -398,6 +400,8 @@ template <typename Derived, Field S>
 auto operator*(S s, CanonicalCoefficientBase<Derived>&& v) {
   return v * s;
 }
+
+*/
 
 }  // namespace GSHTrans
 

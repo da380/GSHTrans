@@ -12,6 +12,8 @@
 
 namespace GSHTrans {
 
+/*
+
 //----------------------------------------------------------------//
 //                      Define the base class                     //
 //----------------------------------------------------------------//
@@ -598,6 +600,8 @@ template <typename Derived>
 auto Integrate(CanonicalComponentBase<Derived>&& v) {
   return Integrate(v);
 }
+
+*/
 
 }  // namespace GSHTrans
 
