@@ -205,8 +205,8 @@ class CanonicalComponentView
   auto Grid() const { return _grid; }
   auto View() { return _view; }
   auto View() const { return _view; }
-  auto operator[](Int i) const { return _view[i]; }
-  auto& operator[](Int i) { return _view[i]; }
+  // auto operator[](Int i) const { return _view[i]; }
+  // auto& operator[](Int i) { return _view[i]; }
 
   // Constructors and assigment operators.
   CanonicalComponentView() = default;
@@ -412,7 +412,9 @@ auto operator*(CanonicalComponentBase<Derived>& v, S s) {
       CanonicalComponentDetails::ReturnValue<S,
                                              std::ranges::range_value_t<View>>;
   auto t = T(s);
-  return CanonicalComponentViewUnary(v, [t](auto x) { return t * x; });
+  std::cout << "----------------\n";
+  std::cout << t << std::endl;
+  return CanonicalComponentViewUnary(v, [&t](auto x) { return t * x; });
 }
 
 template <typename Derived, Field S>

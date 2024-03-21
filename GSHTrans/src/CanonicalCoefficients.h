@@ -174,7 +174,7 @@ template <typename _Grid, RealOrComplexValued Type, std::ranges::view _View>
 requires requires() {
   requires std::derived_from<_Grid, GridBase<_Grid>>;
   requires std::ranges::input_range<_View>;
-  requires ComplexFloatingPoint<std::ranges::range_value_t<_View>>;
+  // requires ComplexFloatingPoint<std::ranges::range_value_t<_View>>;
   requires std::same_as<RemoveComplex<std::ranges::range_value_t<_View>>,
                         typename _Grid::real_type>;
 }
@@ -330,8 +330,7 @@ auto operator-(CanonicalCoefficientBase<Derived>&& v) {
 template <typename Derived>
 auto real(CanonicalCoefficientBase<Derived>& v) {
   using S = std::ranges::range_value_t<CanonicalCoefficientBase<Derived>>;
-  return CanonicalCoefficientViewUnary(
-      v, [](auto x) { return S(std::real(x), 0); });
+  return CanonicalCoefficientViewUnary(v, [](auto x) { return std::real(x); });
 }
 
 template <typename Derived>
@@ -342,13 +341,62 @@ auto real(CanonicalCoefficientBase<Derived>&& v) {
 template <typename Derived>
 auto imag(CanonicalCoefficientBase<Derived>& v) {
   using S = std::ranges::range_value_t<CanonicalCoefficientBase<Derived>>;
-  return CanonicalCoefficientViewUnary(
-      v, [](auto x) { return S(std::imag(x), 0); });
+  return CanonicalCoefficientViewUnary(v, [](auto x) { return std::imag(x); });
 }
 
 template <typename Derived>
 auto imag(CanonicalCoefficientBase<Derived>&& v) {
   return imag(v);
+}
+
+template <typename Derived>
+auto conj(const CanonicalCoefficientBase<Derived>& v) {
+  return CanonicalCoefficientViewUnary(v, [](auto x) { return std::conj(x); });
+}
+
+template <typename Derived>
+auto conj(CanonicalCoefficientBase<Derived>&& v) {
+  return conj(v);
+}
+
+template <typename Derived>
+auto abs(CanonicalCoefficientBase<Derived>& v) {
+  return CanonicalCoefficientViewUnary(v, [](auto x) { return std::abs(x); });
+}
+
+template <typename Derived>
+auto abs(CanonicalCoefficientBase<Derived>&& v) {
+  return abs(v);
+}
+
+// Unary operations involving a scalar.
+
+template <typename Derived, Field S>
+auto operator*(CanonicalCoefficientBase<Derived>& v, S s) {
+  using T = std::ranges::range_value_t<CanonicalCoefficientBase<Derived>>;
+  using R =
+      std::conditional_t<ComplexFloatingPoint<T>, T,
+                         std::conditional_t<ComplexFloatingPoint<S>, S, T>>;
+  auto r = R(s);
+  return CanonicalCoefficientViewUnary(v, [r](auto x) {
+    std::cout << r << " " << x << std::endl;
+    return r * x;
+  });
+}
+
+template <typename Derived, Field S>
+auto operator*(CanonicalCoefficientBase<Derived>&& v, S s) {
+  return v * s;
+}
+
+template <typename Derived, Field S>
+auto operator*(S s, CanonicalCoefficientBase<Derived>& v) {
+  return v * s;
+}
+
+template <typename Derived, Field S>
+auto operator*(S s, CanonicalCoefficientBase<Derived>&& v) {
+  return v * s;
 }
 
 }  // namespace GSHTrans
