@@ -29,9 +29,9 @@ int main() {
   auto x =
       Testing::Component<Grid, Testing::Coefficient, Testing::RealValued>(grid);
 
-  for (auto val : x) std::cout << val << std::endl;
+  for (auto& val : x) val = 1;
 
-  // auto x = Component<Grid, RealValued>(grid);
+  auto y = x + x;
 
-  // std::cout << x.UpperIndex() << std::endl;
+  for (auto val : y) std::cout << val << std::endl;
 }

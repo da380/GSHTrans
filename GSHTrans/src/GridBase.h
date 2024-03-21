@@ -9,52 +9,52 @@
 
 namespace GSHTrans {
 
-template <typename Derived>
+template <typename _Derived>
 class GridBase {
   using Int = std::ptrdiff_t;
 
  public:
   auto MinUpperIndex() const {
-    using NRange = Derived::NRange_type;
+    using NRange = _Derived::NRange;
     if constexpr (std::same_as<NRange, All>) {
-      return -_Derived().MaxUpperIndex();
+      return -Derived().MaxUpperIndex();
     }
     if constexpr (std::same_as<NRange, NonNegative>) {
       return Int{0};
     }
     if constexpr (std::same_as<NRange, Single>) {
-      return _Derived().MaxUpperIndex();
+      return Derived().MaxUpperIndex();
     }
   }
 
   auto UpperIndices() const {
     return std::ranges::views::iota(MinUpperIndex(),
-                                    _Derived().MaxUpperIndex() + 1);
+                                    Derived().MaxUpperIndex() + 1);
   }
 
-  auto NumberOfCoLatitudes() const { return _Derived().CoLatitudes().size(); }
+  auto NumberOfCoLatitudes() const { return Derived().CoLatitudes().size(); }
   auto CoLatitudeIndices() const {
     return std::ranges::views::iota(std::size_t{0}, NumberOfCoLatitudes());
   }
 
-  auto NumberOfLongitudes() const { return _Derived().Longitudes().size(); }
+  auto NumberOfLongitudes() const { return Derived().Longitudes().size(); }
   auto LongitudeIndices() const {
     return std::ranges::views::iota(std::size_t{0}, NumberOfLongitudes());
   }
 
   auto Points() const {
-    return std::ranges::views::cartesian_product(_Derived().CoLatitudes(),
-                                                 _Derived().Longitudes());
+    return std::ranges::views::cartesian_product(Derived().CoLatitudes(),
+                                                 Derived().Longitudes());
   }
 
   auto PointIndices() const {
-    return std::ranges::views::cartesian_product(_Derived().CoLatitudeIndices(),
-                                                 _Derived().LongitudeIndices());
+    return std::ranges::views::cartesian_product(Derived().CoLatitudeIndices(),
+                                                 Derived().LongitudeIndices());
   }
 
   auto Weights() const {
-    return std::ranges::views::cartesian_product(
-               _Derived().CoLatitudeWeights(), _Derived().LongitudeWeights()) |
+    return std::ranges::views::cartesian_product(Derived().CoLatitudeWeights(),
+                                                 Derived().LongitudeWeights()) |
            std::ranges::views::transform(
                [](auto pair) { return std::get<0>(pair) * std::get<1>(pair); });
   }
@@ -80,12 +80,12 @@ class GridBase {
   }
 
   auto RealCoefficientSize(Int n) const {
-    auto lMax = _Derived().MaxDegree();
+    auto lMax = Derived().MaxDegree();
     return GSHIndices<NonNegative>(lMax, lMax, n).size();
   }
 
   auto ComplexCoefficientSize(Int n) const {
-    auto lMax = _Derived().MaxDegree();
+    auto lMax = Derived().MaxDegree();
     return GSHIndices<All>(lMax, lMax, n).size();
   }
 
@@ -106,7 +106,7 @@ class GridBase {
       return Complex{dist(gen), dist(gen)};
     });
 
-    if (lMax == _Derived().MaxDegree()) {
+    if (lMax == Derived().MaxDegree()) {
       auto i = GSHIndices<All>(lMax, lMax, n).Index(lMax, lMax);
       range[i] = 0;
     }
@@ -134,15 +134,15 @@ class GridBase {
       auto i = indices.Index(l, 0);
       range[i].imag(0);
     }
-    if (lMax == _Derived().MaxDegree()) {
+    if (lMax == Derived().MaxDegree()) {
       auto i = indices.Index(lMax, lMax);
       range[i].imag(0);
     }
   }
 
  private:
-  auto& _Derived() const { return static_cast<const Derived&>(*this); }
-  auto& _Derived() { return static_cast<Derived&>(*this); }
+  auto& Derived() const { return static_cast<const _Derived&>(*this); }
+  auto& Derived() { return static_cast<_Derived&>(*this); }
 };
 
 }  // namespace GSHTrans

@@ -21,26 +21,28 @@
 
 namespace GSHTrans {
 
-template <RealFloatingPoint Real, OrderIndexRange MRange, IndexRange NRange>
+template <RealFloatingPoint _Real, OrderIndexRange _MRange, IndexRange _NRange>
 class GaussLegendreGrid
-    : public GridBase<GaussLegendreGrid<Real, MRange, NRange>> {
- private:
+    : public GridBase<GaussLegendreGrid<_Real, _MRange, _NRange>> {
+ public:
+  // Public type aliases.
   using Int = std::ptrdiff_t;
+  using Real = _Real;
   using Complex = std::complex<Real>;
+  using MRange = _MRange;
+  using NRange = _NRange;
 
-  using WignerType = Wigner<Real, Ortho, MRange, NRange, Multiple, ColumnMajor>;
+ private:
+  // Private type aliases.
+  using WignerType =
+      Wigner<Real, Ortho, _MRange, _NRange, Multiple, ColumnMajor>;
   using QuadType = GaussQuad::Quadrature1D<Real>;
 
  public:
-  using real_type = Real;
-  using complex_type = Complex;
-  using MRange_type = MRange;
-  using NRange_type = NRange;
-
   // Constructors.
   GaussLegendreGrid() = default;
 
-  GaussLegendreGrid(int lMax, int nMax, FFTWpp::Flag flag = FFTWpp::Measure)
+  GaussLegendreGrid(int lMax, int nMax, FFTWpp::Flag flag = FFTWpp::Estimate)
       : _lMax{lMax}, _nMax{nMax} {
     // Check the inputs.
     assert(MaxDegree() >= 0);
@@ -112,7 +114,7 @@ class GaussLegendreGrid
   //-----------------------------------------------------//
   template <std::ranges::range InRange, std::ranges::range OutRange>
   requires requires() {
-    requires(std::same_as<MRange, All> and
+    requires(std::same_as<_MRange, All> and
              ComplexFloatingPoint<std::ranges::range_value_t<InRange>>) or
                 RealFloatingPoint<std::ranges::range_value_t<InRange>>;
     requires std::ranges::input_range<InRange>;
@@ -205,7 +207,7 @@ class GaussLegendreGrid
           }
         } else {
           auto workIter = outWork.begin();
-          if constexpr (std::same_as<MRange, All>) {
+          if constexpr (std::same_as<_MRange, All>) {
             std::advance(wigIter, l);
           }
           for (auto m : dl.NonNegativeOrders()) {
@@ -233,7 +235,7 @@ class GaussLegendreGrid
     requires std::ranges::input_range<InRange>;
     requires std::same_as<RemoveComplex<std::ranges::range_value_t<InRange>>,
                           Real>;
-    requires(std::same_as<MRange, All> and
+    requires(std::same_as<_MRange, All> and
              ComplexFloatingPoint<std::ranges::range_value_t<OutRange>>) or
                 RealFloatingPoint<std::ranges::range_value_t<OutRange>>;
     requires std::ranges::output_range<OutRange,
@@ -313,7 +315,7 @@ class GaussLegendreGrid
           }
         } else {
           auto workIter = inWork.begin();
-          if constexpr (std::same_as<MRange, All>) {
+          if constexpr (std::same_as<_MRange, All>) {
             std::advance(wigIter, l);
           }
           for (auto m : dl.NonNegativeOrders()) {
