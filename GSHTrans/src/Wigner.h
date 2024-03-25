@@ -99,17 +99,17 @@ auto WignerMaxUpperIndex(Int l, Int m, Arguments<Real> &arg) {
 }  // namespace WignerDetails
 
 template <RealFloatingPoint Real, Normalisation Norm = Ortho,
-          OrderIndexRange MRange = All, IndexRange NRange = Single,
+          OrderIndexRange _MRange = All, IndexRange _NRange = Single,
           AngleIndexRange AngleRange = Single,
-          MatrixStorage Storage = ColumnMajor>
+          WignerStorage Storage = ColumnMajor>
 class Wigner {
   using Int = std::ptrdiff_t;
   using Vector = std::vector<Real>;
 
   template <std::ranges::view V>
   class SubView : public std::ranges::view_interface<SubView<V>>,
-                  public GSHSubIndices<MRange> {
-    using Indices = GSHSubIndices<MRange>;
+                  public GSHSubIndices<_MRange> {
+    using Indices = GSHSubIndices<_MRange>;
     using std::ranges::view_interface<SubView<V>>::size;
 
    public:
@@ -135,8 +135,8 @@ class Wigner {
 
   template <std::ranges::view V>
   class View : public std::ranges::view_interface<View<V>>,
-               public GSHIndices<MRange> {
-    using Indices = GSHIndices<MRange>;
+               public GSHIndices<_MRange> {
+    using Indices = GSHIndices<_MRange>;
     using std::ranges::view_interface<View<V>>::size;
 
    public:
@@ -169,6 +169,9 @@ class Wigner {
   };
 
  public:
+  using MRange = _MRange;
+  using NRange = _NRange;
+
   Wigner() = default;
 
   template <std::ranges::range Range>
@@ -189,9 +192,9 @@ class Wigner {
   auto NumberOfAngles() const { return _nTheta; }
 
   auto Degrees() const
-  requires std::same_as<NRange, Single>
+  requires std::same_as<_NRange, Single>
   {
-    return GSHIndices<MRange>(_lMax, _mMax, _nMax).Degrees();
+    return GSHIndices<_MRange>(_lMax, _mMax, _nMax).Degrees();
   }
 
   auto size() const { return _data.size(); }
@@ -199,9 +202,9 @@ class Wigner {
   auto end() { return _data.end(); }
 
   auto MinUpperIndex() const {
-    if constexpr (std::same_as<NRange, All>) {
+    if constexpr (std::same_as<_NRange, All>) {
       return -_nMax;
-    } else if constexpr (std::same_as<NRange, NonNegative>) {
+    } else if constexpr (std::same_as<_NRange, NonNegative>) {
       return Int{0};
     } else {
       return _nMax;
@@ -235,11 +238,11 @@ class Wigner {
   {
     auto upperIndices = UpperIndices() | std::ranges::views::filter(
                                              [n](auto np) { return np < n; });
-    auto size = GSHIndices<MRange>(_lMax, _mMax, n).size();
+    auto size = GSHIndices<_MRange>(_lMax, _mMax, n).size();
     auto offset =
         size * iTheta +
         std::ranges::fold_left(upperIndices, Int{0}, [this](auto acc, auto np) {
-          return acc + GSHIndices<MRange>(_lMax, _mMax, np).size();
+          return acc + GSHIndices<_MRange>(_lMax, _mMax, np).size();
         }) * NumberOfAngles();
     auto start = std::next(begin(), offset);
     auto finish = std::next(start, size);
@@ -250,19 +253,20 @@ class Wigner {
   auto operator()(Int n, Int iTheta)
   requires std::same_as<Storage, RowMajor>
   {
-    auto size = GSHIndices<MRange>(_lMax, _mMax, n).size();
-    auto offset = std::ranges::fold_left(
-                      UpperIndices(), Int{0},
-                      [this](auto acc, auto n) {
-                        return acc + GSHIndices<MRange>(_lMax, _mMax, n).size();
-                      }) *
-                      iTheta +
-                  std::ranges::fold_left(
-                      UpperIndices() | std::ranges::views::filter(
-                                           [n](auto np) { return np < n; }),
-                      Int{0}, [this](auto acc, auto n) {
-                        return acc + GSHIndices<MRange>(_lMax, _mMax, n).size();
-                      });
+    auto size = GSHIndices<_MRange>(_lMax, _mMax, n).size();
+    auto offset =
+        std::ranges::fold_left(
+            UpperIndices(), Int{0},
+            [this](auto acc, auto n) {
+              return acc + GSHIndices<_MRange>(_lMax, _mMax, n).size();
+            }) *
+            iTheta +
+        std::ranges::fold_left(
+            UpperIndices() |
+                std::ranges::views::filter([n](auto np) { return np < n; }),
+            Int{0}, [this](auto acc, auto n) {
+              return acc + GSHIndices<_MRange>(_lMax, _mMax, n).size();
+            });
     auto start = std::next(begin(), offset);
     auto finish = std::next(start, size);
     auto view = std::ranges::subrange(start, finish);
@@ -276,13 +280,13 @@ class Wigner {
   }
 
   auto operator()(Int iTheta)
-  requires std::same_as<NRange, Single>
+  requires std::same_as<_NRange, Single>
   {
     return operator()(_nMax, iTheta);
   }
 
   auto operator()(Int l)
-  requires std::same_as<NRange, Single> and std::same_as<AngleRange, Single>
+  requires std::same_as<_NRange, Single> and std::same_as<AngleRange, Single>
   {
     return operator()(_nMax, 0)(l);
   }
@@ -302,7 +306,7 @@ class Wigner {
     auto size = std::ranges::fold_left(
                     upperIndices, Int{0},
                     [this](auto acc, auto n) {
-                      return acc + GSHIndices<MRange>(_lMax, _mMax, n).size();
+                      return acc + GSHIndices<_MRange>(_lMax, _mMax, n).size();
                     }) *
                 NumberOfAngles();
     _data.resize(size);
@@ -378,7 +382,7 @@ class Wigner {
       auto iter = d(l).begin();
 
       // Add in value at m == -l if needed.
-      if constexpr (std::same_as<MRange, All>) {
+      if constexpr (std::same_as<_MRange, All>) {
         if (l <= mMax) {
           *iter++ = WignerDetails::WignerMinOrder(l, n, arg);
           m++;
@@ -417,7 +421,7 @@ class Wigner {
       auto iter = d(l).begin();
 
       // Add in lower boundary terms if still growing.
-      if constexpr (std::same_as<MRange, All>) {
+      if constexpr (std::same_as<_MRange, All>) {
         if (l <= mMax) {
           {
             // Add in the m == -l term.

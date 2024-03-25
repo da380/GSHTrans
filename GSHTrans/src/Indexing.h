@@ -2,15 +2,21 @@
 #define GSH_TRANS_INDEXING_GUARD_H
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <iostream>
 #include <numeric>
 #include <random>
 #include <ranges>
+#include <utility>
 
 #include "Concepts.h"
 
 namespace GSHTrans {
+
+//-----------------------------------------------//
+//           Spherical harmonic indices          //
+//-----------------------------------------------//
 
 template <OrderIndexRange MRange>
 class GSHSubIndices {
@@ -144,6 +150,21 @@ class GSHIndices {
   Int _mMax;
   Int _n;
 };
+
+//-----------------------------------------------//
+//              contravariant indices            //
+//-----------------------------------------------//
+
+auto ContravariantIndices() { return std::ranges::views::iota(-1, 2); }
+
+auto NonNegativeContravariantIndices() {
+  return std::ranges::views::iota(-1, 1);
+}
+
+template <std::ranges::range R>
+auto UpperIndex(R&& indices) {
+  return std::ranges::fold_left_first(indices, std::plus<>()).value_or(0);
+}
 
 }  // namespace GSHTrans
 

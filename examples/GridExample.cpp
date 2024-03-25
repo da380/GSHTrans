@@ -47,17 +47,15 @@ int main() {
     auto lMaxGrid = RandomDegree(4, 256);
     auto lMax = RandomDegree(4, lMaxGrid);
     auto nMax = std::min(lMax, Int(4));
-    lMaxGrid = 256;
-    lMax = 256;
 
     auto grid = Grid(lMaxGrid, nMax);
     auto n = RandomUpperIndex<NRange>(nMax);
 
     Int size;
     if constexpr (ComplexFloatingPoint<Scalar>) {
-      size = grid.ComplexCoefficientSize(lMax, n);
+      size = grid.CoefficientSize(lMax, n);
     } else {
-      size = grid.RealCoefficientSize(lMax, n);
+      size = grid.CoefficientSizeNonNegative(lMax, n);
     }
     auto flm = FFTWpp::vector<Complex>(size);
     if constexpr (ComplexFloatingPoint<Scalar>) {
@@ -71,23 +69,15 @@ int main() {
 
     grid.InverseTransformation(lMax, n, flm, f);
 
-    /*
+    grid.ForwardTransformation(lMax, n, f, glm);
 
-          grid.ForwardTransformation(
-              lMax, n,
-              std::ranges::views::all(f) |
-                  std::ranges::views::transform([](auto x) { return x; }),
-              glm);
+    auto error = std::ranges::max(std::ranges::views::zip_transform(
+        [](auto x, auto y) { return std::abs(x - y); }, flm, glm));
 
-          auto error = std::ranges::max(std::ranges::views::zip_transform(
-              [](auto x, auto y) { return std::abs(x - y); }, flm, glm));
+    ;
 
-          ;
-
-          std::cout << lMaxGrid << " " << lMax << " " << n << " " << error
-                    << std::endl;
-
-                    */
+    std::cout << lMaxGrid << " " << lMax << " " << n << " " << error
+              << std::endl;
   }
 
   FFTWpp::CleanUp();

@@ -23,7 +23,19 @@ int main() {
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
 
   auto lMax = 8;
-  auto nMax = 0;
+  auto nMax = 2;
 
   auto grid = Grid(lMax, nMax);
+
+  auto size = grid.ComponentSize();
+  auto data = std::vector<Scalar>(size);
+
+  auto u = ComponentField(grid, data, 1);
+
+  u = 1;
+
+  auto v = u * u + 1;
+
+  std::cout << v.Rank() << std::endl;
+  for (auto val : v) std::cout << val << std::endl;
 }

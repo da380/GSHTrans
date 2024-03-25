@@ -42,12 +42,13 @@ class GaussLegendreGrid
   // Constructors.
   GaussLegendreGrid() = default;
 
-  GaussLegendreGrid(int lMax, int nMax, FFTWpp::Flag flag = FFTWpp::Estimate)
-      : _lMax{lMax}, _nMax{nMax} {
+  GaussLegendreGrid(int lMax, int nMax, FFTWpp::Flag flag = FFTWpp::Measure)
+      : _lMax{lMax}, _nMax{nMax}, _flag{flag} {
     // Check the inputs.
     assert(MaxDegree() >= 0);
     assert(MaxUpperIndex() <= MaxDegree());
     assert(std::abs(this->MinUpperIndex()) <= MaxDegree());
+    assert(_flag != FFTWpp::WisdomOnly);
 
     // Get the quadrature points.
     _quadPointer = std::make_shared<QuadType>(
@@ -60,7 +61,7 @@ class GaussLegendreGrid
     _wignerPointer = std::make_shared<WignerType>(_lMax, _lMax, _nMax,
                                                   _quadPointer->Points());
 
-    if (_lMax > 0) {
+    if (_lMax > 0 && _flag != FFTWpp::Estimate) {
       // Generate wisdom for FFTs.
       auto nPhi = this->NumberOfLongitudes();
       auto in = FFTWpp::Ranges::Layout(nPhi);
@@ -74,6 +75,9 @@ class GaussLegendreGrid
         auto out = FFTWpp::Ranges::Layout(nPhi);
         FFTWpp::GenerateWisdom<Complex, Complex>(in, out, flag);
       }
+      _flag = FFTWpp::WisdomOnly;
+    } else {
+      _flag = FFTWpp::Estimate;
     }
   }
 
@@ -117,14 +121,12 @@ class GaussLegendreGrid
     requires(std::same_as<_MRange, All> and
              ComplexFloatingPoint<std::ranges::range_value_t<InRange>>) or
                 RealFloatingPoint<std::ranges::range_value_t<InRange>>;
-    requires std::ranges::input_range<InRange>;
     requires std::same_as<RemoveComplex<std::ranges::range_value_t<InRange>>,
                           Real>;
-    requires ComplexFloatingPoint<std::ranges::range_value_t<OutRange>>;
+    requires std::ranges::input_range<InRange>;
+    requires std::same_as<std::ranges::range_value_t<OutRange>, Complex>;
     requires std::ranges::output_range<OutRange,
                                        std::ranges::range_value_t<OutRange>>;
-    requires std::same_as<RemoveComplex<std::ranges::range_value_t<OutRange>>,
-                          Real>;
   }
   void ForwardTransformation(Int lMax, Int n, InRange&& in,
                              OutRange& out) const {
@@ -159,12 +161,11 @@ class GaussLegendreGrid
     auto outWork = FFTWpp::vector<Complex>(outSize);
     auto inView = FFTWpp::Ranges::View(inWork);
     auto outView = FFTWpp::Ranges::View(outWork);
-    auto planFunction = [](auto in, auto out) {
+    auto planFunction = [this](auto in, auto out) {
       if constexpr (ComplexFloatingPoint<Scalar>) {
-        return FFTWpp::Ranges::Plan(in, out, FFTWpp::WisdomOnly,
-                                    FFTWpp::Forward);
+        return FFTWpp::Ranges::Plan(in, out, _flag, FFTWpp::Forward);
       } else {
-        return FFTWpp::Ranges::Plan(in, out, FFTWpp::WisdomOnly);
+        return FFTWpp::Ranges::Plan(in, out, _flag);
       }
     };
     auto plan = planFunction(inView, outView);
@@ -231,13 +232,11 @@ class GaussLegendreGrid
   //------------------------------------------------//
   template <std::ranges::range InRange, std::ranges::range OutRange>
   requires requires() {
-    requires ComplexFloatingPoint<std::ranges::range_value_t<InRange>>;
-    requires std::ranges::input_range<InRange>;
-    requires std::same_as<RemoveComplex<std::ranges::range_value_t<InRange>>,
-                          Real>;
     requires(std::same_as<_MRange, All> and
              ComplexFloatingPoint<std::ranges::range_value_t<OutRange>>) or
                 RealFloatingPoint<std::ranges::range_value_t<OutRange>>;
+    requires std::ranges::input_range<InRange>;
+    requires std::same_as<std::ranges::range_value_t<InRange>, Complex>;
     requires std::ranges::output_range<OutRange,
                                        std::ranges::range_value_t<OutRange>>;
     requires std::same_as<RemoveComplex<std::ranges::range_value_t<OutRange>>,
@@ -280,12 +279,11 @@ class GaussLegendreGrid
     auto outWork = FFTWpp::vector<Scalar>(outSize);
     auto inView = FFTWpp::Ranges::View(inWork);
     auto outView = FFTWpp::Ranges::View(outWork);
-    auto planFunction = [](auto in, auto out) {
+    auto planFunction = [this](auto in, auto out) {
       if constexpr (ComplexFloatingPoint<Scalar>) {
-        return FFTWpp::Ranges::Plan(in, out, FFTWpp::WisdomOnly,
-                                    FFTWpp::Backward);
+        return FFTWpp::Ranges::Plan(in, out, _flag, FFTWpp::Backward);
       } else {
-        return FFTWpp::Ranges::Plan(in, out, FFTWpp::WisdomOnly);
+        return FFTWpp::Ranges::Plan(in, out, _flag);
       }
     };
     auto plan = planFunction(inView, outView);
@@ -336,6 +334,7 @@ class GaussLegendreGrid
  private:
   Int _lMax;
   Int _nMax;
+  FFTWpp::Flag _flag;
 
   std::shared_ptr<QuadType> _quadPointer;
   std::shared_ptr<WignerType> _wignerPointer;

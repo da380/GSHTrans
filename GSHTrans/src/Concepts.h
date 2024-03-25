@@ -12,12 +12,12 @@ namespace GSHTrans {
 //                                 Tag classes                              //
 //--------------------------------------------------------------------------//
 
-// Matrix storage options.
+// Matrix storage options for Wigner class.
 struct ColumnMajor {};
 struct RowMajor {};
 
 template <typename T>
-concept MatrixStorage =
+concept WignerStorage =
     std::same_as<T, ColumnMajor> or std::same_as<T, RowMajor>;
 
 // Index storage options.
@@ -57,7 +57,7 @@ template <typename T>
 concept RealOrComplexValued =
     std::same_as<T, RealValued> or std::same_as<T, ComplexValued>;
 
-// Concepts for fields.
+// Concepts for floating point numbers
 template <typename T>
 struct IsComplexFloatingPoint : public std::false_type {};
 
@@ -88,6 +88,28 @@ struct RemoveComplexHelper<std::complex<T>> {
 
 template <typename T>
 using RemoveComplex = typename RemoveComplexHelper<T>::value_type;
+
+// Concepts for ranges with real or complex floating point values.
+
+/*
+template <typename T>
+concept RealFloatingPointRange = requires() {
+  requires std::ranges::common_range<T>;
+  requires RealFloatingPoint<std::ranges::range_value_t<T>>;
+};
+*/
+
+template <typename T>
+concept ComplexFloatingPointRange = requires() {
+  requires std::ranges::common_range<T>;
+  requires ComplexFloatingPoint<std::ranges::range_value_t<T>>;
+};
+
+template <typename T>
+concept RealOrComplexFloatingPointRange = requires() {
+  requires std::ranges::common_range<T>;
+  requires RealOrComplexFloatingPoint<std::ranges::range_value_t<T>>;
+};
 
 }  // namespace GSHTrans
 
