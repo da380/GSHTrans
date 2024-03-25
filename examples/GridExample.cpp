@@ -38,7 +38,7 @@ Int RandomUpperIndex(Int nMax) {
 int main() {
   using Real = double;
   using Complex = std::complex<Real>;
-  using Scalar = Real;
+  using Scalar = Complex;
   using MRange = All;
   using NRange = All;
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
@@ -69,21 +69,25 @@ int main() {
     auto f = FFTWpp::vector<Scalar>(grid.ComponentSize());
     auto glm = FFTWpp::vector<Complex>(size);
 
-    grid.InverseTransformation(lMax, n, std::ranges::views::all(flm), f);
+    grid.InverseTransformation(lMax, n, flm, f);
 
-    grid.ForwardTransformation(
-        lMax, n,
-        std::ranges::views::all(f) |
-            std::ranges::views::transform([](auto x) { return x; }),
-        glm);
+    /*
 
-    auto error = std::ranges::max(std::ranges::views::zip_transform(
-        [](auto x, auto y) { return std::abs(x - y); }, flm, glm));
+          grid.ForwardTransformation(
+              lMax, n,
+              std::ranges::views::all(f) |
+                  std::ranges::views::transform([](auto x) { return x; }),
+              glm);
 
-    ;
+          auto error = std::ranges::max(std::ranges::views::zip_transform(
+              [](auto x, auto y) { return std::abs(x - y); }, flm, glm));
 
-    std::cout << lMaxGrid << " " << lMax << " " << n << " " << error
-              << std::endl;
+          ;
+
+          std::cout << lMaxGrid << " " << lMax << " " << n << " " << error
+                    << std::endl;
+
+                    */
   }
 
   FFTWpp::CleanUp();

@@ -89,10 +89,33 @@ class GridBase {
     return GSHIndices<All>(lMax, lMax, n).size();
   }
 
-  template <ComplexFloatingPointRange Range,
+  auto CoefficientSize(Int lMax, Int n) const {
+    return GSHIndices<All>(lMax, lMax, n).size();
+  }
+
+  auto CoefficientSize(Int n) const {
+    auto lMax = Derived().MaxDegree();
+    return GSHIndices<All>(lMax, lMax, n).size();
+  }
+
+  auto CoefficientSizeNonNegative(Int lMax, Int n) const {
+    return GSHIndices<NonNegative>(lMax, lMax, n).size();
+  }
+
+  auto CoefficientSizeNonNegative(Int n) const {
+    auto lMax = Derived().MaxDegree();
+    return GSHIndices<NonNegative>(lMax, lMax, n).size();
+  }
+
+  template <std::ranges::range Range,
             typename Distribution =
                 decltype(std::normal_distribution<
                          RemoveComplex<std::ranges::range_value_t<Range>>>())>
+  requires requires() {
+    requires ComplexFloatingPoint<std::ranges::range_value_t<Range>>;
+    requires std::ranges::output_range<Range,
+                                       std::ranges::range_value_t<Range>>;
+  }
   void RandomComplexCoefficient(
       Int lMax, Int n, Range& range,
       Distribution dist = std::normal_distribution<
@@ -112,10 +135,15 @@ class GridBase {
     }
   }
 
-  template <ComplexFloatingPointRange Range,
+  template <std::ranges::range Range,
             typename Distribution =
                 decltype(std::normal_distribution<
                          RemoveComplex<std::ranges::range_value_t<Range>>>())>
+  requires requires() {
+    requires ComplexFloatingPoint<std::ranges::range_value_t<Range>>;
+    requires std::ranges::output_range<Range,
+                                       std::ranges::range_value_t<Range>>;
+  }
   void RandomRealCoefficient(
       Int lMax, Int n, Range& range,
       Distribution dist = std::normal_distribution<

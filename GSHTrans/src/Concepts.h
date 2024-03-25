@@ -89,64 +89,6 @@ struct RemoveComplexHelper<std::complex<T>> {
 template <typename T>
 using RemoveComplex = typename RemoveComplexHelper<T>::value_type;
 
-template <typename T>
-concept Field = std::integral<T> or RealOrComplexFloatingPoint<T>;
-
-// Concepts for iterators with real or complex floating point values.
-template <typename T>
-concept RealFloatingPointIterator = requires() {
-  requires std::random_access_iterator<T>;
-  requires RealFloatingPoint<std::iter_value_t<T>>;
-};
-
-template <typename T>
-concept ComplexFloatingPointIterator = requires() {
-  requires std::random_access_iterator<T>;
-  requires ComplexFloatingPoint<std::iter_value_t<T>>;
-};
-
-template <typename T>
-concept RealOrComplexFloatingPointIterator = requires() {
-  requires std::random_access_iterator<T>;
-  requires RealOrComplexFloatingPoint<std::iter_value_t<T>>;
-};
-
-// Concepts for ranges with real or complex floating point values.
-template <typename T>
-concept RealFloatingPointRange = requires() {
-  requires std::ranges::common_range<T>;
-  requires RealFloatingPoint<std::ranges::range_value_t<T>>;
-};
-
-template <typename T>
-concept ComplexFloatingPointRange = requires() {
-  requires std::ranges::common_range<T>;
-  requires ComplexFloatingPoint<std::ranges::range_value_t<T>>;
-};
-
-template <typename T>
-concept RealOrComplexFloatingPointRange = requires() {
-  requires std::ranges::common_range<T>;
-  requires RealOrComplexFloatingPoint<std::ranges::range_value_t<T>>;
-};
-
-// Concepts for scalar-valued functions.
-template <typename Func, typename Real, typename Scalar>
-concept ScalarFunction2D = requires(Real theta, Real phi, Real w, Func f) {
-  requires RealFloatingPoint<Real>;
-  requires RealOrComplexFloatingPoint<Scalar>;
-  { f(theta, phi) } -> std::convertible_to<Scalar>;
-  { f(theta, phi) * w } -> std::convertible_to<Scalar>;
-};
-
-// Concepts for grid classes.
-template <typename Grid>
-concept SphereGrid = requires(Grid grid) {
-  typename Grid::difference_type;
-  { grid.MaxDegree() } -> std::same_as<typename Grid::difference_type>;
-  { grid.MaxUpperIndex() } -> std::same_as<typename Grid::difference_type>;
-};
-
 }  // namespace GSHTrans
 
 #endif  //  GSH_TRANS_CONCEPTS_GUARD_H

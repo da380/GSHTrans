@@ -2,8 +2,6 @@
 #define GSH_TRANS_ALL_MODULE_H
 
 // Header files to include for use of GHSTrans library
-#include "src/CanonicalCoefficients.h"
-#include "src/CanonicalComponents.h"
 #include "src/Components.h"
 #include "src/Concepts.h"
 #include "src/GaussLegendreGrid.h"

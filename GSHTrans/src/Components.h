@@ -4,6 +4,7 @@
 #include <FFTWpp/Core>
 #include <algorithm>
 #include <complex>
+#include <functional>
 #include <iostream>
 #include <ranges>
 
@@ -13,6 +14,25 @@
 namespace GSHTrans {
 
 namespace Testing {
+
+template <typename S>
+requires std::integral<S> || RealOrComplexFloatingPoint<S>
+class ScalarMultiply {
+ public:
+  ScalarMultiply() = default;
+  ScalarMultiply(S s) : _s{s} {}
+
+  ScalarMultiply(const ScalarMultiply&) = default;
+  ScalarMultiply(ScalarMultiply&&) = default;
+
+  template <typename T>
+  auto operator()(T t) const {
+    return t * _s;
+  }
+
+ private:
+  S _s;
+};
 
 struct Field {};
 struct Coefficient {};
@@ -28,26 +48,30 @@ concept ComponentValue =
 
 template <typename _Derived>
 class ComponentBase {
+ public:
   using Int = std::ptrdiff_t;
 
- public:
+  // Methods related to the grid.
   auto GetGrid() const { return Derived().GetGrid(); }
+  auto NumberOfLongitudes() const
+  requires std::same_as<typename _Derived::Type, Field>
+  {
+    return GetGrid().NumberOfLongitudes();
+  }
+  auto NumberOfLatitudes() const
+  requires std::same_as<typename _Derived::Type, Field>
+  {
+    return GetGrid().NumberOfLatitudes();
+  }
+
+  // Methods related to the canonical indices.
   auto CanonicalIndices() const { return Derived().CanonicalIndices(); }
   auto UpperIndex() const {
     return std::ranges::fold_left_first(CanonicalIndices(), std::plus<>())
         .value_or(Int(0));
   }
 
-  auto Data() { return Derived().Data(); }
-  auto Data() const { return Derived().Data(); }
-  auto size() const { return Derived().Data().size(); }
-  auto begin() { return Derived().Data().begin(); }
-  auto end() { return Derived().Data().end(); }
-  auto cbegin() const { return Derived().Data().cbegin(); }
-  auto cend() const { return Derived().Data().cend(); }
-
-  auto operator[](Int i) const { return Derived().Data()[i]; }
-  auto& operator[](Int i) { return Derived().Data()[i]; }
+  // Methods related to the data.
 
   auto GetSize() const {
     using Type = typename _Derived::Type;
@@ -55,12 +79,29 @@ class ComponentBase {
     if constexpr (std::same_as<Type, Field>) {
       return GetGrid().ComponentSize();
     } else {
-      if constexpr (std::same_as<Value, RealValued>) {
-        return GetGrid().RealCoefficientSize(UpperIndex());
+      if (std::same_as<Value, RealValued> && UpperIndex() == 0) {
+        return GetGrid().CoefficientSizeNonNegative(UpperIndex());
       } else {
-        return GetGrid().ComplexCoefficientSize(UpperIndex());
+        return GetGrid().CoefficientSize(UpperIndex());
       }
     }
+  }
+
+  // Application operators for fields.
+  auto operator()(Int iTheta, Int iPhi) const
+  requires std::same_as<typename _Derived::Type, Field>
+  {
+    auto i = iTheta * NumberOfLongitudes() + iPhi;
+    return operator[](i);
+  }
+  auto& operator()(Int iTheta, Int iPhi) const
+  requires std::same_as<typename _Derived::Type, Field> &&
+           std::ranges::output_range<
+               typename _Derived::View,
+               std::ranges::range_value_t<typename _Derived::View>>
+  {
+    auto i = iTheta * NumberOfLongitudes() + iPhi;
+    return operator[](i);
   }
 
  private:
@@ -83,14 +124,14 @@ class Component : public ComponentBase<Component<_Grid, _Type, _Value>> {
       std::same_as<_Type, Field>,
       std::conditional_t<std::same_as<_Value, RealValued>, Real, Complex>,
       Complex>;
+  using Vector = std::vector<Scalar>;
   using MRange = typename _Grid::MRange;
   using NRange = typename _Grid::NRange;
+  using View = std::ranges::views::all_t<Vector>;
 
   // Methods required for the base class.
   auto GetGrid() const { return _grid; }
   auto CanonicalIndices() const { return _indices; }
-  auto Data() { return std::ranges::views::all(_data); }
-  auto Data() const { return std::ranges::views::all(_data); }
 
   // Constructors.
   Component() = default;
@@ -112,186 +153,6 @@ class Component : public ComponentBase<Component<_Grid, _Type, _Value>> {
   std::vector<Int> _indices;
   std::vector<Scalar> _data;
 };
-
-// Component class with a view to its data.
-template <typename _Grid, ComponentType _Type, ComponentValue _Value,
-          std::ranges::view _View>
-requires requires() {
-  requires std::derived_from<_Grid, GridBase<_Grid>>;
-  requires std::ranges::input_range<_View>;
-  requires std::same_as<RemoveComplex<std::ranges::range_value_t<_View>>,
-                        typename _Grid::Real>;
-}
-class ComponentView
-    : public ComponentBase<ComponentView<_Grid, _Type, _Value, _View>> {
- public:
-  // Public type aliases.
-  using Int = std::ptrdiff_t;
-  using Grid = _Grid;
-  using Type = _Type;
-  using Value = _Value;
-  using Real = typename _Grid::Real;
-  using Complex = typename _Grid::Complex;
-  using Scalar = std::conditional_t<
-      std::same_as<_Type, Field>,
-      std::conditional_t<std::same_as<_Value, RealValued>, Real, Complex>,
-      Complex>;
-  using MRange = typename _Grid::MRange;
-  using NRange = typename _Grid::NRange;
-
-  // Methods required for the base class.
-  auto GetGrid() const { return _grid; }
-  auto CanonicalIndices() const { return _indices; }
-  auto Data() { return _data; }
-  auto Data() const { return _data; }
-
-  // Constructors.
-  ComponentView() = default;
-
-  ComponentView(_Grid grid, _View data, std::vector<Int>&& indices)
-      : _grid{grid}, _indices{indices}, _data{data} {
-    assert(_data.size() == this->GetSize());
-  }
-
-  template <typename... Indices>
-  requires(std::integral<Indices> && ...)
-  ComponentView(_Grid grid, _View data, Indices... indices)
-      : _grid{grid}, _indices{std::vector<Int>{indices...}}, _data{data} {
-    assert(_data.size() == this->GetSize());
-  }
-
- private:
-  _Grid _grid;
-  std::vector<Int> _indices;
-  _View _data;
-};
-
-// Component class with data formed a unary transformation of a view.
-template <typename _Grid, ComponentType _Type, ComponentValue _Value,
-          std::ranges::view _View, typename _Function>
-requires requires() {
-  requires std::derived_from<_Grid, GridBase<_Grid>>;
-  requires std::ranges::input_range<_View>;
-  requires std::same_as<RemoveComplex<std::ranges::range_value_t<_View>>,
-                        typename _Grid::Real>;
-}
-class ComponentViewUnary
-    : public ComponentBase<
-          ComponentViewUnary<_Grid, _Type, _Value, _View, _Function>> {
- public:
-  // Public type aliases.
-  using Int = std::ptrdiff_t;
-  using Grid = _Grid;
-  using Type = _Type;
-  using Value = _Value;
-  using Real = typename _Grid::Real;
-  using Complex = typename _Grid::Complex;
-  using Scalar = std::conditional_t<
-      std::same_as<_Type, Field>,
-      std::conditional_t<std::same_as<_Value, RealValued>, Real, Complex>,
-      Complex>;
-  using MRange = typename _Grid::MRange;
-  using NRange = typename _Grid::NRange;
-
-  // Methods required for the base class.
-  auto GetGrid() const { return _grid; }
-  auto CanonicalIndices() const { return _indices; }
-  // auto Data() { return _data | std::ranges::views::transform(_f); }
-  auto Data() const { return _data | std::ranges::views::transform(_f); }
-
-  // Constructors.
-  ComponentViewUnary() = default;
-
-  ComponentViewUnary(_Grid grid, _View data, _Function f,
-                     std::vector<Int>&& indices)
-      : _grid{grid}, _indices{indices}, _data{data}, _f{f} {
-    assert(_data.size() == this->GetSize());
-  }
-
- private:
-  _Grid _grid;
-  std::vector<Int> _indices;
-  _View _data;
-  _Function _f;
-};
-
-// Component class with data formed a binary transformation of two views.
-template <typename _Grid, ComponentType _Type, ComponentValue _Value,
-          std::ranges::view _View1, std::ranges::view _View2,
-          typename _Function>
-requires requires() {
-  requires std::derived_from<_Grid, GridBase<_Grid>>;
-  requires std::ranges::input_range<_View1>;
-  requires std::same_as<RemoveComplex<std::ranges::range_value_t<_View1>>,
-                        typename _Grid::Real>;
-  requires std::ranges::input_range<_View2>;
-  requires std::same_as<RemoveComplex<std::ranges::range_value_t<_View2>>,
-                        typename _Grid::Real>;
-}
-class ComponentViewBinary
-    : public ComponentBase<ComponentViewBinary<_Grid, _Type, _Value, _View1,
-                                               _View2, _Function>> {
- public:
-  // Public type aliases.
-  using Int = std::ptrdiff_t;
-  using Grid = _Grid;
-  using Type = _Type;
-  using Value = _Value;
-  using Real = typename _Grid::Real;
-  using Complex = typename _Grid::Complex;
-  using Scalar = std::conditional_t<
-      std::same_as<_Type, Field>,
-      std::conditional_t<std::same_as<_Value, RealValued>, Real, Complex>,
-      Complex>;
-  using MRange = typename _Grid::MRange;
-  using NRange = typename _Grid::NRange;
-
-  // Methods required for the base class.
-  auto GetGrid() const { return _grid; }
-  auto CanonicalIndices() const { return _indices; }
-  auto Data() const {
-    return std::ranges::views::zip_transform(_f, _data1, _data2);
-  }
-
-  // Constructors.
-  ComponentViewBinary() = default;
-
-  ComponentViewBinary(_Grid grid, _View1 data1, _View2 data2, _Function f,
-                      std::vector<Int>&& indices)
-      : _grid{grid}, _indices{indices}, _data1{data1}, _data2{data2}, _f{f} {
-    assert(_data1.size() == this->GetSize());
-    assert(_data2.size() == this->GetSize());
-  }
-
- private:
-  _Grid _grid;
-  std::vector<Int> _indices;
-  _View1 _data1;
-  _View2 _data2;
-  _Function _f;
-};
-
-template <typename Derived>
-auto operator-(ComponentBase<Derived>& u) {
-  auto data = u.Data();
-  auto f = [](auto x) { return -x; };
-  using View = decltype(data);
-  using Function = decltype(f);
-  return ComponentViewUnary<typename Derived::Grid, typename Derived::Type,
-                            typename Derived::Value, View, Function>(
-      u.GetGrid(), data, f, u.CanonicalIndices());
-}
-
-template <typename Derived1, typename Derived2>
-auto operator+(ComponentBase<Derived1>& u, ComponentBase<Derived2>& v) {
-  auto data1 = u.Data();
-  auto data2 = v.Data();
-  auto f = std::plus<>();
-  return ComponentViewBinary<typename Derived1::Grid, typename Derived1::Type,
-                             typename Derived1::Value, decltype(data1),
-                             decltype(data2), decltype(f)>(
-      u.GetGrid(), data1, data2, f, u.CanonicalIndices());
-}
 
 }  // namespace Testing
 

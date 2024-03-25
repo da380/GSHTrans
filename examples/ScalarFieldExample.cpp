@@ -10,8 +10,9 @@
 #include <numbers>
 #include <random>
 
+using namespace GSHTrans;
+
 int main() {
-  using namespace GSHTrans;
   using Real = double;
   using Complex = std::complex<Real>;
   using Scalar = Real;
@@ -25,13 +26,4 @@ int main() {
   auto nMax = 0;
 
   auto grid = Grid(lMax, nMax);
-
-  auto x =
-      Testing::Component<Grid, Testing::Coefficient, Testing::RealValued>(grid);
-
-  for (auto& val : x) val = 1;
-
-  auto y = x + x;
-
-  for (auto val : y) std::cout << val << std::endl;
 }
