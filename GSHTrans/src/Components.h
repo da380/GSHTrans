@@ -37,21 +37,11 @@ class ComponentField
   // Constructors.
   ComponentField() = default;
 
-  template <std::ranges::range Indices>
-  ComponentField(_Grid grid, _View view, Indices&& contravariantIndices)
-      : _grid{grid}, _view{view} {
-    std::ranges::copy(contravariantIndices,
-                      std::back_inserter(_contravariantIndices));
-    assert(std::ranges::all_of(_contravariantIndices, [](auto alpha) {
-      return alpha > -2 && alpha < 2;
-    }));
+  ComponentField(_Grid grid, Int n, _View view)
+      : _grid{grid}, _n{n}, _view{view} {
     assert(std::ranges::contains(_grid.UpperIndices(), UpperIndex()));
+    assert(_view.size() == _grid.ComponentSize());
   }
-
-  template <typename... Indices>
-  requires(std::integral<Indices> && ...)
-  ComponentField(_Grid grid, _View view, Indices... contravariantIndices)
-      : ComponentField(grid, view, std::vector<Int>{contravariantIndices...}) {}
 
   ComponentField(const ComponentField&) = default;
   ComponentField(ComponentField&&) = default;
@@ -67,6 +57,22 @@ class ComponentField
     return *this;
   }
 
+  template <typename Function>
+  requires requires() {
+    requires std::ranges::output_range<_View,
+                                       std::ranges::range_value_t<_View>>;
+    requires std::regular_invocable<Function, Real, Real>;
+    requires std::convertible_to<std::invoke_result_t<Function, Real, Real>,
+                                 Scalar>;
+  }
+  ComponentField& operator=(Function f) {
+    auto iter = begin();
+    for (auto [theta, phi] : _grid.Points()) {
+      *iter++ = f(theta, phi);
+    }
+    return *this;
+  }
+
   template <typename OtherGrid, std::ranges::view OtherView>
   requires requires() {
     requires std::ranges::output_range<_View,
@@ -77,7 +83,7 @@ class ComponentField
     assert(std::ranges::equal(other.CoLatitudes(), CoLatitudes()));
     assert(std::ranges::equal(other.Longitudes(), Longitudes()));
     std::ranges::copy(other, begin());
-    std::ranges::copy(other.ContravariantIndices(), _contravariantIndices);
+    _n = other.UpperIndex();
     return *this;
   }
 
@@ -88,16 +94,8 @@ class ComponentField
   auto Longitudes() const { return _grid.Longitudes(); }
   auto CoLatitudes() const { return _grid.CoLatitudes(); }
 
-  // Methods related to contravariant indices.
-  auto ContravariantIndices() const {
-    return std::ranges::views::all(_contravariantIndices);
-  }
-  auto Rank() const { return _contravariantIndices.size(); }
-  auto UpperIndex() const {
-    return GSHTrans::UpperIndex(ContravariantIndices());
-  }
-
   // Data access methods.
+  auto UpperIndex() const { return _n; }
   auto begin() { return _view.begin(); }
   auto end() { return _view.end(); }
 
@@ -112,12 +110,12 @@ class ComponentField
  private:
   _Grid _grid;
   _View _view;
-  std::vector<Int> _contravariantIndices;
+  Int _n;
 };
 
-template <typename _Grid, std::ranges::range R, typename... Args>
-ComponentField(_Grid, R&&, Args...)
-    -> ComponentField<_Grid, std::ranges::views::all_t<R>>;
+template <typename Grid, std::ranges::range R>
+ComponentField(Grid, std::ptrdiff_t, R&&)
+    -> ComponentField<Grid, std::ranges::views::all_t<R>>;
 
 //-------------------------------------------------------//
 //         Range adaptor to form Component fields        //
@@ -129,25 +127,16 @@ class FormComponentField
   using Int = std::ptrdiff_t;
 
  public:
-  template <std::ranges::range Indices>
-  FormComponentField(_Grid grid, Indices&& contravariantIndices) : _grid{grid} {
-    std::ranges::copy(contravariantIndices,
-                      std::back_inserter(_contravariantIndices));
-  }
-
-  template <typename... Indices>
-  requires(std::integral<Indices> && ...)
-  FormComponentField(_Grid grid, Indices... contravariantIndices)
-      : FormComponentField(grid, std::vector<Int>{contravariantIndices...}) {}
+  FormComponentField(_Grid grid, Int n) : _grid{grid}, _n{n} {}
 
   template <std::ranges::view View>
   auto operator()(View view) {
-    return ComponentField(_grid, view, _contravariantIndices);
+    return ComponentField(_grid, _n, view);
   }
 
  private:
   _Grid _grid;
-  std::vector<Int> _contravariantIndices;
+  Int _n;
 };
 
 //-----------------------------------------------------//
@@ -157,7 +146,7 @@ class FormComponentField
 template <typename Grid, std::ranges::view View, typename Function>
 auto ComponentFieldUnary(ComponentField<Grid, View> u, Function f) {
   return u | std::ranges::views::transform(f) |
-         FormComponentField(u.GetGrid(), u.ContravariantIndices());
+         FormComponentField(u.GetGrid(), u.UpperIndex());
 }
 
 template <typename Grid, std::ranges::view View>
@@ -183,17 +172,11 @@ auto abs(ComponentField<Grid, View> u) {
 template <typename Grid, std::ranges::view View>
 auto conj(ComponentField<Grid, View> u) {
   if constexpr (RealFloatingPoint<std::ranges::range_value_t<View>>) {
-    return u | FormComponentField(u.GetGrid(),
-                                  u.ContravariantIndices() |
-                                      std::ranges::views::transform(
-                                          [](auto alpha) { return -alpha; }));
+    return u | FormComponentField(u.GetGrid(), -u.UpperIndex());
   } else {
     return u |
            std::ranges::views::transform([](auto x) { return std::conj(x); }) |
-           FormComponentField(u.GetGrid(),
-                              u.ContravariantIndices() |
-                                  std::ranges::views::transform(
-                                      [](auto alpha) { return -alpha; }));
+           FormComponentField(u.GetGrid(), -u.UpperIndex());
   }
 }
 
@@ -209,7 +192,7 @@ auto ComponentFieldUnaryWithScalar(ComponentField<Grid, View> u, Function f,
                          std::conditional_t<ComplexFloatingPoint<U>, U, S>>;
   auto t = T(s);
   return u | std::ranges::views::transform([t, f](auto x) { return f(x, t); }) |
-         FormComponentField(u.GetGrid(), u.ContravariantIndices());
+         FormComponentField(u.GetGrid(), u.UpperIndex());
 }
 
 template <typename Grid, std::ranges::view View, typename S>
@@ -257,29 +240,23 @@ auto pow(ComponentField<Grid, View> u, S s) {
 
 template <typename Grid, std::ranges::view View1, std::ranges::view View2>
 auto operator+(ComponentField<Grid, View1> u1, ComponentField<Grid, View2> u2) {
-  assert(u1.Rank() == u2.Rank());
-  assert(
-      std::ranges::equal(u1.ContravariantIndices(), u2.ContravariantIndices()));
+  assert(u1.UpperIndex() == u2.UpperIndex());
   return std::ranges::views::zip_transform(std::plus<>(), u1, u2) |
-         FormComponentField(u1.GetGrid(), u1.ContravariantIndices());
+         FormComponentField(u1.GetGrid(), u1.UpperIndex());
 }
 
 template <typename Grid, std::ranges::view View1, std::ranges::view View2>
 auto operator-(ComponentField<Grid, View1> u1, ComponentField<Grid, View2> u2) {
-  assert(u1.Rank() == u2.Rank());
-  assert(
-      std::ranges::equal(u1.ContravariantIndices(), u2.ContravariantIndices()));
+  assert(u1.UpperIndex() == u2.UpperIndex());
   return std::ranges::views::zip_transform(std::minus<>(), u1, u2) |
-         FormComponentField(u1.GetGrid(), u1.ContravariantIndices());
+         FormComponentField(u1.GetGrid(), u1.UpperIndex());
 }
 
 template <typename Grid, std::ranges::view View1, std::ranges::view View2>
 auto operator*(ComponentField<Grid, View1> u1, ComponentField<Grid, View2> u2) {
   auto indices = std::vector<std::ptrdiff_t>{};
-  std::ranges::copy(u1.ContravariantIndices(), std::back_inserter(indices));
-  std::ranges::copy(u2.ContravariantIndices(), std::back_inserter(indices));
   return std::ranges::views::zip_transform(std::multiplies<>(), u1, u2) |
-         FormComponentField(u1.GetGrid(), indices);
+         FormComponentField(u1.GetGrid(), u1.UpperIndex() + u2.UpperIndex());
 }
 
 }  // namespace GSHTrans

@@ -30,12 +30,9 @@ int main() {
   auto size = grid.ComponentSize();
   auto data = std::vector<Scalar>(size);
 
-  auto u = ComponentField(grid, data, 1);
+  auto u = ComponentField(grid, 0, data);
 
-  u = 1;
+  u = [](auto theta, auto phi) { return 2.0; };
 
-  auto v = u * u + 1;
-
-  std::cout << v.Rank() << std::endl;
-  for (auto val : v) std::cout << val << std::endl;
+  for (auto val : u* u) std::cout << val << std::endl;
 }
