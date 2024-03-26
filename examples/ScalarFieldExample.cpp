@@ -1,24 +1,13 @@
 #include <GSHTrans/All>
-#include <algorithm>
-#include <chrono>
-#include <cmath>
-#include <concepts>
-#include <fstream>
 #include <iostream>
-#include <limits>
-#include <memory>
-#include <numbers>
-#include <random>
 
 using namespace GSHTrans;
 
 int main() {
   using Real = double;
   using Complex = std::complex<Real>;
-  using Scalar = Real;
   using MRange = All;
   using NRange = All;
-  using Vector = std::vector<Scalar>;
 
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
 
@@ -28,11 +17,11 @@ int main() {
   auto grid = Grid(lMax, nMax);
 
   auto size = grid.ComponentSize();
-  auto data = std::vector<Scalar>(size);
+  auto data = std::vector<Complex>(size);
 
-  auto u = ComponentField(grid, 0, data);
+  auto u = Field(data, grid);
 
-  u = [](auto theta, auto phi) { return 2.0; };
+  u = 1;
 
-  for (auto val : u* u) std::cout << val << std::endl;
+  for (auto val : real(u) + u) std::cout << val << std::endl;
 }
