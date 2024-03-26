@@ -67,7 +67,7 @@ class GridBase {
            });
   }
 
-  auto ComponentSize() const {
+  auto FieldSize() const {
     return NumberOfCoLatitudes() * NumberOfLongitudes();
   }
 

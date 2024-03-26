@@ -6,6 +6,7 @@ using namespace GSHTrans;
 int main() {
   using Real = double;
   using Complex = std::complex<Real>;
+  using Scalar = Real;
   using MRange = All;
   using NRange = All;
 
@@ -16,12 +17,11 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto size = grid.ComponentSize();
-  auto data = std::vector<Complex>(size);
-
-  auto u = Field(data, grid);
+  auto [u, dataU] = AllocateRealField(grid);
+  auto [v, dataV] = AllocateComplexField(grid);
 
   u = 1;
+  v = [](auto theta, auto phi) { return 2; };
 
-  for (auto val : real(u) + u) std::cout << val << std::endl;
+  for (auto val : real(u + v)) std::cout << val << std::endl;
 }

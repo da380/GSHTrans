@@ -64,7 +64,7 @@ int main() {
       grid.RandomRealCoefficient(lMax, n, flm);
     }
 
-    auto f = FFTWpp::vector<Scalar>(grid.ComponentSize());
+    auto f = FFTWpp::vector<Scalar>(grid.FieldSize());
     auto glm = FFTWpp::vector<Complex>(size);
 
     grid.InverseTransformation(lMax, n, flm, f);

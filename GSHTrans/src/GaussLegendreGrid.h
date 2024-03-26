@@ -137,7 +137,7 @@ class GaussLegendreGrid
     assert(std::ranges::contains(this->UpperIndices(), n));
 
     // Check dimensions of ranges.
-    assert(in.size() == this->ComponentSize());
+    assert(in.size() == this->FieldSize());
     if constexpr (RealFloatingPoint<Scalar>) {
       assert(out.size() == GSHIndices<NonNegative>(lMax, lMax, n).size());
     } else {
@@ -256,7 +256,7 @@ class GaussLegendreGrid
     } else {
       assert(in.size() == GSHIndices<All>(lMax, lMax, n).size());
     }
-    assert(out.size() == this->ComponentSize());
+    assert(out.size() == this->FieldSize());
 
     // Deal with lMax = 0
     if (lMax == 0) {

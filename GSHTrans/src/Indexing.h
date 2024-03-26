@@ -151,21 +151,6 @@ class GSHIndices {
   Int _n;
 };
 
-//-----------------------------------------------//
-//              contravariant indices            //
-//-----------------------------------------------//
-
-auto ContravariantIndices() { return std::ranges::views::iota(-1, 2); }
-
-auto NonNegativeContravariantIndices() {
-  return std::ranges::views::iota(-1, 1);
-}
-
-template <std::ranges::range R>
-auto UpperIndex(R&& indices) {
-  return std::ranges::fold_left_first(indices, std::plus<>()).value_or(0);
-}
-
 }  // namespace GSHTrans
 
 #endif  // GSH_TRANS_INDEXING_GUARD_H
