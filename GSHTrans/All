@@ -8,6 +8,8 @@
 #include "src/GaussLegendreGrid.h"
 #include "src/GridBase.h"
 #include "src/Indexing.h"
+#include "src/TensorField.h"
+#include "src/TensorIndices.h"
 #include "src/Wigner.h"
 
 #endif
