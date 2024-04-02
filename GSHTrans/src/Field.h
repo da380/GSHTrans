@@ -26,8 +26,7 @@ requires requires() {
            std::same_as<typename _Grid::MRange, All>) ||
               std::same_as<_Value, RealValued>;
 }
-class FieldView
-    : public std::ranges::view_interface<FieldView<_View, _Grid, _Value>> {
+class Field : public std::ranges::view_interface<Field<_View, _Grid, _Value>> {
   using Int = std::ptrdiff_t;
 
  public:
@@ -41,20 +40,20 @@ class FieldView
       std::conditional_t<std::same_as<_Value, RealValued>, Real, Complex>;
 
   // Constructors.
-  FieldView() = default;
+  Field() = default;
 
-  FieldView(_View view, _Grid grid) : _view{view}, _grid{grid} {
+  Field(_View view, _Grid grid) : _view{view}, _grid{grid} {
     assert(_view.size() == _grid.FieldSize());
   }
 
-  FieldView(const FieldView&) = default;
-  FieldView(FieldView&&) = default;
+  Field(const Field&) = default;
+  Field(Field&&) = default;
 
   // Assignment.
-  FieldView& operator=(const FieldView&) = default;
-  FieldView& operator=(FieldView&&) = default;
+  Field& operator=(const Field&) = default;
+  Field& operator=(Field&&) = default;
 
-  FieldView& operator=(Scalar s)
+  Field& operator=(Scalar s)
   requires std::ranges::output_range<_View, std::ranges::range_value_t<_View>>
   {
     std::ranges::copy(std::ranges::views::repeat(s, this->size()), begin());
@@ -69,7 +68,7 @@ class FieldView
     requires std::convertible_to<std::invoke_result_t<Function, Real, Real>,
                                  Scalar>;
   }
-  FieldView& operator=(Function f) {
+  Field& operator=(Function f) {
     std::ranges::copy(_grid.InterpolateFunction(f), begin());
     return *this;
   }
@@ -81,7 +80,7 @@ class FieldView
                                        std::ranges::range_value_t<_View>>;
     requires std::convertible_to<std::ranges::range_value_t<OtherView>, Scalar>;
   }
-  FieldView& operator=(FieldView<OtherGrid, OtherView, OtherValue> other) {
+  Field& operator=(Field<OtherGrid, OtherView, OtherValue> other) {
     assert(this->size() == other.size());
     std::ranges::copy(other, begin());
     return *this;
@@ -118,68 +117,74 @@ class FieldView
   _Grid _grid;
 };
 
+// Deduction guides for construction from ranges.
+template <std::ranges::viewable_range R, typename Grid,
+          RealOrComplexValued Value>
+Field(R&&, Grid) -> Field<std::ranges::views::all_t<R>, Grid, Value>;
+
+// Type aliases for real and complex fields.
+template <std::ranges::view View, typename Grid>
+using RealField = Field<View, Grid, RealValued>;
+
+template <std::ranges::view View, typename Grid>
+using ComplexField = Field<View, Grid, ComplexValued>;
+
 //-------------------------------------------------------//
 //                Range adaptors for Fields              //
 //-------------------------------------------------------//
 template <typename _Grid, RealOrComplexValued _Value>
 requires std::derived_from<_Grid, GridBase<_Grid>>
-class Field : public std::ranges::range_adaptor_closure<Field<_Grid, _Value>> {
+class FormField
+    : public std::ranges::range_adaptor_closure<FormField<_Grid, _Value>> {
  public:
-  Field(_Grid grid) : _grid{grid} {}
+  FormField(_Grid grid) : _grid{grid} {}
 
   template <std::ranges::view _View>
   auto operator()(_View view) {
-    return FieldView<_View, _Grid, _Value>(view, _grid);
+    return Field<_View, _Grid, _Value>(view, _grid);
   }
 
  private:
   _Grid _grid;
 };
 
-// Define type aliases for real and complex adaptors.
-template <typename _Grid>
-using RealField = Field<_Grid, RealValued>;
-
-template <typename _Grid>
-using ComplexField = Field<_Grid, ComplexValued>;
-
 //---------------------------------------------------//
 //                  Field -> Field                   //
 //---------------------------------------------------//
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
-auto operator-(FieldView<View, Grid, Value> u) {
+auto operator-(Field<View, Grid, Value> u) {
   return u | std::ranges::views::transform([](auto x) { return -x; }) |
-         Field<Grid, Value>(u.GetGrid());
+         FormField<Grid, Value>(u.GetGrid());
 }
 
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
-auto real(FieldView<View, Grid, Value> u) {
+auto real(Field<View, Grid, Value> u) {
   return u |
          std::ranges::views::transform([](auto x) { return std::real(x); }) |
-         Field<Grid, RealValued>(u.GetGrid());
+         FormField<Grid, RealValued>(u.GetGrid());
 }
 
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
-auto imag(FieldView<View, Grid, Value> u) {
+auto imag(Field<View, Grid, Value> u) {
   return u |
          std::ranges::views::transform([](auto x) { return std::imag(x); }) |
-         Field<Grid, RealValued>(u.GetGrid());
+         FormField<Grid, RealValued>(u.GetGrid());
 }
 
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
-auto abs(FieldView<View, Grid, Value> u) {
+auto abs(Field<View, Grid, Value> u) {
   return u | std::ranges::views::transform([](auto x) { return std::abs(x); }) |
-         Field<Grid, RealValued>(u.GetGrid());
+         FormField<Grid, RealValued>(u.GetGrid());
 }
 
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
-auto conj(FieldView<View, Grid, Value> u) {
+auto conj(Field<View, Grid, Value> u) {
   if constexpr (std::same_as<Value, RealValued>) {
     return u;
   } else {
     return u |
            std::ranges::views::transform([](auto x) { return std::conj(x); }) |
-           Field<Grid, Value>(u.GetGrid());
+           FormField<Grid, Value>(u.GetGrid());
   }
 }
 
@@ -187,50 +192,44 @@ auto conj(FieldView<View, Grid, Value> u) {
 //               Field x Scalar -> Field             //
 //---------------------------------------------------//
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
-auto operator*(FieldView<View, Grid, Value> u,
-               std::ranges::range_value_t<View> s) {
+auto operator*(Field<View, Grid, Value> u, std::ranges::range_value_t<View> s) {
   return u | std::ranges::views::transform([s](auto x) { return x * s; }) |
-         Field<Grid, Value>(u.GetGrid());
+         FormField<Grid, Value>(u.GetGrid());
 }
 
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
-auto operator*(std::ranges::range_value_t<View> s,
-               FieldView<View, Grid, Value> u) {
+auto operator*(std::ranges::range_value_t<View> s, Field<View, Grid, Value> u) {
   return u * s;
 }
 
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
-auto operator+(FieldView<View, Grid, Value> u,
-               std::ranges::range_value_t<View> s) {
+auto operator+(Field<View, Grid, Value> u, std::ranges::range_value_t<View> s) {
   return u | std::ranges::views::transform([s](auto x) { return x + s; }) |
-         Field<Grid, Value>(u.GetGrid());
+         FormField<Grid, Value>(u.GetGrid());
 }
 
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
-auto operator+(std::ranges::range_value_t<View> s,
-               FieldView<View, Grid, Value> u) {
+auto operator+(std::ranges::range_value_t<View> s, Field<View, Grid, Value> u) {
   return u + s;
 }
 
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
-auto operator-(FieldView<View, Grid, Value> u,
-               std::ranges::range_value_t<View> s) {
+auto operator-(Field<View, Grid, Value> u, std::ranges::range_value_t<View> s) {
   return u | std::ranges::views::transform([s](auto x) { return x - s; }) |
-         Field<Grid, Value>(u.GetGrid());
+         FormField<Grid, Value>(u.GetGrid());
 }
 
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
-auto operator/(FieldView<View, Grid, Value> u,
-               std::ranges::range_value_t<View> s) {
+auto operator/(Field<View, Grid, Value> u, std::ranges::range_value_t<View> s) {
   return u | std::ranges::views::transform([s](auto x) { return x / s; }) |
-         Field<Grid, Value>(u.GetGrid());
+         FormField<Grid, Value>(u.GetGrid());
 }
 
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
-auto pow(FieldView<View, Grid, Value> u, std::ranges::range_value_t<View> s) {
+auto pow(Field<View, Grid, Value> u, std::ranges::range_value_t<View> s) {
   return u |
          std::ranges::views::transform([s](auto x) { return std::pow(x, s); }) |
-         Field<Grid, Value>(u.GetGrid());
+         FormField<Grid, Value>(u.GetGrid());
 }
 
 //---------------------------------------------------//
@@ -238,50 +237,50 @@ auto pow(FieldView<View, Grid, Value> u, std::ranges::range_value_t<View> s) {
 //---------------------------------------------------//
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
 requires std::same_as<typename Grid::MRange, All>
-auto operator*(FieldView<View, Grid, Value> u, typename Grid::Complex s) {
+auto operator*(Field<View, Grid, Value> u, typename Grid::Complex s) {
   return u | std::ranges::views::transform([s](auto x) { return x * s; }) |
-         Field<Grid, ComplexValued>(u.GetGrid());
+         FormField<Grid, ComplexValued>(u.GetGrid());
 }
 
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
 requires std::same_as<typename Grid::MRange, All>
-auto operator*(typename Grid::Complex s, FieldView<View, Grid, Value> u) {
+auto operator*(typename Grid::Complex s, Field<View, Grid, Value> u) {
   return u * s;
 }
 
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
 requires std::same_as<typename Grid::MRange, All>
-auto operator+(FieldView<View, Grid, Value> u, typename Grid::Complex s) {
+auto operator+(Field<View, Grid, Value> u, typename Grid::Complex s) {
   return u | std::ranges::views::transform([s](auto x) { return x + s; }) |
-         Field<Grid, ComplexValued>(u.GetGrid());
+         FormField<Grid, ComplexValued>(u.GetGrid());
 }
 
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
 requires std::same_as<typename Grid::MRange, All>
-auto operator+(typename Grid::Complex s, FieldView<View, Grid, Value> u) {
+auto operator+(typename Grid::Complex s, Field<View, Grid, Value> u) {
   return u + s;
 }
 
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
 requires std::same_as<typename Grid::MRange, All>
-auto operator-(FieldView<View, Grid, Value> u, typename Grid::Complex s) {
+auto operator-(Field<View, Grid, Value> u, typename Grid::Complex s) {
   return u | std::ranges::views::transform([s](auto x) { return x - s; }) |
-         Field<Grid, ComplexValued>(u.GetGrid());
+         FormField<Grid, ComplexValued>(u.GetGrid());
 }
 
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
 requires std::same_as<typename Grid::MRange, All>
-auto operator/(FieldView<View, Grid, Value> u, typename Grid::Complex s) {
+auto operator/(Field<View, Grid, Value> u, typename Grid::Complex s) {
   return u | std::ranges::views::transform([s](auto x) { return x / s; }) |
-         Field<Grid, ComplexValued>(u.GetGrid());
+         FormField<Grid, ComplexValued>(u.GetGrid());
 }
 
 template <std::ranges::view View, typename Grid, RealOrComplexValued Value>
 requires std::same_as<typename Grid::MRange, All>
-auto pow(FieldView<View, Grid, Value> u, typename Grid::Complex s) {
+auto pow(Field<View, Grid, Value> u, typename Grid::Complex s) {
   return u |
          std::ranges::views::transform([s](auto x) { return std::pow(x, s); }) |
-         Field<Grid, ComplexValued>(u.GetGrid());
+         FormField<Grid, ComplexValued>(u.GetGrid());
 }
 
 //---------------------------------------------------//
@@ -289,62 +288,38 @@ auto pow(FieldView<View, Grid, Value> u, typename Grid::Complex s) {
 //---------------------------------------------------//
 template <std::ranges::view View1, std::ranges::view View2, typename Grid,
           RealOrComplexValued Value1, RealOrComplexValued Value2>
-auto operator+(FieldView<View1, Grid, Value1> u1,
-               FieldView<View2, Grid, Value2> u2) {
+auto operator+(Field<View1, Grid, Value1> u1, Field<View2, Grid, Value2> u2) {
   using Value = std::conditional_t<std::same_as<Value1, ComplexValued> ||
                                        std::same_as<Value2, ComplexValued>,
                                    ComplexValued, RealValued>;
   assert(u1.size() == u2.size());
   return std::ranges::views::zip_transform([](auto x, auto y) { return x + y; },
                                            u1, u2) |
-         Field<Grid, Value>(u1.GetGrid());
+         FormField<Grid, Value>(u1.GetGrid());
 }
 
 template <std::ranges::view View1, std::ranges::view View2, typename Grid,
           RealOrComplexValued Value1, RealOrComplexValued Value2>
-auto operator-(FieldView<View1, Grid, Value1> u1,
-               FieldView<View2, Grid, Value2> u2) {
+auto operator-(Field<View1, Grid, Value1> u1, Field<View2, Grid, Value2> u2) {
   using Value = std::conditional_t<std::same_as<Value1, ComplexValued> ||
                                        std::same_as<Value2, ComplexValued>,
                                    ComplexValued, RealValued>;
   assert(u1.size() == u2.size());
   return std::ranges::views::zip_transform([](auto x, auto y) { return x - y; },
                                            u1, u2) |
-         Field<Grid, Value>(u1.GetGrid());
+         FormField<Grid, Value>(u1.GetGrid());
 }
 
 template <std::ranges::view View1, std::ranges::view View2, typename Grid,
           RealOrComplexValued Value1, RealOrComplexValued Value2>
-auto operator*(FieldView<View1, Grid, Value1> u1,
-               FieldView<View2, Grid, Value2> u2) {
+auto operator*(Field<View1, Grid, Value1> u1, Field<View2, Grid, Value2> u2) {
   using Value = std::conditional_t<std::same_as<Value1, ComplexValued> ||
                                        std::same_as<Value2, ComplexValued>,
                                    ComplexValued, RealValued>;
   assert(u1.size() == u2.size());
   return std::ranges::views::zip_transform([](auto x, auto y) { return x * y; },
                                            u1, u2) |
-         Field<Grid, Value>(u1.GetGrid());
-}
-
-//------------------------------------------------//
-//                Helper functions                //
-//------------------------------------------------//
-template <typename Grid>
-requires std::derived_from<Grid, GridBase<Grid>>
-auto AllocateRealField(Grid grid) {
-  auto data =
-      std::make_unique<FFTWpp::vector<typename Grid::Real>>(grid.FieldSize());
-  return std::pair(std::ranges::views::all(*data) | RealField(grid),
-                   std::move(data));
-}
-
-template <typename Grid>
-requires std::derived_from<Grid, GridBase<Grid>>
-auto AllocateComplexField(Grid grid) {
-  auto data = std::make_unique<FFTWpp::vector<typename Grid::Complex>>(
-      grid.FieldSize());
-  return std::pair(std::ranges::views::all(*data) | ComplexField(grid),
-                   std::move(data));
+         FormField<Grid, Value>(u1.GetGrid());
 }
 
 }  // namespace GSHTrans
