@@ -19,17 +19,9 @@ int main() {
   auto nMax = 2;
 
   auto grid = Grid(lMax, nMax);
-
   auto size = grid.FieldSize();
-  auto data0 = std::vector<Real>(size);
-  auto data1 = std::vector<Real>(size);
-  auto data2 = std::vector<Real>(size);
 
-  auto u = RealVectorField(data0, data1, data2, grid);
+  auto u = ScalarField<Grid, RealValued>(grid, 1);
 
-  u(0) = 2;
-
-  auto w = u + u;
-
-  for (auto val : w(0)) std::cout << val << std::endl;
+  auto v = 2 * u + u;
 }
