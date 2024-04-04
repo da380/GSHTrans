@@ -8,6 +8,7 @@
 
 #include "Concepts.h"
 #include "GridBase.h"
+#include "Indexing.h"
 
 namespace GSHTrans {
 
@@ -118,9 +119,12 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
     return *this;
   }
 
-  // Additional methods.
+  // Iterators.
   auto begin() { return _data.begin(); }
   auto end() { return _data.end(); }
+
+  // Value assignement.
+  auto& operator[](Int i) { return _data[i]; }
   auto& operator()(Int iTheta, Int iPhi) {
     return _data[this->Index(iTheta, iPhi)];
   }
@@ -197,9 +201,12 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
     return *this;
   }
 
-  // Additional methods.
+  // Iterators.
   auto begin() { return _data.begin(); }
   auto end() { return _data.end(); }
+
+  // Value assignement.
+  auto& operator[](Int i) { return _data[i]; }
   auto& operator()(Int iTheta, Int iPhi) {
     return _data[this->Index(iTheta, iPhi)];
   }
@@ -423,6 +430,113 @@ auto operator*(typename Derived::Scalar s, ScalarFieldBase<Derived>&& u) {
   return u * s;
 }
 
+template <typename Derived>
+auto operator+(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
+  return ScalarFieldUnaryWithScalar(u, std::plus<>(), s);
+}
+
+template <typename Derived>
+auto operator+(typename Derived::Scalar s, const ScalarFieldBase<Derived>& u) {
+  return u + s;
+}
+
+template <typename Derived>
+auto operator+(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
+  return u + s;
+}
+
+template <typename Derived>
+auto operator+(typename Derived::Scalar s, ScalarFieldBase<Derived>&& u) {
+  return u + s;
+}
+
+template <typename Derived>
+auto operator-(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
+  return ScalarFieldUnaryWithScalar(u, std::minus<>(), s);
+}
+
+template <typename Derived>
+auto operator-(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
+  return u - s;
+}
+
+template <typename Derived>
+auto operator/(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
+  return ScalarFieldUnaryWithScalar(u, std::divides<>(), s);
+}
+
+template <typename Derived>
+auto operator/(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
+  return u / s;
+}
+
+//-----------------------------------------------------//
+//          RealField x Complex -> ComplexField        //
+//-----------------------------------------------------//
+template <typename Derived>
+requires RealFloatingPoint<typename Derived::Scalar>
+auto operator*(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
+  return ScalarFieldUnaryWithScalar(u, std::multiplies<>(), s);
+}
+
+/*
+template <typename Derived>
+auto operator*(typename Derived::Scalar s, const ScalarFieldBase<Derived>& u) {
+  return u * s;
+}
+
+template <typename Derived>
+auto operator*(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
+  return u * s;
+}
+
+template <typename Derived>
+auto operator*(typename Derived::Scalar s, ScalarFieldBase<Derived>&& u) {
+  return u * s;
+}
+
+template <typename Derived>
+auto operator+(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
+  return ScalarFieldUnaryWithScalar(u, std::plus<>(), s);
+}
+
+template <typename Derived>
+auto operator+(typename Derived::Scalar s, const ScalarFieldBase<Derived>& u) {
+  return u + s;
+}
+
+template <typename Derived>
+auto operator+(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
+  return u + s;
+}
+
+template <typename Derived>
+auto operator+(typename Derived::Scalar s, ScalarFieldBase<Derived>&& u) {
+  return u + s;
+}
+
+template <typename Derived>
+auto operator-(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
+  return ScalarFieldUnaryWithScalar(u, std::minus<>(), s);
+}
+
+template <typename Derived>
+auto operator-(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
+  return u - s;
+}
+
+template <typename Derived>
+auto operator/(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
+  return ScalarFieldUnaryWithScalar(u, std::divides<>(), s);
+}
+
+template <typename Derived>
+auto operator/(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
+  return u / s;
+}
+
+*/
+
 //-----------------------------------------------------//
 //                Field x Field -> Field               //
 //-----------------------------------------------------//
@@ -448,6 +562,52 @@ auto operator+(ScalarFieldBase<Derived1>&& u1,
 template <typename Derived1, typename Derived2>
 auto operator+(ScalarFieldBase<Derived1>&& u1, ScalarFieldBase<Derived2>&& u2) {
   return u1 + u2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator-(const ScalarFieldBase<Derived1>& u1,
+               const ScalarFieldBase<Derived2>& u2) {
+  return ScalarFieldBinary(u1, u2, std::minus<>());
+}
+
+template <typename Derived1, typename Derived2>
+auto operator-(const ScalarFieldBase<Derived1>& u1,
+               ScalarFieldBase<Derived2>&& u2) {
+  return u1 - u2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator-(ScalarFieldBase<Derived1>&& u1,
+               const ScalarFieldBase<Derived2>& u2) {
+  return u1 - u2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator-(ScalarFieldBase<Derived1>&& u1, ScalarFieldBase<Derived2>&& u2) {
+  return u1 - u2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator*(const ScalarFieldBase<Derived1>& u1,
+               const ScalarFieldBase<Derived2>& u2) {
+  return ScalarFieldBinary(u1, u2, std::multiplies<>());
+}
+
+template <typename Derived1, typename Derived2>
+auto operator*(const ScalarFieldBase<Derived1>& u1,
+               ScalarFieldBase<Derived2>&& u2) {
+  return u1 * u2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator*(ScalarFieldBase<Derived1>&& u1,
+               const ScalarFieldBase<Derived2>& u2) {
+  return u1 * u2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator*(ScalarFieldBase<Derived1>&& u1, ScalarFieldBase<Derived2>&& u2) {
+  return u1 * u2;
 }
 
 }  // namespace GSHTrans

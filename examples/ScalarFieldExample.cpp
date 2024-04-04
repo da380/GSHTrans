@@ -23,5 +23,7 @@ int main() {
 
   auto u = ScalarField<Grid, RealValued>(grid, 1);
 
-  auto v = 2 * u + u;
+  auto v = u * Complex(1);
+
+  v.Print();
 }
