@@ -476,7 +476,8 @@ auto operator/(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
 template <typename Derived>
 requires RealFloatingPoint<typename Derived::Scalar>
 auto operator*(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
-  return ScalarFieldUnaryWithScalar(u, std::multiplies<>(), s);
+  return ScalarFieldUnaryWithScalar(
+      u, [](auto x, auto y) -> typename Derived::Complex { return x * y; }, s);
 }
 
 /*
