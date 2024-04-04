@@ -407,6 +407,40 @@ auto abs(ScalarFieldBase<Derived>&& u) {
   return abs(u);
 }
 
+template <typename Derived>
+auto real(const ScalarFieldBase<Derived>& u) {
+  return ScalarFieldUnary(u, [](auto x) { return std::real(x); });
+}
+
+template <typename Derived>
+auto real(ScalarFieldBase<Derived>&& u) {
+  return real(u);
+}
+
+template <typename Derived>
+auto imag(const ScalarFieldBase<Derived>& u) {
+  return ScalarFieldUnary(u, [](auto x) { return std::imag(x); });
+}
+
+template <typename Derived>
+auto imag(ScalarFieldBase<Derived>&& u) {
+  return imag(u);
+}
+
+template <typename Derived>
+auto conj(const ScalarFieldBase<Derived>& u) {
+  if constexpr (RealFloatingPoint<typename Derived::Scalar>) {
+    return ScalarFieldUnary(u, [](auto x) { return x; });
+  } else {
+    return ScalarFieldUnary(u, [](auto x) { return std::conj(x); });
+  }
+}
+
+template <typename Derived>
+auto conj(ScalarFieldBase<Derived>&& u) {
+  return conj(u);
+}
+
 //-----------------------------------------------------//
 //               Field x Scalar -> Field               //
 //-----------------------------------------------------//
@@ -470,6 +504,17 @@ auto operator/(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
   return u / s;
 }
 
+template <typename Derived>
+auto pow(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
+  return ScalarFieldUnaryWithScalar(
+      u, [](auto x, auto y) { return std::pow(x, y); }, s);
+}
+
+template <typename Derived>
+auto pow(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
+  return pow(u, s);
+}
+
 //-----------------------------------------------------//
 //          RealField x Complex -> ComplexField        //
 //-----------------------------------------------------//
@@ -480,63 +525,74 @@ auto operator*(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
       u, [](auto x, auto y) -> typename Derived::Complex { return x * y; }, s);
 }
 
-/*
 template <typename Derived>
-auto operator*(typename Derived::Scalar s, const ScalarFieldBase<Derived>& u) {
+requires RealFloatingPoint<typename Derived::Scalar>
+auto operator*(ScalarFieldBase<Derived>&& u, typename Derived::Complex s) {
   return u * s;
 }
 
 template <typename Derived>
-auto operator*(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
+requires RealFloatingPoint<typename Derived::Scalar>
+auto operator*(typename Derived::Complex s, const ScalarFieldBase<Derived>& u) {
   return u * s;
 }
 
 template <typename Derived>
-auto operator*(typename Derived::Scalar s, ScalarFieldBase<Derived>&& u) {
+requires RealFloatingPoint<typename Derived::Scalar>
+auto operator*(typename Derived::Complex s, ScalarFieldBase<Derived>&& u) {
   return u * s;
 }
 
 template <typename Derived>
-auto operator+(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
-  return ScalarFieldUnaryWithScalar(u, std::plus<>(), s);
+requires RealFloatingPoint<typename Derived::Scalar>
+auto operator+(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
+  return ScalarFieldUnaryWithScalar(
+      u, [](auto x, auto y) -> typename Derived::Complex { return x + y; }, s);
 }
 
 template <typename Derived>
-auto operator+(typename Derived::Scalar s, const ScalarFieldBase<Derived>& u) {
+requires RealFloatingPoint<typename Derived::Scalar>
+auto operator+(ScalarFieldBase<Derived>&& u, typename Derived::Complex s) {
   return u + s;
 }
 
 template <typename Derived>
-auto operator+(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
+requires RealFloatingPoint<typename Derived::Scalar>
+auto operator+(typename Derived::Complex s, const ScalarFieldBase<Derived>& u) {
   return u + s;
 }
 
 template <typename Derived>
-auto operator+(typename Derived::Scalar s, ScalarFieldBase<Derived>&& u) {
+requires RealFloatingPoint<typename Derived::Scalar>
+auto operator+(typename Derived::Complex s, ScalarFieldBase<Derived>&& u) {
   return u + s;
 }
 
 template <typename Derived>
-auto operator-(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
-  return ScalarFieldUnaryWithScalar(u, std::minus<>(), s);
+requires RealFloatingPoint<typename Derived::Scalar>
+auto operator-(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
+  return ScalarFieldUnaryWithScalar(
+      u, [](auto x, auto y) -> typename Derived::Complex { return x - y; }, s);
 }
 
 template <typename Derived>
-auto operator-(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
+requires RealFloatingPoint<typename Derived::Scalar>
+auto operator-(ScalarFieldBase<Derived>&& u, typename Derived::Complex s) {
   return u - s;
 }
 
 template <typename Derived>
-auto operator/(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
-  return ScalarFieldUnaryWithScalar(u, std::divides<>(), s);
+requires RealFloatingPoint<typename Derived::Scalar>
+auto operator/(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
+  return ScalarFieldUnaryWithScalar(
+      u, [](auto x, auto y) -> typename Derived::Complex { return x / y; }, s);
 }
 
 template <typename Derived>
-auto operator/(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
+requires RealFloatingPoint<typename Derived::Scalar>
+auto operator/(ScalarFieldBase<Derived>&& u, typename Derived::Complex s) {
   return u / s;
 }
-
-*/
 
 //-----------------------------------------------------//
 //                Field x Field -> Field               //

@@ -25,5 +25,7 @@ int main() {
 
   auto v = u * Complex(1);
 
-  v.Print();
+  auto w = conj(v);
+
+  w.Print();
 }
