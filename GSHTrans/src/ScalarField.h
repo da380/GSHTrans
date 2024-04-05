@@ -24,16 +24,9 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
   auto GetGrid() const { return Derived().GetGrid(); }
 
   // Methods related to the data.
-  auto size() const { return this->GetGrid().FieldSize(); }
-  auto operator[](Int i) const { return Derived()[i]; }
-  auto operator()(Int iTheta, Int iPhi) const {
-    return Derived().operator[](this->Index(iTheta, iPhi));
-  }
-
-  void Print() const {
-    for (auto [iTheta, iPhi] : this->PointIndices()) {
-      std::cout << operator()(iTheta, iPhi) << std::endl;
-    }
+  auto size() const { return GetGrid().FieldSize(); }
+  auto operator[](Int iTheta, Int iPhi) const {
+    return Derived().operator[](iTheta, iPhi);
   }
 
  private:
@@ -59,7 +52,9 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
 
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _grid; }
-  auto operator[](Int i) const { return _data[i]; }
+  auto operator[](Int iTheta, Int iPhi) const {
+    return _data[Index(iTheta, iPhi)];
+  }
 
   // Constructors.
   ScalarField() = default;
@@ -124,10 +119,7 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   auto end() { return _data.end(); }
 
   // Value assignement.
-  auto& operator[](Int i) { return _data[i]; }
-  auto& operator()(Int iTheta, Int iPhi) {
-    return _data[this->Index(iTheta, iPhi)];
-  }
+  auto& operator[](Int iTheta, Int iPhi) { return _data[Index(iTheta, iPhi)]; }
 
  private:
   _Grid _grid;
@@ -136,8 +128,12 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   template <typename Derived>
   void CopyValues(const ScalarFieldBase<Derived>& other) {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      this->operator()(iTheta, iPhi) = other(iTheta, iPhi);
+      operator[](iTheta, iPhi) = other[iTheta, iPhi];
     }
+  }
+
+  auto Index(Int iTheta, int iPhi) const {
+    return iTheta * this->NumberOfLongitudes() + iPhi;
   }
 };
 
@@ -164,7 +160,9 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
 
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _grid; }
-  auto operator[](Int i) const { return _data[i]; }
+  auto operator[](Int iTheta, Int iPhi) const {
+    return _data[Index(iTheta, iPhi)];
+  }
 
   // Constructors.
   ScalarFieldView() = default;
@@ -206,10 +204,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
   auto end() { return _data.end(); }
 
   // Value assignement.
-  auto& operator[](Int i) { return _data[i]; }
-  auto& operator()(Int iTheta, Int iPhi) {
-    return _data[this->Index(iTheta, iPhi)];
-  }
+  auto& operator[](Int iTheta, Int iPhi) { return _data[Index(iTheta, iPhi)]; }
 
  private:
   _Grid _grid;
@@ -218,8 +213,12 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
   template <typename Derived>
   void CopyValues(const ScalarFieldBase<Derived>& other) {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      this->operator()(iTheta, iPhi) = other(iTheta, iPhi);
+      operator[](iTheta, iPhi) = other[iTheta, iPhi];
     }
+  }
+
+  auto Index(Int iTheta, int iPhi) const {
+    return iTheta * this->NumberOfLongitudes() + iPhi;
   }
 };
 
@@ -250,7 +249,7 @@ class ScalarFieldUnary
 
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _u.GetGrid(); }
-  auto operator[](Int i) const { return _f(_u[i]); }
+  auto operator[](Int iTheta, Int iPhi) const { return _f(_u[iTheta, iPhi]); }
 
   // Constructors.
   ScalarFieldUnary() = delete;
@@ -300,7 +299,9 @@ class ScalarFieldUnaryWithScalar
 
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _u.GetGrid(); }
-  auto operator[](Int i) const { return _f(_u[i], _s); }
+  auto operator[](Int iTheta, Int iPhi) const {
+    return _f(_u[iTheta, iPhi], _s);
+  }
 
   // Constructors.
   ScalarFieldUnaryWithScalar() = delete;
@@ -360,7 +361,9 @@ class ScalarFieldBinary
 
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _u1.GetGrid(); }
-  auto operator[](Int i) const { return _f(_u1[i], _u2[i]); }
+  auto operator[](Int iTheta, Int iPhi) const {
+    return _f(_u1[iTheta, iPhi], _u2[iTheta, iPhi]);
+  }
 
   // Constructors.
   ScalarFieldBinary() = delete;
@@ -665,6 +668,26 @@ auto operator*(ScalarFieldBase<Derived1>&& u1,
 template <typename Derived1, typename Derived2>
 auto operator*(ScalarFieldBase<Derived1>&& u1, ScalarFieldBase<Derived2>&& u2) {
   return u1 * u2;
+}
+
+//-----------------------------------------------------------------------//
+//                             Field -> Scalar                           //
+//-----------------------------------------------------------------------//
+template <typename Derived>
+auto Integrate(const ScalarFieldBase<Derived>& u) {
+  using Scalar = typename Derived::Scalar;
+  auto w = u.Weights();
+  auto i = 0;
+  auto sum = Scalar{0};
+  for (auto [iTheta, iPhi] : u.PointIndices()) {
+    sum += u[iTheta, iPhi] * w[i++];
+  }
+  return sum;
+}
+
+template <typename Derived>
+auto Integrate(ScalarFieldBase<Derived>&& u) {
+  return Integrate(u);
 }
 
 }  // namespace GSHTrans

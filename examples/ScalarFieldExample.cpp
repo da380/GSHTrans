@@ -27,5 +27,5 @@ int main() {
 
   auto w = conj(v);
 
-  w.Print();
+  std::cout << Integrate(abs(w)) << std::endl;
 }

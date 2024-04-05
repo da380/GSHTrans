@@ -52,9 +52,12 @@ class GridBase {
                                                  Derived().LongitudeIndices());
   }
 
+  auto CoLatitudeWeights() const { return Derived().CoLatitudeWeights(); }
+  auto LongitudeWeights() const { return Derived().LongitudeWeights(); }
+
   auto Weights() const {
-    return std::ranges::views::cartesian_product(Derived().CoLatitudeWeights(),
-                                                 Derived().LongitudeWeights()) |
+    return std::ranges::views::cartesian_product(CoLatitudeWeights(),
+                                                 LongitudeWeights()) |
            std::ranges::views::transform(
                [](auto pair) { return std::get<0>(pair) * std::get<1>(pair); });
   }

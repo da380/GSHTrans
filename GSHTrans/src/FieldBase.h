@@ -10,17 +10,19 @@ class FieldBase {
  public:
   // Methods related to the grid.
   auto GetGrid() const { return Derived().GetGrid(); }
+
   auto NumberOfCoLatitudes() const { return GetGrid().NumberOfCoLatitudes(); }
-  auto NumberOfLongitudes() const { return GetGrid().NumberOfLongitudes(); }
   auto CoLatitudes() const { return GetGrid().CoLatitudes(); }
+  auto CoLatitudeIndices() const { return GetGrid().CoLatitudeIndices(); }
+
+  auto NumberOfLongitudes() const { return GetGrid().NumberOfLongitudes(); }
   auto Longitudes() const { return GetGrid().Longitudes(); }
+  auto LongitudeIndices() const { return GetGrid().LongitudeIndices(); }
+
   auto Points() const { return GetGrid().Points(); }
   auto PointIndices() const { return GetGrid().PointIndices(); }
 
-  // Methods related to the data.
-  auto Index(Int iTheta, int iPhi) const {
-    return iTheta * NumberOfLongitudes() + iPhi;
-  }
+  auto Weights() const { return GetGrid().Weights(); }
 
  private:
   auto& Derived() const { return static_cast<const _Derived&>(*this); }
