@@ -8,6 +8,7 @@
 #include "src/GridBase.h"
 #include "src/Indexing.h"
 #include "src/ScalarField.h"
+#include "src/VectorField.h"
 #include "src/Wigner.h"
 
 #endif

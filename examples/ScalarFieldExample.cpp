@@ -19,13 +19,12 @@ int main() {
   auto nMax = 2;
 
   auto grid = Grid(lMax, nMax);
-  auto size = grid.FieldSize();
 
-  auto u = ScalarField<Grid, RealValued>(grid, 1);
+  auto u = VectorField<Grid, RealValued>(grid);
 
-  auto v = u * Complex(1);
+  auto v = u[-1];
 
-  auto w = conj(v);
+  // std::cout << u[-1, 0, 0] << std::endl;
 
-  std::cout << Integrate(abs(w)) << std::endl;
+  std::cout << v[1, 2] << std::endl;
 }
