@@ -27,9 +27,10 @@ class VectorFieldBase : public FieldBase<VectorFieldBase<_Derived>> {
   // Methods related to the data.
   auto size() const { return 3 * GetGrid().FieldSize(); }
   auto ComponentSize() const { return GetGrid().FieldSize(); }
-  auto operator[](Int alpha, Int iTheta, Int iPhi) const {
-    return Derived().operator[](alpha, iTheta, iPhi);
+  auto operator()(Int alpha, Int iTheta, Int iPhi) const {
+    return Derived().operator()(alpha, iTheta, iPhi);
   }
+  auto operator()(Int alpha) const { return Derived().operator()(alpha); }
 
  private:
   auto& Derived() const { return static_cast<const _Derived&>(*this); }
@@ -53,12 +54,12 @@ class VectorFieldComponentView
 
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _u.GetGrid(); }
-  auto operator[](Int iTheta, Int iPhi) const {
-    return _u[_alpha, iTheta, iPhi];
+  auto operator()(Int iTheta, Int iPhi) const {
+    return _u(_alpha, iTheta, iPhi);
   }
 
   // Constructors.
-  VectorFieldComponentView(VectorFieldBase<Derived>& u, Int alpha)
+  VectorFieldComponentView(const VectorFieldBase<Derived>& u, Int alpha)
       : _u{u}, _alpha{alpha} {}
 
   VectorFieldComponentView(const VectorFieldComponentView&) = default;
@@ -70,7 +71,7 @@ class VectorFieldComponentView
   VectorFieldComponentView& operator=(VectorFieldComponentView&&) = default;
 
  private:
-  VectorFieldBase<Derived>& _u;
+  const VectorFieldBase<Derived>& _u;
   Int _alpha;
 };
 
@@ -92,11 +93,12 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
 
   // Methods needed to inherit from VectorField Base.
   auto GetGrid() const { return _grid; }
-  auto operator[](Int alpha, Int iTheta, Int iPhi) const {
+  auto operator()(Int alpha, Int iTheta, Int iPhi) const {
     return _data[Index(alpha, iTheta, iPhi)];
   }
-
-  auto operator[](Int alpha) { return VectorFieldComponentView(*this, alpha); }
+  auto operator()(Int alpha) const {
+    return VectorFieldComponentView(*this, alpha);
+  }
 
   // Constructors.
   VectorField() = default;
@@ -113,8 +115,15 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
   auto end() { return _data.end(); }
 
   // Value assignment.
-  auto& operator[](Int alpha, Int iTheta, Int iPhi) {
+  auto& operator()(Int alpha, Int iTheta, Int iPhi) {
     return _data[Index(alpha, iTheta, iPhi)];
+  }
+  auto operator()(Int alpha) {
+    auto size = this->ComponentSize();
+    auto start = std::next(begin(), size * (alpha + 1));
+    auto finish = std::next(start, size);
+    auto data = std::ranges::subrange(start, finish);
+    return ScalarFieldView(_grid, data);
   }
 
  private:
@@ -126,6 +135,71 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
            iTheta * this->NumberOfLongitudes() + iPhi;
   }
 };
+
+//-------------------------------------------------//
+//                 Unary expression                //
+//-------------------------------------------------//
+template <typename Derived, typename Function>
+requires requires() {
+  requires std::invocable<Function, typename Derived::Scalar>;
+  requires std::convertible_to<
+               std::invoke_result_t<Function, typename Derived::Scalar>,
+               typename Derived::Real> ||
+               std::convertible_to<
+                   std::invoke_result_t<Function, typename Derived::Scalar>,
+                   typename Derived::Complex>;
+}
+class VectorFieldUnary
+    : public VectorFieldBase<VectorFieldUnary<Derived, Function>> {
+  using Int = std::ptrdiff_t;
+
+ public:
+  using Grid = typename Derived::Grid;
+  using Scalar = std::invoke_result_t<Function, typename Derived::Scalar>;
+  using Value =
+      std::conditional_t<RealFloatingPoint<Scalar>, RealValued, ComplexValued>;
+  using Real = typename Derived::Real;
+  using Complex = typename Derived::Complex;
+
+  // Methods needed to inherit from VectorField Base.
+  auto GetGrid() const { return _u.GetGrid(); }
+  auto operator()(Int alpha, Int iTheta, Int iPhi) const {
+    return _f(_u(alpha, iTheta, iPhi));
+  }
+  auto operator()(Int alpha) const {
+    return VectorFieldComponentView(*this, alpha);
+  }
+
+  // Constructors.
+  VectorFieldUnary() = delete;
+  VectorFieldUnary(const VectorFieldBase<Derived>& u, Function f)
+      : _u{u}, _f{f} {}
+
+  VectorFieldUnary(const VectorFieldUnary&) = default;
+  VectorFieldUnary(VectorFieldUnary&&) = default;
+
+  // Assignment.
+  VectorFieldUnary& operator=(VectorFieldUnary&) = default;
+  VectorFieldUnary& operator=(VectorFieldUnary&&) = default;
+
+ private:
+  const VectorFieldBase<Derived>& _u;
+  Function _f;
+};
+
+//-----------------------------------------------------//
+//              VectorField -> VectorField             //
+//-----------------------------------------------------//
+
+template <typename Derived>
+auto operator-(const VectorFieldBase<Derived>& u) {
+  return VectorFieldUnary(u, [](auto x) { return -x; });
+}
+
+template <typename Derived>
+auto operator-(VectorFieldBase<Derived>&& u) {
+  return -u;
+}
 
 }  // namespace GSHTrans
 

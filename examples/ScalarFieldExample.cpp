@@ -15,16 +15,14 @@ int main() {
   using NRange = All;
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
 
-  auto lMax = 8;
+  auto lMax = 4;
   auto nMax = 2;
 
   auto grid = Grid(lMax, nMax);
 
-  auto u = VectorField<Grid, RealValued>(grid);
+  auto u = ScalarField<Grid, ComplexValued>(grid);
 
-  auto v = u[-1];
+  u = 1;
 
-  // std::cout << u[-1, 0, 0] << std::endl;
-
-  std::cout << v[1, 2] << std::endl;
+  (u / 4 + 1).Print();
 }

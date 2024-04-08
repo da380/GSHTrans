@@ -29,9 +29,56 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
     return Derived().operator()(iTheta, iPhi);
   }
 
+  void Print() const {
+    for (auto [iTheta, iPhi] : this->PointIndices()) {
+      std::cout << iTheta << " " << iPhi << " " << operator()(iTheta, iPhi)
+                << std::endl;
+    }
+  }
+
  private:
   auto& Derived() const { return static_cast<const _Derived&>(*this); }
   auto& Derived() { return static_cast<_Derived&>(*this); }
+};
+
+//-------------------------------------------------//
+//              Constant scalar field              //
+//-------------------------------------------------//
+template <typename _Grid, RealOrComplexValued _Value>
+requires std::derived_from<_Grid, GridBase<_Grid>>
+class ConstantScalarField
+    : public ScalarFieldBase<ConstantScalarField<_Grid, _Value>> {
+  using Int = std::ptrdiff_t;
+
+ public:
+  using Grid = _Grid;
+  using Value = _Value;
+  using Real = typename _Grid::Real;
+  using Complex = typename _Grid::Complex;
+  using Scalar =
+      std::conditional_t<std::same_as<_Value, RealValued>, Real, Complex>;
+
+  // Methods needed to inherit from ScalarField Base.
+  auto GetGrid() const { return _grid; }
+  auto operator()(Int iTheta, Int iPhi) const { return _s; }
+
+  // Constructors.
+  ConstantScalarField() = default;
+
+  ConstantScalarField(_Grid grid, Scalar s) : _grid{grid}, _s{s} {}
+
+  // Assignment.
+  ConstantScalarField& operator=(const ConstantScalarField&) = default;
+  ConstantScalarField& operator=(ConstantScalarField&&) = default;
+
+  auto& operator=(Scalar s) {
+    _s = s;
+    return *this;
+  }
+
+ private:
+  _Grid _grid;
+  Scalar _s;
 };
 
 //-------------------------------------------------//
@@ -128,7 +175,7 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   template <typename Derived>
   void CopyValues(const ScalarFieldBase<Derived>& other) {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      operator()(iTheta, iPhi) = other[iTheta, iPhi];
+      operator()(iTheta, iPhi) = other(iTheta, iPhi);
     }
   }
 
@@ -213,7 +260,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
   template <typename Derived>
   void CopyValues(const ScalarFieldBase<Derived>& other) {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      operator()(iTheta, iPhi) = other[iTheta, iPhi];
+      operator()(iTheta, iPhi) = other(iTheta, iPhi);
     }
   }
 
@@ -223,6 +270,50 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
 };
 
 //-------------------------------------------------//
+//        Complexification of a real field         //
+//-------------------------------------------------//
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+class ComplexifiedScalarField
+    : public ScalarFieldBase<ComplexifiedScalarField<Derived>> {
+  using Int = std::ptrdiff_t;
+
+ public:
+  using Grid = typename Derived::Grid;
+  using Real = typename Grid::Real;
+  using Complex = typename Grid::Complex;
+  using Scalar = Complex;
+  using Value = ComplexValued;
+
+  // Methods needed to inherit from ScalarField Base.
+  auto GetGrid() const { return _u.GetGrid(); }
+  auto operator()(Int iTheta, Int iPhi) const -> Complex {
+    return _u(iTheta, iPhi);
+  }
+
+  // Constructors.
+  ComplexifiedScalarField(const ScalarFieldBase<Derived>& u) : _u{u} {}
+
+  ComplexifiedScalarField(const ComplexifiedScalarField&) = default;
+  ComplexifiedScalarField(ComplexifiedScalarField&&) = default;
+
+  // Assignment.
+  ComplexifiedScalarField& operator=(const ComplexifiedScalarField&) = default;
+  ComplexifiedScalarField& operator=(ComplexifiedScalarField&&) = default;
+
+ private:
+  const ScalarFieldBase<Derived>& _u;
+};
+
+// Overloaded complexification functions.
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto Complexify(const ScalarFieldBase<Derived>& u) {
+  return ComplexifiedScalarField(u);
+}
+
+//-------------------------------------------------//
 //                 Unary expression                //
 //-------------------------------------------------//
 template <typename Derived, typename Function>
@@ -230,7 +321,7 @@ requires requires() {
   requires std::invocable<Function, typename Derived::Scalar>;
   requires std::convertible_to<
                std::invoke_result_t<Function, typename Derived::Scalar>,
-               typename Derived::Real> ||
+               typename Derived::Scalar> ||
                std::convertible_to<
                    std::invoke_result_t<Function, typename Derived::Scalar>,
                    typename Derived::Complex>;
@@ -249,7 +340,7 @@ class ScalarFieldUnary
 
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _u.GetGrid(); }
-  auto operator()(Int iTheta, Int iPhi) const { return _f(_u[iTheta, iPhi]); }
+  auto operator()(Int iTheta, Int iPhi) const { return _f(_u(iTheta, iPhi)); }
 
   // Constructors.
   ScalarFieldUnary() = delete;
@@ -300,7 +391,7 @@ class ScalarFieldUnaryWithScalar
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _u.GetGrid(); }
   auto operator()(Int iTheta, Int iPhi) const {
-    return _f(_u[iTheta, iPhi], _s);
+    return _f(_u(iTheta, iPhi), _s);
   }
 
   // Constructors.
@@ -362,7 +453,7 @@ class ScalarFieldBinary
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _u1.GetGrid(); }
   auto operator()(Int iTheta, Int iPhi) const {
-    return _f(_u1[iTheta, iPhi], _u2[iTheta, iPhi]);
+    return _f(_u1(iTheta, iPhi), _u2(iTheta, iPhi));
   }
 
   // Constructors.
@@ -411,35 +502,37 @@ auto abs(ScalarFieldBase<Derived>&& u) {
 }
 
 template <typename Derived>
+requires std::same_as<typename Derived::Value, ComplexValued>
 auto real(const ScalarFieldBase<Derived>& u) {
   return ScalarFieldUnary(u, [](auto x) { return std::real(x); });
 }
 
 template <typename Derived>
+requires std::same_as<typename Derived::Value, ComplexValued>
 auto real(ScalarFieldBase<Derived>&& u) {
   return real(u);
 }
 
 template <typename Derived>
+requires std::same_as<typename Derived::Value, ComplexValued>
 auto imag(const ScalarFieldBase<Derived>& u) {
   return ScalarFieldUnary(u, [](auto x) { return std::imag(x); });
 }
 
 template <typename Derived>
+requires std::same_as<typename Derived::Value, ComplexValued>
 auto imag(ScalarFieldBase<Derived>&& u) {
   return imag(u);
 }
 
 template <typename Derived>
+requires std::same_as<typename Derived::Value, ComplexValued>
 auto conj(const ScalarFieldBase<Derived>& u) {
-  if constexpr (RealFloatingPoint<typename Derived::Scalar>) {
-    return ScalarFieldUnary(u, [](auto x) { return x; });
-  } else {
-    return ScalarFieldUnary(u, [](auto x) { return std::conj(x); });
-  }
+  return ScalarFieldUnary(u, [](auto x) { return std::conj(x); });
 }
 
 template <typename Derived>
+requires std::same_as<typename Derived::Value, ComplexValued>
 auto conj(ScalarFieldBase<Derived>&& u) {
   return conj(u);
 }
@@ -516,85 +609,6 @@ auto pow(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
 template <typename Derived>
 auto pow(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
   return pow(u, s);
-}
-
-//-----------------------------------------------------//
-//          RealField x Complex -> ComplexField        //
-//-----------------------------------------------------//
-template <typename Derived>
-requires RealFloatingPoint<typename Derived::Scalar>
-auto operator*(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
-  return ScalarFieldUnaryWithScalar(
-      u, [](auto x, auto y) -> typename Derived::Complex { return x * y; }, s);
-}
-
-template <typename Derived>
-requires RealFloatingPoint<typename Derived::Scalar>
-auto operator*(ScalarFieldBase<Derived>&& u, typename Derived::Complex s) {
-  return u * s;
-}
-
-template <typename Derived>
-requires RealFloatingPoint<typename Derived::Scalar>
-auto operator*(typename Derived::Complex s, const ScalarFieldBase<Derived>& u) {
-  return u * s;
-}
-
-template <typename Derived>
-requires RealFloatingPoint<typename Derived::Scalar>
-auto operator*(typename Derived::Complex s, ScalarFieldBase<Derived>&& u) {
-  return u * s;
-}
-
-template <typename Derived>
-requires RealFloatingPoint<typename Derived::Scalar>
-auto operator+(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
-  return ScalarFieldUnaryWithScalar(
-      u, [](auto x, auto y) -> typename Derived::Complex { return x + y; }, s);
-}
-
-template <typename Derived>
-requires RealFloatingPoint<typename Derived::Scalar>
-auto operator+(ScalarFieldBase<Derived>&& u, typename Derived::Complex s) {
-  return u + s;
-}
-
-template <typename Derived>
-requires RealFloatingPoint<typename Derived::Scalar>
-auto operator+(typename Derived::Complex s, const ScalarFieldBase<Derived>& u) {
-  return u + s;
-}
-
-template <typename Derived>
-requires RealFloatingPoint<typename Derived::Scalar>
-auto operator+(typename Derived::Complex s, ScalarFieldBase<Derived>&& u) {
-  return u + s;
-}
-
-template <typename Derived>
-requires RealFloatingPoint<typename Derived::Scalar>
-auto operator-(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
-  return ScalarFieldUnaryWithScalar(
-      u, [](auto x, auto y) -> typename Derived::Complex { return x - y; }, s);
-}
-
-template <typename Derived>
-requires RealFloatingPoint<typename Derived::Scalar>
-auto operator-(ScalarFieldBase<Derived>&& u, typename Derived::Complex s) {
-  return u - s;
-}
-
-template <typename Derived>
-requires RealFloatingPoint<typename Derived::Scalar>
-auto operator/(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
-  return ScalarFieldUnaryWithScalar(
-      u, [](auto x, auto y) -> typename Derived::Complex { return x / y; }, s);
-}
-
-template <typename Derived>
-requires RealFloatingPoint<typename Derived::Scalar>
-auto operator/(ScalarFieldBase<Derived>&& u, typename Derived::Complex s) {
-  return u / s;
 }
 
 //-----------------------------------------------------//
@@ -680,7 +694,7 @@ auto Integrate(const ScalarFieldBase<Derived>& u) {
   auto i = 0;
   auto sum = Scalar{0};
   for (auto [iTheta, iPhi] : u.PointIndices()) {
-    sum += u[iTheta, iPhi] * w[i++];
+    sum += u(iTheta, iPhi) * w[i++];
   }
   return sum;
 }
