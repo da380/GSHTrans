@@ -32,6 +32,14 @@ class VectorFieldBase : public FieldBase<VectorFieldBase<_Derived>> {
   }
   auto operator()(Int alpha) const { return Derived().operator()(alpha); }
 
+  void Print() const {
+    for (auto [iTheta, iPhi] : this->PointIndices()) {
+      std::cout << iTheta << " " << iPhi << " " << operator()(-1, iTheta, iPhi)
+                << " " << operator()(0, iTheta, iPhi) << " "
+                << operator()(1, iTheta, iPhi) << std::endl;
+    }
+  }
+
  private:
   auto& Derived() const { return static_cast<const _Derived&>(*this); }
   auto& Derived() { return static_cast<_Derived&>(*this); }
@@ -106,6 +114,13 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
   VectorField(_Grid grid)
       : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->size())} {}
 
+  VectorField(_Grid grid, Scalar minus, Scalar zero, Scalar plus)
+      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->size())} {
+    this->operator()(-1) = minus;
+    this->operator()(0) = zero;
+    this->operator()(1) = plus;
+  }
+
   // Assignment.
   VectorField& operator=(const VectorField&) = default;
   VectorField& operator=(VectorField&&) = default;
@@ -119,7 +134,7 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
     return _data[Index(alpha, iTheta, iPhi)];
   }
   auto operator()(Int alpha) {
-    auto size = this->ComponentSize();
+    const auto size = this->ComponentSize();
     auto start = std::next(begin(), size * (alpha + 1));
     auto finish = std::next(start, size);
     auto data = std::ranges::subrange(start, finish);
@@ -135,6 +150,114 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
            iTheta * this->NumberOfLongitudes() + iPhi;
   }
 };
+
+//-------------------------------------------------//
+//     Complexification of real vector field       //
+//-------------------------------------------------//
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+class ComplexifiedVectorField
+    : public VectorFieldBase<ComplexifiedVectorField<Derived>> {
+  using Int = std::ptrdiff_t;
+
+ public:
+  using Grid = typename Derived::Grid;
+  using Real = typename Grid::Real;
+  using Complex = typename Grid::Complex;
+  using Value = ComplexValued;
+  using Scalar = Complex;
+
+  // Methods needed to inherit from VectorField Base.
+  auto GetGrid() const { return _u.GetGrid(); }
+  auto operator()(Int alpha, Int iTheta, Int iPhi) const -> Complex {
+    constexpr auto ii = Complex(0, 1);
+    switch (alpha) {
+      case -1:
+        return _u(1, iTheta, iPhi) - ii * _u(-1, iTheta, iPhi);
+      case 0:
+        return _u(0, iTheta, iPhi);
+      case 1:
+        return _u(1, iTheta, iPhi) + ii * _u(-1, iTheta, iPhi);
+      default:
+        return 0;
+    }
+  }
+  auto operator()(Int alpha) const {
+    return VectorFieldComponentView(*this, alpha);
+  }
+
+  // Constructors.
+  ComplexifiedVectorField(const VectorFieldBase<Derived>& u) : _u{u} {}
+
+  ComplexifiedVectorField(const ComplexifiedVectorField&) = default;
+  ComplexifiedVectorField(ComplexifiedVectorField&&) = default;
+
+  // Assignment.
+  ComplexifiedVectorField& operator=(const ComplexifiedVectorField&) = default;
+  ComplexifiedVectorField& operator=(ComplexifiedVectorField&&) = default;
+
+ private:
+  const VectorFieldBase<Derived>& _u;
+};
+
+template <typename Derived>
+auto Complexify(const VectorFieldBase<Derived>& u) {
+  return ComplexifiedVectorField(u);
+}
+
+//-------------------------------------------------//
+//      Realification of complex vector field      //
+//-------------------------------------------------//
+template <typename Derived>
+requires std::same_as<typename Derived::Value, ComplexValued>
+class RealifiedVectorField
+    : public VectorFieldBase<RealifiedVectorField<Derived>> {
+  using Int = std::ptrdiff_t;
+
+ public:
+  using Grid = typename Derived::Grid;
+  using Real = typename Grid::Real;
+  using Complex = typename Grid::Complex;
+  using Value = RealValued;
+  using Scalar = Real;
+
+  // Methods needed to inherit from VectorField Base.
+  auto GetGrid() const { return _u.GetGrid(); }
+  auto operator()(Int alpha, Int iTheta, Int iPhi) const -> Real {
+    constexpr auto half = static_cast<Real>(1) / static_cast<Real>(2);
+    switch (alpha) {
+      case -1:
+        return half * std::imag(_u(1, iTheta, iPhi) - _u(-1, iTheta, iPhi));
+      case 0:
+        return std::real(_u(0, iTheta, iPhi));
+      case 1:
+        return half * std::real(_u(1, iTheta, iPhi) + _u(-1, iTheta, iPhi));
+      default:
+        return 0;
+    }
+  }
+  auto operator()(Int alpha) const {
+    return VectorFieldComponentView(*this, alpha);
+  }
+
+  // Constructors.
+  RealifiedVectorField(const VectorFieldBase<Derived>& u) : _u{u} {}
+
+  RealifiedVectorField(const RealifiedVectorField&) = default;
+  RealifiedVectorField(RealifiedVectorField&&) = default;
+
+  // Assignment.
+  RealifiedVectorField& operator=(const RealifiedVectorField&) = default;
+  RealifiedVectorField& operator=(RealifiedVectorField&&) = default;
+
+ private:
+  const VectorFieldBase<Derived>& _u;
+};
+
+template <typename Derived>
+auto Realify(const VectorFieldBase<Derived>& u) {
+  return RealifiedVectorField(u);
+}
 
 //-------------------------------------------------//
 //                 Unary expression                //
