@@ -254,11 +254,6 @@ class RealifiedVectorField
   const VectorFieldBase<Derived>& _u;
 };
 
-template <typename Derived>
-auto Realify(const VectorFieldBase<Derived>& u) {
-  return RealifiedVectorField(u);
-}
-
 //-------------------------------------------------//
 //                 Unary expression                //
 //-------------------------------------------------//
@@ -322,6 +317,35 @@ auto operator-(const VectorFieldBase<Derived>& u) {
 template <typename Derived>
 auto operator-(VectorFieldBase<Derived>&& u) {
   return -u;
+}
+
+//-----------------------------------------------------//
+//          VectorField -> RealVectorField             //
+//-----------------------------------------------------//
+template <typename Derived>
+requires std::same_as<typename Derived::Value, ComplexValued>
+auto abs(const VectorFieldBase<Derived>& u) {
+  return real(u);
+}
+
+//-----------------------------------------------------//
+//         ComplexVectorField -> RealVectorField       //
+//-----------------------------------------------------//
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, ComplexValued>
+auto real(const VectorFieldBase<Derived>& u) {
+  return RealifiedVectorField(u);
+}
+
+//-----------------------------------------------------//
+//         RealVectorField -> ComplexVectorField       //
+//-----------------------------------------------------//
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto complex(const VectorFieldBase<Derived>& u) {
+  return ComplexifiedVectorField(u);
 }
 
 }  // namespace GSHTrans

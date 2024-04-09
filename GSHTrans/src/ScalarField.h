@@ -414,7 +414,7 @@ class ScalarFieldUnaryWithScalar
 };
 
 //-------------------------------------------------//
-//                 Binary expression                //
+//                 Binary expression               //
 //-------------------------------------------------//
 template <typename Derived1, typename Derived2, typename Function>
 requires requires() {
@@ -500,6 +500,20 @@ template <typename Derived>
 auto abs(ScalarFieldBase<Derived>&& u) {
   return abs(u);
 }
+
+template <typename Derived>
+auto sqrt(const ScalarFieldBase<Derived>& u) {
+  return ScalarFieldUnary(u, [](auto x) { return std::sqrt(x); });
+}
+
+template <typename Derived>
+auto sqrt(ScalarFieldBase<Derived>&& u) {
+  return sqrt(u);
+}
+
+//-----------------------------------------------------//
+//              ComplexField -> RealField              //
+//-----------------------------------------------------//
 
 template <typename Derived>
 requires std::same_as<typename Derived::Value, ComplexValued>
@@ -608,6 +622,93 @@ auto pow(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
 
 template <typename Derived>
 auto pow(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
+  return pow(u, s);
+}
+
+//-----------------------------------------------------//
+//           RealField x Complex -> ComplexField       //
+//-----------------------------------------------------//
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto operator*(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
+  return Complexify(u) * s;
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto operator*(ScalarFieldBase<Derived>&& u, typename Derived::Complex s) {
+  return u * s;
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto operator*(typename Derived::Complex s, const ScalarFieldBase<Derived>& u) {
+  return u * s;
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto operator*(typename Derived::Complex s, ScalarFieldBase<Derived>&& u) {
+  return u * s;
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto operator+(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
+  return Complexify(u) + s;
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto operator+(ScalarFieldBase<Derived>&& u, typename Derived::Complex s) {
+  return u + s;
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto operator+(typename Derived::Complex s, const ScalarFieldBase<Derived>& u) {
+  return u + s;
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto operator+(typename Derived::Complex s, ScalarFieldBase<Derived>&& u) {
+  return u + s;
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto operator-(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
+  return Complexify(u) - s;
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto operator-(ScalarFieldBase<Derived>&& u, typename Derived::Complex s) {
+  return u - s;
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto operator/(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
+  return Complexify(u) / s;
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto operator/(ScalarFieldBase<Derived>&& u, typename Derived::Complex s) {
+  return u / s;
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto pow(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
+  return pow(Complexify(u), s);
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto pow(ScalarFieldBase<Derived>&& u, typename Derived::Complex s) {
   return pow(u, s);
 }
 
