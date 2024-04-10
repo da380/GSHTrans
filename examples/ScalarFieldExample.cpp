@@ -20,7 +20,7 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto u = MatrixField<Grid, ComplexValued>(grid);
+  auto u = MatrixField<Grid, RealValued>(grid, {1, 2, 3, 4, 5, 6, 7, 8, 9});
 
-  u.Print();
+  complex(u).Print();
 }

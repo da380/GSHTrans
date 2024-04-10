@@ -119,11 +119,11 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
   VectorField(_Grid grid)
       : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->size())} {}
 
-  VectorField(_Grid grid, Scalar minus, Scalar zero, Scalar plus)
-      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->size())} {
-    this->operator()(-1) = minus;
-    this->operator()(0) = zero;
-    this->operator()(1) = plus;
+  VectorField(_Grid grid, std::array<Scalar, 3>&& u) : VectorField(grid) {
+    for (auto [i, alpha] :
+         std::ranges::views::enumerate(this->CanonicalIndices())) {
+      this->operator()(alpha) = u[i];
+    }
   }
 
   // Assignment.
@@ -156,9 +156,8 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
     return _data[Index(alpha, iTheta, iPhi)];
   }
   auto operator()(Int alpha) {
-    const auto size = this->ComponentSize();
-    auto start = std::next(begin(), size * (alpha + 1));
-    auto finish = std::next(start, size);
+    auto start = std::next(begin(), Offset(alpha));
+    auto finish = std::next(start, this->ComponentSize());
     auto data = std::ranges::subrange(start, finish);
     return ScalarFieldView(_grid, data);
   }
@@ -176,9 +175,10 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
     }
   }
 
+  auto Offset(Int alpha) const { return (alpha + 1) * (this->ComponentSize()); }
+
   auto Index(Int alpha, Int iTheta, int iPhi) const {
-    return (this->ComponentSize()) * (alpha + 1) +
-           iTheta * this->NumberOfLongitudes() + iPhi;
+    return Offset(alpha) + iTheta * this->NumberOfLongitudes() + iPhi;
   }
 };
 
@@ -252,9 +252,8 @@ class VectorFieldView : public VectorFieldBase<VectorFieldView<_Grid, _View>> {
     return _data[Index(alpha, iTheta, iPhi)];
   }
   auto operator()(Int alpha) {
-    const auto size = this->ComponentSize();
-    auto start = std::next(begin(), size * (alpha + 1));
-    auto finish = std::next(start, size);
+    auto start = std::next(begin(), Offset(alpha));
+    auto finish = std::next(start, this->ComponentSize());
     auto data = std::ranges::subrange(start, finish);
     return ScalarFieldView(_grid, data);
   }
@@ -272,9 +271,10 @@ class VectorFieldView : public VectorFieldBase<VectorFieldView<_Grid, _View>> {
     }
   }
 
+  auto Offset(Int alpha) const { return (alpha + 1) * (this->ComponentSize()); }
+
   auto Index(Int alpha, Int iTheta, int iPhi) const {
-    return (this->ComponentSize()) * (alpha + 1) +
-           iTheta * this->NumberOfLongitudes() + iPhi;
+    return Offset(alpha) + iTheta * this->NumberOfLongitudes() + iPhi;
   }
 };
 
@@ -326,11 +326,6 @@ class ComplexifiedVectorField
  private:
   const VectorFieldBase<Derived>& _u;
 };
-
-template <typename Derived>
-auto Complexify(const VectorFieldBase<Derived>& u) {
-  return ComplexifiedVectorField(u);
-}
 
 //-------------------------------------------------//
 //      Realification of complex vector field      //

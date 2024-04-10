@@ -127,6 +127,14 @@ class MatrixField : public MatrixFieldBase<MatrixField<_Grid, _Value>> {
   MatrixField(_Grid grid)
       : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->size())} {}
 
+  MatrixField(_Grid grid, std::array<Scalar, 9>&& u) : MatrixField(grid) {
+    for (auto [i, index] :
+         std::ranges::views::enumerate(this->CanonicalIndices())) {
+      auto [alpha, beta] = index;
+      this->operator()(alpha, beta) = u[i];
+    }
+  }
+
   // Assignment.
   MatrixField& operator=(const MatrixField&) = default;
   MatrixField& operator=(MatrixField&&) = default;
@@ -156,11 +164,9 @@ class MatrixField : public MatrixFieldBase<MatrixField<_Grid, _Value>> {
   auto& operator()(Int alpha, Int beta, Int iTheta, Int iPhi) {
     return _data[Index(alpha, beta, iTheta, iPhi)];
   }
-
   auto operator()(Int alpha, Int beta) {
-    const auto size = this->ComponentSize();
-    auto start = std::next(begin(), Offset());
-    auto finish = std::next(start, size);
+    auto start = std::next(begin(), Offset(alpha, beta));
+    auto finish = std::next(start, this->ComponentSize());
     auto data = std::ranges::subrange(start, finish);
     return ScalarFieldView(_grid, data);
   }
@@ -187,6 +193,150 @@ class MatrixField : public MatrixFieldBase<MatrixField<_Grid, _Value>> {
     return Offset(alpha, beta) + iTheta * this->NumberOfLongitudes() + iPhi;
   }
 };
+
+//-------------------------------------------------//
+//     Complexification of real matrix field       //
+//-------------------------------------------------//
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+class ComplexifiedMatrixField
+    : public MatrixFieldBase<ComplexifiedMatrixField<Derived>> {
+  using Int = std::ptrdiff_t;
+
+ public:
+  using Grid = typename Derived::Grid;
+  using Real = typename Grid::Real;
+  using Complex = typename Grid::Complex;
+  using Value = ComplexValued;
+  using Scalar = Complex;
+
+  // Methods needed to inherit from MatrixField Base.
+  auto GetGrid() const { return _u.GetGrid(); }
+  auto operator()(Int alpha, Int beta, Int iTheta, Int iPhi) const -> Complex {
+    constexpr auto ii = Complex(0, 1);
+
+    switch (alpha) {
+      case -1:
+        switch (beta) {
+          case -1:
+            return _u(1, 1, iTheta, iPhi) - ii * _u(-1, -1, iTheta, iPhi);
+          case 0:
+            return _u(1, 0, iTheta, iPhi) - ii * _u(-1, 0, iTheta, iPhi);
+          case 1:
+            return _u(1, -1, iTheta, iPhi) - ii * _u(-1, 1, iTheta, iPhi);
+          default:
+            return 0;
+        }
+      case 0:
+        switch (beta) {
+          case -1:
+            return _u(0, 1, iTheta, iPhi) - ii * _u(0, -1, iTheta, iPhi);
+          case 0:
+            return _u(0, 0, iTheta, iPhi);
+          case 1:
+            return _u(0, 1, iTheta, iPhi) + ii * _u(0, -1, iTheta, iPhi);
+          default:
+            return 0;
+        }
+      case 1:
+        switch (beta) {
+          case -1:
+            return _u(1, -1, iTheta, iPhi) + ii * _u(-1, 1, iTheta, iPhi);
+          case 0:
+            return _u(1, 0, iTheta, iPhi) + ii * _u(-1, 0, iTheta, iPhi);
+          case 1:
+            return _u(1, 1, iTheta, iPhi) + ii * _u(-1, -1, iTheta, iPhi);
+          default:
+            return 0;
+        }
+      default:
+        return 0;
+    }
+  }
+
+  auto operator()(Int alpha) const {
+    return MatrixFieldComponentView(*this, alpha);
+  }
+
+  // Constructors.
+  ComplexifiedMatrixField(const MatrixFieldBase<Derived>& u) : _u{u} {}
+
+  ComplexifiedMatrixField(const ComplexifiedMatrixField&) = default;
+  ComplexifiedMatrixField(ComplexifiedMatrixField&&) = default;
+
+  // Assignment.
+  ComplexifiedMatrixField& operator=(const ComplexifiedMatrixField&) = default;
+  ComplexifiedMatrixField& operator=(ComplexifiedMatrixField&&) = default;
+
+ private:
+  const MatrixFieldBase<Derived>& _u;
+};
+
+//-------------------------------------------------//
+//     Complexification of real matrix field       //
+//-------------------------------------------------//
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+class RealifiedMatrixField
+    : public MatrixFieldBase<RealifiedMatrixField<Derived>> {
+  using Int = std::ptrdiff_t;
+
+ public:
+  using Grid = typename Derived::Grid;
+  using Real = typename Grid::Real;
+  using Complex = typename Grid::Complex;
+  using Value = ComplexValued;
+  using Scalar = Complex;
+
+  // Methods needed to inherit from MatrixField Base.
+  auto GetGrid() const { return _u.GetGrid(); }
+  auto operator()(Int alpha, Int beta, Int iTheta, Int iPhi) const -> Complex {
+    constexpr auto ii = Complex(0, 1);
+
+    auto index = 3 * (alpha + 1) + beta + 1;
+    if (index < 4) {
+      return _u(-alpha, -beta, iTheta, iPhi) -
+             ii * _u(alpha, beta, iTheta, iPhi);
+    } else if (index == 4) {
+      return _u(0, 0, iTheta, iPhi);
+    } else {
+      return _u(alpha, beta, iTheta, iPhi) +
+             ii * _u(-alpha, -beta, iTheta, iPhi);
+    }
+  }
+
+  auto operator()(Int alpha) const {
+    return MatrixFieldComponentView(*this, alpha);
+  }
+
+  // Constructors.
+  RealifiedMatrixField(const MatrixFieldBase<Derived>& u) : _u{u} {}
+
+  RealifiedMatrixField(const RealifiedMatrixField&) = default;
+  RealifiedMatrixField(RealifiedMatrixField&&) = default;
+
+  // Assignment.
+  RealifiedMatrixField& operator=(const RealifiedMatrixField&) = default;
+  RealifiedMatrixField& operator=(RealifiedMatrixField&&) = default;
+
+ private:
+  const MatrixFieldBase<Derived>& _u;
+};
+
+//-----------------------------------------------------//
+//         RealMatrixField -> ComplexMatrixField       //
+//-----------------------------------------------------//
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto complex(const MatrixFieldBase<Derived>& u) {
+  return ComplexifiedMatrixField(u);
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto complex(MatrixFieldBase<Derived>&& u) {
+  return complex(u);
+}
 
 }  // namespace GSHTrans
 
