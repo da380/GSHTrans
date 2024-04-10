@@ -27,6 +27,9 @@ class VectorFieldBase : public FieldBase<VectorFieldBase<_Derived>> {
   // Methods related to the data.
   auto size() const { return 3 * GetGrid().FieldSize(); }
   auto ComponentSize() const { return GetGrid().FieldSize(); }
+
+  auto CanonicalIndices() const { return std::ranges::views::iota(-1, 2); }
+
   auto operator()(Int alpha, Int iTheta, Int iPhi) const {
     return Derived().operator()(alpha, iTheta, iPhi);
   }
@@ -34,9 +37,11 @@ class VectorFieldBase : public FieldBase<VectorFieldBase<_Derived>> {
 
   void Print() const {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      std::cout << iTheta << " " << iPhi << " " << operator()(-1, iTheta, iPhi)
-                << " " << operator()(0, iTheta, iPhi) << " "
-                << operator()(1, iTheta, iPhi) << std::endl;
+      std::cout << iTheta << " " << iPhi << " ";
+      for (auto alpha : CanonicalIndices()) {
+        std::cout << operator()(alpha, iTheta, iPhi) << " ";
+      }
+      std::cout << std::endl;
     }
   }
 
@@ -164,7 +169,7 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
 
   template <typename Derived>
   void CopyValues(const VectorFieldBase<Derived>& other) {
-    for (auto alpha = -1; alpha <= 1; alpha++) {
+    for (auto alpha : this->CanonicalIndices()) {
       for (auto [iTheta, iPhi] : this->PointIndices()) {
         operator()(alpha, iTheta, iPhi) = other(alpha, iTheta, iPhi);
       }
@@ -260,7 +265,7 @@ class VectorFieldView : public VectorFieldBase<VectorFieldView<_Grid, _View>> {
 
   template <typename Derived>
   void CopyValues(const VectorFieldBase<Derived>& other) {
-    for (auto alpha = -1; alpha <= 1; alpha++) {
+    for (auto alpha : this->CanonicalIndices()) {
       for (auto [iTheta, iPhi] : this->PointIndices()) {
         operator()(alpha, iTheta, iPhi) = other(alpha, iTheta, iPhi);
       }
