@@ -20,9 +20,11 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto u = VectorField<Grid, ComplexValued>(grid, 1, 1, 0);
+  auto u = VectorField<Grid, RealValued>(grid, 1, 2, 3);
 
-  auto v = complex(real(u));
+  auto v = ScalarField<Grid, RealValued>(grid, 2);
 
-  v.Print();
+  u = v * u;
+
+  u.Print();
 }

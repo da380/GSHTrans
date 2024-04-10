@@ -232,7 +232,8 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
   }
 
   template <typename Derived>
-  requires std::convertible_to<typename Derived::Scalar, Scalar>
+  requires std::convertible_to<typename Derived::Scalar, Scalar> &&
+           std::same_as<typename Derived::Value, Value>
   auto& operator=(const ScalarFieldBase<Derived>& other) {
     assert(this->size() == other.size());
     CopyValues(other);
@@ -240,7 +241,8 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
   }
 
   template <typename Derived>
-  requires std::convertible_to<typename Derived::Scalar, Scalar>
+  requires std::convertible_to<typename Derived::Scalar, Scalar> &&
+           std::same_as<typename Derived::Value, Value>
   auto& operator=(ScalarFieldBase<Derived>&& other) {
     *this = other;
     return *this;
@@ -274,7 +276,11 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
 //-------------------------------------------------//
 
 template <typename Derived>
-requires std::same_as<typename Derived::Value, RealValued>
+requires requires() {
+  requires std::same_as<typename Derived::Value, RealValued>;
+  requires std::same_as<typename Derived::Grid::MRange, All> &&
+               std::same_as<typename Derived::Grid::NRange, All>;
+}
 class ComplexifiedScalarField
     : public ScalarFieldBase<ComplexifiedScalarField<Derived>> {
   using Int = std::ptrdiff_t;
@@ -306,13 +312,6 @@ class ComplexifiedScalarField
   const ScalarFieldBase<Derived>& _u;
 };
 
-// Overloaded complexification functions.
-template <typename Derived>
-requires std::same_as<typename Derived::Value, RealValued>
-auto Complexify(const ScalarFieldBase<Derived>& u) {
-  return ComplexifiedScalarField(u);
-}
-
 //-------------------------------------------------//
 //                 Unary expression                //
 //-------------------------------------------------//
@@ -322,9 +321,11 @@ requires requires() {
   requires std::convertible_to<
                std::invoke_result_t<Function, typename Derived::Scalar>,
                typename Derived::Scalar> ||
-               std::convertible_to<
-                   std::invoke_result_t<Function, typename Derived::Scalar>,
-                   typename Derived::Complex>;
+               (std::convertible_to<
+                    std::invoke_result_t<Function, typename Derived::Scalar>,
+                    typename Derived::Complex> &&
+                std::same_as<typename Derived::Grid::MRange, All> &&
+                std::same_as<typename Derived::Grid::MRange, All>);
 }
 class ScalarFieldUnary
     : public ScalarFieldBase<ScalarFieldUnary<Derived, Function>> {
@@ -367,13 +368,9 @@ requires requires() {
   requires std::invocable<Function, typename Derived::Scalar,
                           typename Derived::Scalar>;
   requires std::convertible_to<
-               std::invoke_result_t<Function, typename Derived::Scalar,
-                                    typename Derived::Scalar>,
-               typename Derived::Real> ||
-               std::convertible_to<
-                   std::invoke_result_t<Function, typename Derived::Scalar,
-                                        typename Derived::Scalar>,
-                   typename Derived::Complex>;
+      std::invoke_result_t<Function, typename Derived::Scalar,
+                           typename Derived::Scalar>,
+      typename Derived::Scalar>;
 }
 class ScalarFieldUnaryWithScalar
     : public ScalarFieldBase<ScalarFieldUnaryWithScalar<Derived, Function>> {
@@ -419,34 +416,23 @@ class ScalarFieldUnaryWithScalar
 template <typename Derived1, typename Derived2, typename Function>
 requires requires() {
   requires std::same_as<typename Derived1::Real, typename Derived2::Real>;
+  requires std::same_as<typename Derived1::Value, typename Derived2::Value>;
   requires std::invocable<Function, typename Derived1::Scalar,
                           typename Derived2::Scalar>;
   requires std::convertible_to<
-               std::invoke_result_t<Function, typename Derived1::Scalar,
-                                    typename Derived2::Scalar>,
-               typename Derived1::Real> ||
-               std::convertible_to<
-                   std::invoke_result_t<Function, typename Derived1::Scalar,
-                                        typename Derived2::Scalar>,
-                   typename Derived1::Complex>;
+      std::invoke_result_t<Function, typename Derived1::Scalar,
+                           typename Derived2::Scalar>,
+      typename Derived1::Scalar>;
 }
 
 class ScalarFieldBinary
     : public ScalarFieldBase<ScalarFieldBinary<Derived1, Derived2, Function>> {
   using Int = std::ptrdiff_t;
-  using Grid1 = typename Derived1::Grid;
-  using Grid2 = typename Derived2::Grid;
-  using Scalar1 = typename Derived1::Scalar;
-  using Scalar2 = typename Derived2::Scalar;
 
  public:
-  using Grid = std::conditional_t<
-      ComplexFloatingPoint<Scalar1>, Grid1,
-      std::conditional_t<ComplexFloatingPoint<Scalar2>, Grid2, Grid1>>;
-  using Scalar = std::invoke_result_t<Function, typename Derived1::Scalar,
-                                      typename Derived2::Scalar>;
-  using Value =
-      std::conditional_t<RealFloatingPoint<Scalar>, RealValued, ComplexValued>;
+  using Grid = typename Derived1::Grid;
+  using Scalar = typename Derived1::Scalar;
+  using Value = typename Derived1::Value;
   using Real = typename Derived1::Real;
   using Complex = typename Derived1::Complex;
 
@@ -478,7 +464,7 @@ class ScalarFieldBinary
 };
 
 //-----------------------------------------------------//
-//                   Field -> Field                    //
+//               ScalarField -> ScalarField            //
 //-----------------------------------------------------//
 
 template <typename Derived>
@@ -492,16 +478,6 @@ auto operator-(ScalarFieldBase<Derived>&& u) {
 }
 
 template <typename Derived>
-auto abs(const ScalarFieldBase<Derived>& u) {
-  return ScalarFieldUnary(u, [](auto x) { return std::abs(x); });
-}
-
-template <typename Derived>
-auto abs(ScalarFieldBase<Derived>&& u) {
-  return abs(u);
-}
-
-template <typename Derived>
 auto sqrt(const ScalarFieldBase<Derived>& u) {
   return ScalarFieldUnary(u, [](auto x) { return std::sqrt(x); });
 }
@@ -512,7 +488,21 @@ auto sqrt(ScalarFieldBase<Derived>&& u) {
 }
 
 //-----------------------------------------------------//
-//              ComplexField -> RealField              //
+//            ScalarField -> RealScalarField           //
+//-----------------------------------------------------//
+
+template <typename Derived>
+auto abs(const ScalarFieldBase<Derived>& u) {
+  return ScalarFieldUnary(u, [](auto x) { return std::abs(x); });
+}
+
+template <typename Derived>
+auto abs(ScalarFieldBase<Derived>&& u) {
+  return abs(u);
+}
+
+//-----------------------------------------------------//
+//        ComplexScalarField -> RealScalarField        //
 //-----------------------------------------------------//
 
 template <typename Derived>
@@ -552,7 +542,22 @@ auto conj(ScalarFieldBase<Derived>&& u) {
 }
 
 //-----------------------------------------------------//
-//               Field x Scalar -> Field               //
+//        RealScalarField -> ComplexScalarField        //
+//-----------------------------------------------------//
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto complex(const ScalarFieldBase<Derived>& u) {
+  return ComplexifiedScalarField(u);
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto complex(ScalarFieldBase<Derived>&& u) {
+  return complex(u);
+}
+
+//-----------------------------------------------------//
+//         ScalarField x Scalar -> ScalarField         //
 //-----------------------------------------------------//
 template <typename Derived>
 auto operator*(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
@@ -626,94 +631,7 @@ auto pow(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
 }
 
 //-----------------------------------------------------//
-//           RealField x Complex -> ComplexField       //
-//-----------------------------------------------------//
-template <typename Derived>
-requires std::same_as<typename Derived::Value, RealValued>
-auto operator*(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
-  return Complexify(u) * s;
-}
-
-template <typename Derived>
-requires std::same_as<typename Derived::Value, RealValued>
-auto operator*(ScalarFieldBase<Derived>&& u, typename Derived::Complex s) {
-  return u * s;
-}
-
-template <typename Derived>
-requires std::same_as<typename Derived::Value, RealValued>
-auto operator*(typename Derived::Complex s, const ScalarFieldBase<Derived>& u) {
-  return u * s;
-}
-
-template <typename Derived>
-requires std::same_as<typename Derived::Value, RealValued>
-auto operator*(typename Derived::Complex s, ScalarFieldBase<Derived>&& u) {
-  return u * s;
-}
-
-template <typename Derived>
-requires std::same_as<typename Derived::Value, RealValued>
-auto operator+(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
-  return Complexify(u) + s;
-}
-
-template <typename Derived>
-requires std::same_as<typename Derived::Value, RealValued>
-auto operator+(ScalarFieldBase<Derived>&& u, typename Derived::Complex s) {
-  return u + s;
-}
-
-template <typename Derived>
-requires std::same_as<typename Derived::Value, RealValued>
-auto operator+(typename Derived::Complex s, const ScalarFieldBase<Derived>& u) {
-  return u + s;
-}
-
-template <typename Derived>
-requires std::same_as<typename Derived::Value, RealValued>
-auto operator+(typename Derived::Complex s, ScalarFieldBase<Derived>&& u) {
-  return u + s;
-}
-
-template <typename Derived>
-requires std::same_as<typename Derived::Value, RealValued>
-auto operator-(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
-  return Complexify(u) - s;
-}
-
-template <typename Derived>
-requires std::same_as<typename Derived::Value, RealValued>
-auto operator-(ScalarFieldBase<Derived>&& u, typename Derived::Complex s) {
-  return u - s;
-}
-
-template <typename Derived>
-requires std::same_as<typename Derived::Value, RealValued>
-auto operator/(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
-  return Complexify(u) / s;
-}
-
-template <typename Derived>
-requires std::same_as<typename Derived::Value, RealValued>
-auto operator/(ScalarFieldBase<Derived>&& u, typename Derived::Complex s) {
-  return u / s;
-}
-
-template <typename Derived>
-requires std::same_as<typename Derived::Value, RealValued>
-auto pow(const ScalarFieldBase<Derived>& u, typename Derived::Complex s) {
-  return pow(Complexify(u), s);
-}
-
-template <typename Derived>
-requires std::same_as<typename Derived::Value, RealValued>
-auto pow(ScalarFieldBase<Derived>&& u, typename Derived::Complex s) {
-  return pow(u, s);
-}
-
-//-----------------------------------------------------//
-//                Field x Field -> Field               //
+//      ScalarField x ScalarField -> ScalarField       //
 //-----------------------------------------------------//
 
 template <typename Derived1, typename Derived2>
@@ -785,9 +703,9 @@ auto operator*(ScalarFieldBase<Derived1>&& u1, ScalarFieldBase<Derived2>&& u2) {
   return u1 * u2;
 }
 
-//-----------------------------------------------------------------------//
-//                             Field -> Scalar                           //
-//-----------------------------------------------------------------------//
+//------------------------------------------------------//
+//                 ScalarField -> Scalar                //
+//------------------------------------------------------//
 template <typename Derived>
 auto Integrate(const ScalarFieldBase<Derived>& u) {
   using Scalar = typename Derived::Scalar;
@@ -803,6 +721,54 @@ auto Integrate(const ScalarFieldBase<Derived>& u) {
 template <typename Derived>
 auto Integrate(ScalarFieldBase<Derived>&& u) {
   return Integrate(u);
+}
+
+//------------------------------------------------------//
+//           ScalarField x ScalarField -> Scalar        //
+//------------------------------------------------------//
+template <typename Derived1, typename Derived2>
+requires std::same_as<typename Derived1::Value, typename Derived2::Value>
+auto L2InnerProduct(const ScalarFieldBase<Derived1>& u1,
+                    const ScalarFieldBase<Derived2>& u2) {
+  if constexpr (std::same_as<typename Derived1::Value, RealValued>) {
+    return Integral(u1 * u2);
+  } else {
+    return Integral(conj(u1) * u2);
+  }
+}
+
+template <typename Derived1, typename Derived2>
+requires std::same_as<typename Derived1::Value, typename Derived2::Value>
+auto L2InnerProduct(ScalarFieldBase<Derived1>&& u1,
+                    const ScalarFieldBase<Derived2>& u2) {
+  return L2InnerProduct(u1, u2);
+}
+
+template <typename Derived1, typename Derived2>
+requires std::same_as<typename Derived1::Value, typename Derived2::Value>
+auto L2InnerProduct(const ScalarFieldBase<Derived1>& u1,
+                    ScalarFieldBase<Derived2>&& u2) {
+  return L2InnerProduct(u1, u2);
+}
+
+template <typename Derived1, typename Derived2>
+requires std::same_as<typename Derived1::Value, typename Derived2::Value>
+auto L2InnerProduct(ScalarFieldBase<Derived1>&& u1,
+                    ScalarFieldBase<Derived2>&& u2) {
+  return L2InnerProduct(u1, u2);
+}
+
+//------------------------------------------------------//
+//                  ScalarField -> Real                 //
+//------------------------------------------------------//
+template <typename Derived>
+auto L2Norm(const ScalarFieldBase<Derived>& u) {
+  return std::sqrt(std::abs(L2InnerProduct(u, u)));
+}
+
+template <typename Derived>
+auto L2Norm(ScalarFieldBase<Derived>&& u) {
+  return L2Norm(u);
 }
 
 }  // namespace GSHTrans

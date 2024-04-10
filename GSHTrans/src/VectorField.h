@@ -125,6 +125,23 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
   VectorField& operator=(const VectorField&) = default;
   VectorField& operator=(VectorField&&) = default;
 
+  template <typename Derived>
+  requires std::convertible_to<typename Derived::Scalar, Scalar> &&
+           std::same_as<typename Derived::Value, Value>
+  auto& operator=(const VectorFieldBase<Derived>& other) {
+    assert(this->size() == other.size());
+    CopyValues(other);
+    return *this;
+  }
+
+  template <typename Derived>
+  requires std::convertible_to<typename Derived::Scalar, Scalar> &&
+           std::same_as<typename Derived::Value, Value>
+  auto& operator=(VectorFieldBase<Derived>&& other) {
+    *this = other;
+    return *this;
+  }
+
   // Iterators.
   auto begin() { return _data.begin(); }
   auto end() { return _data.end(); }
@@ -144,6 +161,111 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
  private:
   _Grid _grid;
   FFTWpp::vector<Scalar> _data;
+
+  template <typename Derived>
+  void CopyValues(const VectorFieldBase<Derived>& other) {
+    for (auto alpha = -1; alpha <= 1; alpha++) {
+      for (auto [iTheta, iPhi] : this->PointIndices()) {
+        operator()(alpha, iTheta, iPhi) = other(alpha, iTheta, iPhi);
+      }
+    }
+  }
+
+  auto Index(Int alpha, Int iTheta, int iPhi) const {
+    return (this->ComponentSize()) * (alpha + 1) +
+           iTheta * this->NumberOfLongitudes() + iPhi;
+  }
+};
+
+//-------------------------------------------------//
+//      Vector field with a view to its data       //
+//-------------------------------------------------//
+template <typename _Grid, std::ranges::view _View>
+requires requires() {
+  requires std::ranges::output_range<_View, std::ranges::range_value_t<_View>>;
+  requires std::ranges::random_access_range<_View>;
+  requires std::same_as<RemoveComplex<std::ranges::range_value_t<_View>>,
+                        typename _Grid::Real>;
+}
+class VectorFieldView : public VectorFieldBase<VectorFieldView<_Grid, _View>> {
+  using Int = std::ptrdiff_t;
+
+ public:
+  using Grid = _Grid;
+  using Scalar = std::ranges::range_value_t<_View>;
+  using Value =
+      std::conditional_t<RealFloatingPoint<Scalar>, RealValued, ComplexValued>;
+  using Real = typename _Grid::Real;
+  using Complex = typename _Grid::Complex;
+
+  // Methods needed to inherit from ScalarField Base.
+  auto GetGrid() const { return _grid; }
+  auto operator()(Int alpha, Int iTheta, Int iPhi) const {
+    return _data[Index(alpha, iTheta, iPhi)];
+  }
+  auto operator()(Int alpha) const {
+    return VectorFieldComponentView(*this, alpha);
+  }
+
+  // Constructors.
+  VectorFieldView() = default;
+
+  VectorFieldView(_Grid grid, _View data) : _grid{grid}, _data{data} {
+    assert(this->size() == _data.size());
+  }
+
+  VectorFieldView(const VectorFieldView&) = default;
+  VectorFieldView(VectorFieldView&&) = default;
+
+  // Assignment.
+  VectorFieldView& operator=(const VectorFieldView&) = default;
+  VectorFieldView& operator=(VectorFieldView&&) = default;
+
+  template <typename Derived>
+  requires std::convertible_to<typename Derived::Scalar, Scalar> &&
+           std::same_as<typename Derived::Value, Value>
+  auto& operator=(const VectorFieldBase<Derived>& other) {
+    assert(this->size() == other.size());
+    CopyValues(other);
+    return *this;
+  }
+
+  template <typename Derived>
+  requires std::convertible_to<typename Derived::Scalar, Scalar> &&
+           std::same_as<typename Derived::Value, Value>
+  auto& operator=(VectorFieldBase<Derived>&& other) {
+    *this = other;
+    return *this;
+  }
+
+  // Iterators.
+  auto begin() { return _data.begin(); }
+  auto end() { return _data.end(); }
+
+  // Value assignement.
+  auto& operator()(Int alpha, Int iTheta, Int iPhi) {
+    return _data[Index(alpha, iTheta, iPhi)];
+  }
+  auto operator()(Int alpha) {
+    const auto size = this->ComponentSize();
+    auto start = std::next(begin(), size * (alpha + 1));
+    auto finish = std::next(start, size);
+    auto data = std::ranges::subrange(start, finish);
+    return ScalarFieldView(_grid, data);
+  }
+
+ private:
+  _Grid _grid;
+  _View _data;
+
+  template <typename Derived>
+  void CopyValues(const VectorFieldBase<Derived>& other) {
+    for (auto alpha = -1; alpha <= 1; alpha++) {
+      for (auto [iTheta, iPhi] : this->PointIndices()) {
+        operator()(alpha, iTheta, iPhi) = other(alpha, iTheta, iPhi);
+      }
+    }
+  }
 
   auto Index(Int alpha, Int iTheta, int iPhi) const {
     return (this->ComponentSize()) * (alpha + 1) +
@@ -305,10 +427,308 @@ class VectorFieldUnary
   Function _f;
 };
 
+//-------------------------------------------------//
+//            Unary expression with Scalar         //
+//-------------------------------------------------//
+template <typename Derived, typename Function>
+requires requires() {
+  requires std::invocable<Function, typename Derived::Scalar,
+                          typename Derived::Scalar>;
+  requires std::convertible_to<
+      std::invoke_result_t<Function, typename Derived::Scalar,
+                           typename Derived::Scalar>,
+      typename Derived::Scalar>;
+}
+class VectorFieldUnaryWithScalar
+    : public VectorFieldBase<VectorFieldUnaryWithScalar<Derived, Function>> {
+  using Int = std::ptrdiff_t;
+
+ public:
+  using Grid = typename Derived::Grid;
+  using Scalar = typename Derived::Scalar;
+  using Value = typename Derived::Value;
+  using Real = typename Derived::Real;
+  using Complex = typename Derived::Complex;
+
+  // Methods needed to inherit from VectorFieldBase.
+  auto GetGrid() const { return _u.GetGrid(); }
+  auto operator()(Int alpha, Int iTheta, Int iPhi) const {
+    return _f(_u(alpha, iTheta, iPhi), _s);
+  }
+  auto operator()(Int alpha) const {
+    return VectorFieldComponentView(*this, alpha);
+  }
+
+  // Constructors.
+  VectorFieldUnaryWithScalar() = delete;
+  VectorFieldUnaryWithScalar(const VectorFieldBase<Derived>& u, Function f,
+                             Scalar s)
+      : _u{u}, _f{f}, _s{s} {}
+
+  VectorFieldUnaryWithScalar(const VectorFieldUnaryWithScalar&) = default;
+  VectorFieldUnaryWithScalar(VectorFieldUnaryWithScalar&&) = default;
+
+  // Assignment.
+  VectorFieldUnaryWithScalar& operator=(VectorFieldUnaryWithScalar&) = default;
+  VectorFieldUnaryWithScalar& operator=(VectorFieldUnaryWithScalar&&) = default;
+
+ private:
+  const VectorFieldBase<Derived>& _u;
+  Function _f;
+  Scalar _s;
+};
+
+//-------------------------------------------------//
+//                 Binary expression               //
+//-------------------------------------------------//
+template <typename Derived1, typename Derived2, typename Function>
+requires requires() {
+  requires std::same_as<typename Derived1::Real, typename Derived2::Real>;
+  requires std::same_as<typename Derived1::Value, typename Derived2::Value>;
+  requires std::invocable<Function, typename Derived1::Scalar,
+                          typename Derived2::Scalar>;
+  requires std::convertible_to<
+      std::invoke_result_t<Function, typename Derived1::Scalar,
+                           typename Derived1::Scalar>,
+      typename Derived1::Scalar>;
+}
+
+class VectorFieldBinary
+    : public VectorFieldBase<VectorFieldBinary<Derived1, Derived2, Function>> {
+  using Int = std::ptrdiff_t;
+
+ public:
+  using Grid = typename Derived1::Grid;
+  using Scalar = typename Derived1::Scalar;
+  using Value = typename Derived1::Value;
+  using Real = typename Derived1::Real;
+  using Complex = typename Derived1::Complex;
+
+  // Methods needed to inherit from VectorFieldBase.
+  auto GetGrid() const { return _u1.GetGrid(); }
+  auto operator()(Int alpha, Int iTheta, Int iPhi) const {
+    return _f(_u1(alpha, iTheta, iPhi), _u2(alpha, iTheta, iPhi));
+  }
+  auto operator()(Int alpha) const {
+    return VectorFieldComponentView(*this, alpha);
+  }
+
+  // Constructors.
+  VectorFieldBinary() = delete;
+  VectorFieldBinary(const VectorFieldBase<Derived1>& u1,
+                    const VectorFieldBase<Derived2>& u2, Function f)
+      : _u1{u1}, _u2{u2}, _f{f} {
+    assert(_u1.size() == _u2.size());
+  }
+
+  VectorFieldBinary(const VectorFieldBinary&) = default;
+  VectorFieldBinary(VectorFieldBinary&&) = default;
+
+  // Assignment.
+  VectorFieldBinary& operator=(VectorFieldBinary&) = default;
+  VectorFieldBinary& operator=(VectorFieldBinary&&) = default;
+
+ private:
+  const VectorFieldBase<Derived1>& _u1;
+  const VectorFieldBase<Derived2>& _u2;
+  Function _f;
+};
+
+//-----------------------------------------------------//
+//            Complex conjugate expression             //
+//-----------------------------------------------------//
+template <typename Derived>
+requires std::same_as<typename Derived::Value, ComplexValued>
+class VectorFieldConjugate
+    : public VectorFieldBase<VectorFieldConjugate<Derived>> {
+  using Int = std::ptrdiff_t;
+
+ public:
+  using Grid = typename Derived::Grid;
+  using Scalar = typename Derived::Scalar;
+  using Value = typename Derived::Value;
+  using Real = typename Derived::Real;
+  using Complex = typename Derived::Complex;
+
+  // Methods needed to inherit from VectorFieldBase.
+  auto GetGrid() const { return _u.GetGrid(); }
+  auto operator()(Int alpha, Int iTheta, Int iPhi) const {
+    return std::conj(_u(-alpha, iTheta, iPhi));
+  }
+  auto operator()(Int alpha) const {
+    return VectorFieldComponentView(*this, alpha);
+  }
+
+  // Constructors.
+  VectorFieldConjugate() = delete;
+  VectorFieldConjugate(const VectorFieldBase<Derived>& u) : _u{u} {}
+
+  VectorFieldConjugate(const VectorFieldConjugate&) = default;
+  VectorFieldConjugate(VectorFieldConjugate&&) = default;
+
+  // Assignment.
+  VectorFieldConjugate& operator=(VectorFieldConjugate&) = default;
+  VectorFieldConjugate& operator=(VectorFieldConjugate&&) = default;
+
+ private:
+  const VectorFieldBase<Derived>& _u;
+};
+
+//-----------------------------------------------------//
+//      Pointwise inner/duality product expressions    //
+//-----------------------------------------------------//
+template <typename Derived1, typename Derived2>
+requires requires() {
+  requires std::same_as<typename Derived1::Real, typename Derived2::Real>;
+  requires std::same_as<typename Derived1::Value, typename Derived2::Value>;
+}
+class VectorFieldInnerProduct
+    : public ScalarFieldBase<VectorFieldInnerProduct<Derived1, Derived2>> {
+  using Int = std::ptrdiff_t;
+
+ public:
+  using Grid = typename Derived1::Grid;
+  using Scalar = typename Derived1::Scalar;
+  using Value = typename Derived1::Value;
+  using Real = typename Derived1::Real;
+  using Complex = typename Derived1::Complex;
+
+  // Methods needed to inherit from ScalarField Base.
+  auto GetGrid() const { return _u1.GetGrid(); }
+  auto operator()(Int iTheta, Int iPhi) const {
+    if constexpr (std::same_as<Value, RealValued>) {
+      return 2 * _u1(-1, iTheta, iPhi) * _u2(-1, iTheta, iPhi) +
+             _u1(0, iTheta, iPhi) * _u2(0, iTheta, iPhi) +
+             2 * _u1(1, iTheta, iPhi) * _u2(1, iTheta, iPhi);
+    } else {
+      return std::conj(_u1(-1, iTheta, iPhi)) * _u2(-1, iTheta, iPhi) +
+             std::conj(_u1(0, iTheta, iPhi)) * _u2(0, iTheta, iPhi) +
+             std::conj(_u1(1, iTheta, iPhi)) * _u2(1, iTheta, iPhi);
+    }
+  }
+
+  // Constructors.
+  VectorFieldInnerProduct() = delete;
+  VectorFieldInnerProduct(const VectorFieldBase<Derived1>& u1,
+                          const VectorFieldBase<Derived2>& u2)
+      : _u1{u1}, _u2{u2} {
+    assert(_u1.size() == _u2.size());
+  }
+
+  VectorFieldInnerProduct(const VectorFieldInnerProduct&) = default;
+  VectorFieldInnerProduct(VectorFieldInnerProduct&&) = default;
+
+  // Assignment.
+  VectorFieldInnerProduct& operator=(VectorFieldInnerProduct&) = default;
+  VectorFieldInnerProduct& operator=(VectorFieldInnerProduct&&) = default;
+
+ private:
+  const VectorFieldBase<Derived1>& _u1;
+  const VectorFieldBase<Derived2>& _u2;
+};
+
+template <typename Derived1, typename Derived2>
+requires requires() {
+  requires std::same_as<typename Derived1::Real, typename Derived2::Real>;
+  requires std::same_as<typename Derived1::Value, typename Derived2::Value>;
+}
+class VectorFieldDualityProduct
+    : public ScalarFieldBase<VectorFieldInnerProduct<Derived1, Derived2>> {
+  using Int = std::ptrdiff_t;
+
+ public:
+  using Grid = typename Derived1::Grid;
+  using Scalar = typename Derived1::Scalar;
+  using Value = typename Derived1::Value;
+  using Real = typename Derived1::Real;
+  using Complex = typename Derived1::Complex;
+
+  // Methods needed to inherit from ScalarField Base.
+  auto GetGrid() const { return _u1.GetGrid(); }
+  auto operator()(Int iTheta, Int iPhi) const {
+    if constexpr (std::same_as<Value, RealValued>) {
+      return -2 * _u1(-1, iTheta, iPhi) * _u2(1, iTheta, iPhi) +
+             _u1(0, iTheta, iPhi) * _u2(0, iTheta, iPhi) -
+             2 * _u1(1, iTheta, iPhi) * _u2(-1, iTheta, iPhi);
+    } else {
+      return -_u1(-1, iTheta, iPhi) * _u2(1, iTheta, iPhi) +
+             _u1(0, iTheta, iPhi) * _u2(0, iTheta, iPhi) -
+             _u1(1, iTheta, iPhi) * _u2(-1, iTheta, iPhi);
+    }
+  }
+
+  // Constructors.
+  VectorFieldDualityProduct() = delete;
+  VectorFieldDualityProduct(const VectorFieldBase<Derived1>& u1,
+                            const VectorFieldBase<Derived2>& u2)
+      : _u1{u1}, _u2{u2} {
+    assert(_u1.size() == _u2.size());
+  }
+
+  VectorFieldDualityProduct(const VectorFieldDualityProduct&) = default;
+  VectorFieldDualityProduct(VectorFieldDualityProduct&&) = default;
+
+  // Assignment.
+  VectorFieldDualityProduct& operator=(VectorFieldDualityProduct&) = default;
+  VectorFieldDualityProduct& operator=(VectorFieldDualityProduct&&) = default;
+
+ private:
+  const VectorFieldBase<Derived1>& _u1;
+  const VectorFieldBase<Derived2>& _u2;
+};
+
+//-----------------------------------------------------//
+//   VectorField product with ScalarField  expression  //
+//-----------------------------------------------------//
+template <typename Derived1, typename Derived2>
+requires std::same_as<typename Derived1::Value, typename Derived2::Value>
+class VectorFieldProductScalarField
+    : public VectorFieldBase<
+          VectorFieldProductScalarField<Derived1, Derived2>> {
+  using Int = std::ptrdiff_t;
+
+ public:
+  using Grid = typename Derived1::Grid;
+  using Scalar = typename Derived1::Scalar;
+  using Value = typename Derived1::Value;
+  using Real = typename Derived1::Real;
+  using Complex = typename Derived1::Complex;
+
+  // Methods needed to inherit from VectorFieldBase.
+  auto GetGrid() const { return _u1.GetGrid(); }
+  auto operator()(Int alpha, Int iTheta, Int iPhi) const {
+    return _u1(alpha, iTheta, iPhi) * _u2(iTheta, iPhi);
+  }
+  auto operator()(Int alpha) const {
+    return VectorFieldComponentView(*this, alpha);
+  }
+
+  // Constructors.
+  VectorFieldProductScalarField() = delete;
+  VectorFieldProductScalarField(const VectorFieldBase<Derived1>& u1,
+                                const ScalarFieldBase<Derived2>& u2)
+      : _u1{u1}, _u2{u2} {
+    assert(_u1.ComponentSize() == _u2.size());
+  }
+
+  VectorFieldProductScalarField(const VectorFieldProductScalarField&) = default;
+  VectorFieldProductScalarField(VectorFieldProductScalarField&&) = default;
+
+  // Assignment.
+  VectorFieldProductScalarField& operator=(
+      const VectorFieldProductScalarField&) = default;
+
+  VectorFieldProductScalarField& operator=(VectorFieldProductScalarField&&) =
+      default;
+
+ private:
+  const VectorFieldBase<Derived1>& _u1;
+  const ScalarFieldBase<Derived2>& _u2;
+};
+
 //-----------------------------------------------------//
 //              VectorField -> VectorField             //
 //-----------------------------------------------------//
-
 template <typename Derived>
 auto operator-(const VectorFieldBase<Derived>& u) {
   return VectorFieldUnary(u, [](auto x) { return -x; });
@@ -320,32 +740,271 @@ auto operator-(VectorFieldBase<Derived>&& u) {
 }
 
 //-----------------------------------------------------//
-//          VectorField -> RealVectorField             //
-//-----------------------------------------------------//
-template <typename Derived>
-requires std::same_as<typename Derived::Value, ComplexValued>
-auto abs(const VectorFieldBase<Derived>& u) {
-  return real(u);
-}
-
-//-----------------------------------------------------//
 //         ComplexVectorField -> RealVectorField       //
 //-----------------------------------------------------//
-
 template <typename Derived>
 requires std::same_as<typename Derived::Value, ComplexValued>
 auto real(const VectorFieldBase<Derived>& u) {
   return RealifiedVectorField(u);
 }
 
+template <typename Derived>
+requires std::same_as<typename Derived::Value, ComplexValued>
+auto real(VectorFieldBase<Derived>&& u) {
+  return real(u);
+}
+
 //-----------------------------------------------------//
 //         RealVectorField -> ComplexVectorField       //
 //-----------------------------------------------------//
-
 template <typename Derived>
 requires std::same_as<typename Derived::Value, RealValued>
 auto complex(const VectorFieldBase<Derived>& u) {
   return ComplexifiedVectorField(u);
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto complex(VectorFieldBase<Derived>&& u) {
+  return complex(u);
+}
+
+//-----------------------------------------------------//
+//       ComplexVectorField -> ComplexVectorField      //
+//-----------------------------------------------------//
+template <typename Derived>
+requires std::same_as<typename Derived::Value, ComplexValued>
+auto conj(const VectorFieldBase<Derived>& u) {
+  return VectorFieldConjugate(u);
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, ComplexValued>
+auto conj(VectorFieldBase<Derived>&& u) {
+  return conj(u);
+}
+
+//-----------------------------------------------------//
+//          VectorField x Scalar -> VectorField        //
+//-----------------------------------------------------//
+template <typename Derived>
+auto operator*(const VectorFieldBase<Derived>& u, typename Derived::Scalar s) {
+  return VectorFieldUnaryWithScalar(u, std::multiplies<>(), s);
+}
+
+template <typename Derived>
+auto operator*(typename Derived::Scalar s, const VectorFieldBase<Derived>& u) {
+  return u * s;
+}
+
+template <typename Derived>
+auto operator*(VectorFieldBase<Derived>&& u, typename Derived::Scalar s) {
+  return u * s;
+}
+
+template <typename Derived>
+auto operator*(typename Derived::Scalar s, VectorFieldBase<Derived>&& u) {
+  return u * s;
+}
+
+template <typename Derived>
+auto operator/(const VectorFieldBase<Derived>& u, typename Derived::Scalar s) {
+  return VectorFieldUnaryWithScalar(u, std::divides<>(), s);
+}
+
+template <typename Derived>
+auto operator/(VectorFieldBase<Derived>&& u, typename Derived::Scalar s) {
+  return u / s;
+}
+
+//-----------------------------------------------------//
+//      VectorField x VectorField -> VectorField       //
+//-----------------------------------------------------//
+
+template <typename Derived1, typename Derived2>
+auto operator+(const VectorFieldBase<Derived1>& u1,
+               const VectorFieldBase<Derived2>& u2) {
+  return VectorFieldBinary(u1, u2, std::plus<>());
+}
+
+template <typename Derived1, typename Derived2>
+auto operator+(VectorFieldBase<Derived1>&& u1,
+               const VectorFieldBase<Derived2>& u2) {
+  return u1 + u2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator+(const VectorFieldBase<Derived1>& u1,
+               VectorFieldBase<Derived2>&& u2) {
+  return u1 + u2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator+(VectorFieldBase<Derived1>&& u1, VectorFieldBase<Derived2>&& u2) {
+  return u1 + u2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator-(const VectorFieldBase<Derived1>& u1,
+               const VectorFieldBase<Derived2>& u2) {
+  return VectorFieldBinary(u1, u2, std::minus<>());
+}
+
+template <typename Derived1, typename Derived2>
+auto operator-(VectorFieldBase<Derived1>&& u1,
+               const VectorFieldBase<Derived2>& u2) {
+  return u1 - u2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator-(const VectorFieldBase<Derived1>& u1,
+               VectorFieldBase<Derived2>&& u2) {
+  return u1 - u2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator-(VectorFieldBase<Derived1>&& u1, VectorFieldBase<Derived2>&& u2) {
+  return u1 - u2;
+}
+
+//-----------------------------------------------------//
+//      VectorField x ScalarField -> VectorField       //
+//-----------------------------------------------------//
+template <typename Derived1, typename Derived2>
+auto operator*(const VectorFieldBase<Derived1>& u1,
+               const ScalarFieldBase<Derived2>& u2) {
+  return VectorFieldProductScalarField(u1, u2);
+}
+
+template <typename Derived1, typename Derived2>
+auto operator*(VectorFieldBase<Derived1>&& u1,
+               const ScalarFieldBase<Derived2>& u2) {
+  return u1 * u2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator*(const VectorFieldBase<Derived1>& u1,
+               ScalarFieldBase<Derived2>&& u2) {
+  return u1 * u2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator*(VectorFieldBase<Derived1>&& u1, ScalarFieldBase<Derived2>&& u2) {
+  return u1 * u2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator*(const ScalarFieldBase<Derived1>& u1,
+               const VectorFieldBase<Derived2>& u2) {
+  return u2 * u1;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator*(ScalarFieldBase<Derived1>&& u1,
+               const VectorFieldBase<Derived2>& u2) {
+  return u2 * u1;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator*(const ScalarFieldBase<Derived1>& u1,
+               VectorFieldBase<Derived2>&& u2) {
+  return u2 * u1;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator*(ScalarFieldBase<Derived1>&& u1, VectorFieldBase<Derived2>&& u2) {
+  return u2 * u1;
+}
+
+//-----------------------------------------------------//
+//      VectorField x VectorField -> ScalarField       //
+//-----------------------------------------------------//
+template <typename Derived1, typename Derived2>
+auto InnerProduct(const VectorFieldBase<Derived1>& u1,
+                  const VectorFieldBase<Derived2>& u2) {
+  return VectorFieldInnerProduct(u1, u2);
+}
+
+template <typename Derived1, typename Derived2>
+auto InnerProduct(const VectorFieldBase<Derived1>& u1,
+                  VectorFieldBase<Derived2>&& u2) {
+  return InnerProduct(u1, u2);
+}
+
+template <typename Derived1, typename Derived2>
+auto InnerProduct(VectorFieldBase<Derived1>&& u1,
+                  const VectorFieldBase<Derived2>& u2) {
+  return InnerProduct(u1, u2);
+}
+
+template <typename Derived1, typename Derived2>
+auto InnerProduct(VectorFieldBase<Derived1>&& u1,
+                  VectorFieldBase<Derived2>&& u2) {
+  return InnerProduct(u1, u2);
+}
+
+template <typename Derived1, typename Derived2>
+auto DualityProduct(const VectorFieldBase<Derived1>& u1,
+                    const VectorFieldBase<Derived2>& u2) {
+  return VectorFieldDualityProduct(u1, u2);
+}
+
+template <typename Derived1, typename Derived2>
+auto DualityProduct(const VectorFieldBase<Derived1>& u1,
+                    VectorFieldBase<Derived2>&& u2) {
+  return DualityProduct(u1, u2);
+}
+
+template <typename Derived1, typename Derived2>
+auto DualityProduct(VectorFieldBase<Derived1>&& u1,
+                    const VectorFieldBase<Derived2>& u2) {
+  return DualityProduct(u1, u2);
+}
+
+template <typename Derived1, typename Derived2>
+auto DualityProduct(VectorFieldBase<Derived1>&& u1,
+                    VectorFieldBase<Derived2>&& u2) {
+  return DualityProduct(u1, u2);
+}
+
+//-----------------------------------------------------//
+//          VectorField x VectorField -> Scalar        //
+//-----------------------------------------------------//
+template <typename Derived1, typename Derived2>
+auto L2InnerProduct(const VectorFieldBase<Derived1>& u1,
+                    const VectorFieldBase<Derived2>& u2) {
+  return Integrate(InnerProduct(u1, u2));
+}
+
+template <typename Derived1, typename Derived2>
+auto L2InnerProduct(VectorFieldBase<Derived1>&& u1,
+                    const VectorFieldBase<Derived2>& u2) {
+  return L2InnerProduct(u1, u2);
+}
+
+template <typename Derived1, typename Derived2>
+auto L2InnerProduct(const VectorFieldBase<Derived1>& u1,
+                    VectorFieldBase<Derived2>&& u2) {
+  return L2InnerProduct(u1, u2);
+}
+
+template <typename Derived1, typename Derived2>
+auto L2InnerProduct(VectorFieldBase<Derived1>&& u1,
+                    VectorFieldBase<Derived2>&& u2) {
+  return L2InnerProduct(u1, u2);
+}
+
+//-----------------------------------------------------//
+//                VectorField  -> Real                 //
+//-----------------------------------------------------//
+template <typename Derived>
+auto L2Norm(const VectorFieldBase<Derived>& u) {
+  return std::sqrt(std::abs(L2InnerProduct(u, u)));
+}
+
+template <typename Derived>
+auto L2Norm(VectorFieldBase<Derived>&& u) {
+  return L2Norm(u);
 }
 
 }  // namespace GSHTrans
