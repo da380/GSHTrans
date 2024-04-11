@@ -34,6 +34,11 @@ class MatrixFieldBase : public FieldBase<MatrixFieldBase<_Derived>> {
         std::ranges::views::iota(-1, 2), std::ranges::views::iota(-1, 2));
   }
 
+  void CheckCanonicalIndices(Int alpha, Int beta) const {
+    assert(std::abs(alpha) <= 1);
+    assert(std::abs(beta) <= 1);
+  }
+
   auto operator()(Int alpha, Int beta, Int iTheta, Int iPhi) const {
     return Derived().operator()(alpha, beta, iTheta, iPhi);
   }
@@ -115,6 +120,8 @@ class MatrixField : public MatrixFieldBase<MatrixField<_Grid, _Value>> {
   // Methods needed to inherit from MatrixField Base.
   auto GetGrid() const { return _grid; }
   auto operator()(Int alpha, Int beta, Int iTheta, Int iPhi) const {
+    assert(std::abs(alpha) <= 1);
+    assert(std::abs(beta) <= 1);
     return _data[Index(alpha, beta, iTheta, iPhi)];
   }
   auto operator()(Int alpha, Int beta) const {
@@ -214,43 +221,15 @@ class ComplexifiedMatrixField
   auto GetGrid() const { return _u.GetGrid(); }
   auto operator()(Int alpha, Int beta, Int iTheta, Int iPhi) const -> Complex {
     constexpr auto ii = Complex(0, 1);
-
-    switch (alpha) {
-      case -1:
-        switch (beta) {
-          case -1:
-            return _u(1, 1, iTheta, iPhi) - ii * _u(-1, -1, iTheta, iPhi);
-          case 0:
-            return _u(1, 0, iTheta, iPhi) - ii * _u(-1, 0, iTheta, iPhi);
-          case 1:
-            return _u(1, -1, iTheta, iPhi) - ii * _u(-1, 1, iTheta, iPhi);
-          default:
-            return 0;
-        }
-      case 0:
-        switch (beta) {
-          case -1:
-            return _u(0, 1, iTheta, iPhi) - ii * _u(0, -1, iTheta, iPhi);
-          case 0:
-            return _u(0, 0, iTheta, iPhi);
-          case 1:
-            return _u(0, 1, iTheta, iPhi) + ii * _u(0, -1, iTheta, iPhi);
-          default:
-            return 0;
-        }
-      case 1:
-        switch (beta) {
-          case -1:
-            return _u(1, -1, iTheta, iPhi) + ii * _u(-1, 1, iTheta, iPhi);
-          case 0:
-            return _u(1, 0, iTheta, iPhi) + ii * _u(-1, 0, iTheta, iPhi);
-          case 1:
-            return _u(1, 1, iTheta, iPhi) + ii * _u(-1, -1, iTheta, iPhi);
-          default:
-            return 0;
-        }
-      default:
-        return 0;
+    auto index = 3 * alpha + beta;
+    if (index < 0) {
+      return _u(-alpha, -beta, iTheta, iPhi) -
+             ii * _u(alpha, beta, iTheta, iPhi);
+    } else if (index == 0) {
+      return _u(0, 0, iTheta, iPhi);
+    } else {
+      return _u(alpha, beta, iTheta, iPhi) +
+             ii * _u(-alpha, -beta, iTheta, iPhi);
     }
   }
 
@@ -273,10 +252,10 @@ class ComplexifiedMatrixField
 };
 
 //-------------------------------------------------//
-//     Complexification of real matrix field       //
+//     Realification of complex matrix field       //
 //-------------------------------------------------//
 template <typename Derived>
-requires std::same_as<typename Derived::Value, RealValued>
+requires std::same_as<typename Derived::Value, ComplexValued>
 class RealifiedMatrixField
     : public MatrixFieldBase<RealifiedMatrixField<Derived>> {
   using Int = std::ptrdiff_t;
@@ -285,23 +264,22 @@ class RealifiedMatrixField
   using Grid = typename Derived::Grid;
   using Real = typename Grid::Real;
   using Complex = typename Grid::Complex;
-  using Value = ComplexValued;
-  using Scalar = Complex;
+  using Value = RealValued;
+  using Scalar = Real;
 
   // Methods needed to inherit from MatrixField Base.
   auto GetGrid() const { return _u.GetGrid(); }
-  auto operator()(Int alpha, Int beta, Int iTheta, Int iPhi) const -> Complex {
-    constexpr auto ii = Complex(0, 1);
-
-    auto index = 3 * (alpha + 1) + beta + 1;
-    if (index < 4) {
-      return _u(-alpha, -beta, iTheta, iPhi) -
-             ii * _u(alpha, beta, iTheta, iPhi);
-    } else if (index == 4) {
-      return _u(0, 0, iTheta, iPhi);
+  auto operator()(Int alpha, Int beta, Int iTheta, Int iPhi) const {
+    constexpr auto half = static_cast<Real>(1) / static_cast<Real>(2);
+    auto index = 3 * alpha + beta;
+    if (index < 0) {
+      return half * std::imag(_u(-alpha, -beta, iTheta, iPhi) -
+                              _u(alpha, beta, iTheta, iPhi));
+    } else if (index == 0) {
+      return std::real(_u(0, 0, iTheta, iPhi));
     } else {
-      return _u(alpha, beta, iTheta, iPhi) +
-             ii * _u(-alpha, -beta, iTheta, iPhi);
+      return half * std::real(_u(alpha, beta, iTheta, iPhi) +
+                              _u(-alpha, -beta, iTheta, iPhi));
     }
   }
 
@@ -323,6 +301,67 @@ class RealifiedMatrixField
   const MatrixFieldBase<Derived>& _u;
 };
 
+//-------------------------------------------------//
+//                 Unary expression                //
+//-------------------------------------------------//
+template <typename Derived, typename Function>
+requires requires() {
+  requires std::invocable<Function, typename Derived::Scalar>;
+  requires std::convertible_to<
+      std::invoke_result_t<Function, typename Derived::Scalar>,
+      typename Derived::Scalar>;
+}
+class MatrixFieldUnary
+    : public MatrixFieldBase<MatrixFieldUnary<Derived, Function>> {
+  using Int = std::ptrdiff_t;
+
+ public:
+  using Grid = typename Derived::Grid;
+  using Scalar = std::invoke_result_t<Function, typename Derived::Scalar>;
+  using Value =
+      std::conditional_t<RealFloatingPoint<Scalar>, RealValued, ComplexValued>;
+  using Real = typename Derived::Real;
+  using Complex = typename Derived::Complex;
+
+  // Methods needed to inherit from MatrixField Base.
+  auto GetGrid() const { return _u.GetGrid(); }
+  auto operator()(Int alpha, Int beta, Int iTheta, Int iPhi) const {
+    return _f(_u(alpha, beta, iTheta, iPhi));
+  }
+  auto operator()(Int alpha, Int beta) const {
+    return MatrixFieldComponentView(*this, alpha, beta);
+  }
+
+  // Constructors.
+  MatrixFieldUnary() = delete;
+  MatrixFieldUnary(const MatrixFieldBase<Derived>& u, Function f)
+      : _u{u}, _f{f} {}
+
+  MatrixFieldUnary(const MatrixFieldUnary&) = default;
+  MatrixFieldUnary(MatrixFieldUnary&&) = default;
+
+  // Assignment.
+  MatrixFieldUnary& operator=(MatrixFieldUnary&) = default;
+  MatrixFieldUnary& operator=(MatrixFieldUnary&&) = default;
+
+ private:
+  const MatrixFieldBase<Derived>& _u;
+  Function _f;
+};
+
+//-----------------------------------------------------//
+//              MatrixField -> MatrixField             //
+//-----------------------------------------------------//
+template <typename Derived>
+auto operator-(const MatrixFieldBase<Derived>& u) {
+  return MatrixFieldUnary(u, [](auto x) { return -x; });
+}
+
+template <typename Derived>
+auto operator-(MatrixFieldBase<Derived>&& u) {
+  return -u;
+}
+
 //-----------------------------------------------------//
 //         RealMatrixField -> ComplexMatrixField       //
 //-----------------------------------------------------//
@@ -336,6 +375,21 @@ template <typename Derived>
 requires std::same_as<typename Derived::Value, RealValued>
 auto complex(MatrixFieldBase<Derived>&& u) {
   return complex(u);
+}
+
+//-----------------------------------------------------//
+//         ComplexMatrixField -> RealMatrixField       //
+//-----------------------------------------------------//
+template <typename Derived>
+requires std::same_as<typename Derived::Value, ComplexValued>
+auto real(const MatrixFieldBase<Derived>& u) {
+  return RealifiedMatrixField(u);
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, ComplexValued>
+auto real(MatrixFieldBase<Derived>&& u) {
+  return real(u);
 }
 
 }  // namespace GSHTrans

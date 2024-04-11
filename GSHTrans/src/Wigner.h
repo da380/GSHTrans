@@ -13,6 +13,7 @@
 
 #include "Concepts.h"
 #include "Indexing.h"
+#include "Utility.h"
 
 namespace GSHTrans {
 
@@ -45,11 +46,6 @@ class Arguments {
   bool _atLeft;
   bool _atRight;
 };
-
-template <std::integral Int>
-constexpr auto MinusOneToPower(Int m) {
-  return m % 2 ? -1 : 1;
-}
 
 template <std::integral Int, RealFloatingPoint Real>
 auto WignerMinOrder(Int l, Int n, Arguments<Real> &arg) {

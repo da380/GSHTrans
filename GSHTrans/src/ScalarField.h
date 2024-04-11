@@ -4,6 +4,7 @@
 #include <FFTWpp/Core>
 #include <concepts>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 #include "Concepts.h"
@@ -60,7 +61,10 @@ class ConstantScalarField
 
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _grid; }
-  auto operator()(Int iTheta, Int iPhi) const { return _s; }
+  auto operator()(Int iTheta, Int iPhi) const {
+    this->CheckPointIndices(iTheta, iPhi);
+    return _s;
+  }
 
   // Constructors.
   ConstantScalarField() = default;
@@ -100,6 +104,7 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _grid; }
   auto operator()(Int iTheta, Int iPhi) const {
+    this->CheckPointIndices(iTheta, iPhi);
     return _data[Index(iTheta, iPhi)];
   }
 
@@ -166,7 +171,10 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   auto end() { return _data.end(); }
 
   // Value assignement.
-  auto& operator()(Int iTheta, Int iPhi) { return _data[Index(iTheta, iPhi)]; }
+  auto& operator()(Int iTheta, Int iPhi) {
+    this->CheckPointIndices(iTheta, iPhi);
+    return _data[Index(iTheta, iPhi)];
+  }
 
  private:
   _Grid _grid;
@@ -208,6 +216,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _grid; }
   auto operator()(Int iTheta, Int iPhi) const {
+    this->CheckPointIndices(iTheta, iPhi);
     return _data[Index(iTheta, iPhi)];
   }
 
@@ -253,7 +262,10 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
   auto end() { return _data.end(); }
 
   // Value assignement.
-  auto& operator()(Int iTheta, Int iPhi) { return _data[Index(iTheta, iPhi)]; }
+  auto& operator()(Int iTheta, Int iPhi) {
+    this->CheckPointIndices(iTheta, iPhi);
+    return _data[Index(iTheta, iPhi)];
+  }
 
  private:
   _Grid _grid;
@@ -295,6 +307,7 @@ class ComplexifiedScalarField
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _u.GetGrid(); }
   auto operator()(Int iTheta, Int iPhi) const -> Complex {
+    this->CheckPointIndices(iTheta, iPhi);
     return _u(iTheta, iPhi);
   }
 
@@ -341,7 +354,10 @@ class ScalarFieldUnary
 
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _u.GetGrid(); }
-  auto operator()(Int iTheta, Int iPhi) const { return _f(_u(iTheta, iPhi)); }
+  auto operator()(Int iTheta, Int iPhi) const {
+    this->CheckPointIndices(iTheta, iPhi);
+    return _f(_u(iTheta, iPhi));
+  }
 
   // Constructors.
   ScalarFieldUnary() = delete;
@@ -388,6 +404,7 @@ class ScalarFieldUnaryWithScalar
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _u.GetGrid(); }
   auto operator()(Int iTheta, Int iPhi) const {
+    this->CheckPointIndices(iTheta, iPhi);
     return _f(_u(iTheta, iPhi), _s);
   }
 
@@ -439,6 +456,7 @@ class ScalarFieldBinary
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _u1.GetGrid(); }
   auto operator()(Int iTheta, Int iPhi) const {
+    this->CheckPointIndices(iTheta, iPhi);
     return _f(_u1(iTheta, iPhi), _u2(iTheta, iPhi));
   }
 
@@ -769,6 +787,39 @@ auto L2Norm(const ScalarFieldBase<Derived>& u) {
 template <typename Derived>
 auto L2Norm(ScalarFieldBase<Derived>&& u) {
   return L2Norm(u);
+}
+
+//-------------------------------------------------------//
+//           ScalarField x ScalarField -> bool           //
+//-------------------------------------------------------//
+template <typename Derived1, typename Derived2>
+requires std::same_as<typename Derived1::Value, typename Derived2::Value>
+auto operator==(const ScalarFieldBase<Derived1>& u1,
+                const ScalarFieldBase<Derived2>& u2) {
+  assert(u1.size() == u2.size());
+  return L2Norm(u1 - u2) <
+         std::numeric_limits<typename Derived1::Real>::epsilon();
+}
+
+template <typename Derived1, typename Derived2>
+requires std::same_as<typename Derived1::Value, typename Derived2::Value>
+auto operator==(ScalarFieldBase<Derived1>&& u1,
+                const ScalarFieldBase<Derived2>& u2) {
+  return u1 == u2;
+}
+
+template <typename Derived1, typename Derived2>
+requires std::same_as<typename Derived1::Value, typename Derived2::Value>
+auto operator==(const ScalarFieldBase<Derived1>& u1,
+                ScalarFieldBase<Derived2>&& u2) {
+  return u1 == u2;
+}
+
+template <typename Derived1, typename Derived2>
+requires std::same_as<typename Derived1::Value, typename Derived2::Value>
+auto operator==(ScalarFieldBase<Derived1>&& u1,
+                ScalarFieldBase<Derived2>&& u2) {
+  return u1 == u2;
 }
 
 }  // namespace GSHTrans

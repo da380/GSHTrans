@@ -9,6 +9,7 @@
 #include "src/Indexing.h"
 #include "src/MatrixField.h"
 #include "src/ScalarField.h"
+#include "src/Utility.h"
 #include "src/VectorField.h"
 #include "src/Wigner.h"
 

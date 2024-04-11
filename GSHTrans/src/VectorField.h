@@ -10,6 +10,7 @@
 #include "GridBase.h"
 #include "Indexing.h"
 #include "ScalarField.h"
+#include "Utility.h"
 
 namespace GSHTrans {
 
@@ -29,6 +30,8 @@ class VectorFieldBase : public FieldBase<VectorFieldBase<_Derived>> {
   auto ComponentSize() const { return GetGrid().FieldSize(); }
 
   auto CanonicalIndices() const { return std::ranges::views::iota(-1, 2); }
+
+  void CheckCanonicalIndices(Int alpha) const { assert(std::abs(alpha) <= 1); }
 
   auto operator()(Int alpha, Int iTheta, Int iPhi) const {
     return Derived().operator()(alpha, iTheta, iPhi);
@@ -68,12 +71,15 @@ class VectorFieldComponentView
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _u.GetGrid(); }
   auto operator()(Int iTheta, Int iPhi) const {
+    this->CheckPointIndices(iTheta, iPhi);
     return _u(_alpha, iTheta, iPhi);
   }
 
   // Constructors.
   VectorFieldComponentView(const VectorFieldBase<Derived>& u, Int alpha)
-      : _u{u}, _alpha{alpha} {}
+      : _u{u}, _alpha{alpha} {
+    this->CheckCanonicalIndices(alpha);
+  }
 
   VectorFieldComponentView(const VectorFieldComponentView&) = default;
   VectorFieldComponentView(VectorFieldComponentView&&) = default;
@@ -107,9 +113,12 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
   // Methods needed to inherit from VectorField Base.
   auto GetGrid() const { return _grid; }
   auto operator()(Int alpha, Int iTheta, Int iPhi) const {
+    this->CheckPointIndices(iTheta, iPhi);
+    this->CheckCanonicalIndices(alpha);
     return _data[Index(alpha, iTheta, iPhi)];
   }
   auto operator()(Int alpha) const {
+    this->CheckCanonicalIndices(alpha);
     return VectorFieldComponentView(*this, alpha);
   }
 
@@ -153,9 +162,12 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
 
   // Value assignment.
   auto& operator()(Int alpha, Int iTheta, Int iPhi) {
+    this->CheckPointIndices(iTheta, iPhi);
+    this->CheckCanonicalIndices(alpha);
     return _data[Index(alpha, iTheta, iPhi)];
   }
   auto operator()(Int alpha) {
+    this->CheckCanonicalIndices(alpha);
     auto start = std::next(begin(), Offset(alpha));
     auto finish = std::next(start, this->ComponentSize());
     auto data = std::ranges::subrange(start, finish);
@@ -206,9 +218,12 @@ class VectorFieldView : public VectorFieldBase<VectorFieldView<_Grid, _View>> {
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _grid; }
   auto operator()(Int alpha, Int iTheta, Int iPhi) const {
+    this->CheckPointIndices(iTheta, iPhi);
+    this->CheckCanonicalIndices(alpha);
     return _data[Index(alpha, iTheta, iPhi)];
   }
   auto operator()(Int alpha) const {
+    this->CheckCanonicalIndices(alpha);
     return VectorFieldComponentView(*this, alpha);
   }
 
@@ -249,9 +264,12 @@ class VectorFieldView : public VectorFieldBase<VectorFieldView<_Grid, _View>> {
 
   // Value assignement.
   auto& operator()(Int alpha, Int iTheta, Int iPhi) {
+    this->CheckPointIndices(iTheta, iPhi);
+    this->CheckCanonicalIndices(alpha);
     return _data[Index(alpha, iTheta, iPhi)];
   }
   auto operator()(Int alpha) {
+    this->CheckCanonicalIndices(alpha);
     auto start = std::next(begin(), Offset(alpha));
     auto finish = std::next(start, this->ComponentSize());
     auto data = std::ranges::subrange(start, finish);
@@ -278,6 +296,50 @@ class VectorFieldView : public VectorFieldBase<VectorFieldView<_Grid, _View>> {
   }
 };
 
+//-----------------------------------------------------//
+//            Complex conjugate expression             //
+//-----------------------------------------------------//
+template <typename Derived>
+requires std::same_as<typename Derived::Value, ComplexValued>
+class VectorFieldConjugate
+    : public VectorFieldBase<VectorFieldConjugate<Derived>> {
+  using Int = std::ptrdiff_t;
+
+ public:
+  using Grid = typename Derived::Grid;
+  using Scalar = typename Derived::Scalar;
+  using Value = typename Derived::Value;
+  using Real = typename Derived::Real;
+  using Complex = typename Derived::Complex;
+
+  // Methods needed to inherit from VectorFieldBase.
+  auto GetGrid() const { return _u.GetGrid(); }
+  auto operator()(Int alpha, Int iTheta, Int iPhi) const {
+    this->CheckPointIndices(iTheta, iPhi);
+    this->CheckCanonicalIndices(alpha);
+    return alpha == 0 ? std::conj(_u(0, iTheta, iPhi))
+                      : -std::conj(_u(-alpha, iTheta, iPhi));
+  }
+  auto operator()(Int alpha) const {
+    this->CheckCanonicalIndices(alpha);
+    return VectorFieldComponentView(*this, alpha);
+  }
+
+  // Constructors.
+  VectorFieldConjugate() = delete;
+  VectorFieldConjugate(const VectorFieldBase<Derived>& u) : _u{u} {}
+
+  VectorFieldConjugate(const VectorFieldConjugate&) = default;
+  VectorFieldConjugate(VectorFieldConjugate&&) = default;
+
+  // Assignment.
+  VectorFieldConjugate& operator=(VectorFieldConjugate&) = default;
+  VectorFieldConjugate& operator=(VectorFieldConjugate&&) = default;
+
+ private:
+  const VectorFieldBase<Derived>& _u;
+};
+
 //-------------------------------------------------//
 //     Complexification of real vector field       //
 //-------------------------------------------------//
@@ -297,10 +359,12 @@ class ComplexifiedVectorField
   // Methods needed to inherit from VectorField Base.
   auto GetGrid() const { return _u.GetGrid(); }
   auto operator()(Int alpha, Int iTheta, Int iPhi) const -> Complex {
+    this->CheckPointIndices(iTheta, iPhi);
+    this->CheckCanonicalIndices(alpha);
     constexpr auto ii = Complex(0, 1);
     switch (alpha) {
       case -1:
-        return _u(1, iTheta, iPhi) - ii * _u(-1, iTheta, iPhi);
+        return -_u(1, iTheta, iPhi) + ii * _u(-1, iTheta, iPhi);
       case 0:
         return _u(0, iTheta, iPhi);
       case 1:
@@ -310,6 +374,7 @@ class ComplexifiedVectorField
     }
   }
   auto operator()(Int alpha) const {
+    this->CheckCanonicalIndices(alpha);
     return VectorFieldComponentView(*this, alpha);
   }
 
@@ -346,19 +411,22 @@ class RealifiedVectorField
   // Methods needed to inherit from VectorField Base.
   auto GetGrid() const { return _u.GetGrid(); }
   auto operator()(Int alpha, Int iTheta, Int iPhi) const -> Real {
+    this->CheckPointIndices(iTheta, iPhi);
+    this->CheckCanonicalIndices(alpha);
     constexpr auto half = static_cast<Real>(1) / static_cast<Real>(2);
     switch (alpha) {
       case -1:
-        return half * std::imag(_u(1, iTheta, iPhi) - _u(-1, iTheta, iPhi));
+        return half * std::imag(_u(1, iTheta, iPhi) + _u(-1, iTheta, iPhi));
       case 0:
         return std::real(_u(0, iTheta, iPhi));
       case 1:
-        return half * std::real(_u(1, iTheta, iPhi) + _u(-1, iTheta, iPhi));
+        return half * std::real(_u(1, iTheta, iPhi) - _u(-1, iTheta, iPhi));
       default:
         return 0;
     }
   }
   auto operator()(Int alpha) const {
+    this->CheckCanonicalIndices(alpha);
     return VectorFieldComponentView(*this, alpha);
   }
 
@@ -383,11 +451,8 @@ template <typename Derived, typename Function>
 requires requires() {
   requires std::invocable<Function, typename Derived::Scalar>;
   requires std::convertible_to<
-               std::invoke_result_t<Function, typename Derived::Scalar>,
-               typename Derived::Real> ||
-               std::convertible_to<
-                   std::invoke_result_t<Function, typename Derived::Scalar>,
-                   typename Derived::Complex>;
+      std::invoke_result_t<Function, typename Derived::Scalar>,
+      typename Derived::Scalar>;
 }
 class VectorFieldUnary
     : public VectorFieldBase<VectorFieldUnary<Derived, Function>> {
@@ -395,18 +460,20 @@ class VectorFieldUnary
 
  public:
   using Grid = typename Derived::Grid;
-  using Scalar = std::invoke_result_t<Function, typename Derived::Scalar>;
-  using Value =
-      std::conditional_t<RealFloatingPoint<Scalar>, RealValued, ComplexValued>;
+  using Scalar = typename Derived::Scalar;
+  using Value = typename Derived::Value;
   using Real = typename Derived::Real;
   using Complex = typename Derived::Complex;
 
   // Methods needed to inherit from VectorField Base.
   auto GetGrid() const { return _u.GetGrid(); }
   auto operator()(Int alpha, Int iTheta, Int iPhi) const {
+    this->CheckPointIndices(iTheta, iPhi);
+    this->CheckCanonicalIndices(alpha);
     return _f(_u(alpha, iTheta, iPhi));
   }
   auto operator()(Int alpha) const {
+    this->CheckCanonicalIndices(alpha);
     return VectorFieldComponentView(*this, alpha);
   }
 
@@ -453,9 +520,12 @@ class VectorFieldUnaryWithScalar
   // Methods needed to inherit from VectorFieldBase.
   auto GetGrid() const { return _u.GetGrid(); }
   auto operator()(Int alpha, Int iTheta, Int iPhi) const {
+    this->CheckPointIndices(iTheta, iPhi);
+    this->CheckCanonicalIndices(alpha);
     return _f(_u(alpha, iTheta, iPhi), _s);
   }
   auto operator()(Int alpha) const {
+    this->CheckCanonicalIndices(alpha);
     return VectorFieldComponentView(*this, alpha);
   }
 
@@ -507,9 +577,12 @@ class VectorFieldBinary
   // Methods needed to inherit from VectorFieldBase.
   auto GetGrid() const { return _u1.GetGrid(); }
   auto operator()(Int alpha, Int iTheta, Int iPhi) const {
+    this->CheckPointIndices(iTheta, iPhi);
+    this->CheckCanonicalIndices(alpha);
     return _f(_u1(alpha, iTheta, iPhi), _u2(alpha, iTheta, iPhi));
   }
   auto operator()(Int alpha) const {
+    this->CheckCanonicalIndices(alpha);
     return VectorFieldComponentView(*this, alpha);
   }
 
@@ -535,46 +608,6 @@ class VectorFieldBinary
 };
 
 //-----------------------------------------------------//
-//            Complex conjugate expression             //
-//-----------------------------------------------------//
-template <typename Derived>
-requires std::same_as<typename Derived::Value, ComplexValued>
-class VectorFieldConjugate
-    : public VectorFieldBase<VectorFieldConjugate<Derived>> {
-  using Int = std::ptrdiff_t;
-
- public:
-  using Grid = typename Derived::Grid;
-  using Scalar = typename Derived::Scalar;
-  using Value = typename Derived::Value;
-  using Real = typename Derived::Real;
-  using Complex = typename Derived::Complex;
-
-  // Methods needed to inherit from VectorFieldBase.
-  auto GetGrid() const { return _u.GetGrid(); }
-  auto operator()(Int alpha, Int iTheta, Int iPhi) const {
-    return std::conj(_u(-alpha, iTheta, iPhi));
-  }
-  auto operator()(Int alpha) const {
-    return VectorFieldComponentView(*this, alpha);
-  }
-
-  // Constructors.
-  VectorFieldConjugate() = delete;
-  VectorFieldConjugate(const VectorFieldBase<Derived>& u) : _u{u} {}
-
-  VectorFieldConjugate(const VectorFieldConjugate&) = default;
-  VectorFieldConjugate(VectorFieldConjugate&&) = default;
-
-  // Assignment.
-  VectorFieldConjugate& operator=(VectorFieldConjugate&) = default;
-  VectorFieldConjugate& operator=(VectorFieldConjugate&&) = default;
-
- private:
-  const VectorFieldBase<Derived>& _u;
-};
-
-//-----------------------------------------------------//
 //      Pointwise inner/duality product expressions    //
 //-----------------------------------------------------//
 template <typename Derived1, typename Derived2>
@@ -596,6 +629,7 @@ class VectorFieldInnerProduct
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _u1.GetGrid(); }
   auto operator()(Int iTheta, Int iPhi) const {
+    this->CheckPointIndices(iTheta, iPhi);
     if constexpr (std::same_as<Value, RealValued>) {
       return 2 * _u1(-1, iTheta, iPhi) * _u2(-1, iTheta, iPhi) +
              _u1(0, iTheta, iPhi) * _u2(0, iTheta, iPhi) +
@@ -646,6 +680,7 @@ class VectorFieldDualityProduct
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _u1.GetGrid(); }
   auto operator()(Int iTheta, Int iPhi) const {
+    this->CheckPointIndices(iTheta, iPhi);
     if constexpr (std::same_as<Value, RealValued>) {
       return -2 * _u1(-1, iTheta, iPhi) * _u2(1, iTheta, iPhi) +
              _u1(0, iTheta, iPhi) * _u2(0, iTheta, iPhi) -
@@ -697,9 +732,12 @@ class VectorFieldProductScalarField
   // Methods needed to inherit from VectorFieldBase.
   auto GetGrid() const { return _u1.GetGrid(); }
   auto operator()(Int alpha, Int iTheta, Int iPhi) const {
+    this->CheckCanonicalIndices(alpha);
+    this->CheckPointIndice(iTheta, iPhi);
     return _u1(alpha, iTheta, iPhi) * _u2(iTheta, iPhi);
   }
   auto operator()(Int alpha) const {
+    this->CheckCanonicalIndices(alpha);
     return VectorFieldComponentView(*this, alpha);
   }
 
@@ -1005,6 +1043,39 @@ auto L2Norm(const VectorFieldBase<Derived>& u) {
 template <typename Derived>
 auto L2Norm(VectorFieldBase<Derived>&& u) {
   return L2Norm(u);
+}
+
+//-------------------------------------------------------//
+//           VectorField x VectorField -> bool           //
+//-------------------------------------------------------//
+template <typename Derived1, typename Derived2>
+requires std::same_as<typename Derived1::Value, typename Derived2::Value>
+auto operator==(const VectorFieldBase<Derived1>& u1,
+                const VectorFieldBase<Derived2>& u2) {
+  assert(u1.size() == u2.size());
+  return L2Norm(u1 - u2) <
+         std::numeric_limits<typename Derived1::Real>::epsilon();
+}
+
+template <typename Derived1, typename Derived2>
+requires std::same_as<typename Derived1::Value, typename Derived2::Value>
+auto operator==(VectorFieldBase<Derived1>&& u1,
+                const VectorFieldBase<Derived2>& u2) {
+  return u1 == u2;
+}
+
+template <typename Derived1, typename Derived2>
+requires std::same_as<typename Derived1::Value, typename Derived2::Value>
+auto operator==(const VectorFieldBase<Derived1>& u1,
+                VectorFieldBase<Derived2>&& u2) {
+  return u1 == u2;
+}
+
+template <typename Derived1, typename Derived2>
+requires std::same_as<typename Derived1::Value, typename Derived2::Value>
+auto operator==(VectorFieldBase<Derived1>&& u1,
+                VectorFieldBase<Derived2>&& u2) {
+  return u1 == u2;
 }
 
 }  // namespace GSHTrans

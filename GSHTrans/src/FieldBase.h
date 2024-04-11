@@ -1,6 +1,8 @@
 #ifndef GSH_TRANS_FIELD_BASE_GUARD_H
 #define GSH_TRANS_FIELD_BASE_GUARD_H
 
+#include <cassert>
+
 namespace GSHTrans {
 
 template <typename _Derived>
@@ -18,6 +20,11 @@ class FieldBase {
   auto NumberOfLongitudes() const { return GetGrid().NumberOfLongitudes(); }
   auto Longitudes() const { return GetGrid().Longitudes(); }
   auto LongitudeIndices() const { return GetGrid().LongitudeIndices(); }
+
+  void CheckPointIndices(Int iTheta, Int iPhi) const {
+    assert(iTheta >= 0 && iTheta <= this->NumberOfCoLatitudes());
+    assert(iPhi >= 0 && iPhi <= this->NumberOfLongitudes());
+  }
 
   auto Points() const { return GetGrid().Points(); }
   auto PointIndices() const { return GetGrid().PointIndices(); }
