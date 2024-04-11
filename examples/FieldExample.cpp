@@ -20,7 +20,9 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto u = VectorField<Grid, RealValued>(grid, {1, 2, 3});
+  auto u = MatrixField<Grid, ComplexValued>(grid, {1, 2, 3, 4, 5, 6, 7, 8, 9});
 
-  std::cout << (u == real(complex(u))) << std::endl;
+  u = 2 * u - u;
+
+  u.Print();
 }

@@ -562,7 +562,6 @@ requires requires() {
                            typename Derived1::Scalar>,
       typename Derived1::Scalar>;
 }
-
 class VectorFieldBinary
     : public VectorFieldBase<VectorFieldBinary<Derived1, Derived2, Function>> {
   using Int = std::ptrdiff_t;
