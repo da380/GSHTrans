@@ -26,7 +26,6 @@ class VectorFieldBase : public FieldBase<VectorFieldBase<_Derived>> {
   auto GetGrid() const { return Derived().GetGrid(); }
 
   // Methods related to the data.
-  auto size() const { return 3 * GetGrid().FieldSize(); }
   auto ComponentSize() const { return GetGrid().FieldSize(); }
 
   auto CanonicalIndices() const { return std::ranges::views::iota(-1, 2); }
@@ -126,7 +125,7 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
   VectorField() = default;
 
   VectorField(_Grid grid)
-      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->size())} {}
+      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->ComponentSize())} {}
 
   VectorField(_Grid grid, std::array<Scalar, 3>&& u) : VectorField(grid) {
     for (auto [i, alpha] :
@@ -143,7 +142,7 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
   requires std::convertible_to<typename Derived::Scalar, Scalar> &&
            std::same_as<typename Derived::Value, Value>
   auto& operator=(const VectorFieldBase<Derived>& other) {
-    assert(this->size() == other.size());
+    assert(this->ComponentSize() == other.ComponentSize());
     CopyValues(other);
     return *this;
   }
@@ -156,7 +155,8 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
     return *this;
   }
 
-  // Iterators.
+  // Methods to make it a range.
+  auto size() const { return this->Size(); }
   auto begin() { return _data.begin(); }
   auto end() { return _data.end(); }
 
@@ -231,7 +231,7 @@ class VectorFieldView : public VectorFieldBase<VectorFieldView<_Grid, _View>> {
   VectorFieldView() = default;
 
   VectorFieldView(_Grid grid, _View data) : _grid{grid}, _data{data} {
-    assert(this->size() == _data.size());
+    assert(this->ComponentSize() == _data.ComponentSize());
   }
 
   VectorFieldView(const VectorFieldView&) = default;
@@ -245,7 +245,7 @@ class VectorFieldView : public VectorFieldBase<VectorFieldView<_Grid, _View>> {
   requires std::convertible_to<typename Derived::Scalar, Scalar> &&
            std::same_as<typename Derived::Value, Value>
   auto& operator=(const VectorFieldBase<Derived>& other) {
-    assert(this->size() == other.size());
+    assert(this->ComponentSize() == other.CompnentSize());
     CopyValues(other);
     return *this;
   }
@@ -258,7 +258,8 @@ class VectorFieldView : public VectorFieldBase<VectorFieldView<_Grid, _View>> {
     return *this;
   }
 
-  // Iterators.
+  // Methods to make it a range.
+  auto size() const { return this->Size(); }
   auto begin() { return _data.begin(); }
   auto end() { return _data.end(); }
 
@@ -445,7 +446,7 @@ class RealifiedVectorField
 };
 
 //-------------------------------------------------//
-//                 Unary expression                //
+//              PointwiseUnary expression          //
 //-------------------------------------------------//
 template <typename Derived, typename Function>
 requires requires() {
@@ -454,8 +455,8 @@ requires requires() {
       std::invoke_result_t<Function, typename Derived::Scalar>,
       typename Derived::Scalar>;
 }
-class VectorFieldUnary
-    : public VectorFieldBase<VectorFieldUnary<Derived, Function>> {
+class VectorFieldPointwiseUnary
+    : public VectorFieldBase<VectorFieldPointwiseUnary<Derived, Function>> {
   using Int = std::ptrdiff_t;
 
  public:
@@ -478,16 +479,16 @@ class VectorFieldUnary
   }
 
   // Constructors.
-  VectorFieldUnary() = delete;
-  VectorFieldUnary(const VectorFieldBase<Derived>& u, Function f)
+  VectorFieldPointwiseUnary() = delete;
+  VectorFieldPointwiseUnary(const VectorFieldBase<Derived>& u, Function f)
       : _u{u}, _f{f} {}
 
-  VectorFieldUnary(const VectorFieldUnary&) = default;
-  VectorFieldUnary(VectorFieldUnary&&) = default;
+  VectorFieldPointwiseUnary(const VectorFieldPointwiseUnary&) = default;
+  VectorFieldPointwiseUnary(VectorFieldPointwiseUnary&&) = default;
 
   // Assignment.
-  VectorFieldUnary& operator=(VectorFieldUnary&) = default;
-  VectorFieldUnary& operator=(VectorFieldUnary&&) = default;
+  VectorFieldPointwiseUnary& operator=(VectorFieldPointwiseUnary&) = default;
+  VectorFieldPointwiseUnary& operator=(VectorFieldPointwiseUnary&&) = default;
 
  private:
   const VectorFieldBase<Derived>& _u;
@@ -495,7 +496,7 @@ class VectorFieldUnary
 };
 
 //-------------------------------------------------//
-//            Unary expression with Scalar         //
+//       PointwiseUnary expression with Scalar     //
 //-------------------------------------------------//
 template <typename Derived, typename Function>
 requires requires() {
@@ -506,8 +507,9 @@ requires requires() {
                            typename Derived::Scalar>,
       typename Derived::Scalar>;
 }
-class VectorFieldUnaryWithScalar
-    : public VectorFieldBase<VectorFieldUnaryWithScalar<Derived, Function>> {
+class VectorFieldPointwiseUnaryWithScalar
+    : public VectorFieldBase<
+          VectorFieldPointwiseUnaryWithScalar<Derived, Function>> {
   using Int = std::ptrdiff_t;
 
  public:
@@ -530,17 +532,21 @@ class VectorFieldUnaryWithScalar
   }
 
   // Constructors.
-  VectorFieldUnaryWithScalar() = delete;
-  VectorFieldUnaryWithScalar(const VectorFieldBase<Derived>& u, Function f,
-                             Scalar s)
+  VectorFieldPointwiseUnaryWithScalar() = delete;
+  VectorFieldPointwiseUnaryWithScalar(const VectorFieldBase<Derived>& u,
+                                      Function f, Scalar s)
       : _u{u}, _f{f}, _s{s} {}
 
-  VectorFieldUnaryWithScalar(const VectorFieldUnaryWithScalar&) = default;
-  VectorFieldUnaryWithScalar(VectorFieldUnaryWithScalar&&) = default;
+  VectorFieldPointwiseUnaryWithScalar(
+      const VectorFieldPointwiseUnaryWithScalar&) = default;
+  VectorFieldPointwiseUnaryWithScalar(VectorFieldPointwiseUnaryWithScalar&&) =
+      default;
 
   // Assignment.
-  VectorFieldUnaryWithScalar& operator=(VectorFieldUnaryWithScalar&) = default;
-  VectorFieldUnaryWithScalar& operator=(VectorFieldUnaryWithScalar&&) = default;
+  VectorFieldPointwiseUnaryWithScalar& operator=(
+      VectorFieldPointwiseUnaryWithScalar&) = default;
+  VectorFieldPointwiseUnaryWithScalar& operator=(
+      VectorFieldPointwiseUnaryWithScalar&&) = default;
 
  private:
   const VectorFieldBase<Derived>& _u;
@@ -549,7 +555,7 @@ class VectorFieldUnaryWithScalar
 };
 
 //-------------------------------------------------//
-//                 Binary expression               //
+//            PointwiseBinary expression           //
 //-------------------------------------------------//
 template <typename Derived1, typename Derived2, typename Function>
 requires requires() {
@@ -562,8 +568,9 @@ requires requires() {
                            typename Derived1::Scalar>,
       typename Derived1::Scalar>;
 }
-class VectorFieldBinary
-    : public VectorFieldBase<VectorFieldBinary<Derived1, Derived2, Function>> {
+class VectorFieldPointwiseBinary
+    : public VectorFieldBase<
+          VectorFieldPointwiseBinary<Derived1, Derived2, Function>> {
   using Int = std::ptrdiff_t;
 
  public:
@@ -586,19 +593,19 @@ class VectorFieldBinary
   }
 
   // Constructors.
-  VectorFieldBinary() = delete;
-  VectorFieldBinary(const VectorFieldBase<Derived1>& u1,
-                    const VectorFieldBase<Derived2>& u2, Function f)
+  VectorFieldPointwiseBinary() = delete;
+  VectorFieldPointwiseBinary(const VectorFieldBase<Derived1>& u1,
+                             const VectorFieldBase<Derived2>& u2, Function f)
       : _u1{u1}, _u2{u2}, _f{f} {
-    assert(_u1.size() == _u2.size());
+    assert(_u1.ComponentSize() == _u2.ComponentSize());
   }
 
-  VectorFieldBinary(const VectorFieldBinary&) = default;
-  VectorFieldBinary(VectorFieldBinary&&) = default;
+  VectorFieldPointwiseBinary(const VectorFieldPointwiseBinary&) = default;
+  VectorFieldPointwiseBinary(VectorFieldPointwiseBinary&&) = default;
 
   // Assignment.
-  VectorFieldBinary& operator=(VectorFieldBinary&) = default;
-  VectorFieldBinary& operator=(VectorFieldBinary&&) = default;
+  VectorFieldPointwiseBinary& operator=(VectorFieldPointwiseBinary&) = default;
+  VectorFieldPointwiseBinary& operator=(VectorFieldPointwiseBinary&&) = default;
 
  private:
   const VectorFieldBase<Derived1>& _u1;
@@ -645,7 +652,7 @@ class VectorFieldInnerProduct
   VectorFieldInnerProduct(const VectorFieldBase<Derived1>& u1,
                           const VectorFieldBase<Derived2>& u2)
       : _u1{u1}, _u2{u2} {
-    assert(_u1.size() == _u2.size());
+    assert(_u1.ComponentSize() == _u2.ComponentSize());
   }
 
   VectorFieldInnerProduct(const VectorFieldInnerProduct&) = default;
@@ -696,7 +703,7 @@ class VectorFieldDualityProduct
   VectorFieldDualityProduct(const VectorFieldBase<Derived1>& u1,
                             const VectorFieldBase<Derived2>& u2)
       : _u1{u1}, _u2{u2} {
-    assert(_u1.size() == _u2.size());
+    assert(_u1.ComponentSize() == _u2.ComponentSize());
   }
 
   VectorFieldDualityProduct(const VectorFieldDualityProduct&) = default;
@@ -745,7 +752,7 @@ class VectorFieldProductScalarField
   VectorFieldProductScalarField(const VectorFieldBase<Derived1>& u1,
                                 const ScalarFieldBase<Derived2>& u2)
       : _u1{u1}, _u2{u2} {
-    assert(_u1.ComponentSize() == _u2.size());
+    assert(_u1.ComponentSize() == _u2.ComponentSize());
   }
 
   VectorFieldProductScalarField(const VectorFieldProductScalarField&) = default;
@@ -768,7 +775,7 @@ class VectorFieldProductScalarField
 //-----------------------------------------------------//
 template <typename Derived>
 auto operator-(const VectorFieldBase<Derived>& u) {
-  return VectorFieldUnary(u, [](auto x) { return -x; });
+  return VectorFieldPointwiseUnary(u, [](auto x) { return -x; });
 }
 
 template <typename Derived>
@@ -826,7 +833,7 @@ auto conj(VectorFieldBase<Derived>&& u) {
 //-----------------------------------------------------//
 template <typename Derived>
 auto operator*(const VectorFieldBase<Derived>& u, typename Derived::Scalar s) {
-  return VectorFieldUnaryWithScalar(u, std::multiplies<>(), s);
+  return VectorFieldPointwiseUnaryWithScalar(u, std::multiplies<>(), s);
 }
 
 template <typename Derived>
@@ -846,7 +853,7 @@ auto operator*(typename Derived::Scalar s, VectorFieldBase<Derived>&& u) {
 
 template <typename Derived>
 auto operator/(const VectorFieldBase<Derived>& u, typename Derived::Scalar s) {
-  return VectorFieldUnaryWithScalar(u, std::divides<>(), s);
+  return VectorFieldPointwiseUnaryWithScalar(u, std::divides<>(), s);
 }
 
 template <typename Derived>
@@ -861,7 +868,7 @@ auto operator/(VectorFieldBase<Derived>&& u, typename Derived::Scalar s) {
 template <typename Derived1, typename Derived2>
 auto operator+(const VectorFieldBase<Derived1>& u1,
                const VectorFieldBase<Derived2>& u2) {
-  return VectorFieldBinary(u1, u2, std::plus<>());
+  return VectorFieldPointwiseBinary(u1, u2, std::plus<>());
 }
 
 template <typename Derived1, typename Derived2>
@@ -884,7 +891,7 @@ auto operator+(VectorFieldBase<Derived1>&& u1, VectorFieldBase<Derived2>&& u2) {
 template <typename Derived1, typename Derived2>
 auto operator-(const VectorFieldBase<Derived1>& u1,
                const VectorFieldBase<Derived2>& u2) {
-  return VectorFieldBinary(u1, u2, std::minus<>());
+  return VectorFieldPointwiseBinary(u1, u2, std::minus<>());
 }
 
 template <typename Derived1, typename Derived2>
@@ -1051,7 +1058,7 @@ template <typename Derived1, typename Derived2>
 requires std::same_as<typename Derived1::Value, typename Derived2::Value>
 auto operator==(const VectorFieldBase<Derived1>& u1,
                 const VectorFieldBase<Derived2>& u2) {
-  assert(u1.size() == u2.size());
+  assert(u1.ComponentSize() == u2.ComponentSize());
   return L2Norm(u1 - u2) <
          std::numeric_limits<typename Derived1::Real>::epsilon();
 }

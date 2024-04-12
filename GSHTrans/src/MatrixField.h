@@ -26,7 +26,6 @@ class MatrixFieldBase : public FieldBase<MatrixFieldBase<_Derived>> {
   auto GetGrid() const { return Derived().GetGrid(); }
 
   // Methods related to the data.
-  auto size() const { return 9 * GetGrid().FieldSize(); }
   auto ComponentSize() const { return GetGrid().FieldSize(); }
 
   auto CanonicalIndices() const {
@@ -135,7 +134,7 @@ class MatrixField : public MatrixFieldBase<MatrixField<_Grid, _Value>> {
   MatrixField() = default;
 
   MatrixField(_Grid grid)
-      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->size())} {}
+      : _grid{grid}, _data{FFTWpp::vector<Scalar>(size())} {}
 
   MatrixField(_Grid grid, std::array<Scalar, 9>&& A) : MatrixField(grid) {
     for (auto [i, index] :
@@ -153,7 +152,7 @@ class MatrixField : public MatrixFieldBase<MatrixField<_Grid, _Value>> {
   requires std::convertible_to<typename Derived::Scalar, Scalar> &&
            std::same_as<typename Derived::Value, Value>
   auto& operator=(const MatrixFieldBase<Derived>& other) {
-    assert(this->size() == other.size());
+    assert(this->ComponentSize() == other.ComponentSize());
     CopyValues(other);
     return *this;
   }
@@ -166,7 +165,8 @@ class MatrixField : public MatrixFieldBase<MatrixField<_Grid, _Value>> {
     return *this;
   }
 
-  // Iterators.
+  // Methods to make it a range.
+  auto size() const { return 9 * this->ComponentSize(); }
   auto begin() { return _data.begin(); }
   auto end() { return _data.end(); }
 
@@ -405,7 +405,7 @@ class RealifiedMatrixField
 };
 
 //-------------------------------------------------//
-//                 Unary expression                //
+//      Pointswise PointwiseUnary expression       //
 //-------------------------------------------------//
 template <typename Derived, typename Function>
 requires requires() {
@@ -414,8 +414,8 @@ requires requires() {
       std::invoke_result_t<Function, typename Derived::Scalar>,
       typename Derived::Scalar>;
 }
-class MatrixFieldUnary
-    : public MatrixFieldBase<MatrixFieldUnary<Derived, Function>> {
+class MatrixFieldPointwiseUnary
+    : public MatrixFieldBase<MatrixFieldPointwiseUnary<Derived, Function>> {
   using Int = std::ptrdiff_t;
 
  public:
@@ -436,16 +436,16 @@ class MatrixFieldUnary
   }
 
   // Constructors.
-  MatrixFieldUnary() = delete;
-  MatrixFieldUnary(const MatrixFieldBase<Derived>& A, Function f)
+  MatrixFieldPointwiseUnary() = delete;
+  MatrixFieldPointwiseUnary(const MatrixFieldBase<Derived>& A, Function f)
       : _A{A}, _f{f} {}
 
-  MatrixFieldUnary(const MatrixFieldUnary&) = default;
-  MatrixFieldUnary(MatrixFieldUnary&&) = default;
+  MatrixFieldPointwiseUnary(const MatrixFieldPointwiseUnary&) = default;
+  MatrixFieldPointwiseUnary(MatrixFieldPointwiseUnary&&) = default;
 
   // Assignment.
-  MatrixFieldUnary& operator=(MatrixFieldUnary&) = default;
-  MatrixFieldUnary& operator=(MatrixFieldUnary&&) = default;
+  MatrixFieldPointwiseUnary& operator=(MatrixFieldPointwiseUnary&) = default;
+  MatrixFieldPointwiseUnary& operator=(MatrixFieldPointwiseUnary&&) = default;
 
  private:
   const MatrixFieldBase<Derived>& _A;
@@ -453,7 +453,7 @@ class MatrixFieldUnary
 };
 
 //-------------------------------------------------//
-//            Unary expression with Scalar         //
+//      PointwiseUnary expression with Scalar      //
 //-------------------------------------------------//
 template <typename Derived, typename Function>
 requires requires() {
@@ -464,8 +464,9 @@ requires requires() {
                            typename Derived::Scalar>,
       typename Derived::Scalar>;
 }
-class MatrixFieldUnaryWithScalar
-    : public MatrixFieldBase<MatrixFieldUnaryWithScalar<Derived, Function>> {
+class MatrixFieldPointwiseUnaryWithScalar
+    : public MatrixFieldBase<
+          MatrixFieldPointwiseUnaryWithScalar<Derived, Function>> {
   using Int = std::ptrdiff_t;
 
  public:
@@ -488,17 +489,21 @@ class MatrixFieldUnaryWithScalar
   }
 
   // Constructors.
-  MatrixFieldUnaryWithScalar() = delete;
-  MatrixFieldUnaryWithScalar(const MatrixFieldBase<Derived>& A, Function f,
-                             Scalar s)
+  MatrixFieldPointwiseUnaryWithScalar() = delete;
+  MatrixFieldPointwiseUnaryWithScalar(const MatrixFieldBase<Derived>& A,
+                                      Function f, Scalar s)
       : _A{A}, _f{f}, _s{s} {}
 
-  MatrixFieldUnaryWithScalar(const MatrixFieldUnaryWithScalar&) = default;
-  MatrixFieldUnaryWithScalar(MatrixFieldUnaryWithScalar&&) = default;
+  MatrixFieldPointwiseUnaryWithScalar(
+      const MatrixFieldPointwiseUnaryWithScalar&) = default;
+  MatrixFieldPointwiseUnaryWithScalar(MatrixFieldPointwiseUnaryWithScalar&&) =
+      default;
 
   // Assignment.
-  MatrixFieldUnaryWithScalar& operator=(MatrixFieldUnaryWithScalar&) = default;
-  MatrixFieldUnaryWithScalar& operator=(MatrixFieldUnaryWithScalar&&) = default;
+  MatrixFieldPointwiseUnaryWithScalar& operator=(
+      MatrixFieldPointwiseUnaryWithScalar&) = default;
+  MatrixFieldPointwiseUnaryWithScalar& operator=(
+      MatrixFieldPointwiseUnaryWithScalar&&) = default;
 
  private:
   const MatrixFieldBase<Derived>& _A;
@@ -548,7 +553,7 @@ class MatrixFieldBinary
   MatrixFieldBinary(const MatrixFieldBase<Derived1>& A1,
                     const MatrixFieldBase<Derived2>& A2, Function f)
       : _A1{A1}, _A2{A2}, _f{f} {
-    assert(_A1.size() == _A2.size());
+    assert(_A1.ComponentSize() == _A2.ComponentSize());
   }
 
   MatrixFieldBinary(const MatrixFieldBinary&) = default;
@@ -588,7 +593,32 @@ class MatrixFieldAction
   auto operator()(Int alpha, Int iTheta, Int iPhi) const {
     this->CheckPointIndices(iTheta, iPhi);
     this->CheckCanonicalIndices(alpha);
-    return 0;
+    if constexpr (std::same_as<Value, Complex>) {
+      return _A(alpha, -1, iTheta, iPhi) * _u(-1, iTheta, iPhi) +
+             _A(alpha, 0, iTheta, iPhi) * _u(0, iTheta, iPhi) +
+             _A(alpha, 1, iTheta, iPhi) * _u(1, iTheta, iPhi);
+    } else {
+      switch (alpha) {
+        case -1:
+          return (_A(-1, -1, iTheta, iPhi) - _A(+1, -1, iTheta, iPhi)) *
+                     _u(-1, iTheta, iPhi) +
+                 _A(-1, 0, iTheta, iPhi) * _u(0, iTheta, iPhi) +
+                 (_A(-1, -1, iTheta, iPhi) + _A(-1, +1, iTheta, iPhi)) *
+                     _u(1, iTheta, iPhi);
+        case 0:
+          return -2 * _A(0, -1, iTheta, iPhi) * _u(-1, iTheta, iPhi) +
+                 _A(0, 0, iTheta, iPhi) +
+                 2 * _A(0, 1, iTheta, iPhi) * _u(0, iTheta, iPhi);
+        case 1:
+          return (_A(-1, +1, iTheta, iPhi) - _A(-1, -1, iTheta, iPhi)) *
+                     _u(-1, iTheta, iPhi) +
+                 _A(+1, 0, iTheta, iPhi) * _u(0, iTheta, iPhi) +
+                 (_A(+1, -1, iTheta, iPhi) + _A(+1, +1, iTheta, iPhi)) *
+                     _u(1, iTheta, iPhi);
+        default:
+          return 0;
+      }
+    }
   }
   auto operator()(Int alpha) const {
     this->CheckCanonicalIndices(alpha);
@@ -620,7 +650,7 @@ class MatrixFieldAction
 //-----------------------------------------------------//
 template <typename Derived>
 auto operator-(const MatrixFieldBase<Derived>& A) {
-  return MatrixFieldUnary(A, [](auto x) { return -x; });
+  return MatrixFieldPointwiseUnary(A, [](auto x) { return -x; });
 }
 
 template <typename Derived>
@@ -698,7 +728,7 @@ auto conj(MatrixFieldBase<Derived>&& A) {
 //-----------------------------------------------------//
 template <typename Derived>
 auto operator*(const MatrixFieldBase<Derived>& A, typename Derived::Scalar s) {
-  return MatrixFieldUnaryWithScalar(A, std::multiplies<>(), s);
+  return MatrixFieldPointwiseUnaryWithScalar(A, std::multiplies<>(), s);
 }
 
 template <typename Derived>
@@ -718,7 +748,7 @@ auto operator*(typename Derived::Scalar s, MatrixFieldBase<Derived>&& A) {
 
 template <typename Derived>
 auto operator/(const MatrixFieldBase<Derived>& A, typename Derived::Scalar s) {
-  return MatrixFieldUnaryWithScalar(A, std::divides<>(), s);
+  return MatrixFieldPointwiseUnaryWithScalar(A, std::divides<>(), s);
 }
 
 template <typename Derived>

@@ -25,7 +25,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
   auto GetGrid() const { return Derived().GetGrid(); }
 
   // Methods related to the data.
-  auto size() const { return GetGrid().FieldSize(); }
+  auto Size() const { return GetGrid().FieldSize(); }
   auto operator()(Int iTheta, Int iPhi) const {
     return Derived().operator()(iTheta, iPhi);
   }
@@ -112,10 +112,10 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   ScalarField() = default;
 
   ScalarField(_Grid grid)
-      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->size())} {}
+      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->Size())} {}
 
   ScalarField(_Grid grid, Scalar s)
-      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->size(), s)} {}
+      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->Size(), s)} {}
 
   template <typename Function>
   requires requires() {
@@ -131,7 +131,7 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   requires std::convertible_to<typename Derived::Scalar, Scalar>
   ScalarField(const ScalarFieldBase<Derived>& other)
       : ScalarField(other.GetGrid()) {
-    assert(this->size() == other.size());
+    assert(this->Size() == other.Size());
     CopyValues(other);
   }
 
@@ -147,7 +147,7 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   ScalarField& operator=(ScalarField&&) = default;
 
   auto& operator=(Scalar s) {
-    std::ranges::copy(std::ranges::views::repeat(s, this->size()),
+    std::ranges::copy(std::ranges::views::repeat(s, this->Size()),
                       _data.begin());
     return *this;
   }
@@ -224,7 +224,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
   ScalarFieldView() = default;
 
   ScalarFieldView(_Grid grid, _View data) : _grid{grid}, _data{data} {
-    assert(this->size() == _data.size());
+    assert(this->Size() == _data.size());
   }
 
   ScalarFieldView(const ScalarFieldView&) = default;
@@ -235,7 +235,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
   ScalarFieldView& operator=(ScalarFieldView&&) = default;
 
   auto& operator=(Scalar s) {
-    std::ranges::copy(std::ranges::views::repeat(s, this->size()),
+    std::ranges::copy(std::ranges::views::repeat(s, this->Size()),
                       _data.begin());
     return *this;
   }
@@ -244,7 +244,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
   requires std::convertible_to<typename Derived::Scalar, Scalar> &&
            std::same_as<typename Derived::Value, Value>
   auto& operator=(const ScalarFieldBase<Derived>& other) {
-    assert(this->size() == other.size());
+    assert(this->Size() == other.Size());
     CopyValues(other);
     return *this;
   }
@@ -326,7 +326,7 @@ class ComplexifiedScalarField
 };
 
 //-------------------------------------------------//
-//                 Unary expression                //
+//             PointwiseUnary expression           //
 //-------------------------------------------------//
 template <typename Derived, typename Function>
 requires requires() {
@@ -340,8 +340,8 @@ requires requires() {
                 std::same_as<typename Derived::Grid::MRange, All> &&
                 std::same_as<typename Derived::Grid::MRange, All>);
 }
-class ScalarFieldUnary
-    : public ScalarFieldBase<ScalarFieldUnary<Derived, Function>> {
+class ScalarFieldPointwiseUnary
+    : public ScalarFieldBase<ScalarFieldPointwiseUnary<Derived, Function>> {
   using Int = std::ptrdiff_t;
 
  public:
@@ -360,16 +360,16 @@ class ScalarFieldUnary
   }
 
   // Constructors.
-  ScalarFieldUnary() = delete;
-  ScalarFieldUnary(const ScalarFieldBase<Derived>& u, Function f)
+  ScalarFieldPointwiseUnary() = delete;
+  ScalarFieldPointwiseUnary(const ScalarFieldBase<Derived>& u, Function f)
       : _u{u}, _f{f} {}
 
-  ScalarFieldUnary(const ScalarFieldUnary&) = default;
-  ScalarFieldUnary(ScalarFieldUnary&&) = default;
+  ScalarFieldPointwiseUnary(const ScalarFieldPointwiseUnary&) = default;
+  ScalarFieldPointwiseUnary(ScalarFieldPointwiseUnary&&) = default;
 
   // Assignment.
-  ScalarFieldUnary& operator=(ScalarFieldUnary&) = default;
-  ScalarFieldUnary& operator=(ScalarFieldUnary&&) = default;
+  ScalarFieldPointwiseUnary& operator=(ScalarFieldPointwiseUnary&) = default;
+  ScalarFieldPointwiseUnary& operator=(ScalarFieldPointwiseUnary&&) = default;
 
  private:
   const ScalarFieldBase<Derived>& _u;
@@ -377,7 +377,7 @@ class ScalarFieldUnary
 };
 
 //-------------------------------------------------//
-//            Unary expression with Scalar         //
+//      PointwiseUnary expression with Scalar      //
 //-------------------------------------------------//
 template <typename Derived, typename Function>
 requires requires() {
@@ -388,8 +388,9 @@ requires requires() {
                            typename Derived::Scalar>,
       typename Derived::Scalar>;
 }
-class ScalarFieldUnaryWithScalar
-    : public ScalarFieldBase<ScalarFieldUnaryWithScalar<Derived, Function>> {
+class ScalarFieldPointwiseUnaryWithScalar
+    : public ScalarFieldBase<
+          ScalarFieldPointwiseUnaryWithScalar<Derived, Function>> {
   using Int = std::ptrdiff_t;
 
  public:
@@ -409,17 +410,21 @@ class ScalarFieldUnaryWithScalar
   }
 
   // Constructors.
-  ScalarFieldUnaryWithScalar() = delete;
-  ScalarFieldUnaryWithScalar(const ScalarFieldBase<Derived>& u, Function f,
-                             Scalar s)
+  ScalarFieldPointwiseUnaryWithScalar() = delete;
+  ScalarFieldPointwiseUnaryWithScalar(const ScalarFieldBase<Derived>& u,
+                                      Function f, Scalar s)
       : _u{u}, _f{f}, _s{s} {}
 
-  ScalarFieldUnaryWithScalar(const ScalarFieldUnaryWithScalar&) = default;
-  ScalarFieldUnaryWithScalar(ScalarFieldUnaryWithScalar&&) = default;
+  ScalarFieldPointwiseUnaryWithScalar(
+      const ScalarFieldPointwiseUnaryWithScalar&) = default;
+  ScalarFieldPointwiseUnaryWithScalar(ScalarFieldPointwiseUnaryWithScalar&&) =
+      default;
 
   // Assignment.
-  ScalarFieldUnaryWithScalar& operator=(ScalarFieldUnaryWithScalar&) = default;
-  ScalarFieldUnaryWithScalar& operator=(ScalarFieldUnaryWithScalar&&) = default;
+  ScalarFieldPointwiseUnaryWithScalar& operator=(
+      ScalarFieldPointwiseUnaryWithScalar&) = default;
+  ScalarFieldPointwiseUnaryWithScalar& operator=(
+      ScalarFieldPointwiseUnaryWithScalar&&) = default;
 
  private:
   const ScalarFieldBase<Derived>& _u;
@@ -428,7 +433,7 @@ class ScalarFieldUnaryWithScalar
 };
 
 //-------------------------------------------------//
-//                 Binary expression               //
+//            PointwiseBinary expression           //
 //-------------------------------------------------//
 template <typename Derived1, typename Derived2, typename Function>
 requires requires() {
@@ -442,8 +447,9 @@ requires requires() {
       typename Derived1::Scalar>;
 }
 
-class ScalarFieldBinary
-    : public ScalarFieldBase<ScalarFieldBinary<Derived1, Derived2, Function>> {
+class ScalarFieldPointwiseBinary
+    : public ScalarFieldBase<
+          ScalarFieldPointwiseBinary<Derived1, Derived2, Function>> {
   using Int = std::ptrdiff_t;
 
  public:
@@ -461,19 +467,19 @@ class ScalarFieldBinary
   }
 
   // Constructors.
-  ScalarFieldBinary() = delete;
-  ScalarFieldBinary(const ScalarFieldBase<Derived1>& u1,
-                    const ScalarFieldBase<Derived2>& u2, Function f)
+  ScalarFieldPointwiseBinary() = delete;
+  ScalarFieldPointwiseBinary(const ScalarFieldBase<Derived1>& u1,
+                             const ScalarFieldBase<Derived2>& u2, Function f)
       : _u1{u1}, _u2{u2}, _f{f} {
-    assert(_u1.size() == _u2.size());
+    assert(_u1.Size() == _u2.Size());
   }
 
-  ScalarFieldBinary(const ScalarFieldBinary&) = default;
-  ScalarFieldBinary(ScalarFieldBinary&&) = default;
+  ScalarFieldPointwiseBinary(const ScalarFieldPointwiseBinary&) = default;
+  ScalarFieldPointwiseBinary(ScalarFieldPointwiseBinary&&) = default;
 
   // Assignment.
-  ScalarFieldBinary& operator=(ScalarFieldBinary&) = default;
-  ScalarFieldBinary& operator=(ScalarFieldBinary&&) = default;
+  ScalarFieldPointwiseBinary& operator=(ScalarFieldPointwiseBinary&) = default;
+  ScalarFieldPointwiseBinary& operator=(ScalarFieldPointwiseBinary&&) = default;
 
  private:
   const ScalarFieldBase<Derived1>& _u1;
@@ -487,7 +493,7 @@ class ScalarFieldBinary
 
 template <typename Derived>
 auto operator-(const ScalarFieldBase<Derived>& u) {
-  return ScalarFieldUnary(u, [](auto x) { return -x; });
+  return ScalarFieldPointwiseUnary(u, [](auto x) { return -x; });
 }
 
 template <typename Derived>
@@ -497,7 +503,7 @@ auto operator-(ScalarFieldBase<Derived>&& u) {
 
 template <typename Derived>
 auto sqrt(const ScalarFieldBase<Derived>& u) {
-  return ScalarFieldUnary(u, [](auto x) { return std::sqrt(x); });
+  return ScalarFieldPointwiseUnary(u, [](auto x) { return std::sqrt(x); });
 }
 
 template <typename Derived>
@@ -511,7 +517,7 @@ auto sqrt(ScalarFieldBase<Derived>&& u) {
 
 template <typename Derived>
 auto abs(const ScalarFieldBase<Derived>& u) {
-  return ScalarFieldUnary(u, [](auto x) { return std::abs(x); });
+  return ScalarFieldPointwiseUnary(u, [](auto x) { return std::abs(x); });
 }
 
 template <typename Derived>
@@ -526,7 +532,7 @@ auto abs(ScalarFieldBase<Derived>&& u) {
 template <typename Derived>
 requires std::same_as<typename Derived::Value, ComplexValued>
 auto real(const ScalarFieldBase<Derived>& u) {
-  return ScalarFieldUnary(u, [](auto x) { return std::real(x); });
+  return ScalarFieldPointwiseUnary(u, [](auto x) { return std::real(x); });
 }
 
 template <typename Derived>
@@ -538,7 +544,7 @@ auto real(ScalarFieldBase<Derived>&& u) {
 template <typename Derived>
 requires std::same_as<typename Derived::Value, ComplexValued>
 auto imag(const ScalarFieldBase<Derived>& u) {
-  return ScalarFieldUnary(u, [](auto x) { return std::imag(x); });
+  return ScalarFieldPointwiseUnary(u, [](auto x) { return std::imag(x); });
 }
 
 template <typename Derived>
@@ -550,7 +556,7 @@ auto imag(ScalarFieldBase<Derived>&& u) {
 template <typename Derived>
 requires std::same_as<typename Derived::Value, ComplexValued>
 auto conj(const ScalarFieldBase<Derived>& u) {
-  return ScalarFieldUnary(u, [](auto x) { return std::conj(x); });
+  return ScalarFieldPointwiseUnary(u, [](auto x) { return std::conj(x); });
 }
 
 template <typename Derived>
@@ -579,7 +585,7 @@ auto complex(ScalarFieldBase<Derived>&& u) {
 //-----------------------------------------------------//
 template <typename Derived>
 auto operator*(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
-  return ScalarFieldUnaryWithScalar(u, std::multiplies<>(), s);
+  return ScalarFieldPointwiseUnaryWithScalar(u, std::multiplies<>(), s);
 }
 
 template <typename Derived>
@@ -599,7 +605,7 @@ auto operator*(typename Derived::Scalar s, ScalarFieldBase<Derived>&& u) {
 
 template <typename Derived>
 auto operator+(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
-  return ScalarFieldUnaryWithScalar(u, std::plus<>(), s);
+  return ScalarFieldPointwiseUnaryWithScalar(u, std::plus<>(), s);
 }
 
 template <typename Derived>
@@ -619,7 +625,7 @@ auto operator+(typename Derived::Scalar s, ScalarFieldBase<Derived>&& u) {
 
 template <typename Derived>
 auto operator-(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
-  return ScalarFieldUnaryWithScalar(u, std::minus<>(), s);
+  return ScalarFieldPointwiseUnaryWithScalar(u, std::minus<>(), s);
 }
 
 template <typename Derived>
@@ -629,7 +635,7 @@ auto operator-(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
 
 template <typename Derived>
 auto operator/(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
-  return ScalarFieldUnaryWithScalar(u, std::divides<>(), s);
+  return ScalarFieldPointwiseUnaryWithScalar(u, std::divides<>(), s);
 }
 
 template <typename Derived>
@@ -639,7 +645,7 @@ auto operator/(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
 
 template <typename Derived>
 auto pow(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
-  return ScalarFieldUnaryWithScalar(
+  return ScalarFieldPointwiseUnaryWithScalar(
       u, [](auto x, auto y) { return std::pow(x, y); }, s);
 }
 
@@ -655,7 +661,7 @@ auto pow(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
 template <typename Derived1, typename Derived2>
 auto operator+(const ScalarFieldBase<Derived1>& u1,
                const ScalarFieldBase<Derived2>& u2) {
-  return ScalarFieldBinary(u1, u2, std::plus<>());
+  return ScalarFieldPointwiseBinary(u1, u2, std::plus<>());
 }
 
 template <typename Derived1, typename Derived2>
@@ -678,7 +684,7 @@ auto operator+(ScalarFieldBase<Derived1>&& u1, ScalarFieldBase<Derived2>&& u2) {
 template <typename Derived1, typename Derived2>
 auto operator-(const ScalarFieldBase<Derived1>& u1,
                const ScalarFieldBase<Derived2>& u2) {
-  return ScalarFieldBinary(u1, u2, std::minus<>());
+  return ScalarFieldPointwiseBinary(u1, u2, std::minus<>());
 }
 
 template <typename Derived1, typename Derived2>
@@ -701,7 +707,7 @@ auto operator-(ScalarFieldBase<Derived1>&& u1, ScalarFieldBase<Derived2>&& u2) {
 template <typename Derived1, typename Derived2>
 auto operator*(const ScalarFieldBase<Derived1>& u1,
                const ScalarFieldBase<Derived2>& u2) {
-  return ScalarFieldBinary(u1, u2, std::multiplies<>());
+  return ScalarFieldPointwiseBinary(u1, u2, std::multiplies<>());
 }
 
 template <typename Derived1, typename Derived2>
@@ -796,7 +802,7 @@ template <typename Derived1, typename Derived2>
 requires std::same_as<typename Derived1::Value, typename Derived2::Value>
 auto operator==(const ScalarFieldBase<Derived1>& u1,
                 const ScalarFieldBase<Derived2>& u2) {
-  assert(u1.size() == u2.size());
+  assert(u1.Size() == u2.Size());
   return L2Norm(u1 - u2) <
          std::numeric_limits<typename Derived1::Real>::epsilon();
 }
