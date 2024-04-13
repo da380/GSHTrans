@@ -7,10 +7,9 @@ namespace GSHTrans {
 
 template <typename _Derived>
 class FieldBase {
+ public:
   using Int = std::ptrdiff_t;
 
- public:
-  // Methods related to the grid.
   auto GetGrid() const { return Derived().GetGrid(); }
 
   auto NumberOfCoLatitudes() const { return GetGrid().NumberOfCoLatitudes(); }

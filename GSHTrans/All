@@ -2,12 +2,14 @@
 #define GSH_TRANS_ALL_MODULE_H
 
 // Header files to include for use of GHSTrans library
+#include "src/CoefficientBase.h"
 #include "src/Concepts.h"
 #include "src/FieldBase.h"
 #include "src/GaussLegendreGrid.h"
 #include "src/GridBase.h"
 #include "src/Indexing.h"
 #include "src/MatrixField.h"
+#include "src/ScalarCoefficient.h"
 #include "src/ScalarField.h"
 #include "src/Utility.h"
 #include "src/VectorField.h"

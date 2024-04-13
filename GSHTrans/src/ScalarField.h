@@ -18,9 +18,9 @@ namespace GSHTrans {
 //-------------------------------------------------//
 template <typename _Derived>
 class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename FieldBase<ScalarFieldBase<_Derived>>::Int;
+
   // Methods related to the grid.
   auto GetGrid() const { return Derived().GetGrid(); }
 
@@ -49,9 +49,8 @@ template <typename _Grid, RealOrComplexValued _Value>
 requires std::derived_from<_Grid, GridBase<_Grid>>
 class ConstantScalarField
     : public ScalarFieldBase<ConstantScalarField<_Grid, _Value>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename ScalarFieldBase<ConstantScalarField<_Grid, _Value>>::Int;
   using Grid = _Grid;
   using Value = _Value;
   using Real = typename _Grid::Real;
@@ -91,9 +90,8 @@ class ConstantScalarField
 template <typename _Grid, RealOrComplexValued _Value>
 requires std::derived_from<_Grid, GridBase<_Grid>>
 class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename ScalarFieldBase<ScalarField<_Grid, _Value>>::Int;
   using Grid = _Grid;
   using Value = _Value;
   using Real = typename _Grid::Real;
@@ -116,16 +114,6 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
 
   ScalarField(_Grid grid, Scalar s)
       : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->Size(), s)} {}
-
-  template <typename Function>
-  requires requires() {
-    requires std::invocable<Function, Real, Real>;
-    requires std::convertible_to<std::invoke_result_t<Function, Real, Real>,
-                                 Scalar>;
-  }
-  ScalarField(_Grid grid, Function f) : ScalarField(grid) {
-    std::ranges::copy(_grid.InterpolateFunction(f), _data.begin());
-  }
 
   template <typename Derived>
   requires std::convertible_to<typename Derived::Scalar, Scalar>
@@ -176,6 +164,16 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
     return _data[Index(iTheta, iPhi)];
   }
 
+  template <typename Function>
+  requires requires() {
+    requires std::invocable<Function, Real, Real>;
+    requires std::convertible_to<std::invoke_result_t<Function, Real, Real>,
+                                 Scalar>;
+  }
+  void Interpolate(Function f) {
+    std::ranges::copy(_grid.InterpolateFunction(f), _data.begin());
+  }
+
  private:
   _Grid _grid;
   FFTWpp::vector<Scalar> _data;
@@ -192,6 +190,15 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   }
 };
 
+// Type aliases for real and complex fields.
+template <typename Grid>
+requires std::derived_from<Grid, GridBase<Grid>>
+using RealScalarField = ScalarField<Grid, RealValued>;
+
+template <typename Grid>
+requires std::derived_from<Grid, GridBase<Grid>>
+using ComplexScalarField = ScalarField<Grid, ComplexValued>;
+
 //-------------------------------------------------//
 //      Scalar field with a view to its data       //
 //-------------------------------------------------//
@@ -203,9 +210,8 @@ requires requires() {
                         typename _Grid::Real>;
 }
 class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename ScalarFieldBase<ScalarFieldView<_Grid, _View>>::Int;
   using Grid = _Grid;
   using Scalar = std::ranges::range_value_t<_View>;
   using Value =
@@ -267,6 +273,16 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
     return _data[Index(iTheta, iPhi)];
   }
 
+  template <typename Function>
+  requires requires() {
+    requires std::invocable<Function, Real, Real>;
+    requires std::convertible_to<std::invoke_result_t<Function, Real, Real>,
+                                 Scalar>;
+  }
+  void Interpolate(Function f) {
+    std::ranges::copy(_grid.InterpolateFunction(f), _data.begin());
+  }
+
  private:
   _Grid _grid;
   _View _data;
@@ -295,9 +311,8 @@ requires requires() {
 }
 class ComplexifiedScalarField
     : public ScalarFieldBase<ComplexifiedScalarField<Derived>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename ScalarFieldBase<ComplexifiedScalarField<Derived>>::Int;
   using Grid = typename Derived::Grid;
   using Real = typename Grid::Real;
   using Complex = typename Grid::Complex;
@@ -342,9 +357,9 @@ requires requires() {
 }
 class ScalarFieldPointwiseUnary
     : public ScalarFieldBase<ScalarFieldPointwiseUnary<Derived, Function>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename ScalarFieldBase<
+      ScalarFieldPointwiseUnary<Derived, Function>>::Int;
   using Grid = typename Derived::Grid;
   using Scalar = std::invoke_result_t<Function, typename Derived::Scalar>;
   using Value =
@@ -391,9 +406,9 @@ requires requires() {
 class ScalarFieldPointwiseUnaryWithScalar
     : public ScalarFieldBase<
           ScalarFieldPointwiseUnaryWithScalar<Derived, Function>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename ScalarFieldBase<
+      ScalarFieldPointwiseUnaryWithScalar<Derived, Function>>::Int;
   using Grid = typename Derived::Grid;
   using Scalar = std::invoke_result_t<Function, typename Derived::Scalar,
                                       typename Derived::Scalar>;
@@ -446,13 +461,12 @@ requires requires() {
                            typename Derived2::Scalar>,
       typename Derived1::Scalar>;
 }
-
 class ScalarFieldPointwiseBinary
     : public ScalarFieldBase<
           ScalarFieldPointwiseBinary<Derived1, Derived2, Function>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename ScalarFieldBase<
+      ScalarFieldPointwiseBinary<Derived1, Derived2, Function>>::Int;
   using Grid = typename Derived1::Grid;
   using Scalar = typename Derived1::Scalar;
   using Value = typename Derived1::Value;

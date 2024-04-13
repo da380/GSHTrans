@@ -20,7 +20,9 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto u = MatrixField<Grid, ComplexValued>(grid, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  auto u = RealScalarField(grid);
+
+  u.Interpolate([](auto theta, auto phi) { return theta; });
 
   u = 2 * u - u;
 
