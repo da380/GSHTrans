@@ -20,11 +20,7 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto u = RealScalarField(grid);
+  auto u = RealVectorField(grid, {1, 2, 3});
 
-  u.Interpolate([](auto theta, auto phi) { return theta; });
-
-  u = 2 * u - u;
-
-  u.Print();
+  complex(u).Print();
 }

@@ -19,9 +19,9 @@ namespace GSHTrans {
 //-------------------------------------------------//
 template <typename _Derived>
 class MatrixFieldBase : public FieldBase<MatrixFieldBase<_Derived>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename FieldBase<MatrixFieldBase<_Derived>>::Int;
+
   // Methods related to the grid.
   auto GetGrid() const { return Derived().GetGrid(); }
 
@@ -68,9 +68,8 @@ class MatrixFieldBase : public FieldBase<MatrixFieldBase<_Derived>> {
 template <typename Derived>
 class MatrixFieldComponentView
     : public ScalarFieldBase<MatrixFieldComponentView<Derived>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename ScalarFieldBase<MatrixFieldComponentView<Derived>>::Int;
   using Grid = typename Derived::Grid;
   using Scalar = typename Derived::Scalar;
   using Value = typename Derived::Value;
@@ -108,9 +107,8 @@ class MatrixFieldComponentView
 template <typename _Grid, RealOrComplexValued _Value>
 requires std::derived_from<_Grid, GridBase<_Grid>>
 class MatrixField : public MatrixFieldBase<MatrixField<_Grid, _Value>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename MatrixFieldBase<MatrixField<_Grid, _Value>>::Int;
   using Grid = _Grid;
   using Value = _Value;
   using Real = typename _Grid::Real;
@@ -214,9 +212,8 @@ template <typename Derived>
 requires std::same_as<typename Derived::Value, ComplexValued>
 class MatrixFieldConjugate
     : public MatrixFieldBase<MatrixFieldConjugate<Derived>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename MatrixFieldBase<MatrixFieldConjugate<Derived>>::Int;
   using Grid = typename Derived::Grid;
   using Scalar = typename Derived::Scalar;
   using Value = typename Derived::Value;
@@ -256,9 +253,8 @@ class MatrixFieldConjugate
 //-----------------------------------------------------//
 template <typename Derived>
 class MatrixFieldAdjoint : public MatrixFieldBase<MatrixFieldAdjoint<Derived>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename MatrixFieldBase<MatrixFieldAdjoint<Derived>>::Int;
   using Grid = typename Derived::Grid;
   using Scalar = typename Derived::Scalar;
   using Value = typename Derived::Value;
@@ -303,9 +299,8 @@ template <typename Derived>
 requires std::same_as<typename Derived::Value, RealValued>
 class ComplexifiedMatrixField
     : public MatrixFieldBase<ComplexifiedMatrixField<Derived>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename MatrixFieldBase<ComplexifiedMatrixField<Derived>>::Int;
   using Grid = typename Derived::Grid;
   using Real = typename Grid::Real;
   using Complex = typename Grid::Complex;
@@ -357,9 +352,8 @@ template <typename Derived>
 requires std::same_as<typename Derived::Value, ComplexValued>
 class RealifiedMatrixField
     : public MatrixFieldBase<RealifiedMatrixField<Derived>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename MatrixFieldBase<RealifiedMatrixField<Derived>>::Int;
   using Grid = typename Derived::Grid;
   using Real = typename Grid::Real;
   using Complex = typename Grid::Complex;
@@ -416,9 +410,9 @@ requires requires() {
 }
 class MatrixFieldPointwiseUnary
     : public MatrixFieldBase<MatrixFieldPointwiseUnary<Derived, Function>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename MatrixFieldBase<
+      MatrixFieldPointwiseUnary<Derived, Function>>::Int;
   using Grid = typename Derived::Grid;
   using Scalar = std::invoke_result_t<Function, typename Derived::Scalar>;
   using Value =
@@ -467,9 +461,9 @@ requires requires() {
 class MatrixFieldPointwiseUnaryWithScalar
     : public MatrixFieldBase<
           MatrixFieldPointwiseUnaryWithScalar<Derived, Function>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename MatrixFieldBase<
+      MatrixFieldPointwiseUnaryWithScalar<Derived, Function>>::Int;
   using Grid = typename Derived::Grid;
   using Scalar = typename Derived::Scalar;
   using Value = typename Derived::Value;
@@ -527,9 +521,9 @@ requires requires() {
 }
 class MatrixFieldBinary
     : public MatrixFieldBase<MatrixFieldBinary<Derived1, Derived2, Function>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename MatrixFieldBase<
+      MatrixFieldBinary<Derived1, Derived2, Function>>::Int;
   using Grid = typename Derived1::Grid;
   using Scalar = typename Derived1::Scalar;
   using Value = typename Derived1::Value;
@@ -579,9 +573,9 @@ requires requires() {
 }
 class MatrixFieldAction
     : public VectorFieldBase<MatrixFieldAction<Derived1, Derived2>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int =
+      typename VectorFieldBase<MatrixFieldAction<Derived1, Derived2>>::Int;
   using Grid = typename Derived1::Grid;
   using Scalar = typename Derived1::Scalar;
   using Value = typename Derived1::Value;

@@ -19,9 +19,9 @@ namespace GSHTrans {
 //-------------------------------------------------//
 template <typename _Derived>
 class VectorFieldBase : public FieldBase<VectorFieldBase<_Derived>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename FieldBase<VectorFieldBase<_Derived>>::Int;
+
   // Methods related to the grid.
   auto GetGrid() const { return Derived().GetGrid(); }
 
@@ -58,9 +58,8 @@ class VectorFieldBase : public FieldBase<VectorFieldBase<_Derived>> {
 template <typename Derived>
 class VectorFieldComponentView
     : public ScalarFieldBase<VectorFieldComponentView<Derived>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename ScalarFieldBase<VectorFieldComponentView<Derived>>::Int;
   using Grid = typename Derived::Grid;
   using Scalar = typename Derived::Scalar;
   using Value = typename Derived::Value;
@@ -99,9 +98,8 @@ class VectorFieldComponentView
 template <typename _Grid, RealOrComplexValued _Value>
 requires std::derived_from<_Grid, GridBase<_Grid>>
 class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename VectorFieldBase<VectorField<_Grid, _Value>>::Int;
   using Grid = _Grid;
   using Value = _Value;
   using Real = typename _Grid::Real;
@@ -125,7 +123,8 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
   VectorField() = default;
 
   VectorField(_Grid grid)
-      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->ComponentSize())} {}
+      : _grid{grid},
+        _data{FFTWpp::vector<Scalar>(3 * (this->ComponentSize()))} {}
 
   VectorField(_Grid grid, std::array<Scalar, 3>&& u) : VectorField(grid) {
     for (auto [i, alpha] :
@@ -194,6 +193,13 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
   }
 };
 
+// Type aliases for real and complex vector fields
+template <typename Grid>
+using RealVectorField = VectorField<Grid, RealValued>;
+
+template <typename Grid>
+using ComplexVectorField = VectorField<Grid, ComplexValued>;
+
 //-------------------------------------------------//
 //      Vector field with a view to its data       //
 //-------------------------------------------------//
@@ -205,9 +211,8 @@ requires requires() {
                         typename _Grid::Real>;
 }
 class VectorFieldView : public VectorFieldBase<VectorFieldView<_Grid, _View>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename VectorFieldBase<VectorFieldView<_Grid, _View>>::Int;
   using Grid = _Grid;
   using Scalar = std::ranges::range_value_t<_View>;
   using Value =
@@ -231,7 +236,7 @@ class VectorFieldView : public VectorFieldBase<VectorFieldView<_Grid, _View>> {
   VectorFieldView() = default;
 
   VectorFieldView(_Grid grid, _View data) : _grid{grid}, _data{data} {
-    assert(this->ComponentSize() == _data.ComponentSize());
+    assert(3 * (this->ComponentSize()) == _data.size());
   }
 
   VectorFieldView(const VectorFieldView&) = default;
@@ -304,9 +309,8 @@ template <typename Derived>
 requires std::same_as<typename Derived::Value, ComplexValued>
 class VectorFieldConjugate
     : public VectorFieldBase<VectorFieldConjugate<Derived>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename VectorFieldBase<VectorFieldConjugate<Derived>>::Int;
   using Grid = typename Derived::Grid;
   using Scalar = typename Derived::Scalar;
   using Value = typename Derived::Value;
@@ -348,9 +352,8 @@ template <typename Derived>
 requires std::same_as<typename Derived::Value, RealValued>
 class ComplexifiedVectorField
     : public VectorFieldBase<ComplexifiedVectorField<Derived>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename VectorFieldBase<ComplexifiedVectorField<Derived>>::Int;
   using Grid = typename Derived::Grid;
   using Real = typename Grid::Real;
   using Complex = typename Grid::Complex;
@@ -400,9 +403,8 @@ template <typename Derived>
 requires std::same_as<typename Derived::Value, ComplexValued>
 class RealifiedVectorField
     : public VectorFieldBase<RealifiedVectorField<Derived>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename VectorFieldBase<RealifiedVectorField<Derived>>::Int;
   using Grid = typename Derived::Grid;
   using Real = typename Grid::Real;
   using Complex = typename Grid::Complex;
@@ -457,9 +459,9 @@ requires requires() {
 }
 class VectorFieldPointwiseUnary
     : public VectorFieldBase<VectorFieldPointwiseUnary<Derived, Function>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename VectorFieldBase<
+      VectorFieldPointwiseUnary<Derived, Function>>::Int;
   using Grid = typename Derived::Grid;
   using Scalar = typename Derived::Scalar;
   using Value = typename Derived::Value;
@@ -510,9 +512,9 @@ requires requires() {
 class VectorFieldPointwiseUnaryWithScalar
     : public VectorFieldBase<
           VectorFieldPointwiseUnaryWithScalar<Derived, Function>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename VectorFieldBase<
+      VectorFieldPointwiseUnaryWithScalar<Derived, Function>>::Int;
   using Grid = typename Derived::Grid;
   using Scalar = typename Derived::Scalar;
   using Value = typename Derived::Value;
@@ -571,9 +573,9 @@ requires requires() {
 class VectorFieldPointwiseBinary
     : public VectorFieldBase<
           VectorFieldPointwiseBinary<Derived1, Derived2, Function>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename VectorFieldBase<
+      VectorFieldPointwiseBinary<Derived1, Derived2, Function>>::Int;
   using Grid = typename Derived1::Grid;
   using Scalar = typename Derived1::Scalar;
   using Value = typename Derived1::Value;
@@ -623,9 +625,9 @@ requires requires() {
 }
 class VectorFieldInnerProduct
     : public ScalarFieldBase<VectorFieldInnerProduct<Derived1, Derived2>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename ScalarFieldBase<
+      VectorFieldInnerProduct<Derived1, Derived2>>::Int;
   using Grid = typename Derived1::Grid;
   using Scalar = typename Derived1::Scalar;
   using Value = typename Derived1::Value;
@@ -674,9 +676,9 @@ requires requires() {
 }
 class VectorFieldDualityProduct
     : public ScalarFieldBase<VectorFieldInnerProduct<Derived1, Derived2>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename ScalarFieldBase<
+      VectorFieldInnerProduct<Derived1, Derived2>>::Int;
   using Grid = typename Derived1::Grid;
   using Scalar = typename Derived1::Scalar;
   using Value = typename Derived1::Value;
@@ -726,9 +728,9 @@ requires std::same_as<typename Derived1::Value, typename Derived2::Value>
 class VectorFieldProductScalarField
     : public VectorFieldBase<
           VectorFieldProductScalarField<Derived1, Derived2>> {
-  using Int = std::ptrdiff_t;
-
  public:
+  using Int = typename VectorFieldBase<
+      VectorFieldProductScalarField<Derived1, Derived2>>::Int;
   using Grid = typename Derived1::Grid;
   using Scalar = typename Derived1::Scalar;
   using Value = typename Derived1::Value;
