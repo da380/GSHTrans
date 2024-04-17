@@ -321,7 +321,7 @@ class ComplexifiedScalarField
 
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _u.GetGrid(); }
-  auto operator()(Int iTheta, Int iPhi) const -> Complex {
+  auto operator()(Int iTheta, Int iPhi) -> Complex {
     this->CheckPointIndices(iTheta, iPhi);
     return _u(iTheta, iPhi);
   }

@@ -564,6 +564,46 @@ class MatrixFieldBinary
 };
 
 //-------------------------------------------------//
+//             Matrix trace expression             //
+//-------------------------------------------------//
+template <typename Derived>
+class MatrixFieldTrace : public ScalarFieldBase<MatrixFieldTrace<Derived>> {
+ public:
+  using Int = typename ScalarFieldBase<MatrixFieldTrace<Derived>>::Int;
+  using Grid = typename Derived::Grid;
+  using Scalar = typename Derived::Scalar;
+  using Value = typename Derived::Value;
+  using Real = typename Derived::Real;
+  using Complex = typename Derived::Complex;
+
+  auto GetGrid() const { return _A.GetGrid(); }
+  auto operator()(Int iTheta, Int iPhi) const {
+    this->CheckPointIndices(iTheta, iPhi);
+
+    if constexpr (std::same_as<Value, ComplexValued>) {
+      return _A(-1, +1, iTheta, iPhi) + _A(0, 0, iTheta, iPhi) -
+             _A(+1, -1, iTheta, iPhi);
+    } else {
+      return -2 * _A(1, -1, iTheta, iPhi) + _A(0, 0, iTheta, iPhi);
+    }
+  }
+
+  // Constructors.
+  MatrixFieldTrace() = delete;
+  MatrixFieldTrace(const MatrixFieldBase<Derived>& A) : _A{A} {}
+
+  MatrixFieldTrace(const MatrixFieldTrace&) = default;
+  MatrixFieldTrace(MatrixFieldTrace&&) = default;
+
+  // Assignment.
+  MatrixFieldTrace& operator=(MatrixFieldTrace&) = default;
+  MatrixFieldTrace& operator=(MatrixFieldTrace&&) = default;
+
+ private:
+  const MatrixFieldBase<Derived>& _A;
+};
+
+//-------------------------------------------------//
 //             Matrix action expression            //
 //-------------------------------------------------//
 template <typename Derived1, typename Derived2>
@@ -587,31 +627,13 @@ class MatrixFieldAction
   auto operator()(Int alpha, Int iTheta, Int iPhi) const {
     this->CheckPointIndices(iTheta, iPhi);
     this->CheckCanonicalIndices(alpha);
+
     if constexpr (std::same_as<Value, Complex>) {
-      return _A(alpha, -1, iTheta, iPhi) * _u(-1, iTheta, iPhi) +
+      return -_A(alpha, -1, iTheta, iPhi) * _u(+1, iTheta, iPhi) +
              _A(alpha, 0, iTheta, iPhi) * _u(0, iTheta, iPhi) +
-             _A(alpha, 1, iTheta, iPhi) * _u(1, iTheta, iPhi);
+             -_A(alpha, 1, iTheta, iPhi) * _u(-1, iTheta, iPhi);
     } else {
-      switch (alpha) {
-        case -1:
-          return (_A(-1, -1, iTheta, iPhi) - _A(+1, -1, iTheta, iPhi)) *
-                     _u(-1, iTheta, iPhi) +
-                 _A(-1, 0, iTheta, iPhi) * _u(0, iTheta, iPhi) +
-                 (_A(-1, -1, iTheta, iPhi) + _A(-1, +1, iTheta, iPhi)) *
-                     _u(1, iTheta, iPhi);
-        case 0:
-          return -2 * _A(0, -1, iTheta, iPhi) * _u(-1, iTheta, iPhi) +
-                 _A(0, 0, iTheta, iPhi) +
-                 2 * _A(0, 1, iTheta, iPhi) * _u(0, iTheta, iPhi);
-        case 1:
-          return (_A(-1, +1, iTheta, iPhi) - _A(-1, -1, iTheta, iPhi)) *
-                     _u(-1, iTheta, iPhi) +
-                 _A(+1, 0, iTheta, iPhi) * _u(0, iTheta, iPhi) +
-                 (_A(+1, -1, iTheta, iPhi) + _A(+1, +1, iTheta, iPhi)) *
-                     _u(1, iTheta, iPhi);
-        default:
-          return 0;
-      }
+      return 0;
     }
   }
   auto operator()(Int alpha) const {
@@ -715,6 +737,19 @@ template <typename Derived>
 requires std::same_as<typename Derived::Value, ComplexValued>
 auto conj(MatrixFieldBase<Derived>&& A) {
   return conj(A);
+}
+
+//-----------------------------------------------------//
+//               MatrixField -> ScalarField            //
+//-----------------------------------------------------//
+template <typename Derived>
+auto Tr(const MatrixFieldBase<Derived>& A) {
+  return MatrixFieldTrace(A);
+}
+
+template <typename Derived>
+auto Tr(MatrixFieldBase<Derived>&& A) {
+  return Tr(A);
 }
 
 //-----------------------------------------------------//
