@@ -20,7 +20,9 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto u = RealVectorField(grid, {1, 2, 3});
+  auto u = RealScalarField(grid, 1);
 
-  complex(u).Print();
+  auto v = -2 * u + 3;
+
+  v.Print();
 }

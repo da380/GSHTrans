@@ -581,10 +581,11 @@ class MatrixFieldTrace : public ScalarFieldBase<MatrixFieldTrace<Derived>> {
     this->CheckPointIndices(iTheta, iPhi);
 
     if constexpr (std::same_as<Value, ComplexValued>) {
-      return _A(-1, +1, iTheta, iPhi) + _A(0, 0, iTheta, iPhi) -
-             _A(+1, -1, iTheta, iPhi);
+      auto u = -_A(-1, 1) + _A(0, 0) - _A(+1, 1);
+      return u(iTheta, iPhi);
     } else {
-      return -2 * _A(1, -1, iTheta, iPhi) + _A(0, 0, iTheta, iPhi);
+      auto u = -2 * _A(1, -1) + _A(0, 0);
+      return u(iTheta, iPhi);
     }
   }
 
@@ -598,6 +599,53 @@ class MatrixFieldTrace : public ScalarFieldBase<MatrixFieldTrace<Derived>> {
   // Assignment.
   MatrixFieldTrace& operator=(MatrixFieldTrace&) = default;
   MatrixFieldTrace& operator=(MatrixFieldTrace&&) = default;
+
+ private:
+  const MatrixFieldBase<Derived>& _A;
+};
+
+//-------------------------------------------------//
+//          Matrix determinant expression          //
+//-------------------------------------------------//
+template <typename Derived>
+class MatrixFieldDeterminant
+    : public ScalarFieldBase<MatrixFieldDeterminant<Derived>> {
+ public:
+  using Int = typename ScalarFieldBase<MatrixFieldDeterminant<Derived>>::Int;
+  using Grid = typename Derived::Grid;
+  using Scalar = typename Derived::Scalar;
+  using Value = typename Derived::Value;
+  using Real = typename Derived::Real;
+  using Complex = typename Derived::Complex;
+
+  auto GetGrid() const { return _A.GetGrid(); }
+  auto operator()(Int iTheta, Int iPhi) const {
+    this->CheckPointIndices(iTheta, iPhi);
+
+    if constexpr (std::same_as<Value, ComplexValued>) {
+      return 0;
+    } else {
+      auto u =
+          _A(0, 0) * (_A(-1, +1) * _A(-1, +1) + _A(+1, -1) * _A(+1, -1) -
+                      _A(-1, -1) * _A(-1, -1) - _A(+1, +1) * _A(+1, +1)) +
+          2 * _A(+1, -1) * (_A(-1, 0) * _A(0, -1) + _A(+1, 0) * _A(0, +1)) +
+          2 * _A(-1, +1) * (_A(-1, 0) * _A(0, +1) - _A(+1, 0) * _A(0, -1)) +
+          2 * _A(-1, -1) * (_A(-1, 0) * _A(0, +1) + _A(+1, 0) * _A(0, -1)) +
+          2 * _A(+1, +1) * (_A(+1, 0) * _A(0, +1) - _A(-1, 0) * _A(0, -1));
+      return u(iTheta, iPhi);
+    }
+  }
+
+  // Constructors.
+  MatrixFieldDeterminant() = delete;
+  MatrixFieldDeterminant(const MatrixFieldBase<Derived>& A) : _A{A} {}
+
+  MatrixFieldDeterminant(const MatrixFieldDeterminant&) = default;
+  MatrixFieldDeterminant(MatrixFieldDeterminant&&) = default;
+
+  // Assignment.
+  MatrixFieldDeterminant& operator=(MatrixFieldDeterminant&) = default;
+  MatrixFieldDeterminant& operator=(MatrixFieldDeterminant&&) = default;
 
  private:
   const MatrixFieldBase<Derived>& _A;
@@ -627,13 +675,30 @@ class MatrixFieldAction
   auto operator()(Int alpha, Int iTheta, Int iPhi) const {
     this->CheckPointIndices(iTheta, iPhi);
     this->CheckCanonicalIndices(alpha);
-
     if constexpr (std::same_as<Value, Complex>) {
-      return -_A(alpha, -1, iTheta, iPhi) * _u(+1, iTheta, iPhi) +
-             _A(alpha, 0, iTheta, iPhi) * _u(0, iTheta, iPhi) +
-             -_A(alpha, 1, iTheta, iPhi) * _u(-1, iTheta, iPhi);
+      auto v = -_A(alpha, -1) * _u(+1) + _A(alpha, 0) * _u(0) -
+               _A(alpha, 1) * _u(-1);
+      return v(iTheta, iPhi);
     } else {
-      return 0;
+      switch (alpha) {
+        case -1: {
+          auto v = -(_A(+1, -1) + _A(+1, +1)) * _u(-1) + _A(-1, 0) * _u(0) +
+                   (_A(-1, -1) - _A(-1, +1)) * _u(+1);
+          return v(iTheta, iPhi);
+        }
+        case 0: {
+          auto v = 2 * _A(0, -1) * _u(-1) + _A(0, 0) * _u(0) +
+                   2 * _A(0, +1) * _u(+1);
+          return v(iTheta, iPhi);
+        }
+        case +1: {
+          auto v = (_A(-1, -1) + _A(-1, +1)) * _u(-1) + _A(+1, 0) * _u(0) +
+                   (_A(+1, +1) - _A(+1, -1)) * _u(+1);
+          return v(iTheta, iPhi);
+        }
+        default:
+          return 0;
+      }
     }
   }
   auto operator()(Int alpha) const {
@@ -750,6 +815,16 @@ auto Tr(const MatrixFieldBase<Derived>& A) {
 template <typename Derived>
 auto Tr(MatrixFieldBase<Derived>&& A) {
   return Tr(A);
+}
+
+template <typename Derived>
+auto Det(const MatrixFieldBase<Derived>& A) {
+  return MatrixFieldDeterminant(A);
+}
+
+template <typename Derived>
+auto Det(MatrixFieldBase<Derived>&& A) {
+  return Det(A);
 }
 
 //-----------------------------------------------------//
