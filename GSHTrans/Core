@@ -1,0 +1,12 @@
+#ifndef GSH_TRANS_CORE_MODULE_H
+#define GSH_TRANS_CORE_MODULE_H
+
+// Header files to include for use of GHSTrans library
+#include "src/Concepts.h"
+#include "src/GaussLegendreGrid.h"
+#include "src/GridBase.h"
+#include "src/Indexing.h"
+#include "src/Utility.h"
+#include "src/Wigner.h"
+
+#endif

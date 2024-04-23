@@ -1,0 +1,12 @@
+#ifndef GSH_TRANS_MATRIX_FIELD_MODULE_H
+#define GSH_TRANS_MATRIX_FIELD_MODULE_H
+
+#include "ScalarField"
+#include "VectorField"
+#include "src/MatrixField/MatrixField.h"
+#include "src/MatrixField/MatrixFieldBase.h"
+#include "src/MatrixField/MatrixFieldExpressions.h"
+#include "src/MatrixField/MatrixFieldOverloads.h"
+#include "src/MatrixField/MatrixFieldView.h"
+
+#endif

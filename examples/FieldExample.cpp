@@ -1,4 +1,5 @@
-#include <GSHTrans/All>
+#include <GSHTrans/Core>
+#include <GSHTrans/Field>
 #include <array>
 #include <iostream>
 #include <ranges>
@@ -20,9 +21,9 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto u = RealScalarField(grid, 1);
+  auto u = RealVectorField(grid, {1, 2, 3});
 
-  auto v = -2 * u + 3;
+  auto v = -2 * u;
 
   v.Print();
 }

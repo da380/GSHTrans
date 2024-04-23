@@ -1,0 +1,12 @@
+#ifndef GSH_TRANS_SCALAR_FIELD_MODULE_H
+#define GSH_TRANS_SCALAR_FIELD_MODULE_H
+
+#include "src/FieldBase.h"
+#include "src/ScalarField/ConstantScalarField.h"
+#include "src/ScalarField/ScalarField.h"
+#include "src/ScalarField/ScalarFieldBase.h"
+#include "src/ScalarField/ScalarFieldExpressions.h"
+#include "src/ScalarField/ScalarFieldOverloads.h"
+#include "src/ScalarField/ScalarFieldView.h"
+
+#endif

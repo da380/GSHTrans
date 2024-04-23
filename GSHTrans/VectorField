@@ -1,0 +1,11 @@
+#ifndef GSH_TRANS_VECTOR_FIELD_MODULE_H
+#define GSH_TRANS_VECTOR_FIELD_MODULE_H
+
+#include "ScalarField"
+#include "src/VectorField/VectorField.h"
+#include "src/VectorField/VectorFieldBase.h"
+#include "src/VectorField/VectorFieldExpressions.h"
+#include "src/VectorField/VectorFieldOverloads.h"
+#include "src/VectorField/VectorFieldView.h"
+
+#endif
