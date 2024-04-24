@@ -1,5 +1,5 @@
-#ifndef GSH_TRANS_MATRIX_FIELD_GUARD_H
-#define GSH_TRANS_MATRIX_FIELD_GUARD_H
+#ifndef GSH_TRANS_ISOTROPIC_MATRIX_FIELD_GUARD_H
+#define GSH_TRANS_ISOTROPIC_MATRIX_FIELD_GUARD_H
 
 #include <FFTWpp/Core>
 #include <concepts>
@@ -8,18 +8,18 @@
 
 #include "../Concepts.h"
 #include "../GridBase.h"
-#include "MatrixFieldBase.h"
+#include "../MatrixField/MatrixFieldBase.h"
+#include "IsotropicMatrixFieldBase.h"
 
 namespace GSHTrans {
 
-//-------------------------------------------------//
-//       Matrix field that stores its data         //
-//-------------------------------------------------//
 template <typename _Grid, RealOrComplexValued _Value>
 requires std::derived_from<_Grid, GridBase<_Grid>>
-class MatrixField : public MatrixFieldBase<MatrixField<_Grid, _Value>> {
+class IsotropicMatrixField
+    : public IsotropicMatrixFieldBase<IsotropicMatrixField<_Grid, _Value>> {
  public:
-  using Int = typename MatrixFieldBase<MatrixField<_Grid, _Value>>::Int;
+  using Int = typename IsotropicMatrixFieldBase<
+      IsotropicMatrixField<_Grid, _Value>>::Int;
   using Grid = _Grid;
   using Value = _Value;
   using Real = typename _Grid::Real;
@@ -27,40 +27,37 @@ class MatrixField : public MatrixFieldBase<MatrixField<_Grid, _Value>> {
   using Scalar =
       std::conditional_t<std::same_as<_Value, RealValued>, Real, Complex>;
 
-  // Methods needed to inherit from MatrixField Base.
+  // Methods needed to inherit from IsotropicMatrixField Base.
   auto GetGrid() const { return _grid; }
   auto operator()(Int alpha, Int beta, Int iTheta, Int iPhi) const {
     this->CheckCanonicalIndices(alpha, beta);
     this->CheckPointIndices(iTheta, iPhi);
-    return _data[Index(alpha, beta, iTheta, iPhi)];
+    return alpha + beta == 0 ? static_cast<Scalar>(MinusOneToPower(alpha)) *
+                                   _data[Index(iTheta, iPhi)]
+                             : Scalar{0};
   }
+
   auto operator()(Int alpha, Int beta) const {
     this->CheckCanonicalIndices(alpha, beta);
     return MatrixFieldComponentView(*this, alpha, beta);
   }
 
   // Constructors.
-  MatrixField() = default;
+  IsotropicMatrixField() = default;
 
-  MatrixField(_Grid grid)
-      : _grid{grid}, _data{FFTWpp::vector<Scalar>(9 * (this->FieldSize()))} {}
+  IsotropicMatrixField(_Grid grid, Scalar a)
+      : _grid{grid}, _data{FFTWpp::vector<Scalar>((this->FieldSize()), a)} {}
 
-  MatrixField(_Grid grid, std::array<Scalar, 9>&& A) : MatrixField(grid) {
-    for (auto [i, index] :
-         std::ranges::views::enumerate(this->CanonicalIndices())) {
-      auto [alpha, beta] = index;
-      this->operator()(alpha, beta) = A[i];
-    }
-  }
+  IsotropicMatrixField(_Grid grid) : IsotropicMatrixField(grid, 0) {}
 
   // Assignment.
-  MatrixField& operator=(const MatrixField&) = default;
-  MatrixField& operator=(MatrixField&&) = default;
+  IsotropicMatrixField& operator=(const IsotropicMatrixField&) = default;
+  IsotropicMatrixField& operator=(IsotropicMatrixField&&) = default;
 
   template <typename Derived>
   requires std::convertible_to<typename Derived::Scalar, Scalar> &&
            std::same_as<typename Derived::Value, Value>
-  auto& operator=(const MatrixFieldBase<Derived>& other) {
+  auto& operator=(const IsotropicMatrixFieldBase<Derived>& other) {
     assert(this->FieldSize() == other.FieldSize());
     CopyValues(other);
     return *this;
@@ -69,7 +66,7 @@ class MatrixField : public MatrixFieldBase<MatrixField<_Grid, _Value>> {
   template <typename Derived>
   requires std::convertible_to<typename Derived::Scalar, Scalar> &&
            std::same_as<typename Derived::Value, Value>
-  auto& operator=(MatrixFieldBase<Derived>&& other) {
+  auto& operator=(IsotropicMatrixFieldBase<Derived>&& other) {
     *this = other;
     return *this;
   }
@@ -78,8 +75,9 @@ class MatrixField : public MatrixFieldBase<MatrixField<_Grid, _Value>> {
   auto& operator()(Int alpha, Int beta, Int iTheta, Int iPhi) {
     this->CheckCanonicalIndices(alpha, beta);
     this->CheckPointIndices(iTheta, iPhi);
-    return _data[Index(alpha, beta, iTheta, iPhi)];
+    return _data[Index(iTheta, iPhi)];
   }
+  /*
   auto operator()(Int alpha, Int beta) {
     this->CheckCanonicalIndices(alpha, beta);
     auto start = std::next(_data.begin(), Offset(alpha, beta));
@@ -87,37 +85,27 @@ class MatrixField : public MatrixFieldBase<MatrixField<_Grid, _Value>> {
     auto data = std::ranges::subrange(start, finish);
     return ScalarFieldView(_grid, data);
   }
+  */
 
  private:
   _Grid _grid;
   FFTWpp::vector<Scalar> _data;
 
-  auto Offset(Int alpha, Int beta) const {
-    return (3 * (alpha + 1) + (beta + 1)) * (this->FieldSize());
-  }
-
   template <typename Derived>
-  void CopyValues(const MatrixFieldBase<Derived>& other) {
-    for (auto [alpha, beta] : this->CanonicalIndices()) {
-      for (auto [iTheta, iPhi] : this->PointIndices()) {
-        operator()(alpha, beta, iTheta, iPhi) =
-            other(alpha, beta, iTheta, iPhi);
-      }
-    }
-  }
+  void CopyValues(const IsotropicMatrixFieldBase<Derived>& other) {}
 
-  auto Index(Int alpha, Int beta, Int iTheta, int iPhi) const {
-    return Offset(alpha, beta) + iTheta * this->NumberOfLongitudes() + iPhi;
+  auto Index(Int iTheta, int iPhi) const {
+    return iTheta * this->NumberOfLongitudes() + iPhi;
   }
 };
 
 // Type aliases for real and complex Matrix fields
 template <typename Grid>
-using RealMatrixField = MatrixField<Grid, RealValued>;
+using RealIsotropicMatrixField = IsotropicMatrixField<Grid, RealValued>;
 
 template <typename Grid>
-using ComplexMatrixField = MatrixField<Grid, ComplexValued>;
+using ComplexIsotropicMatrixField = IsotropicMatrixField<Grid, ComplexValued>;
 
 }  // namespace GSHTrans
 
-#endif  // GSH_TRANS_MATRIX_FIELD_GUARD_H
+#endif  // GSH_TRANS_ISOTROPIC_MATRIX_FIELD_GUARD_H

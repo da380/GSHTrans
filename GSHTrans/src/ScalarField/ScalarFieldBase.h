@@ -25,15 +25,13 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
   auto GetGrid() const { return Derived().GetGrid(); }
 
   // Methods related to the data.
-  auto Size() const { return GetGrid().FieldSize(); }
   auto operator()(Int iTheta, Int iPhi) const {
     return Derived().operator()(iTheta, iPhi);
   }
 
   void Print() const {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      std::cout << iTheta << " " << iPhi << " " << operator()(iTheta, iPhi)
-                << std::endl;
+      std::cout << operator()(iTheta, iPhi) << std::endl;
     }
   }
 

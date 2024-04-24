@@ -21,9 +21,11 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto u = RealVectorField(grid, {1, 2, 3});
+  auto A = RealMatrixField(grid);
 
-  auto v = -2 * u;
+  auto B = RealMatrixField(grid);
 
-  v.Print();
+  auto C = Tr(B);
+
+  C.Print();
 }

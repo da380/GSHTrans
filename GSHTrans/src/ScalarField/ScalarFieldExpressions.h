@@ -200,7 +200,7 @@ class ScalarFieldPointwiseBinary
   ScalarFieldPointwiseBinary(const ScalarFieldBase<Derived1>& u1,
                              const ScalarFieldBase<Derived2>& u2, Function f)
       : _u1{u1}, _u2{u2}, _f{f} {
-    assert(_u1.Size() == _u2.Size());
+    assert(_u1.FieldSize() == _u2.FieldSize());
   }
 
   ScalarFieldPointwiseBinary(const ScalarFieldPointwiseBinary&) = default;

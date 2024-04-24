@@ -356,7 +356,7 @@ class MatrixFieldBinary
   MatrixFieldBinary(const MatrixFieldBase<Derived1>& A1,
                     const MatrixFieldBase<Derived2>& A2, Function f)
       : _A1{A1}, _A2{A2}, _f{f} {
-    assert(_A1.ComponentSize() == _A2.ComponentSize());
+    assert(_A1.FieldSize() == _A2.FieldSize());
   }
 
   MatrixFieldBinary(const MatrixFieldBinary&) = default;
@@ -540,7 +540,7 @@ class MatrixFieldAction
   MatrixFieldAction(const MatrixFieldBase<Derived1>& A,
                     const VectorFieldBase<Derived2>& u)
       : _A{A}, _u{u} {
-    assert(_A.ComponentSize() == _u.ComponentSize());
+    assert(_A.FieldSize() == _u.FieldSize());
   }
 
   MatrixFieldAction(const MatrixFieldAction&) = default;
@@ -597,7 +597,7 @@ class MatrixFieldMultiplication
   MatrixFieldMultiplication(const MatrixFieldBase<Derived1>& A1,
                             const MatrixFieldBase<Derived2>& A2)
       : _A1{A1}, _A2{A2} {
-    assert(_A1.ComponentSize() == _A2.ComponentSize());
+    assert(_A1.FieldSize() == _A2.FieldSize());
   }
 
   MatrixFieldMultiplication(const MatrixFieldMultiplication&) = default;

@@ -310,7 +310,7 @@ class VectorFieldPointwiseBinary
   VectorFieldPointwiseBinary(const VectorFieldBase<Derived1>& u1,
                              const VectorFieldBase<Derived2>& u2, Function f)
       : _u1{u1}, _u2{u2}, _f{f} {
-    assert(_u1.ComponentSize() == _u2.ComponentSize());
+    assert(_u1.FieldSize() == _u2.FieldSize());
   }
 
   VectorFieldPointwiseBinary(const VectorFieldPointwiseBinary&) = default;
@@ -365,7 +365,7 @@ class VectorFieldInnerProduct
   VectorFieldInnerProduct(const VectorFieldBase<Derived1>& u1,
                           const VectorFieldBase<Derived2>& u2)
       : _u1{u1}, _u2{u2} {
-    assert(_u1.ComponentSize() == _u2.ComponentSize());
+    assert(_u1.FieldSize() == _u2.FieldSize());
   }
 
   VectorFieldInnerProduct(const VectorFieldInnerProduct&) = default;
@@ -416,7 +416,7 @@ class VectorFieldDualityProduct
   VectorFieldDualityProduct(const VectorFieldBase<Derived1>& u1,
                             const VectorFieldBase<Derived2>& u2)
       : _u1{u1}, _u2{u2} {
-    assert(_u1.ComponentSize() == _u2.ComponentSize());
+    assert(_u1.FieldSize() == _u2.FieldSize());
   }
 
   VectorFieldDualityProduct(const VectorFieldDualityProduct&) = default;
@@ -465,7 +465,7 @@ class VectorFieldProductScalarField
   VectorFieldProductScalarField(const VectorFieldBase<Derived1>& u1,
                                 const ScalarFieldBase<Derived2>& u2)
       : _u1{u1}, _u2{u2} {
-    assert(_u1.ComponentSize() == _u2.ComponentSize());
+    assert(_u1.FieldSize() == _u2.FieldSize());
   }
 
   VectorFieldProductScalarField(const VectorFieldProductScalarField&) = default;

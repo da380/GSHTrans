@@ -3,10 +3,11 @@
 
 #include "ScalarField"
 #include "VectorField"
+// #include "src/IsotropicMatrixField/IsotropicMatrixField.h"
+// #include "src/IsotropicMatrixField/IsotropicMatrixFieldBase.h"
 #include "src/MatrixField/MatrixField.h"
 #include "src/MatrixField/MatrixFieldBase.h"
 #include "src/MatrixField/MatrixFieldExpressions.h"
 #include "src/MatrixField/MatrixFieldOverloads.h"
 #include "src/MatrixField/MatrixFieldView.h"
-
 #endif

@@ -40,16 +40,16 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   ScalarField() = default;
 
   ScalarField(_Grid grid)
-      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->Size())} {}
+      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->FieldSize())} {}
 
   ScalarField(_Grid grid, Scalar s)
-      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->Size(), s)} {}
+      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->FieldSize(), s)} {}
 
   template <typename Derived>
   requires std::convertible_to<typename Derived::Scalar, Scalar>
   ScalarField(const ScalarFieldBase<Derived>& other)
       : ScalarField(other.GetGrid()) {
-    assert(this->Size() == other.Size());
+    assert(this->FieldSize() == other.FieldSize());
     CopyValues(other);
   }
 
@@ -65,7 +65,7 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   ScalarField& operator=(ScalarField&&) = default;
 
   auto& operator=(Scalar s) {
-    std::ranges::copy(std::ranges::views::repeat(s, this->Size()),
+    std::ranges::copy(std::ranges::views::repeat(s, this->FieldSize()),
                       _data.begin());
     return *this;
   }
@@ -83,10 +83,6 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
     *this = other;
     return *this;
   }
-
-  // Iterators.
-  auto begin() { return _data.begin(); }
-  auto end() { return _data.end(); }
 
   // Value assignement.
   auto& operator()(Int iTheta, Int iPhi) {

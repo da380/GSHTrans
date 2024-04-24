@@ -24,13 +24,10 @@ class MatrixFieldBase : public FieldBase<MatrixFieldBase<_Derived>> {
   auto GetGrid() const { return Derived().GetGrid(); }
 
   // Methods related to the data.
-  auto ComponentSize() const { return GetGrid().FieldSize(); }
-
   auto CanonicalIndices() const {
     return std::ranges::views::cartesian_product(
         std::ranges::views::iota(-1, 2), std::ranges::views::iota(-1, 2));
   }
-
   void CheckCanonicalIndices(Int alpha, Int beta) const {
     assert(std::abs(alpha) <= 1);
     assert(std::abs(beta) <= 1);

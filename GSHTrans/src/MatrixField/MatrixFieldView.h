@@ -49,7 +49,7 @@ class MatrixFieldView : public MatrixFieldBase<MatrixFieldView<_Grid, _View>> {
   MatrixFieldView() = default;
 
   MatrixFieldView(_Grid grid, _View data) : _grid{grid}, _data{data} {
-    assert(9 * (this->ComponentSize()) == _data.size());
+    assert(9 * (this->FieldSize()) == _data.size());
   }
 
   // Assignment.
@@ -60,7 +60,7 @@ class MatrixFieldView : public MatrixFieldBase<MatrixFieldView<_Grid, _View>> {
   requires std::convertible_to<typename Derived::Scalar, Scalar> &&
            std::same_as<typename Derived::Value, Value>
   auto& operator=(const MatrixFieldBase<Derived>& other) {
-    assert(this->ComponentSize() == other.ComponentSize());
+    assert(this->FieldSize() == other.FieldSize());
     CopyValues(other);
     return *this;
   }
@@ -73,11 +73,6 @@ class MatrixFieldView : public MatrixFieldBase<MatrixFieldView<_Grid, _View>> {
     return *this;
   }
 
-  // Methods to make it a range.
-  auto size() const { return 9 * this->ComponentSize(); }
-  auto begin() { return _data.begin(); }
-  auto end() { return _data.end(); }
-
   // Value assignment.
   auto& operator()(Int alpha, Int beta, Int iTheta, Int iPhi) {
     this->CheckCanonicalIndices(alpha, beta);
@@ -86,8 +81,8 @@ class MatrixFieldView : public MatrixFieldBase<MatrixFieldView<_Grid, _View>> {
   }
   auto operator()(Int alpha, Int beta) {
     this->CheckCanonicalIndices(alpha, beta);
-    auto start = std::next(begin(), Offset(alpha, beta));
-    auto finish = std::next(start, this->ComponentSize());
+    auto start = std::next(_data.begin(), Offset(alpha, beta));
+    auto finish = std::next(start, this->FieldSize());
     auto data = std::ranges::subrange(start, finish);
     return ScalarFieldView(_grid, data);
   }
@@ -97,7 +92,7 @@ class MatrixFieldView : public MatrixFieldBase<MatrixFieldView<_Grid, _View>> {
   _View _data;
 
   auto Offset(Int alpha, Int beta) const {
-    return (3 * (alpha + 1) + (beta + 1)) * (this->ComponentSize());
+    return (3 * (alpha + 1) + (beta + 1)) * (this->FieldSize());
   }
 
   template <typename Derived>

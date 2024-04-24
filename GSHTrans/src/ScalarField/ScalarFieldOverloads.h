@@ -330,7 +330,7 @@ template <typename Derived1, typename Derived2>
 requires std::same_as<typename Derived1::Value, typename Derived2::Value>
 auto operator==(const ScalarFieldBase<Derived1>& u1,
                 const ScalarFieldBase<Derived2>& u2) {
-  assert(u1.Size() == u2.Size());
+  assert(u1.FieldSize() == u2.FieldSize());
   return L2Norm(u1 - u2) <
          std::numeric_limits<typename Derived1::Real>::epsilon();
 }

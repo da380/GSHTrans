@@ -25,8 +25,6 @@ class VectorFieldBase : public FieldBase<VectorFieldBase<_Derived>> {
   auto GetGrid() const { return Derived().GetGrid(); }
 
   // Methods related to the data.
-  auto ComponentSize() const { return GetGrid().FieldSize(); }
-
   auto CanonicalIndices() const { return std::ranges::views::iota(-1, 2); }
 
   void CheckCanonicalIndices(Int alpha) const { assert(std::abs(alpha) <= 1); }
@@ -38,7 +36,6 @@ class VectorFieldBase : public FieldBase<VectorFieldBase<_Derived>> {
 
   void Print() const {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      std::cout << iTheta << " " << iPhi << " ";
       for (auto alpha : CanonicalIndices()) {
         std::cout << operator()(alpha, iTheta, iPhi) << " ";
       }

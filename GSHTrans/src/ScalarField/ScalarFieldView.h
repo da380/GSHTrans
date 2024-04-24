@@ -44,7 +44,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
   ScalarFieldView() = default;
 
   ScalarFieldView(_Grid grid, _View data) : _grid{grid}, _data{data} {
-    assert(this->Size() == _data.size());
+    assert(this->FieldSize() == _data.size());
   }
 
   ScalarFieldView(const ScalarFieldView&) = default;
@@ -55,7 +55,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
   ScalarFieldView& operator=(ScalarFieldView&&) = default;
 
   auto& operator=(Scalar s) {
-    std::ranges::copy(std::ranges::views::repeat(s, this->Size()),
+    std::ranges::copy(std::ranges::views::repeat(s, this->FieldSize()),
                       _data.begin());
     return *this;
   }
@@ -64,7 +64,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
   requires std::convertible_to<typename Derived::Scalar, Scalar> &&
            std::same_as<typename Derived::Value, Value>
   auto& operator=(const ScalarFieldBase<Derived>& other) {
-    assert(this->Size() == other.Size());
+    assert(this->FieldSize() == other.FieldSize());
     CopyValues(other);
     return *this;
   }
@@ -76,10 +76,6 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
     *this = other;
     return *this;
   }
-
-  // Iterators.
-  auto begin() { return _data.begin(); }
-  auto end() { return _data.end(); }
 
   // Value assignement.
   auto& operator()(Int iTheta, Int iPhi) {

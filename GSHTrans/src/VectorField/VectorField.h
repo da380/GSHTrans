@@ -43,8 +43,7 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
   VectorField() = default;
 
   VectorField(_Grid grid)
-      : _grid{grid},
-        _data{FFTWpp::vector<Scalar>(3 * (this->ComponentSize()))} {}
+      : _grid{grid}, _data{FFTWpp::vector<Scalar>(3 * (this->FieldSize()))} {}
 
   VectorField(_Grid grid, std::array<Scalar, 3>&& u) : VectorField(grid) {
     for (auto [i, alpha] :
@@ -61,7 +60,7 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
   requires std::convertible_to<typename Derived::Scalar, Scalar> &&
            std::same_as<typename Derived::Value, Value>
   auto& operator=(const VectorFieldBase<Derived>& other) {
-    assert(this->ComponentSize() == other.ComponentSize());
+    assert(this->FieldSize() == other.FieldSize());
     CopyValues(other);
     return *this;
   }
@@ -74,11 +73,6 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
     return *this;
   }
 
-  // Methods to make it a range.
-  auto size() const { return this->Size(); }
-  auto begin() { return _data.begin(); }
-  auto end() { return _data.end(); }
-
   // Value assignment.
   auto& operator()(Int alpha, Int iTheta, Int iPhi) {
     this->CheckPointIndices(iTheta, iPhi);
@@ -87,8 +81,8 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
   }
   auto operator()(Int alpha) {
     this->CheckCanonicalIndices(alpha);
-    auto start = std::next(begin(), Offset(alpha));
-    auto finish = std::next(start, this->ComponentSize());
+    auto start = std::next(_data.begin(), Offset(alpha));
+    auto finish = std::next(start, this->FieldSize());
     auto data = std::ranges::subrange(start, finish);
     return ScalarFieldView(_grid, data);
   }
@@ -106,7 +100,7 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
     }
   }
 
-  auto Offset(Int alpha) const { return (alpha + 1) * (this->ComponentSize()); }
+  auto Offset(Int alpha) const { return (alpha + 1) * (this->FieldSize()); }
 
   auto Index(Int alpha, Int iTheta, int iPhi) const {
     return Offset(alpha) + iTheta * this->NumberOfLongitudes() + iPhi;
