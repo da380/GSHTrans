@@ -23,6 +23,11 @@ class MatrixFieldBase : public FieldBase<MatrixFieldBase<_Derived>> {
   // Methods related to the grid.
   auto GetGrid() const { return Derived().GetGrid(); }
 
+  // Methods related to structure.
+  constexpr auto IsSelfAdjoint() const { return _Derived::SelfAdjoint::value; }
+  constexpr auto IsDiagonal() const { return _Derived::Diagonal::value; }
+  constexpr auto IsIsotropic() const { return _Derived::Isotropic::value; }
+
   // Methods related to the data.
   auto CanonicalIndices() const {
     return std::ranges::views::cartesian_product(
@@ -32,7 +37,6 @@ class MatrixFieldBase : public FieldBase<MatrixFieldBase<_Derived>> {
     assert(std::abs(alpha) <= 1);
     assert(std::abs(beta) <= 1);
   }
-
   auto operator()(Int alpha, Int beta, Int iTheta, Int iPhi) const {
     return Derived().operator()(alpha, beta, iTheta, iPhi);
   }
@@ -40,6 +44,7 @@ class MatrixFieldBase : public FieldBase<MatrixFieldBase<_Derived>> {
     return Derived().operator()(alpha, beta);
   }
 
+  // Utility methods.
   void Print() const {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       for (auto alpha = -1; alpha <= 1; alpha++) {

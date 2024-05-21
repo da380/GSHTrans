@@ -12,9 +12,6 @@
 
 namespace GSHTrans {
 
-//-------------------------------------------------//
-//       Matrix field that stores its data         //
-//-------------------------------------------------//
 template <typename _Grid, RealOrComplexValued _Value>
 requires std::derived_from<_Grid, GridBase<_Grid>>
 class MatrixField : public MatrixFieldBase<MatrixField<_Grid, _Value>> {
@@ -26,6 +23,9 @@ class MatrixField : public MatrixFieldBase<MatrixField<_Grid, _Value>> {
   using Complex = typename _Grid::Complex;
   using Scalar =
       std::conditional_t<std::same_as<_Value, RealValued>, Real, Complex>;
+  using SelfAdjoint = std::false_type;
+  using Diagonal = std::false_type;
+  using Isotropic = std::false_type;
 
   // Methods needed to inherit from MatrixField Base.
   auto GetGrid() const { return _grid; }

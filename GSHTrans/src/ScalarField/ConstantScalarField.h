@@ -45,8 +45,24 @@ class ConstantScalarField
   ConstantScalarField& operator=(const ConstantScalarField&) = default;
   ConstantScalarField& operator=(ConstantScalarField&&) = default;
 
-  auto& operator=(Scalar s) {
+  // Compound assignment.
+  auto& operator==(Scalar s) {
     _s = s;
+    return *this;
+  }
+
+  auto& operator+=(Scalar s) {
+    _s += s;
+    return *this;
+  }
+
+  auto& operator-=(Scalar s) {
+    _s -= s;
+    return *this;
+  }
+
+  auto& operator*=(Scalar s) {
+    _s *= s;
     return *this;
   }
 
@@ -54,6 +70,15 @@ class ConstantScalarField
   _Grid _grid;
   Scalar _s;
 };
+
+// Type aliases for real and complex fields.
+template <typename Grid>
+requires std::derived_from<Grid, GridBase<Grid>>
+using RealConstantScalarField = ConstantScalarField<Grid, RealValued>;
+
+template <typename Grid>
+requires std::derived_from<Grid, GridBase<Grid>>
+using ComplexConstantScalarField = ConstantScalarField<Grid, ComplexValued>;
 
 }  // namespace GSHTrans
 

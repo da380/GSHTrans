@@ -14,10 +14,7 @@
 
 namespace GSHTrans {
 
-//-------------------------------------------------//
-//        Complexification of a real field         //
-//-------------------------------------------------//
-
+// Complexification of a real field.
 template <typename Derived>
 requires requires() {
   requires std::same_as<typename Derived::Value, RealValued>;
@@ -55,9 +52,7 @@ class ComplexifiedScalarField
   const ScalarFieldBase<Derived>& _u;
 };
 
-//-------------------------------------------------//
-//             PointwiseUnary expression           //
-//-------------------------------------------------//
+// Pointwise unary expressions.
 template <typename Derived, typename Function>
 requires requires() {
   requires std::invocable<Function, typename Derived::Scalar>;
@@ -106,9 +101,7 @@ class ScalarFieldPointwiseUnary
   Function _f;
 };
 
-//-------------------------------------------------//
-//      PointwiseUnary expression with Scalar      //
-//-------------------------------------------------//
+// Pointwise unary expression parameterised by a scalar.
 template <typename Derived, typename Function>
 requires requires() {
   requires std::invocable<Function, typename Derived::Scalar,
@@ -162,9 +155,7 @@ class ScalarFieldPointwiseUnaryWithScalar
   Scalar _s;
 };
 
-//-------------------------------------------------//
-//            PointwiseBinary expression           //
-//-------------------------------------------------//
+// Pointwise binary expressions.
 template <typename Derived1, typename Derived2, typename Function>
 requires requires() {
   requires std::same_as<typename Derived1::Real, typename Derived2::Real>;

@@ -15,27 +15,33 @@
 namespace GSHTrans {
 
 //-----------------------------------------------------//
-//            Complex conjugate expression             //
+//                 Negative expression                 //
 //-----------------------------------------------------//
 template <typename Derived>
-requires std::same_as<typename Derived::Value, ComplexValued>
-class MatrixFieldConjugate
-    : public MatrixFieldBase<MatrixFieldConjugate<Derived>> {
+class MatrixFieldNegative
+    : public MatrixFieldBase<MatrixFieldNegative<Derived>> {
  public:
-  using Int = typename MatrixFieldBase<MatrixFieldConjugate<Derived>>::Int;
+  using Int = typename MatrixFieldBase<MatrixFieldNegative<Derived>>::Int;
   using Grid = typename Derived::Grid;
   using Scalar = typename Derived::Scalar;
   using Value = typename Derived::Value;
   using Real = typename Derived::Real;
   using Complex = typename Derived::Complex;
+  using SelfAdjoint = typename Derived::SelfAdjoint;
+  using Diagonal = typename Derived::Diagonal;
+  using Isotropic = typename Derived::Isotropic;
 
   // Methods needed to inherit from MatrixFieldBase.
   auto GetGrid() const { return _A.GetGrid(); }
-  auto operator()(Int alpha, Int beta, Int iTheta, Int iPhi) const {
+  auto operator()(Int alpha, Int beta, Int iTheta, Int iPhi) const -> Scalar {
     this->CheckPointIndices(iTheta, iPhi);
     this->CheckCanonicalIndices(alpha, beta);
-    return static_cast<Real>(MinusOneToPower(alpha + beta)) *
-           std::conj(_A(-alpha, -beta, iTheta, iPhi));
+
+    if constexpr (Diagonal::value) {
+      return alpha + beta == 0 ? -_A(alpha, beta, iTheta, iPhi) : 0;
+    } else {
+      return -_A(-alpha, -beta, iTheta, iPhi);
+    }
   }
   auto operator()(Int alpha, Int beta) const {
     this->CheckCanonicalIndices(alpha, beta);
@@ -43,15 +49,15 @@ class MatrixFieldConjugate
   }
 
   // Constructors.
-  MatrixFieldConjugate() = delete;
-  MatrixFieldConjugate(const MatrixFieldBase<Derived>& A) : _A{A} {}
+  MatrixFieldNegative() = delete;
+  MatrixFieldNegative(const MatrixFieldBase<Derived>& A) : _A{A} {}
 
-  MatrixFieldConjugate(const MatrixFieldConjugate&) = default;
-  MatrixFieldConjugate(MatrixFieldConjugate&&) = default;
+  MatrixFieldNegative(const MatrixFieldNegative&) = default;
+  MatrixFieldNegative(MatrixFieldNegative&&) = default;
 
   // Assignment.
-  MatrixFieldConjugate& operator=(MatrixFieldConjugate&) = default;
-  MatrixFieldConjugate& operator=(MatrixFieldConjugate&&) = default;
+  MatrixFieldNegative& operator=(MatrixFieldNegative&) = default;
+  MatrixFieldNegative& operator=(MatrixFieldNegative&&) = default;
 
  private:
   const MatrixFieldBase<Derived>& _A;
@@ -69,18 +75,44 @@ class MatrixFieldAdjoint : public MatrixFieldBase<MatrixFieldAdjoint<Derived>> {
   using Value = typename Derived::Value;
   using Real = typename Derived::Real;
   using Complex = typename Derived::Complex;
+  using SelfAdjoint = typename Derived::SelfAdjoint;
+  using Diagonal = typename Derived::Diagonal;
+  using Isotropic = typename Derived::Isotropic;
 
   // Methods needed to inherit from MatrixFieldBase.
   auto GetGrid() const { return _A.GetGrid(); }
-  auto operator()(Int alpha, Int beta, Int iTheta, Int iPhi) const {
+
+  auto operator()(Int alpha, Int beta, Int iTheta, Int iPhi) const -> Scalar
+  requires std::same_as<Value, RealValued>
+  {
     this->CheckPointIndices(iTheta, iPhi);
     this->CheckCanonicalIndices(alpha, beta);
-    if (std::same_as<Value, RealValued>) {
+    if constexpr (Diagonal::value) {
+      return alpha + beta == 0 ? _A(alpha, beta, iTheta, iPhi) : 0;
+    } else {
       return _A(beta, alpha, iTheta, iPhi);
+    }
+  }
+
+  auto operator()(Int alpha, Int beta, Int iTheta, Int iPhi) const -> Scalar
+  requires std::same_as<Value, ComplexValued>
+  {
+    this->CheckPointIndices(iTheta, iPhi);
+    this->CheckCanonicalIndices(alpha, beta);
+    if constexpr (Diagonal::value) {
+      if constexpr (SelfAdjoint::value) {
+        return alpha + beta == 0 ? _A(alpha, beta, iTheta, iPhi) : 0;
+      } else {
+        return alpha + beta == 0 ? std::conj(_A(alpha, beta, iTheta, iPhi)) : 0;
+      }
+    }
+    if constexpr (SelfAdjoint::value) {
+      return _A(alpha, beta, iTheta, iPhi);
     } else {
       return std::conj(_A(beta, alpha, iTheta, iPhi));
     }
   }
+
   auto operator()(Int alpha, Int beta) const {
     this->CheckCanonicalIndices(alpha, beta);
     return MatrixFieldComponentView(*this, alpha, beta);
@@ -115,6 +147,9 @@ class ComplexifiedMatrixField
   using Complex = typename Grid::Complex;
   using Value = ComplexValued;
   using Scalar = Complex;
+  using SelfAdjoint = typename Derived::SelfAdjoint;
+  using Diagonal = typename Derived::Diagonal;
+  using Isotropic = typename Derived::Isotropic;
 
   // Methods needed to inherit from MatrixField Base.
   auto GetGrid() const { return _A.GetGrid(); }
@@ -168,6 +203,9 @@ class RealifiedMatrixField
   using Complex = typename Grid::Complex;
   using Value = RealValued;
   using Scalar = Real;
+  using SelfAdjoint = typename Derived::SelfAdjoint;
+  using Diagonal = typename Derived::Diagonal;
+  using Isotropic = typename Derived::Isotropic;
 
   // Methods needed to inherit from MatrixField Base.
   auto GetGrid() const { return _A.GetGrid(); }
@@ -205,113 +243,6 @@ class RealifiedMatrixField
 
  private:
   const MatrixFieldBase<Derived>& _A;
-};
-
-//-------------------------------------------------//
-//      Pointswise PointwiseUnary expression       //
-//-------------------------------------------------//
-template <typename Derived, typename Function>
-requires requires() {
-  requires std::invocable<Function, typename Derived::Scalar>;
-  requires std::convertible_to<
-      std::invoke_result_t<Function, typename Derived::Scalar>,
-      typename Derived::Scalar>;
-}
-class MatrixFieldPointwiseUnary
-    : public MatrixFieldBase<MatrixFieldPointwiseUnary<Derived, Function>> {
- public:
-  using Int = typename MatrixFieldBase<
-      MatrixFieldPointwiseUnary<Derived, Function>>::Int;
-  using Grid = typename Derived::Grid;
-  using Scalar = std::invoke_result_t<Function, typename Derived::Scalar>;
-  using Value =
-      std::conditional_t<RealFloatingPoint<Scalar>, RealValued, ComplexValued>;
-  using Real = typename Derived::Real;
-  using Complex = typename Derived::Complex;
-
-  // Methods needed to inherit from MatrixField Base.
-  auto GetGrid() const { return _A.GetGrid(); }
-  auto operator()(Int alpha, Int beta, Int iTheta, Int iPhi) const {
-    return _f(_A(alpha, beta, iTheta, iPhi));
-  }
-  auto operator()(Int alpha, Int beta) const {
-    return MatrixFieldComponentView(*this, alpha, beta);
-  }
-
-  // Constructors.
-  MatrixFieldPointwiseUnary() = delete;
-  MatrixFieldPointwiseUnary(const MatrixFieldBase<Derived>& A, Function f)
-      : _A{A}, _f{f} {}
-
-  MatrixFieldPointwiseUnary(const MatrixFieldPointwiseUnary&) = default;
-  MatrixFieldPointwiseUnary(MatrixFieldPointwiseUnary&&) = default;
-
-  // Assignment.
-  MatrixFieldPointwiseUnary& operator=(MatrixFieldPointwiseUnary&) = default;
-  MatrixFieldPointwiseUnary& operator=(MatrixFieldPointwiseUnary&&) = default;
-
- private:
-  const MatrixFieldBase<Derived>& _A;
-  Function _f;
-};
-
-//-------------------------------------------------//
-//      PointwiseUnary expression with Scalar      //
-//-------------------------------------------------//
-template <typename Derived, typename Function>
-requires requires() {
-  requires std::invocable<Function, typename Derived::Scalar,
-                          typename Derived::Scalar>;
-  requires std::convertible_to<
-      std::invoke_result_t<Function, typename Derived::Scalar,
-                           typename Derived::Scalar>,
-      typename Derived::Scalar>;
-}
-class MatrixFieldPointwiseUnaryWithScalar
-    : public MatrixFieldBase<
-          MatrixFieldPointwiseUnaryWithScalar<Derived, Function>> {
- public:
-  using Int = typename MatrixFieldBase<
-      MatrixFieldPointwiseUnaryWithScalar<Derived, Function>>::Int;
-  using Grid = typename Derived::Grid;
-  using Scalar = typename Derived::Scalar;
-  using Value = typename Derived::Value;
-  using Real = typename Derived::Real;
-  using Complex = typename Derived::Complex;
-
-  // Methods needed to inherit from MatrixFieldBase.
-  auto GetGrid() const { return _A.GetGrid(); }
-  auto operator()(Int alpha, Int beta, Int iTheta, Int iPhi) const {
-    this->CheckPointIndices(iTheta, iPhi);
-    this->CheckCanonicalIndices(alpha, beta);
-    return _f(_A(alpha, beta, iTheta, iPhi), _s);
-  }
-  auto operator()(Int alpha, Int beta) const {
-    this->CheckCanonicalIndices(alpha);
-    return MatrixFieldComponentView(*this, alpha, beta);
-  }
-
-  // Constructors.
-  MatrixFieldPointwiseUnaryWithScalar() = delete;
-  MatrixFieldPointwiseUnaryWithScalar(const MatrixFieldBase<Derived>& A,
-                                      Function f, Scalar s)
-      : _A{A}, _f{f}, _s{s} {}
-
-  MatrixFieldPointwiseUnaryWithScalar(
-      const MatrixFieldPointwiseUnaryWithScalar&) = default;
-  MatrixFieldPointwiseUnaryWithScalar(MatrixFieldPointwiseUnaryWithScalar&&) =
-      default;
-
-  // Assignment.
-  MatrixFieldPointwiseUnaryWithScalar& operator=(
-      MatrixFieldPointwiseUnaryWithScalar&) = default;
-  MatrixFieldPointwiseUnaryWithScalar& operator=(
-      MatrixFieldPointwiseUnaryWithScalar&&) = default;
-
- private:
-  const MatrixFieldBase<Derived>& _A;
-  Function _f;
-  Scalar _s;
 };
 
 //-------------------------------------------------//

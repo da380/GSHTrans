@@ -15,10 +15,7 @@
 
 namespace GSHTrans {
 
-//-----------------------------------------------------//
-//               ScalarField -> ScalarField            //
-//-----------------------------------------------------//
-
+// Negation.
 template <typename Derived>
 auto operator-(const ScalarFieldBase<Derived>& u) {
   return ScalarFieldPointwiseUnary(u, [](auto x) { return -x; });
@@ -29,6 +26,7 @@ auto operator-(ScalarFieldBase<Derived>&& u) {
   return -u;
 }
 
+// Square root.
 template <typename Derived>
 auto sqrt(const ScalarFieldBase<Derived>& u) {
   return ScalarFieldPointwiseUnary(u, [](auto x) { return std::sqrt(x); });
@@ -39,10 +37,7 @@ auto sqrt(ScalarFieldBase<Derived>&& u) {
   return sqrt(u);
 }
 
-//-----------------------------------------------------//
-//            ScalarField -> RealScalarField           //
-//-----------------------------------------------------//
-
+// absolute value.
 template <typename Derived>
 auto abs(const ScalarFieldBase<Derived>& u) {
   return ScalarFieldPointwiseUnary(u, [](auto x) { return std::abs(x); });
@@ -53,10 +48,7 @@ auto abs(ScalarFieldBase<Derived>&& u) {
   return abs(u);
 }
 
-//-----------------------------------------------------//
-//        ComplexScalarField -> RealScalarField        //
-//-----------------------------------------------------//
-
+// Real part.
 template <typename Derived>
 requires std::same_as<typename Derived::Value, ComplexValued>
 auto real(const ScalarFieldBase<Derived>& u) {
@@ -69,6 +61,7 @@ auto real(ScalarFieldBase<Derived>&& u) {
   return real(u);
 }
 
+// Imaginary part.
 template <typename Derived>
 requires std::same_as<typename Derived::Value, ComplexValued>
 auto imag(const ScalarFieldBase<Derived>& u) {
@@ -81,6 +74,7 @@ auto imag(ScalarFieldBase<Derived>&& u) {
   return imag(u);
 }
 
+// Complex conjugation.
 template <typename Derived>
 requires std::same_as<typename Derived::Value, ComplexValued>
 auto conj(const ScalarFieldBase<Derived>& u) {
@@ -93,9 +87,7 @@ auto conj(ScalarFieldBase<Derived>&& u) {
   return conj(u);
 }
 
-//-----------------------------------------------------//
-//        RealScalarField -> ComplexScalarField        //
-//-----------------------------------------------------//
+// Complexification.
 template <typename Derived>
 requires std::same_as<typename Derived::Value, RealValued>
 auto complex(const ScalarFieldBase<Derived>& u) {
@@ -108,9 +100,7 @@ auto complex(ScalarFieldBase<Derived>&& u) {
   return complex(u);
 }
 
-//-----------------------------------------------------//
-//         ScalarField x Scalar -> ScalarField         //
-//-----------------------------------------------------//
+// Scalar multiplication.
 template <typename Derived>
 auto operator*(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
   return ScalarFieldPointwiseUnaryWithScalar(u, std::multiplies<>(), s);
@@ -131,6 +121,7 @@ auto operator*(typename Derived::Scalar s, ScalarFieldBase<Derived>&& u) {
   return u * s;
 }
 
+// Scalar addition.
 template <typename Derived>
 auto operator+(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
   return ScalarFieldPointwiseUnaryWithScalar(u, std::plus<>(), s);
@@ -151,6 +142,7 @@ auto operator+(typename Derived::Scalar s, ScalarFieldBase<Derived>&& u) {
   return u + s;
 }
 
+// Scalar subtraction.
 template <typename Derived>
 auto operator-(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
   return ScalarFieldPointwiseUnaryWithScalar(u, std::minus<>(), s);
@@ -161,6 +153,7 @@ auto operator-(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
   return u - s;
 }
 
+// Scalar division.
 template <typename Derived>
 auto operator/(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
   return ScalarFieldPointwiseUnaryWithScalar(u, std::divides<>(), s);
@@ -171,6 +164,7 @@ auto operator/(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
   return u / s;
 }
 
+// Raise to scalar power.
 template <typename Derived>
 auto pow(const ScalarFieldBase<Derived>& u, typename Derived::Scalar s) {
   return ScalarFieldPointwiseUnaryWithScalar(
@@ -182,10 +176,7 @@ auto pow(ScalarFieldBase<Derived>&& u, typename Derived::Scalar s) {
   return pow(u, s);
 }
 
-//-----------------------------------------------------//
-//      ScalarField x ScalarField -> ScalarField       //
-//-----------------------------------------------------//
-
+// Addition.
 template <typename Derived1, typename Derived2>
 auto operator+(const ScalarFieldBase<Derived1>& u1,
                const ScalarFieldBase<Derived2>& u2) {
@@ -209,6 +200,7 @@ auto operator+(ScalarFieldBase<Derived1>&& u1, ScalarFieldBase<Derived2>&& u2) {
   return u1 + u2;
 }
 
+// Subtraction.
 template <typename Derived1, typename Derived2>
 auto operator-(const ScalarFieldBase<Derived1>& u1,
                const ScalarFieldBase<Derived2>& u2) {
@@ -232,6 +224,7 @@ auto operator-(ScalarFieldBase<Derived1>&& u1, ScalarFieldBase<Derived2>&& u2) {
   return u1 - u2;
 }
 
+// Multiplication.
 template <typename Derived1, typename Derived2>
 auto operator*(const ScalarFieldBase<Derived1>& u1,
                const ScalarFieldBase<Derived2>& u2) {
@@ -255,9 +248,7 @@ auto operator*(ScalarFieldBase<Derived1>&& u1, ScalarFieldBase<Derived2>&& u2) {
   return u1 * u2;
 }
 
-//------------------------------------------------------//
-//                 ScalarField -> Scalar                //
-//------------------------------------------------------//
+// Integation.
 template <typename Derived>
 auto Integrate(const ScalarFieldBase<Derived>& u) {
   using Scalar = typename Derived::Scalar;
@@ -275,9 +266,7 @@ auto Integrate(ScalarFieldBase<Derived>&& u) {
   return Integrate(u);
 }
 
-//------------------------------------------------------//
-//           ScalarField x ScalarField -> Scalar        //
-//------------------------------------------------------//
+// L2 inner product.
 template <typename Derived1, typename Derived2>
 requires std::same_as<typename Derived1::Value, typename Derived2::Value>
 auto L2InnerProduct(const ScalarFieldBase<Derived1>& u1,
@@ -310,9 +299,7 @@ auto L2InnerProduct(ScalarFieldBase<Derived1>&& u1,
   return L2InnerProduct(u1, u2);
 }
 
-//------------------------------------------------------//
-//                  ScalarField -> Real                 //
-//------------------------------------------------------//
+// L2 norm.
 template <typename Derived>
 auto L2Norm(const ScalarFieldBase<Derived>& u) {
   return std::sqrt(std::abs(L2InnerProduct(u, u)));
@@ -323,9 +310,7 @@ auto L2Norm(ScalarFieldBase<Derived>&& u) {
   return L2Norm(u);
 }
 
-//-------------------------------------------------------//
-//           ScalarField x ScalarField -> bool           //
-//-------------------------------------------------------//
+// Equality operator (based on L2 norm).
 template <typename Derived1, typename Derived2>
 requires std::same_as<typename Derived1::Value, typename Derived2::Value>
 auto operator==(const ScalarFieldBase<Derived1>& u1,

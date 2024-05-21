@@ -452,7 +452,7 @@ class VectorFieldProductScalarField
   auto GetGrid() const { return _u1.GetGrid(); }
   auto operator()(Int alpha, Int iTheta, Int iPhi) const {
     this->CheckCanonicalIndices(alpha);
-    this->CheckPointIndice(iTheta, iPhi);
+    this->CheckPointIndices(iTheta, iPhi);
     return _u1(alpha, iTheta, iPhi) * _u2(iTheta, iPhi);
   }
   auto operator()(Int alpha) const {

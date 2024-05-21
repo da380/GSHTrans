@@ -21,11 +21,20 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto A = RealMatrixField(grid);
+  auto f = RealScalarField(grid, [](auto theta, auto phi) { return 1; });
 
-  auto B = RealMatrixField(grid);
+  auto g = RealConstantScalarField(grid, 2);
 
-  auto C = Tr(B);
+  f *= g;
 
-  C.Print();
+  f.Print();
+
+  /*
+  auto f = RealScalarField(grid, 1);
+  auto g = RealScalarField(grid, 1);
+
+  f = f + g;
+
+  f.Print();
+  */
 }

@@ -31,6 +31,9 @@ class FieldBase {
 
   auto Points() const { return GetGrid().Points(); }
   auto PointIndices() const { return GetGrid().PointIndices(); }
+  auto EnumeratePointIndices() const {
+    return std::ranges::views::enumerate(PointIndices());
+  }
 
   auto Weights() const { return GetGrid().Weights(); }
 

@@ -14,6 +14,30 @@
 
 namespace GSHTrans {
 
+//  Negative operator.
+template <typename Derived>
+auto operator-(const MatrixFieldBase<Derived>& A) {
+  return MatrixFieldNegative(A);
+}
+
+template <typename Derived>
+auto operator-(MatrixFieldBase<Derived>&& A) {
+  return -A;
+}
+
+// Adjoint operator.
+template <typename Derived>
+auto Adjoint(const MatrixFieldBase<Derived>& A) {
+  return MatrixFieldAdjoint(A);
+}
+
+template <typename Derived>
+auto Adjoint(MatrixFieldBase<Derived>&& A) {
+  return Adjoint(A);
+}
+
+/*
+
 //-----------------------------------------------------//
 //              MatrixField -> MatrixField             //
 //-----------------------------------------------------//
@@ -197,6 +221,8 @@ template <typename Derived1, typename Derived2>
 auto operator-(MatrixFieldBase<Derived1>&& A1, MatrixFieldBase<Derived2>&& A2) {
   return A1 - A2;
 }
+
+*/
 
 }  // namespace GSHTrans
 
