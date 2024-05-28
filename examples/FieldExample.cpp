@@ -21,20 +21,11 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto f = RealScalarField(grid, [](auto theta, auto phi) { return 1; });
+  auto data = std::vector<Real>(grid.FieldSize());
 
-  auto g = RealConstantScalarField(grid, 2);
+  auto f = ScalarFieldView(grid, [](auto theta, auto phi) { return -1; }, data);
 
-  f *= g;
-
-  f.Print();
-
-  /*
-  auto f = RealScalarField(grid, 1);
-  auto g = RealScalarField(grid, 1);
-
-  f = f + g;
+  f.Scale(0, 0, -5);
 
   f.Print();
-  */
 }

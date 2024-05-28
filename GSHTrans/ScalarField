@@ -7,6 +7,6 @@
 #include "src/ScalarField/ScalarFieldBase.h"
 #include "src/ScalarField/ScalarFieldExpressions.h"
 #include "src/ScalarField/ScalarFieldOverloads.h"
-// #include "src/ScalarField/ScalarFieldView.h"
+#include "src/ScalarField/ScalarFieldView.h"
 
 #endif

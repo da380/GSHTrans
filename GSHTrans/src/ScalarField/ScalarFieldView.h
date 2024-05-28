@@ -1,5 +1,5 @@
-#ifndef GSH_TRANS_SCALAR_FIELD_GUARD_H
-#define GSH_TRANS_SCALAR_FIELD_GUARD_H
+#ifndef GSH_TRANS_SCALAR_FIELD_VIEW_GUARD_H
+#define GSH_TRANS_SCALAR_FIELD_VIEW_GUARD_H
 
 #include <FFTWpp/Core>
 #include <concepts>
@@ -14,19 +14,19 @@
 
 namespace GSHTrans {
 
-template <typename _Grid, RealOrComplexValued _Value>
+template <typename _Grid, std::ranges::view _View>
 requires std::derived_from<_Grid, GridBase<_Grid>>
-class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
+class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
  public:
-  using Int = typename ScalarFieldBase<ScalarField<_Grid, _Value>>::Int;
+  using Int = typename ScalarFieldBase<ScalarFieldView<_Grid, _View>>::Int;
   using Grid = _Grid;
-  using Value = _Value;
+  using Scalar = std::ranges::range_value_t<_View>;
+  using Value =
+      std::conditional_t<RealFloatingPoint<Scalar>, RealValued, ComplexValued>;
   using Real = typename _Grid::Real;
   using Complex = typename _Grid::Complex;
-  using Scalar =
-      std::conditional_t<std::same_as<_Value, RealValued>, Real, Complex>;
 
-  // Methods needed to inherit from ScalarField Base.
+  // Methods needed to inherit from ScalarFieldView Base.
   auto GetGrid() const { return _grid; }
   auto operator()(Int iTheta, Int iPhi) const {
     this->CheckPointIndices(iTheta, iPhi);
@@ -34,39 +34,26 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   }
 
   // Constructors.
-  ScalarField() = default;
+  ScalarFieldView() = default;
 
   // Construct from grid initialising values to zero.
-  ScalarField(_Grid grid)
-      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->FieldSize())} {}
+  ScalarFieldView(_Grid grid, _View data) : _grid{grid}, _data{data} {}
 
   // Construction from grid initialising values with a function.
   template <typename Function>
   requires std::invocable<Function, Real, Real>
-  ScalarField(_Grid grid, Function&& f) : ScalarField(grid) {
+  ScalarFieldView(_Grid grid, Function&& f, _View data)
+      : ScalarFieldView(grid, data) {
     std::ranges::copy(_grid.InterpolateFunction(f), _data.begin());
   }
 
-  // Construct from an element of the base class.
-  template <typename Derived>
-  requires std::convertible_to<typename Derived::Scalar, Scalar>
-  ScalarField(const ScalarFieldBase<Derived>& other)
-      : ScalarField(other.GetGrid()) {
-    assert(this->FieldSize() == other.FieldSize());
-    CopyValues(other);
-  }
-
-  template <typename Derived>
-  requires std::convertible_to<typename Derived::Scalar, Scalar>
-  ScalarField(ScalarFieldBase<Derived>&& other) : ScalarField(other) {}
-
   // Default copy and move constructors.
-  ScalarField(const ScalarField&) = default;
-  ScalarField(ScalarField&&) = default;
+  ScalarFieldView(const ScalarFieldView&) = default;
+  ScalarFieldView(ScalarFieldView&&) = default;
 
   // Default copy and move assigment.
-  ScalarField& operator=(const ScalarField&) = default;
-  ScalarField& operator=(ScalarField&&) = default;
+  ScalarFieldView& operator=(const ScalarFieldView&) = default;
+  ScalarFieldView& operator=(ScalarFieldView&&) = default;
 
   // Assign values from an element of the base class.
   template <typename Derived>
@@ -154,7 +141,7 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
 
  private:
   _Grid _grid;
-  FFTWpp::vector<Scalar> _data;
+  _View _data;
 
   template <typename Derived>
   void CopyValues(const ScalarFieldBase<Derived>& other) {
@@ -168,15 +155,24 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   }
 };
 
+// Deduction guide to allow construction from a range.
+template <typename Grid, std::ranges::viewable_range R>
+ScalarFieldView(Grid,
+                R&&) -> ScalarFieldView<Grid, std::ranges::views::all_t<R>>;
+
+template <typename Grid, typename Function, std::ranges::viewable_range R>
+ScalarFieldView(Grid, Function&&,
+                R&&) -> ScalarFieldView<Grid, std::ranges::views::all_t<R>>;
+
 // Type aliases for real and complex fields.
 template <typename Grid>
 requires std::derived_from<Grid, GridBase<Grid>>
-using RealScalarField = ScalarField<Grid, RealValued>;
+using RealScalarFieldView = ScalarFieldView<Grid, RealValued>;
 
 template <typename Grid>
 requires std::derived_from<Grid, GridBase<Grid>>
-using ComplexScalarField = ScalarField<Grid, ComplexValued>;
+using ComplexScalarFieldView = ScalarFieldView<Grid, ComplexValued>;
 
 }  // namespace GSHTrans
 
-#endif  // namespace GSHTrans
+#endif  // #ifndef GSH_TRANS_SCALAR_FIELD_GUARD_H
