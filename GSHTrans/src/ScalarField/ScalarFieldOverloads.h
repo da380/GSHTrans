@@ -11,6 +11,7 @@
 #include "../FieldBase.h"
 #include "../GridBase.h"
 #include "ComplexifiedScalarField.h"
+#include "PointWiseUnaryScalarField.h"
 #include "ScalarFieldBase.h"
 
 namespace GSHTrans {
@@ -28,12 +29,18 @@ auto Complexify(ScalarFieldBase<Derived>&& u) {
   return Complexify(u);
 }
 
-/*
-
 // Negation.
+/*
 template <typename Derived>
 auto operator-(const ScalarFieldBase<Derived>& u) {
-  return ScalarFieldPointwiseUnary(u, [](auto x) { return -x; });
+  return PointwiseUnaryScalarField(u, [](auto x) { return -x; });
+}
+*/
+
+template <typename Field>
+requires std::derived_from<Field, ScalarFieldBase<Field>>
+auto operator-(const Field& u) {
+  return PointwiseUnaryScalarField(u, [](auto x) { return -x; });
 }
 
 template <typename Derived>
@@ -44,7 +51,7 @@ auto operator-(ScalarFieldBase<Derived>&& u) {
 // Square root.
 template <typename Derived>
 auto sqrt(const ScalarFieldBase<Derived>& u) {
-  return ScalarFieldPointwiseUnary(u, [](auto x) { return std::sqrt(x); });
+  return PointwiseUnaryScalarField(u, [](auto x) { return std::sqrt(x); });
 }
 
 template <typename Derived>
@@ -55,7 +62,7 @@ auto sqrt(ScalarFieldBase<Derived>&& u) {
 // absolute value.
 template <typename Derived>
 auto abs(const ScalarFieldBase<Derived>& u) {
-  return ScalarFieldPointwiseUnary(u, [](auto x) { return std::abs(x); });
+  return PointwiseUnaryScalarField(u, [](auto x) { return std::abs(x); });
 }
 
 template <typename Derived>
@@ -67,7 +74,7 @@ auto abs(ScalarFieldBase<Derived>&& u) {
 template <typename Derived>
 requires std::same_as<typename Derived::Value, ComplexValued>
 auto real(const ScalarFieldBase<Derived>& u) {
-  return ScalarFieldPointwiseUnary(u, [](auto x) { return std::real(x); });
+  return PointwiseUnaryScalarField(u, [](auto x) { return std::real(x); });
 }
 
 template <typename Derived>
@@ -80,7 +87,7 @@ auto real(ScalarFieldBase<Derived>&& u) {
 template <typename Derived>
 requires std::same_as<typename Derived::Value, ComplexValued>
 auto imag(const ScalarFieldBase<Derived>& u) {
-  return ScalarFieldPointwiseUnary(u, [](auto x) { return std::imag(x); });
+  return PointwiseUnaryScalarField(u, [](auto x) { return std::imag(x); });
 }
 
 template <typename Derived>
@@ -93,7 +100,7 @@ auto imag(ScalarFieldBase<Derived>&& u) {
 template <typename Derived>
 requires std::same_as<typename Derived::Value, ComplexValued>
 auto conj(const ScalarFieldBase<Derived>& u) {
-  return ScalarFieldPointwiseUnary(u, [](auto x) { return std::conj(x); });
+  return PointwiseUnaryScalarField(u, [](auto x) { return std::conj(x); });
 }
 
 template <typename Derived>
@@ -101,6 +108,8 @@ requires std::same_as<typename Derived::Value, ComplexValued>
 auto conj(ScalarFieldBase<Derived>&& u) {
   return conj(u);
 }
+
+/*
 
 // Complexification.
 template <typename Derived>

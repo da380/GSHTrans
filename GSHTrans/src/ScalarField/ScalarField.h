@@ -19,7 +19,7 @@ template <typename _Grid, RealOrComplexValued _Value>
 requires std::derived_from<_Grid, GridBase<_Grid>>
 class ScalarField;
 
-// Set up traits.
+// Set traits.
 namespace Internal {
 
 template <typename _Grid, RealOrComplexValued _Value>

@@ -25,5 +25,9 @@ int main() {
 
   auto g = Complexify(f);
 
-  g.Print();
+  f(4, 3) = 3;
+
+  auto h = -f;
+
+  h.Print();
 }
