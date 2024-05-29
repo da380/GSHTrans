@@ -123,6 +123,9 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
     return *this;
   }
 
+  // Return view to the data.
+  auto Data() { return _data; }
+
   // Index level assignement and increment.
   void Set(Int iTheta, Int iPhi, Scalar s) {
     this->CheckPointIndices(iTheta, iPhi);
@@ -132,11 +135,6 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
   void Add(Int iTheta, Int iPhi, Scalar s) {
     this->CheckPointIndices(iTheta, iPhi);
     _data[Index(iTheta, iPhi)] += s;
-  }
-
-  void Scale(Int iTheta, Int iPhi, Scalar s) {
-    this->CheckPointIndices(iTheta, iPhi);
-    _data[Index(iTheta, iPhi)] *= s;
   }
 
  private:

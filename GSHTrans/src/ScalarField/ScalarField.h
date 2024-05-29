@@ -14,26 +14,57 @@
 
 namespace GSHTrans {
 
+// Forward declare class.
+template <typename _Grid, RealOrComplexValued _Value>
+requires std::derived_from<_Grid, GridBase<_Grid>>
+class ScalarField;
+
+// Set up traits.
+namespace Internal {
+
+template <typename _Grid, RealOrComplexValued _Value>
+struct Traits<ScalarField<_Grid, _Value>> {
+  using Int = std::ptrdiff_t;
+  using Grid = _Grid;
+  using Value = _Value;
+  using Real = typename Grid::Real;
+  using Complex = typename Grid::Complex;
+  using Scalar =
+      std::conditional_t<std::same_as<Value, RealValued>, Real, Complex>;
+  using Writeable = std::true_type;
+};
+
+}  // namespace Internal
+
 template <typename _Grid, RealOrComplexValued _Value>
 requires std::derived_from<_Grid, GridBase<_Grid>>
 class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
  public:
-  using Int = typename ScalarFieldBase<ScalarField<_Grid, _Value>>::Int;
   using Grid = _Grid;
   using Value = _Value;
-  using Real = typename _Grid::Real;
-  using Complex = typename _Grid::Complex;
-  using Scalar =
-      std::conditional_t<std::same_as<_Value, RealValued>, Real, Complex>;
+  using Int = typename Internal::Traits<ScalarField<Grid, Value>>::Int;
+  using Real = typename Internal::Traits<ScalarField<Grid, Value>>::Real;
+  using Complex = typename Internal::Traits<ScalarField<Grid, Value>>::Complex;
+  using Scalar = typename Internal::Traits<ScalarField<Grid, Value>>::Scalar;
+  using Writeable =
+      typename Internal::Traits<ScalarField<Grid, Value>>::Writeable;
 
-  // Methods needed to inherit from ScalarField Base.
+  // Return the grid.
   auto GetGrid() const { return _grid; }
+
+  // Read access to data.
   auto operator()(Int iTheta, Int iPhi) const {
     this->CheckPointIndices(iTheta, iPhi);
     return _data[Index(iTheta, iPhi)];
   }
 
-  // Constructors.
+  // Write access to data.
+  auto& operator()(Int iTheta, Int iPhi) {
+    this->CheckPointIndices(iTheta, iPhi);
+    return _data[Index(iTheta, iPhi)];
+  }
+
+  // Default constructor.
   ScalarField() = default;
 
   // Construct from grid initialising values to zero.
@@ -52,8 +83,9 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   requires std::convertible_to<typename Derived::Scalar, Scalar>
   ScalarField(const ScalarFieldBase<Derived>& other)
       : ScalarField(other.GetGrid()) {
-    assert(this->FieldSize() == other.FieldSize());
-    CopyValues(other);
+    for (auto [iTheta, iPhi] : this->PointIndices()) {
+      this->operator()(iTheta, iPhi) = other(iTheta, iPhi);
+    }
   }
 
   template <typename Derived>
@@ -68,100 +100,12 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   ScalarField& operator=(const ScalarField&) = default;
   ScalarField& operator=(ScalarField&&) = default;
 
-  // Assign values from an element of the base class.
-  template <typename Derived>
-  requires std::convertible_to<typename Derived::Scalar, Scalar>
-  auto& operator=(const ScalarFieldBase<Derived>& other) {
-    assert(other.FieldSize() == this->FieldSize());
-    CopyValues(other);
-    return *this;
-  }
-
-  template <typename Derived>
-  requires std::convertible_to<typename Derived::Scalar, Scalar>
-  auto& operator=(ScalarFieldBase<Derived>&& other) {
-    *this = other;
-    return *this;
-  }
-
-  // Compound assigments.
-  template <typename Derived>
-  requires std::convertible_to<typename Derived::Scalar, Scalar>
-  auto& operator+=(const ScalarFieldBase<Derived>& other) {
-    assert(other.FieldSize() == this->FieldSize());
-    for (auto [iTheta, iPhi] : this->PointIndices()) {
-      _data[Index(iTheta, iPhi)] += other(iTheta, iPhi);
-    }
-    return *this;
-  }
-
-  template <typename Derived>
-  requires std::convertible_to<typename Derived::Scalar, Scalar>
-  auto& operator+=(ScalarFieldBase<Derived>&& other) {
-    *this += other;
-    return *this;
-  }
-
-  template <typename Derived>
-  requires std::convertible_to<typename Derived::Scalar, Scalar>
-  auto& operator-=(const ScalarFieldBase<Derived>& other) {
-    assert(other.FieldSize() == this->FieldSize());
-    for (auto [iTheta, iPhi] : this->PointIndices()) {
-      _data[Index(iTheta, iPhi)] -= other(iTheta, iPhi);
-    }
-    return *this;
-  }
-
-  template <typename Derived>
-  requires std::convertible_to<typename Derived::Scalar, Scalar>
-  auto& operator-=(ScalarFieldBase<Derived>&& other) {
-    *this -= other;
-    return *this;
-  }
-
-  template <typename Derived>
-  requires std::convertible_to<typename Derived::Scalar, Scalar>
-  auto& operator*=(const ScalarFieldBase<Derived>& other) {
-    assert(other.FieldSize() == this->FieldSize());
-    for (auto [iTheta, iPhi] : this->PointIndices()) {
-      _data[Index(iTheta, iPhi)] *= other(iTheta, iPhi);
-    }
-    return *this;
-  }
-
-  template <typename Derived>
-  requires std::convertible_to<typename Derived::Scalar, Scalar>
-  auto& operator*=(ScalarFieldBase<Derived>&& other) {
-    *this *= other;
-    return *this;
-  }
-
-  // Index level assignement and increment.
-  void Set(Int iTheta, Int iPhi, Scalar s) {
-    this->CheckPointIndices(iTheta, iPhi);
-    _data[Index(iTheta, iPhi)] = s;
-  }
-
-  void Add(Int iTheta, Int iPhi, Scalar s) {
-    this->CheckPointIndices(iTheta, iPhi);
-    _data[Index(iTheta, iPhi)] += s;
-  }
-
-  void Scale(Int iTheta, Int iPhi, Scalar s) {
-    this->CheckPointIndices(iTheta, iPhi);
-    _data[Index(iTheta, iPhi)] *= s;
-  }
+  // Return view to the data.
+  auto Data() { return std::ranges::views::all(_data); }
 
  private:
   _Grid _grid;
   FFTWpp::vector<Scalar> _data;
-
-  template <typename Derived>
-  void CopyValues(const ScalarFieldBase<Derived>& other) {
-    for (auto [iTheta, iPhi] : this->PointIndices()) {
-      Set(iTheta, iPhi, other(iTheta, iPhi));
-    }
-  }
 
   auto Index(Int iTheta, int iPhi) const {
     return iTheta * this->NumberOfLongitudes() + iPhi;

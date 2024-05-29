@@ -1,8 +1,14 @@
 #ifndef GSH_TRANS_FIELD_MODULE_H
 #define GSH_TRANS_FIELD_MODULE_H
 
-#include "ScalarField"
-#include "VectorField"
-#include "MatrixField"
+#include "src/FieldBase.h"
+#include "src/ScalarField/ComplexifiedScalarField.h"
+#include "src/ScalarField/ScalarField.h"
+#include "src/ScalarField/ScalarFieldBase.h"
+#include "src/ScalarField/ScalarFieldOverloads.h"
+
+// #include "ScalarField"
+// #include "VectorField"
+// #include "MatrixField"
 
 #endif

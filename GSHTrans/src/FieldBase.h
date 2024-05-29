@@ -5,12 +5,20 @@
 
 namespace GSHTrans {
 
-template <typename _Derived>
+// Set up the interal traits struct.
+namespace Internal {
+
+template <typename Derived>
+struct Traits {};
+
+}  // namespace Internal
+
+template <typename Derived>
 class FieldBase {
  public:
   using Int = std::ptrdiff_t;
 
-  auto GetGrid() const { return Derived().GetGrid(); }
+  auto GetGrid() const { return GetDerived().GetGrid(); }
 
   auto NumberOfCoLatitudes() const { return GetGrid().NumberOfCoLatitudes(); }
   auto CoLatitudes() const { return GetGrid().CoLatitudes(); }
@@ -38,8 +46,8 @@ class FieldBase {
   auto Weights() const { return GetGrid().Weights(); }
 
  private:
-  auto& Derived() const { return static_cast<const _Derived&>(*this); }
-  auto& Derived() { return static_cast<_Derived&>(*this); }
+  auto& GetDerived() const { return static_cast<const Derived&>(*this); }
+  auto& GetDerived() { return static_cast<Derived&>(*this); }
 };
 
 }  // namespace GSHTrans

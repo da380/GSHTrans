@@ -10,10 +10,25 @@
 #include "../Concepts.h"
 #include "../FieldBase.h"
 #include "../GridBase.h"
+#include "ComplexifiedScalarField.h"
 #include "ScalarFieldBase.h"
-#include "ScalarFieldExpressions.h"
 
 namespace GSHTrans {
+
+// Complexification.
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto Complexify(const ScalarFieldBase<Derived>& u) {
+  return ComplexifiedScalarField(u);
+}
+
+template <typename Derived>
+requires std::same_as<typename Derived::Value, RealValued>
+auto Complexify(ScalarFieldBase<Derived>&& u) {
+  return Complexify(u);
+}
+
+/*
 
 // Negation.
 template <typename Derived>
@@ -340,6 +355,8 @@ auto operator==(ScalarFieldBase<Derived1>&& u1,
                 ScalarFieldBase<Derived2>&& u2) {
   return u1 == u2;
 }
+
+*/
 
 }  // namespace GSHTrans
 
