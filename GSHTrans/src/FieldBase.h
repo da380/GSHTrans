@@ -8,6 +8,14 @@ namespace GSHTrans {
 // Set up the interal traits struct.
 namespace Internal {
 
+template <typename _Grid>
+struct TraitBase {
+  using Int = std::ptrdiff_t;
+  using Grid = _Grid;
+  using Real = typename Grid::Real;
+  using Complex = typename Grid::Complex;
+};
+
 template <typename Derived>
 struct Traits {};
 

@@ -1,7 +1,6 @@
 #ifndef GSH_TRANS_COMPLEXIFIED_SCALAR_FIELD_EXPRESSIONS_GUARD_H
 #define GSH_TRANS_COMPLEXIFIED_SCALAR_FIELD_EXPRESSIONS_GUARD_H
 
-#include <FFTWpp/Core>
 #include <concepts>
 #include <vector>
 

@@ -40,14 +40,15 @@ template <typename _Grid, RealOrComplexValued _Value>
 requires std::derived_from<_Grid, GridBase<_Grid>>
 class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
  public:
-  using Grid = _Grid;
-  using Value = _Value;
-  using Int = typename Internal::Traits<ScalarField<Grid, Value>>::Int;
-  using Real = typename Internal::Traits<ScalarField<Grid, Value>>::Real;
-  using Complex = typename Internal::Traits<ScalarField<Grid, Value>>::Complex;
-  using Scalar = typename Internal::Traits<ScalarField<Grid, Value>>::Scalar;
+  using Grid = typename Internal::Traits<ScalarField<_Grid, _Value>>::Grid;
+  using Value = typename Internal::Traits<ScalarField<_Grid, _Value>>::Value;
+  using Int = typename Internal::Traits<ScalarField<_Grid, _Value>>::Int;
+  using Real = typename Internal::Traits<ScalarField<_Grid, _Value>>::Real;
+  using Complex =
+      typename Internal::Traits<ScalarField<_Grid, _Value>>::Complex;
+  using Scalar = typename Internal::Traits<ScalarField<_Grid, _Value>>::Scalar;
   using Writeable =
-      typename Internal::Traits<ScalarField<Grid, Value>>::Writeable;
+      typename Internal::Traits<ScalarField<_Grid, _Value>>::Writeable;
 
   // Return the grid.
   auto GetGrid() const { return _grid; }
@@ -123,4 +124,4 @@ using ComplexScalarField = ScalarField<Grid, ComplexValued>;
 
 }  // namespace GSHTrans
 
-#endif  // namespace GSHTrans
+#endif  // GSH_TRANS_SCALAR_FIELD_GUARD_H

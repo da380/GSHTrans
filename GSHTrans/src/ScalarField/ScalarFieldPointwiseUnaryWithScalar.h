@@ -1,7 +1,6 @@
 #ifndef GSH_TRANS_SCALAR_FIELD_POINTWISE_UNARY_WITH_SCALAR_GUARD_H
 #define GSH_TRANS_SCALAR_FIELD_POINTWISE_UNARY_WITH_SCALAR_GUARD_H
 
-#include <FFTWpp/Core>
 #include <concepts>
 #include <vector>
 

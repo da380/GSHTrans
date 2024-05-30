@@ -3,6 +3,7 @@
 
 #include "src/FieldBase.h"
 #include "src/ScalarField/ComplexifiedScalarField.h"
+#include "src/ScalarField/ConstantScalarField.h"
 #include "src/ScalarField/ScalarField.h"
 #include "src/ScalarField/ScalarFieldBase.h"
 #include "src/ScalarField/ScalarFieldOverloads.h"

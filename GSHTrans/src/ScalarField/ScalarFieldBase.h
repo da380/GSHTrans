@@ -1,11 +1,8 @@
 #ifndef GSH_TRANS_SCALAR_FIELD_BASE_GUARD_H
 #define GSH_TRANS_SCALAR_FIELD_BASE_GUARD_H
 
-#include <FFTWpp/Core>
 #include <concepts>
 #include <iostream>
-#include <limits>
-#include <vector>
 
 #include "../Concepts.h"
 #include "../FieldBase.h"
