@@ -23,11 +23,7 @@ int main() {
 
   auto f = RealScalarField(grid, [](auto theta, auto phi) { return 1; });
 
-  auto g = Complexify(f);
+  auto h = Complexify(f);
 
-  f(4, 3) = 3;
-
-  auto h = -f;
-
-  h.Print();
+  std::cout << L2Norm(h) << std::endl;
 }

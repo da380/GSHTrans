@@ -3,10 +3,12 @@
 
 #include "src/FieldBase.h"
 #include "src/ScalarField/ComplexifiedScalarField.h"
-#include "src/ScalarField/PointWiseUnaryScalarField.h"
 #include "src/ScalarField/ScalarField.h"
 #include "src/ScalarField/ScalarFieldBase.h"
 #include "src/ScalarField/ScalarFieldOverloads.h"
+#include "src/ScalarField/ScalarFieldPointwiseBinary.h"
+#include "src/ScalarField/ScalarFieldPointwiseUnary.h"
+#include "src/ScalarField/ScalarFieldPointwiseUnaryWithScalar.h"
 
 // #include "ScalarField"
 // #include "VectorField"
