@@ -178,11 +178,16 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
     return GetDerived();
   }
 
-  // Print the values.
-  void Print() const {
-    for (auto [iTheta, iPhi] : this->PointIndices()) {
-      std::cout << operator()(iTheta, iPhi) << std::endl;
-    }
+  friend std::ostream& operator<<(std::ostream& os,
+                                  const ScalarFieldBase<Derived>& u) {
+    auto indices = u.PointIndices();
+    auto first = indices | std::ranges::views::reverse |
+                 std::ranges::views::drop(1) | std::ranges::views::reverse;
+    auto last =
+        indices | std::ranges::views::reverse | std::ranges::views::take(1);
+    for (auto [iTheta, iPhi] : first) os << u(iTheta, iPhi) << std::endl;
+    for (auto [iTheta, iPhi] : last) os << u(iTheta, iPhi);
+    return os;
   }
 
  private:

@@ -1,93 +1,195 @@
-#ifndef GSH_TRANS_VECTOR_FIELD_BASE_GUARD_H
-#define GSH_TRANS_VECTOR_FIELD_BASE_GUARD_H
+#ifndef GSH_TRANS_SCALAR_FIELD_BASE_GUARD_H
+#define GSH_TRANS_SCALAR_FIELD_BASE_GUARD_H
 
-#include <FFTWpp/Core>
 #include <concepts>
 #include <iostream>
-#include <vector>
 
 #include "../Concepts.h"
 #include "../FieldBase.h"
 #include "../GridBase.h"
-#include "../ScalarField/ScalarFieldBase.h"
 
 namespace GSHTrans {
 
-//-------------------------------------------------//
-//               Define the base class             //
-//-------------------------------------------------//
-template <typename _Derived>
-class VectorFieldBase : public FieldBase<VectorFieldBase<_Derived>> {
+namespace Internal {}  // namespace Internal
+
+template <typename Derived>
+class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
  public:
-  using Int = typename FieldBase<VectorFieldBase<_Derived>>::Int;
+  using Int = typename Internal::Traits<Derived>::Int;
+  using Grid = typename Internal::Traits<Derived>::Grid;
+  using Value = typename Internal::Traits<Derived>::Value;
+  using Real = typename Internal::Traits<Derived>::Real;
+  using Complex = typename Internal::Traits<Derived>::Complex;
+  using Scalar = typename Internal::Traits<Derived>::Scalar;
+  using Writeable = typename Internal::Traits<Derived>::Writeable;
 
-  // Methods related to the grid.
-  auto GetGrid() const { return Derived().GetGrid(); }
+  // Return the grid.
+  auto GetGrid() const { return GetDerived().GetGrid(); }
 
-  // Methods related to the data.
-  auto CanonicalIndices() const { return std::ranges::views::iota(-1, 2); }
-
-  void CheckCanonicalIndices(Int alpha) const { assert(std::abs(alpha) <= 1); }
-
-  auto operator()(Int alpha, Int iTheta, Int iPhi) const {
-    return Derived().operator()(alpha, iTheta, iPhi);
+  // Read access to data.
+  auto operator()(Int iTheta, Int iPhi) const {
+    return GetDerived().operator()(iTheta, iPhi);
   }
-  auto operator()(Int alpha) const { return Derived().operator()(alpha); }
 
+  // Write access to data.
+  auto& operator()(Int iTheta, Int iPhi)
+  requires Writeable::value
+  {
+    return GetDerived().operator()(iTheta, iPhi);
+  }
+
+  // Assign values from another field.
+  template <typename OtherDerived>
+  requires Writeable::value &&
+           std::convertible_to<typename OtherDerived::Scalar, Scalar>
+  auto& operator=(const ScalarFieldBase<OtherDerived>& other) {
+    assert(other.FieldSize() == this->FieldSize());
+    for (auto [iTheta, iPhi] : this->PointIndices()) {
+      this->operator()(iTheta, iPhi) = other(iTheta, iPhi);
+    }
+    return GetDerived();
+  }
+
+  template <typename OtherDerived>
+  requires Writeable::value &&
+           std::convertible_to<typename OtherDerived::Scalar, Scalar>
+  auto& operator=(ScalarFieldBase<OtherDerived>&& other) {
+    *this = other;
+    return GetDerived();
+  }
+
+  // Compound plus assigment with other field.
+  template <typename OtherDerived>
+  requires Writeable::value &&
+           std::convertible_to<typename OtherDerived::Scalar, Scalar>
+  auto& operator+=(const ScalarFieldBase<OtherDerived>& other) {
+    assert(other.FieldSize() == this->FieldSize());
+    for (auto [iTheta, iPhi] : this->PointIndices()) {
+      this->operator()(iTheta, iPhi) += other(iTheta, iPhi);
+    }
+    return GetDerived();
+  }
+
+  template <typename OtherDerived>
+  requires Writeable::value &&
+           std::convertible_to<typename OtherDerived::Scalar, Scalar>
+  auto& operator+=(ScalarFieldBase<OtherDerived>&& other) {
+    *this += other;
+    return GetDerived();
+  }
+
+  // Compound plus assigment with scalar.
+  auto& operator+=(Scalar s)
+  requires Writeable::value
+  {
+    for (auto [iTheta, iPhi] : this->PointIndices()) {
+      this->operator()(iTheta, iPhi) += s;
+    }
+    return GetDerived();
+  }
+
+  // Compound minus assigment with other field.
+  template <typename OtherDerived>
+  requires Writeable::value &&
+           std::convertible_to<typename OtherDerived::Scalar, Scalar>
+  auto& operator-=(const ScalarFieldBase<OtherDerived>& other) {
+    assert(other.FieldSize() == this->FieldSize());
+    for (auto [iTheta, iPhi] : this->PointIndices()) {
+      this->operator()(iTheta, iPhi) -= other(iTheta, iPhi);
+    }
+    return GetDerived();
+  }
+
+  template <typename OtherDerived>
+  requires Writeable::value &&
+           std::convertible_to<typename OtherDerived::Scalar, Scalar>
+  auto& operator-=(ScalarFieldBase<OtherDerived>&& other) {
+    *this -= other;
+    return GetDerived();
+  }
+
+  // Compound minus assigment with scalar.
+  auto& operator-=(Scalar s)
+  requires Writeable::value
+  {
+    for (auto [iTheta, iPhi] : this->PointIndices()) {
+      this->operator()(iTheta, iPhi) -= s;
+    }
+    return GetDerived();
+  }
+
+  // Compound multiply assigment with other field.
+  template <typename OtherDerived>
+  requires Writeable::value &&
+           std::convertible_to<typename OtherDerived::Scalar, Scalar>
+  auto& operator*=(const ScalarFieldBase<OtherDerived>& other) {
+    assert(other.FieldSize() == this->FieldSize());
+    for (auto [iTheta, iPhi] : this->PointIndices()) {
+      this->operator()(iTheta, iPhi) *= other(iTheta, iPhi);
+    }
+    return GetDerived();
+  }
+
+  template <typename OtherDerived>
+  requires Writeable::value &&
+           std::convertible_to<typename OtherDerived::Scalar, Scalar>
+  auto& operator*=(ScalarFieldBase<OtherDerived>&& other) {
+    *this *= other;
+    return GetDerived();
+  }
+
+  // Compound multiply assigment with scalar.
+  auto& operator*=(Scalar s)
+  requires Writeable::value
+  {
+    for (auto [iTheta, iPhi] : this->PointIndices()) {
+      this->operator()(iTheta, iPhi) *= s;
+    }
+    return GetDerived();
+  }
+
+  // Compound divide assigment with other field.
+  template <typename OtherDerived>
+  requires Writeable::value &&
+           std::convertible_to<typename OtherDerived::Scalar, Scalar>
+  auto& operator/=(const ScalarFieldBase<OtherDerived>& other) {
+    assert(other.FieldSize() == this->FieldSize());
+    for (auto [iTheta, iPhi] : this->PointIndices()) {
+      this->operator()(iTheta, iPhi) /= other(iTheta, iPhi);
+    }
+    return GetDerived();
+  }
+
+  template <typename OtherDerived>
+  requires Writeable::value &&
+           std::convertible_to<typename OtherDerived::Scalar, Scalar>
+  auto& operator/=(ScalarFieldBase<OtherDerived>&& other) {
+    *this /= other;
+    return GetDerived();
+  }
+
+  // Compound multiply assigment with scalar.
+  auto& operator/=(Scalar s)
+  requires Writeable::value
+  {
+    for (auto [iTheta, iPhi] : this->PointIndices()) {
+      this->operator()(iTheta, iPhi) /= s;
+    }
+    return GetDerived();
+  }
+
+  // Print the values.
   void Print() const {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      for (auto alpha : CanonicalIndices()) {
-        std::cout << operator()(alpha, iTheta, iPhi) << " ";
-      }
-      std::cout << std::endl;
+      std::cout << operator()(iTheta, iPhi) << std::endl;
     }
   }
 
  private:
-  auto& Derived() const { return static_cast<const _Derived&>(*this); }
-  auto& Derived() { return static_cast<_Derived&>(*this); }
-};
-
-//-------------------------------------------------//
-//              Vector component view              //
-//-------------------------------------------------//
-template <typename Derived>
-class VectorFieldComponentView
-    : public ScalarFieldBase<VectorFieldComponentView<Derived>> {
- public:
-  using Int = typename ScalarFieldBase<VectorFieldComponentView<Derived>>::Int;
-  using Grid = typename Derived::Grid;
-  using Scalar = typename Derived::Scalar;
-  using Value = typename Derived::Value;
-  using Real = typename Derived::Real;
-  using Complex = typename Derived::Complex;
-
-  // Methods needed to inherit from ScalarField Base.
-  auto GetGrid() const { return _u.GetGrid(); }
-  auto operator()(Int iTheta, Int iPhi) const {
-    this->CheckPointIndices(iTheta, iPhi);
-    return _u(_alpha, iTheta, iPhi);
-  }
-
-  // Constructors.
-  VectorFieldComponentView(const VectorFieldBase<Derived>& u, Int alpha)
-      : _u{u}, _alpha{alpha} {
-    this->CheckCanonicalIndices(alpha);
-  }
-
-  VectorFieldComponentView(const VectorFieldComponentView&) = default;
-  VectorFieldComponentView(VectorFieldComponentView&&) = default;
-
-  // Assignment.
-  VectorFieldComponentView& operator=(const VectorFieldComponentView&) =
-      default;
-  VectorFieldComponentView& operator=(VectorFieldComponentView&&) = default;
-
- private:
-  const VectorFieldBase<Derived>& _u;
-  Int _alpha;
+  auto& GetDerived() const { return static_cast<const Derived&>(*this); }
+  auto& GetDerived() { return static_cast<Derived&>(*this); }
 };
 
 }  // namespace GSHTrans
 
-#endif  // GSH_TRANS_VECTOR_FIELD_BASE_GUARD_H
+#endif  // GSH_TRANS_SCALAR_FIELD_BASE_GUARD_H

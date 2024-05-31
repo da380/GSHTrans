@@ -251,6 +251,30 @@ auto operator*(ScalarFieldBase<Derived1>&& u1, ScalarFieldBase<Derived2>&& u2) {
   return u1 * u2;
 }
 
+// Division.
+template <typename Derived1, typename Derived2>
+auto operator/(const ScalarFieldBase<Derived1>& u1,
+               const ScalarFieldBase<Derived2>& u2) {
+  return ScalarFieldPointwiseBinary(u1, u2, std::divides<>());
+}
+
+template <typename Derived1, typename Derived2>
+auto operator/(const ScalarFieldBase<Derived1>& u1,
+               ScalarFieldBase<Derived2>&& u2) {
+  return u1 / u2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator/(ScalarFieldBase<Derived1>&& u1,
+               const ScalarFieldBase<Derived2>& u2) {
+  return u1 / u2;
+}
+
+template <typename Derived1, typename Derived2>
+auto operator/(ScalarFieldBase<Derived1>&& u1, ScalarFieldBase<Derived2>&& u2) {
+  return u1 / u2;
+}
+
 // Integation.
 template <typename Derived>
 auto Integrate(const ScalarFieldBase<Derived>& u) {

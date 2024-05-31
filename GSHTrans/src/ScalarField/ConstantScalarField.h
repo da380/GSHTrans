@@ -24,9 +24,9 @@ namespace Internal {
 
 template <typename _Grid, RealOrComplexValued _Value>
 struct Traits<ConstantScalarField<_Grid, _Value>> {
-  using Int = std::ptrdiff_t;
   using Grid = _Grid;
   using Value = _Value;
+  using Int = std::ptrdiff_t;
   using Real = typename Grid::Real;
   using Complex = typename Grid::Complex;
   using Scalar =
@@ -81,7 +81,7 @@ class ConstantScalarField
 
  private:
   _Grid _grid;
-  Scalar _s;
+  const Scalar _s;
 };
 
 // Type aliases for real and complex fields.

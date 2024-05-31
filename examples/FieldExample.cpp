@@ -25,7 +25,7 @@ int main() {
 
   auto g = RealConstantScalarField(grid, 1);
 
-  auto h = f + g;
+  auto h = 2 * f / (g + 1);
 
-  h.Print();
+  std::cout << h << std::endl;
 }
