@@ -54,13 +54,13 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   auto GetGrid() const { return _grid; }
 
   // Read access to data.
-  auto operator()(Int iTheta, Int iPhi) const {
+  auto operator[](Int iTheta, Int iPhi) const {
     this->CheckPointIndices(iTheta, iPhi);
     return _data[Index(iTheta, iPhi)];
   }
 
   // Write access to data.
-  auto& operator()(Int iTheta, Int iPhi) {
+  auto& operator[](Int iTheta, Int iPhi) {
     this->CheckPointIndices(iTheta, iPhi);
     return _data[Index(iTheta, iPhi)];
   }
@@ -85,7 +85,7 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   ScalarField(const ScalarFieldBase<Derived>& other)
       : ScalarField(other.GetGrid()) {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      this->operator()(iTheta, iPhi) = other(iTheta, iPhi);
+      this->operator[](iTheta, iPhi) = other(iTheta, iPhi);
     }
   }
 

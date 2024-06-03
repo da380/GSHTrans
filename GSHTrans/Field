@@ -1,6 +1,7 @@
 #ifndef GSH_TRANS_FIELD_MODULE_H
 #define GSH_TRANS_FIELD_MODULE_H
 
+// Scalar field files.
 #include "src/FieldBase.h"
 #include "src/ScalarField/ComplexifiedScalarField.h"
 #include "src/ScalarField/ConstantScalarField.h"
@@ -10,6 +11,11 @@
 #include "src/ScalarField/ScalarFieldPointwiseBinary.h"
 #include "src/ScalarField/ScalarFieldPointwiseUnary.h"
 #include "src/ScalarField/ScalarFieldPointwiseUnaryWithScalar.h"
+
+// Vector field files.
+#include "src/VectorField/CanonicalVector.h"
+#include "src/VectorField/VectorField.h"
+#include "src/VectorField/VectorFieldBase.h"
 
 // #include "ScalarField"
 // #include "VectorField"

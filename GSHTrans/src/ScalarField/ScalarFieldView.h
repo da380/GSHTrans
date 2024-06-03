@@ -28,7 +28,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
 
   // Methods needed to inherit from ScalarFieldView Base.
   auto GetGrid() const { return _grid; }
-  auto operator()(Int iTheta, Int iPhi) const {
+  auto operator[](Int iTheta, Int iPhi) const {
     this->CheckPointIndices(iTheta, iPhi);
     return _data[Index(iTheta, iPhi)];
   }

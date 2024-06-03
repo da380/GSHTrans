@@ -21,11 +21,13 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto f = RealScalarField(grid, [](auto theta, auto phi) { return 1; });
+  auto v = RealVectorField(grid);
 
-  auto g = RealConstantScalarField(grid, 1);
+  auto f = RealScalarField(grid, [](auto theta, auto phi) { return 2; });
 
-  auto h = 2 * f / (g + 1);
+  v[1, 2, 3] = 1;
 
-  std::cout << h << std::endl;
+  v /= 2;
+
+  std::cout << v << std::endl;
 }

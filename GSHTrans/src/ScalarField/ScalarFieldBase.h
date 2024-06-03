@@ -27,15 +27,15 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
   auto GetGrid() const { return GetDerived().GetGrid(); }
 
   // Read access to data.
-  auto operator()(Int iTheta, Int iPhi) const {
-    return GetDerived().operator()(iTheta, iPhi);
+  auto operator[](Int iTheta, Int iPhi) const {
+    return GetDerived()[iTheta, iPhi];
   }
 
   // Write access to data.
-  auto& operator()(Int iTheta, Int iPhi)
+  auto& operator[](Int iTheta, Int iPhi)
   requires Writeable::value
   {
-    return GetDerived().operator()(iTheta, iPhi);
+    return GetDerived()[iTheta, iPhi];
   }
 
   // Assign values from another field.
@@ -45,7 +45,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
   auto& operator=(const ScalarFieldBase<OtherDerived>& other) {
     assert(other.FieldSize() == this->FieldSize());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      this->operator()(iTheta, iPhi) = other(iTheta, iPhi);
+      operator[](iTheta, iPhi) = other(iTheta, iPhi);
     }
     return GetDerived();
   }
@@ -54,7 +54,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
   auto& operator=(ScalarFieldBase<OtherDerived>&& other) {
-    *this = other;
+    GetDerived() = other;
     return GetDerived();
   }
 
@@ -65,7 +65,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
   auto& operator+=(const ScalarFieldBase<OtherDerived>& other) {
     assert(other.FieldSize() == this->FieldSize());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      this->operator()(iTheta, iPhi) += other(iTheta, iPhi);
+      operator[](iTheta, iPhi) += other(iTheta, iPhi);
     }
     return GetDerived();
   }
@@ -74,7 +74,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
   auto& operator+=(ScalarFieldBase<OtherDerived>&& other) {
-    *this += other;
+    GetDerived() += other;
     return GetDerived();
   }
 
@@ -83,7 +83,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
   requires Writeable::value
   {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      this->operator()(iTheta, iPhi) += s;
+      operator[](iTheta, iPhi) += s;
     }
     return GetDerived();
   }
@@ -95,7 +95,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
   auto& operator-=(const ScalarFieldBase<OtherDerived>& other) {
     assert(other.FieldSize() == this->FieldSize());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      this->operator()(iTheta, iPhi) -= other(iTheta, iPhi);
+      operator[](iTheta, iPhi) -= other(iTheta, iPhi);
     }
     return GetDerived();
   }
@@ -104,7 +104,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
   auto& operator-=(ScalarFieldBase<OtherDerived>&& other) {
-    *this -= other;
+    GetDerived() -= other;
     return GetDerived();
   }
 
@@ -113,7 +113,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
   requires Writeable::value
   {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      this->operator()(iTheta, iPhi) -= s;
+      operator[](iTheta, iPhi) -= s;
     }
     return GetDerived();
   }
@@ -125,7 +125,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
   auto& operator*=(const ScalarFieldBase<OtherDerived>& other) {
     assert(other.FieldSize() == this->FieldSize());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      this->operator()(iTheta, iPhi) *= other(iTheta, iPhi);
+      operator[](iTheta, iPhi) *= other(iTheta, iPhi);
     }
     return GetDerived();
   }
@@ -134,7 +134,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
   auto& operator*=(ScalarFieldBase<OtherDerived>&& other) {
-    *this *= other;
+    GetDerived() *= other;
     return GetDerived();
   }
 
@@ -143,7 +143,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
   requires Writeable::value
   {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      this->operator()(iTheta, iPhi) *= s;
+      operator[](iTheta, iPhi) *= s;
     }
     return GetDerived();
   }
@@ -155,7 +155,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
   auto& operator/=(const ScalarFieldBase<OtherDerived>& other) {
     assert(other.FieldSize() == this->FieldSize());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      this->operator()(iTheta, iPhi) /= other(iTheta, iPhi);
+      operator[](iTheta, iPhi) /= other(iTheta, iPhi);
     }
     return GetDerived();
   }
@@ -164,20 +164,21 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
   auto& operator/=(ScalarFieldBase<OtherDerived>&& other) {
-    *this /= other;
+    GetDerived() /= other;
     return GetDerived();
   }
 
-  // Compound multiply assigment with scalar.
+  // Compound divide assigment with scalar.
   auto& operator/=(Scalar s)
   requires Writeable::value
   {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      this->operator()(iTheta, iPhi) /= s;
+      operator[](iTheta, iPhi) /= s;
     }
     return GetDerived();
   }
 
+  // Write values to ostream.
   friend std::ostream& operator<<(std::ostream& os,
                                   const ScalarFieldBase<Derived>& u) {
     auto indices = u.PointIndices();
@@ -185,8 +186,8 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
                  std::ranges::views::drop(1) | std::ranges::views::reverse;
     auto last =
         indices | std::ranges::views::reverse | std::ranges::views::take(1);
-    for (auto [iTheta, iPhi] : first) os << u(iTheta, iPhi) << std::endl;
-    for (auto [iTheta, iPhi] : last) os << u(iTheta, iPhi);
+    for (auto [iTheta, iPhi] : first) os << u[iTheta, iPhi] << std::endl;
+    for (auto [iTheta, iPhi] : last) os << u[iTheta, iPhi];
     return os;
   }
 

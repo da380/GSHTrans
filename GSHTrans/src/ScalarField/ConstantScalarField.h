@@ -60,7 +60,7 @@ class ConstantScalarField
   auto GetGrid() const { return _grid; }
 
   // Read access to data.
-  auto operator()(Int iTheta, Int iPhi) const {
+  auto operator[](Int iTheta, Int iPhi) const {
     this->CheckPointIndices(iTheta, iPhi);
     return _s;
   }

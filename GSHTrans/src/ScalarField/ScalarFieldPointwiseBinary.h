@@ -73,9 +73,9 @@ class ScalarFieldPointwiseBinary
 
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _u1.GetGrid(); }
-  auto operator()(Int iTheta, Int iPhi) const {
+  auto operator[](Int iTheta, Int iPhi) const {
     this->CheckPointIndices(iTheta, iPhi);
-    return _f(_u1(iTheta, iPhi), _u2(iTheta, iPhi));
+    return _f(_u1[iTheta, iPhi], _u2[iTheta, iPhi]);
   }
 
   // Constructors.
