@@ -16,7 +16,7 @@ namespace Internal {}  // namespace Internal
 
 template <typename Derived>
 class VectorFieldBase : public FieldBase<VectorFieldBase<Derived>>,
-                        public CanonicalVectorBase<VectorFieldBase<Derived>> {
+                        public CanonicalVectorBase {
  public:
   using Int = typename Internal::Traits<Derived>::Int;
   using Grid = typename Internal::Traits<Derived>::Grid;

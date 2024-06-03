@@ -74,7 +74,7 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
 
   // Construction from grid initialising values with a function.
   template <typename Function>
-  requires std::invocable<Function, Real, Real>
+  requires ScalarValuedFunction<Function, Real, Value>
   ScalarField(_Grid grid, Function&& f) : ScalarField(grid) {
     std::ranges::copy(_grid.InterpolateFunction(f), _data.begin());
   }
@@ -85,7 +85,7 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   ScalarField(const ScalarFieldBase<Derived>& other)
       : ScalarField(other.GetGrid()) {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      this->operator[](iTheta, iPhi) = other(iTheta, iPhi);
+      operator[](iTheta, iPhi) = other[iTheta, iPhi];
     }
   }
 
@@ -100,6 +100,9 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   // Default copy and move assigment.
   ScalarField& operator=(const ScalarField&) = default;
   ScalarField& operator=(ScalarField&&) = default;
+
+  // Use assignment defined in base class.
+  using ScalarFieldBase<ScalarField<_Grid, _Value>>::operator=;
 
   // Return view to the data.
   auto Data() { return std::ranges::views::all(_data); }

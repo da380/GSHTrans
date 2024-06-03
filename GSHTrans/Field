@@ -11,6 +11,7 @@
 #include "src/ScalarField/ScalarFieldPointwiseBinary.h"
 #include "src/ScalarField/ScalarFieldPointwiseUnary.h"
 #include "src/ScalarField/ScalarFieldPointwiseUnaryWithScalar.h"
+#include "src/ScalarField/ScalarFieldView.h"
 
 // Vector field files.
 #include "src/VectorField/CanonicalVector.h"

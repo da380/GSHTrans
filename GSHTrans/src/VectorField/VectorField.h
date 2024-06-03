@@ -78,7 +78,7 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
   // Construction from grid initialising values with a function that
   // returns a GSHTrans::Vector
   template <typename Function>
-  requires std::invocable<Function, Real, Real>
+  requires CanonicalVectorValuedFunction<Function, Real, Value>
   VectorField(_Grid grid, Function&& f) : VectorField(grid) {
     for (auto alpha : this->CanonicalIndices()) {
       for (auto [point, index] :

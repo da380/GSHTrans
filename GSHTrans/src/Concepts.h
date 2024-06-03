@@ -109,6 +109,17 @@ concept RealOrComplexFloatingPointRange = requires() {
   requires RealOrComplexFloatingPoint<std::ranges::range_value_t<T>>;
 };
 
+// Concept for scalar-valued functions.
+template <typename Function, typename Real, typename Value>
+concept ScalarValuedFunction = requires(Function f, Real theta, Real phi) {
+  requires RealFloatingPoint<Real>;
+  requires RealOrComplexValued<Value>;
+  {
+    f(theta, phi)
+  } -> std::convertible_to<std::conditional_t<std::same_as<Value, RealValued>,
+                                              Real, std::complex<Real>>>;
+};
+
 }  // namespace GSHTrans
 
 #endif  //  GSH_TRANS_CONCEPTS_GUARD_H

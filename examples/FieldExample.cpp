@@ -21,13 +21,17 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto v = RealVectorField(grid);
+  auto data = std::vector<Real>(grid.FieldSize());
+
+  auto v = RealVectorField(grid, [](auto theta, auto phi) {
+    return CanonicalVector<Real>{0, 1, 0};
+  });
 
   auto f = RealScalarField(grid, [](auto theta, auto phi) { return 2; });
 
-  v[1, 2, 3] = 1;
+  auto g = ScalarFieldView(grid, data);
 
-  v /= 2;
+  g = f;
 
   std::cout << v << std::endl;
 }

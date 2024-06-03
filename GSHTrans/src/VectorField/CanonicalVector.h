@@ -9,27 +9,21 @@
 
 namespace GSHTrans {
 
-template <typename Derived>
 class CanonicalVectorBase {
  public:
   using Int = std::ptrdiff_t;
   auto CanonicalIndices() const { return std::ranges::views::iota(-1, 2); }
   void CheckCanonicalIndices(Int alpha) const { assert(std::abs(alpha) <= 1); }
-
- private:
-  auto& GetDerived() const { return static_cast<const Derived&>(*this); }
-  auto& GetDerived() { return static_cast<Derived&>(*this); }
 };
 
-template <RealFloatingPoint _Real, RealOrComplexValued _Value>
-class CanonicalVector
-    : public CanonicalVectorBase<CanonicalVector<_Real, _Value>> {
+template <RealOrComplexFloatingPoint _Scalar>
+class CanonicalVector : public CanonicalVectorBase {
  public:
   using Int = std::ptrdiff_t;
-  using Real = _Real;
-  using Value = _Value;
-  using Scalar = std::conditional_t<std::same_as<Value, RealValued>, Real,
-                                    std::complex<Real>>;
+  using Scalar = _Scalar;
+
+  using Value =
+      std::conditional_t<RealFloatingPoint<Scalar>, RealValued, ComplexValued>;
 
   CanonicalVector() = default;
   constexpr CanonicalVector(Scalar m, Scalar z, Scalar p) : _data{m, z, p} {}
@@ -64,6 +58,25 @@ class CanonicalVector
  private:
   std::array<Scalar, 3> _data;
 };
+
+// Concept for vector-valued functions
+template <typename Function, typename Real, typename Value>
+concept CanonicalVectorValuedFunction =
+    requires(Function f, Real theta, Real phi) {
+      requires RealFloatingPoint<Real>;
+      requires RealOrComplexValued<Value>;
+      {
+        f(theta, phi)
+      } -> std::same_as<CanonicalVector<std::conditional_t<
+            std::same_as<RealValued, Value>, Real, std::complex<Real>>>>;
+    };
+
+// Type aliases for real and complex vectors.
+template <RealFloatingPoint Real>
+using RealCanonicalVector = CanonicalVector<Real>;
+
+template <RealFloatingPoint Real>
+using ComplexCanonicalVector = CanonicalVector<std::complex<Real>>;
 
 }  // namespace GSHTrans
 
