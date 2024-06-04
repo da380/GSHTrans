@@ -43,7 +43,6 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
   auto& operator=(const ScalarFieldBase<OtherDerived>& other) {
-    std::cout << "Hi!\n";
     assert(other.FieldSize() == this->FieldSize());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) = other[iTheta, iPhi];

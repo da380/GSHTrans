@@ -33,5 +33,9 @@ int main() {
 
   g = f;
 
+  v[-1] = 2 * f;
+
+  v[1] = v[-1] / 2;
+
   std::cout << v << std::endl;
 }

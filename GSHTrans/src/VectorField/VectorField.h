@@ -12,6 +12,8 @@
 #include "../GridBase.h"
 #include "../ScalarField/ScalarFieldBase.h"
 #include "VectorFieldBase.h"
+#include "VectorFieldComponent.h"
+#include "VectorFieldConstComponent.h"
 
 namespace GSHTrans {
 
@@ -66,6 +68,20 @@ class VectorField : public VectorFieldBase<VectorField<_Grid, _Value>> {
     this->CheckCanonicalIndices(alpha);
     this->CheckPointIndices(iTheta, iPhi);
     return _data[Index(alpha, iTheta, iPhi)];
+  }
+
+  // Return read-write access component
+  auto operator[](Int alpha)
+  requires Writeable::value
+  {
+    this->CheckCanonicalIndices(alpha);
+    return VectorFieldComponent(*this, alpha);
+  }
+
+  // Return read access component
+  auto operator[](Int alpha) const {
+    this->CheckCanonicalIndices(alpha);
+    return VectorFieldConstComponent(*this, alpha);
   }
 
   // Default constructor.

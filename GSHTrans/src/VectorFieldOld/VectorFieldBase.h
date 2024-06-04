@@ -70,7 +70,7 @@ class VectorFieldComponentView
   }
 
   // Constructors.
-  VectorFieldComponentView(const VectorFieldBase<Derived>& u, Int alpha)
+  VectorFieldComponentView(VectorFieldBase<Derived>& u, Int alpha)
       : _u{u}, _alpha{alpha} {
     this->CheckCanonicalIndices(alpha);
   }
@@ -84,7 +84,7 @@ class VectorFieldComponentView
   VectorFieldComponentView& operator=(VectorFieldComponentView&&) = default;
 
  private:
-  const VectorFieldBase<Derived>& _u;
+  VectorFieldBase<Derived>& _u;
   Int _alpha;
 };
 
