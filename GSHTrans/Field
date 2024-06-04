@@ -15,7 +15,7 @@
 
 // Vector field files.
 #include "src/VectorField/CanonicalVector.h"
-#include "src/VectorField/ConstantVectorField.h"
+#include "src/VectorField/ComplexifiedVectorField.h"
 #include "src/VectorField/VectorField.h"
 #include "src/VectorField/VectorFieldBase.h"
 #include "src/VectorField/VectorFieldComponent.h"
