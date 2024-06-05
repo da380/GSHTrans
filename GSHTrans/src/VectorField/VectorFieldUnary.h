@@ -1,5 +1,5 @@
-#ifndef GSH_TRANS_VECTOR_FIELD_POINTWISE_UNARY_GUARD_H
-#define GSH_TRANS_VECTOR_FIELD_POINTWISE_UNARY_GUARD_H
+#ifndef GSH_TRANS_VECTOR_FIELD_UNARY_GUARD_H
+#define GSH_TRANS_VECTOR_FIELD_UNARY_GUARD_H
 
 #include <concepts>
 #include <vector>
@@ -8,6 +8,7 @@
 #include "../FieldBase.h"
 #include "../GridBase.h"
 #include "VectorFieldBase.h"
+#include "VectorFieldConstComponent.h"
 
 namespace GSHTrans {
 

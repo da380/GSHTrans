@@ -1,5 +1,5 @@
-#ifndef GSH_TRANS_SCALAR_FIELD_POINTWISE_BINARY_GUARD_H
-#define GSH_TRANS_SCALAR_FIELD_POINTWISE_BINARY_GUARD_H
+#ifndef GSH_TRANS_SCALAR_FIELD_BINARY_GUARD_H
+#define GSH_TRANS_SCALAR_FIELD_BINARY_GUARD_H
 
 #include <concepts>
 #include <vector>
@@ -23,13 +23,13 @@ requires requires() {
                            typename Derived2::Scalar>,
       typename Derived1::Scalar>;
 }
-class ScalarFieldPointwiseBinary;
+class ScalarFieldBinary;
 
 // Set traits.
 namespace Internal {
 
 template <typename Derived1, typename Derived2, typename Function>
-struct Traits<ScalarFieldPointwiseBinary<Derived1, Derived2, Function>> {
+struct Traits<ScalarFieldBinary<Derived1, Derived2, Function>> {
   using Int = std::ptrdiff_t;
   using Grid = typename Derived1::Grid;
   using Real = typename Grid::Real;
@@ -52,24 +52,23 @@ requires requires() {
                            typename Derived2::Scalar>,
       typename Derived1::Scalar>;
 }
-class ScalarFieldPointwiseBinary
-    : public ScalarFieldBase<
-          ScalarFieldPointwiseBinary<Derived1, Derived2, Function>> {
+class ScalarFieldBinary
+    : public ScalarFieldBase<ScalarFieldBinary<Derived1, Derived2, Function>> {
  public:
   using Int = typename Internal::Traits<
-      ScalarFieldPointwiseBinary<Derived1, Derived2, Function>>::Int;
+      ScalarFieldBinary<Derived1, Derived2, Function>>::Int;
   using Grid = typename Internal::Traits<
-      ScalarFieldPointwiseBinary<Derived1, Derived2, Function>>::Grid;
+      ScalarFieldBinary<Derived1, Derived2, Function>>::Grid;
   using Value = typename Internal::Traits<
-      ScalarFieldPointwiseBinary<Derived1, Derived2, Function>>::Value;
+      ScalarFieldBinary<Derived1, Derived2, Function>>::Value;
   using Real = typename Internal::Traits<
-      ScalarFieldPointwiseBinary<Derived1, Derived2, Function>>::Real;
+      ScalarFieldBinary<Derived1, Derived2, Function>>::Real;
   using Complex = typename Internal::Traits<
-      ScalarFieldPointwiseBinary<Derived1, Derived2, Function>>::Complex;
+      ScalarFieldBinary<Derived1, Derived2, Function>>::Complex;
   using Scalar = typename Internal::Traits<
-      ScalarFieldPointwiseBinary<Derived1, Derived2, Function>>::Scalar;
+      ScalarFieldBinary<Derived1, Derived2, Function>>::Scalar;
   using Writeable = typename Internal::Traits<
-      ScalarFieldPointwiseBinary<Derived1, Derived2, Function>>::Writeable;
+      ScalarFieldBinary<Derived1, Derived2, Function>>::Writeable;
 
   // Methods needed to inherit from ScalarField Base.
   auto GetGrid() const { return _u1.GetGrid(); }
@@ -79,19 +78,19 @@ class ScalarFieldPointwiseBinary
   }
 
   // Constructors.
-  ScalarFieldPointwiseBinary() = delete;
-  ScalarFieldPointwiseBinary(const ScalarFieldBase<Derived1>& u1,
-                             const ScalarFieldBase<Derived2>& u2, Function f)
+  ScalarFieldBinary() = delete;
+  ScalarFieldBinary(const ScalarFieldBase<Derived1>& u1,
+                    const ScalarFieldBase<Derived2>& u2, Function f)
       : _u1{u1}, _u2{u2}, _f{f} {
     assert(_u1.FieldSize() == _u2.FieldSize());
   }
 
-  ScalarFieldPointwiseBinary(const ScalarFieldPointwiseBinary&) = default;
-  ScalarFieldPointwiseBinary(ScalarFieldPointwiseBinary&&) = default;
+  ScalarFieldBinary(const ScalarFieldBinary&) = default;
+  ScalarFieldBinary(ScalarFieldBinary&&) = default;
 
   // Assignment.
-  ScalarFieldPointwiseBinary& operator=(ScalarFieldPointwiseBinary&) = default;
-  ScalarFieldPointwiseBinary& operator=(ScalarFieldPointwiseBinary&&) = default;
+  ScalarFieldBinary& operator=(ScalarFieldBinary&) = default;
+  ScalarFieldBinary& operator=(ScalarFieldBinary&&) = default;
 
  private:
   const ScalarFieldBase<Derived1>& _u1;
@@ -101,4 +100,4 @@ class ScalarFieldPointwiseBinary
 
 }  // namespace GSHTrans
 
-#endif  // GSH_TRANS_SCALAR_FIELD_POINTWISE_Binary_GUARD_H
+#endif

@@ -7,10 +7,10 @@
 #include "src/ScalarField/ConstantScalarField.h"
 #include "src/ScalarField/ScalarField.h"
 #include "src/ScalarField/ScalarFieldBase.h"
+#include "src/ScalarField/ScalarFieldBinary.h"
+#include "src/ScalarField/ScalarFieldBinaryWithScalar.h"
 #include "src/ScalarField/ScalarFieldOverloads.h"
-#include "src/ScalarField/ScalarFieldPointwiseBinary.h"
-#include "src/ScalarField/ScalarFieldPointwiseUnary.h"
-#include "src/ScalarField/ScalarFieldPointwiseUnaryWithScalar.h"
+#include "src/ScalarField/ScalarFieldUnary.h"
 #include "src/ScalarField/ScalarFieldView.h"
 
 // Vector field files.
@@ -18,9 +18,11 @@
 #include "src/VectorField/ComplexifiedVectorField.h"
 #include "src/VectorField/VectorField.h"
 #include "src/VectorField/VectorFieldBase.h"
+#include "src/VectorField/VectorFieldBinary.h"
+#include "src/VectorField/VectorFieldBinaryWithScalar.h"
+#include "src/VectorField/VectorFieldBinaryWithScalarField.h"
 #include "src/VectorField/VectorFieldComponent.h"
-#include "src/VectorField/VectorFieldPointwiseUnary.h"
-#include "src/VectorField/VectorFieldPointwiseUnaryWithScalar.h"
+#include "src/VectorField/VectorFieldUnary.h"
 
 // #include "ScalarField"
 // #include "VectorField"
