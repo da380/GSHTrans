@@ -39,6 +39,16 @@ class VectorFieldBase : public FieldBase<VectorFieldBase<Derived>>,
     return GetDerived()[alpha, iTheta, iPhi];
   }
 
+  //  Read-write access to component.
+  auto operator[](Int alpha)
+  requires Writeable::value
+  {
+    return GetDerived()[alpha];
+  }
+
+  // Read access to component.
+  auto operator[](Int alpha) const { return GetDerived()[alpha]; }
+
   // Assign values from another field.
   template <typename OtherDerived>
   requires Writeable::value &&

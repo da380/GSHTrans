@@ -24,7 +24,7 @@ int main() {
   auto data = std::vector<Real>(grid.FieldSize());
 
   auto v = RealVectorField(grid, [](auto theta, auto phi) {
-    return CanonicalVector<Real>{0, 1, 0};
+    return CanonicalVector<Real>{1, 0, 1};
   });
 
   auto f = RealScalarField(grid, [](auto theta, auto phi) { return 2; });
@@ -33,7 +33,7 @@ int main() {
 
   g = f;
 
-  v[0] = 4 * g;
+  auto w = ComplexifiedVectorField<VectorField<Grid, RealValued>>(v);
 
-  std::cout << v << std::endl;
+  std::cout << w << std::endl;
 }

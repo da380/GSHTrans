@@ -19,6 +19,8 @@
 #include "src/VectorField/VectorField.h"
 #include "src/VectorField/VectorFieldBase.h"
 #include "src/VectorField/VectorFieldComponent.h"
+#include "src/VectorField/VectorFieldPointwiseUnary.h"
+#include "src/VectorField/VectorFieldPointwiseUnaryWithScalar.h"
 
 // #include "ScalarField"
 // #include "VectorField"

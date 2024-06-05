@@ -80,9 +80,6 @@ class VectorFieldConstComponent
       default;
   VectorFieldConstComponent& operator=(VectorFieldConstComponent&&) = default;
 
-  // Use assignment defined in base class.
-  using ScalarFieldBase<VectorFieldConstComponent<Derived>>::operator=;
-
  private:
   Int _alpha;
   const VectorFieldBase<Derived>& _v;
