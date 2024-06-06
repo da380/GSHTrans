@@ -77,8 +77,8 @@ class ScalarFieldBinaryWithScalar
 
   // Constructors.
   ScalarFieldBinaryWithScalar() = delete;
-  ScalarFieldBinaryWithScalar(const ScalarFieldBase<Derived>& u, Function f,
-                              Scalar s)
+  ScalarFieldBinaryWithScalar(const ScalarFieldBase<Derived>& u, Scalar s,
+                              Function&& f)
       : _u{u}, _f{f}, _s{s} {}
 
   ScalarFieldBinaryWithScalar(const ScalarFieldBinaryWithScalar&) = default;
@@ -92,7 +92,7 @@ class ScalarFieldBinaryWithScalar
 
  private:
   const ScalarFieldBase<Derived>& _u;
-  Function _f;
+  Function& _f;
   Scalar _s;
 };
 

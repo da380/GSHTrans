@@ -20,13 +20,13 @@ requires requires() {
       std::invoke_result_t<Function, typename Derived::Scalar>,
       typename Derived::Scalar>;
 }
-class VectorFieldPointwiseUnary;
+class VectorFieldUnary;
 
 // Set traits.
 namespace Internal {
 
 template <typename Derived, typename Function>
-struct Traits<VectorFieldPointwiseUnary<Derived, Function>> {
+struct Traits<VectorFieldUnary<Derived, Function>> {
   using Int = typename Derived::Int;
   using Grid = typename Derived::Grid;
   using Real = typename Grid::Real;
@@ -45,23 +45,23 @@ requires requires() {
       std::invoke_result_t<Function, typename Derived::Scalar>,
       typename Derived::Scalar>;
 }
-class VectorFieldPointwiseUnary
-    : public VectorFieldBase<VectorFieldPointwiseUnary<Derived, Function>> {
+class VectorFieldUnary
+    : public VectorFieldBase<VectorFieldUnary<Derived, Function>> {
  public:
-  using Int = typename Internal::Traits<
-      VectorFieldPointwiseUnary<Derived, Function>>::Int;
-  using Grid = typename Internal::Traits<
-      VectorFieldPointwiseUnary<Derived, Function>>::Grid;
-  using Value = typename Internal::Traits<
-      VectorFieldPointwiseUnary<Derived, Function>>::Value;
-  using Real = typename Internal::Traits<
-      VectorFieldPointwiseUnary<Derived, Function>>::Real;
-  using Complex = typename Internal::Traits<
-      VectorFieldPointwiseUnary<Derived, Function>>::Complex;
-  using Scalar = typename Internal::Traits<
-      VectorFieldPointwiseUnary<Derived, Function>>::Scalar;
-  using Writeable = typename Internal::Traits<
-      VectorFieldPointwiseUnary<Derived, Function>>::Writeable;
+  using Int =
+      typename Internal::Traits<VectorFieldUnary<Derived, Function>>::Int;
+  using Grid =
+      typename Internal::Traits<VectorFieldUnary<Derived, Function>>::Grid;
+  using Value =
+      typename Internal::Traits<VectorFieldUnary<Derived, Function>>::Value;
+  using Real =
+      typename Internal::Traits<VectorFieldUnary<Derived, Function>>::Real;
+  using Complex =
+      typename Internal::Traits<VectorFieldUnary<Derived, Function>>::Complex;
+  using Scalar =
+      typename Internal::Traits<VectorFieldUnary<Derived, Function>>::Scalar;
+  using Writeable =
+      typename Internal::Traits<VectorFieldUnary<Derived, Function>>::Writeable;
 
   // Methods needed to inherit from VectorField Base.
   auto GetGrid() const { return _u.GetGrid(); }
@@ -80,20 +80,20 @@ class VectorFieldPointwiseUnary
   }
 
   // Constructors.
-  VectorFieldPointwiseUnary() = delete;
-  VectorFieldPointwiseUnary(const VectorFieldBase<Derived>& u, Function f)
+  VectorFieldUnary() = delete;
+  VectorFieldUnary(const VectorFieldBase<Derived>& u, Function&& f)
       : _u{u}, _f{f} {}
 
-  VectorFieldPointwiseUnary(const VectorFieldPointwiseUnary&) = default;
-  VectorFieldPointwiseUnary(VectorFieldPointwiseUnary&&) = default;
+  VectorFieldUnary(const VectorFieldUnary&) = default;
+  VectorFieldUnary(VectorFieldUnary&&) = default;
 
   // Assignment.
-  VectorFieldPointwiseUnary& operator=(VectorFieldPointwiseUnary&) = default;
-  VectorFieldPointwiseUnary& operator=(VectorFieldPointwiseUnary&&) = default;
+  VectorFieldUnary& operator=(VectorFieldUnary&) = default;
+  VectorFieldUnary& operator=(VectorFieldUnary&&) = default;
 
  private:
   const VectorFieldBase<Derived>& _u;
-  Function _f;
+  Function& _f;
 };
 
 }  // namespace GSHTrans

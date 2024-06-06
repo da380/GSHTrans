@@ -24,16 +24,11 @@ int main() {
   auto data = std::vector<Real>(grid.FieldSize());
 
   auto v = RealVectorField(grid, [](auto theta, auto phi) {
-    return CanonicalVector<Real>{1, 0, 1};
+    return CanonicalVector<Real>{1, 2, 3};
   });
 
-  auto f = RealScalarField(grid, [](auto theta, auto phi) { return 2; });
+  auto f =
+      RealAbstractScalarField(grid, [](auto theta, auto phi) { return 2; });
 
-  auto g = ScalarFieldView(grid, data);
-
-  g = f;
-
-  auto w = ComplexifiedVectorField<VectorField<Grid, RealValued>>(v);
-
-  std::cout << w << std::endl;
+  std::cout << real(complex(v)) << std::endl;
 }

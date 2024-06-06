@@ -85,7 +85,7 @@ class VectorFieldBinaryWithScalar
 
   // Constructors.
   VectorFieldBinaryWithScalar() = delete;
-  VectorFieldBinaryWithScalar(const VectorFieldBase<Derived>& u, Function f,
+  VectorFieldBinaryWithScalar(const VectorFieldBase<Derived>& u, Function&& f,
                               Scalar s)
       : _u{u}, _f{f}, _s{s} {}
 
@@ -100,7 +100,7 @@ class VectorFieldBinaryWithScalar
 
  private:
   const VectorFieldBase<Derived>& _u;
-  Function _f;
+  Function& _f;
   Scalar _s;
 };
 

@@ -80,7 +80,7 @@ class ScalarFieldBinary
   // Constructors.
   ScalarFieldBinary() = delete;
   ScalarFieldBinary(const ScalarFieldBase<Derived1>& u1,
-                    const ScalarFieldBase<Derived2>& u2, Function f)
+                    const ScalarFieldBase<Derived2>& u2, Function&& f)
       : _u1{u1}, _u2{u2}, _f{f} {
     assert(_u1.FieldSize() == _u2.FieldSize());
   }
@@ -95,7 +95,7 @@ class ScalarFieldBinary
  private:
   const ScalarFieldBase<Derived1>& _u1;
   const ScalarFieldBase<Derived2>& _u2;
-  Function _f;
+  Function& _f;
 };
 
 }  // namespace GSHTrans

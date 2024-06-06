@@ -82,7 +82,7 @@ class ScalarFieldUnary
 
   // Constructors.
   ScalarFieldUnary() = delete;
-  ScalarFieldUnary(const ScalarFieldBase<Derived>& u, Function f)
+  ScalarFieldUnary(const ScalarFieldBase<Derived>& u, Function&& f)
       : _u{u}, _f{f} {}
 
   ScalarFieldUnary(const ScalarFieldUnary&) = default;
@@ -94,7 +94,7 @@ class ScalarFieldUnary
 
  private:
   const ScalarFieldBase<Derived>& _u;
-  Function _f;
+  Function& _f;
 };
 
 }  // namespace GSHTrans

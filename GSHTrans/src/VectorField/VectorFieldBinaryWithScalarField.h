@@ -1,5 +1,5 @@
-#ifndef GSH_TRANS_VECTOR_FIELD_BINARY_GUARD_H
-#define GSH_TRANS_VECTOR_FIELD_BINARY_GUARD_H
+#ifndef GSH_TRANS_VECTOR_FIELD_BINARY_WITH_SCALAR_FIELD_GUARD_H
+#define GSH_TRANS_VECTOR_FIELD_BINARY_WITH_SCALAR_FIELD_GUARD_H
 
 #include <concepts>
 #include <vector>
@@ -90,7 +90,7 @@ class VectorFieldBinaryWithScalarField
   VectorFieldBinaryWithScalarField() = delete;
   VectorFieldBinaryWithScalarField(const VectorFieldBase<Derived0>& u0,
                                    const ScalarFieldBase<Derived1>& u1,
-                                   Function f)
+                                   Function&& f)
       : _u0{u0}, _u1{u1}, _f{f} {}
 
   VectorFieldBinaryWithScalarField(const VectorFieldBinaryWithScalarField&) =
@@ -107,7 +107,7 @@ class VectorFieldBinaryWithScalarField
  private:
   const VectorFieldBase<Derived0>& _u0;
   const ScalarFieldBase<Derived1>& _u1;
-  Function _f;
+  Function& _f;
 };
 
 }  // namespace GSHTrans

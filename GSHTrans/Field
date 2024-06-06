@@ -3,7 +3,7 @@
 
 // Scalar field files.
 #include "src/FieldBase.h"
-#include "src/ScalarField/ComplexifiedScalarField.h"
+#include "src/ScalarField/AbstractScalarField.h"
 #include "src/ScalarField/ConstantScalarField.h"
 #include "src/ScalarField/ScalarField.h"
 #include "src/ScalarField/ScalarFieldBase.h"
@@ -14,14 +14,16 @@
 #include "src/ScalarField/ScalarFieldView.h"
 
 // Vector field files.
+#include "src/VectorField/AbstractVectorField.h"
 #include "src/VectorField/CanonicalVector.h"
-#include "src/VectorField/ComplexifiedVectorField.h"
 #include "src/VectorField/VectorField.h"
 #include "src/VectorField/VectorFieldBase.h"
 #include "src/VectorField/VectorFieldBinary.h"
 #include "src/VectorField/VectorFieldBinaryWithScalar.h"
 #include "src/VectorField/VectorFieldBinaryWithScalarField.h"
 #include "src/VectorField/VectorFieldComponent.h"
+#include "src/VectorField/VectorFieldOverloads.h"
+#include "src/VectorField/VectorFieldRealToComplex.h"
 #include "src/VectorField/VectorFieldUnary.h"
 
 // #include "ScalarField"

@@ -88,7 +88,7 @@ class VectorFieldBinary
   // Constructors.
   VectorFieldBinary() = delete;
   VectorFieldBinary(const VectorFieldBase<Derived0>& u0,
-                    const VectorFieldBase<Derived1>& u1, Function f)
+                    const VectorFieldBase<Derived1>& u1, Function&& f)
       : _u0{u0}, _u1{u1}, _f{f} {}
 
   VectorFieldBinary(const VectorFieldBinary&) = default;
@@ -101,7 +101,7 @@ class VectorFieldBinary
  private:
   const VectorFieldBase<Derived0>& _u0;
   const VectorFieldBase<Derived1>& _u1;
-  Function _f;
+  Function& _f;
 };
 
 }  // namespace GSHTrans

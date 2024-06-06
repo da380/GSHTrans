@@ -1,5 +1,5 @@
-#ifndef GSH_TRANS_COMPLEXIFIED_VECTOR_FIELD_GUARD_H
-#define GSH_TRANS_COMPLEXIFIED_VECTOR_FIELD_GUARD_H
+#ifndef GSH_TRANS_VECTOR_FIELD_REAL_TO_COMPLEX_GUARD_H
+#define GSH_TRANS_VECTOR_FIELD_REAL_TO_COMPLEX_GUARD_H
 
 #include <concepts>
 #include <vector>
@@ -19,13 +19,13 @@ requires requires() {
   requires std::same_as<typename Derived::Grid::MRange, All> &&
                std::same_as<typename Derived::Grid::NRange, All>;
 }
-class ComplexifiedVectorField;
+class VectorFieldRealToComplex;
 
 // Set traits.
 namespace Internal {
 
 template <typename Derived>
-struct Traits<ComplexifiedVectorField<Derived>> {
+struct Traits<VectorFieldRealToComplex<Derived>> {
   using Int = std::ptrdiff_t;
   using Grid = typename Derived::Grid;
   using Value = ComplexValued;
@@ -43,22 +43,22 @@ requires requires() {
   requires std::same_as<typename Derived::Grid::MRange, All> &&
                std::same_as<typename Derived::Grid::NRange, All>;
 }
-class ComplexifiedVectorField
-    : public VectorFieldBase<ComplexifiedVectorField<Derived>> {
+class VectorFieldRealToComplex
+    : public VectorFieldBase<VectorFieldRealToComplex<Derived>> {
  public:
-  using Int = typename Internal::Traits<ComplexifiedVectorField<Derived>>::Int;
+  using Int = typename Internal::Traits<VectorFieldRealToComplex<Derived>>::Int;
   using Grid =
-      typename Internal::Traits<ComplexifiedVectorField<Derived>>::Grid;
+      typename Internal::Traits<VectorFieldRealToComplex<Derived>>::Grid;
   using Value =
-      typename Internal::Traits<ComplexifiedVectorField<Derived>>::Value;
+      typename Internal::Traits<VectorFieldRealToComplex<Derived>>::Value;
   using Real =
-      typename Internal::Traits<ComplexifiedVectorField<Derived>>::Real;
+      typename Internal::Traits<VectorFieldRealToComplex<Derived>>::Real;
   using Complex =
-      typename Internal::Traits<ComplexifiedVectorField<Derived>>::Complex;
+      typename Internal::Traits<VectorFieldRealToComplex<Derived>>::Complex;
   using Scalar =
-      typename Internal::Traits<ComplexifiedVectorField<Derived>>::Scalar;
+      typename Internal::Traits<VectorFieldRealToComplex<Derived>>::Scalar;
   using Writeable =
-      typename Internal::Traits<ComplexifiedVectorField<Derived>>::Writeable;
+      typename Internal::Traits<VectorFieldRealToComplex<Derived>>::Writeable;
 
   // Return grid.
   auto GetGrid() const { return _u.GetGrid(); }
@@ -79,14 +79,15 @@ class ComplexifiedVectorField
   }
 
   // Constructors.
-  ComplexifiedVectorField(const VectorFieldBase<Derived>& u) : _u{u} {}
+  VectorFieldRealToComplex(const VectorFieldBase<Derived>& u) : _u{u} {}
 
-  ComplexifiedVectorField(const ComplexifiedVectorField&) = default;
-  ComplexifiedVectorField(ComplexifiedVectorField&&) = default;
+  VectorFieldRealToComplex(const VectorFieldRealToComplex&) = default;
+  VectorFieldRealToComplex(VectorFieldRealToComplex&&) = default;
 
   // Assignment.
-  ComplexifiedVectorField& operator=(const ComplexifiedVectorField&) = default;
-  ComplexifiedVectorField& operator=(ComplexifiedVectorField&&) = default;
+  VectorFieldRealToComplex& operator=(const VectorFieldRealToComplex&) =
+      default;
+  VectorFieldRealToComplex& operator=(VectorFieldRealToComplex&&) = default;
 
  private:
   const VectorFieldBase<Derived>& _u;
