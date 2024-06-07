@@ -65,7 +65,7 @@ class VectorFieldComplexToReal
     this->CheckCanonicalIndices(alpha);
     constexpr auto half = static_cast<Real>(1) / static_cast<Real>(2);
     auto u = half * (_u[alpha, iTheta, iPhi] +
-                     static_cast<Real>(MinusOneToPower(alpha)) *
+                     MinusOneToPower<Real>(alpha) *
                          std::conj(_u[-alpha, iTheta, iPhi]));
     return alpha < 0 ? std::imag(u) : std::real(u);
   }
@@ -77,6 +77,7 @@ class VectorFieldComplexToReal
   }
 
   // Constructors.
+  VectorFieldComplexToReal() = delete;
   VectorFieldComplexToReal(const VectorFieldBase<Derived>& u) : _u{u} {}
 
   VectorFieldComplexToReal(const VectorFieldComplexToReal&) = default;

@@ -79,6 +79,7 @@ class VectorFieldRealToComplex
   }
 
   // Constructors.
+  VectorFieldRealToComplex() = delete;
   VectorFieldRealToComplex(const VectorFieldBase<Derived>& u) : _u{u} {}
 
   VectorFieldRealToComplex(const VectorFieldRealToComplex&) = default;

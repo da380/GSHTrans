@@ -4,12 +4,10 @@
 namespace GSHTrans {
 
 // Returns (-1)^m for integer m.
-template <std::integral Int>
-constexpr auto MinusOneToPower(Int m) {
+template <typename Scalar = std::ptrdiff_t>
+constexpr auto MinusOneToPower(std::ptrdiff_t m) -> Scalar {
   return m % 2 ? -1 : 1;
 }
-
-template <RealOrComplexFloatingPoint
 
 }  // namespace GSHTrans
 

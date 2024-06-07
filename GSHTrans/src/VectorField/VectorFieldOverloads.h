@@ -15,6 +15,7 @@
 #include "VectorFieldBinaryWithScalar.h"
 #include "VectorFieldComplexToImag.h"
 #include "VectorFieldComplexToReal.h"
+#include "VectorFieldConjugate.h"
 #include "VectorFieldRealToComplex.h"
 #include "VectorFieldUnary.h"
 
@@ -70,13 +71,11 @@ auto imag(VectorFieldBase<Derived>&& u) {
   return imag(u);
 }
 
-/*
-
 // Complex conjugation.
 template <typename Derived>
 requires std::same_as<typename Derived::Value, ComplexValued>
 auto conj(const VectorFieldBase<Derived>& u) {
-  return VectorFieldUnary(u, [](auto x) { return std::conj(x); });
+  return VectorFieldConjugate(u);
 }
 
 template <typename Derived>
@@ -84,8 +83,6 @@ requires std::same_as<typename Derived::Value, ComplexValued>
 auto conj(VectorFieldBase<Derived>&& u) {
   return conj(u);
 }
-
-*/
 
 // Scalar multiplication.
 template <typename Derived>
@@ -190,8 +187,6 @@ auto operator/(VectorFieldBase<Derived0>&& u, ScalarFieldBase<Derived1>&& f) {
   return u / f;
 }
 
-/*
-
 // Addition.
 template <typename Derived1, typename Derived2>
 auto operator+(const VectorFieldBase<Derived1>& u1,
@@ -240,53 +235,7 @@ auto operator-(VectorFieldBase<Derived1>&& u1, VectorFieldBase<Derived2>&& u2) {
   return u1 - u2;
 }
 
-// Multiplication.
-template <typename Derived1, typename Derived2>
-auto operator*(const VectorFieldBase<Derived1>& u1,
-               const VectorFieldBase<Derived2>& u2) {
-  return VectorFieldBinary(u1, u2, std::multiplies<>());
-}
-
-template <typename Derived1, typename Derived2>
-auto operator*(const VectorFieldBase<Derived1>& u1,
-               VectorFieldBase<Derived2>&& u2) {
-  return u1 * u2;
-}
-
-template <typename Derived1, typename Derived2>
-auto operator*(VectorFieldBase<Derived1>&& u1,
-               const VectorFieldBase<Derived2>& u2) {
-  return u1 * u2;
-}
-
-template <typename Derived1, typename Derived2>
-auto operator*(VectorFieldBase<Derived1>&& u1, VectorFieldBase<Derived2>&& u2) {
-  return u1 * u2;
-}
-
-// Division.
-template <typename Derived1, typename Derived2>
-auto operator/(const VectorFieldBase<Derived1>& u1,
-               const VectorFieldBase<Derived2>& u2) {
-  return VectorFieldBinary(u1, u2, std::divides<>());
-}
-
-template <typename Derived1, typename Derived2>
-auto operator/(const VectorFieldBase<Derived1>& u1,
-               VectorFieldBase<Derived2>&& u2) {
-  return u1 / u2;
-}
-
-template <typename Derived1, typename Derived2>
-auto operator/(VectorFieldBase<Derived1>&& u1,
-               const VectorFieldBase<Derived2>& u2) {
-  return u1 / u2;
-}
-
-template <typename Derived1, typename Derived2>
-auto operator/(VectorFieldBase<Derived1>&& u1, VectorFieldBase<Derived2>&& u2) {
-  return u1 / u2;
-}
+/*
 
 // Integation.
 template <typename Derived>

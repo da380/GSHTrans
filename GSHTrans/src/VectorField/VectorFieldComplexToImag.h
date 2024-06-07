@@ -65,7 +65,7 @@ class VectorFieldComplexToImag
     this->CheckCanonicalIndices(alpha);
     constexpr auto half = static_cast<Real>(1) / static_cast<Real>(2);
     auto u = half * (_u[alpha, iTheta, iPhi] -
-                     static_cast<Real>(MinusOneToPower(alpha)) *
+                     MinusOneToPower<Real>(alpha) *
                          std::conj(_u[-alpha, iTheta, iPhi]));
     return alpha < 0 ? -std::real(u) : std::imag(u);
   }
@@ -77,6 +77,7 @@ class VectorFieldComplexToImag
   }
 
   // Constructors.
+  VectorFieldComplexToImag() = delete;
   VectorFieldComplexToImag(const VectorFieldBase<Derived>& u) : _u{u} {}
 
   VectorFieldComplexToImag(const VectorFieldComplexToImag&) = default;

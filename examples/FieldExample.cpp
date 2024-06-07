@@ -30,5 +30,6 @@ int main() {
   auto f =
       RealAbstractScalarField(grid, [](auto theta, auto phi) { return 2; });
 
-  std::cout << imag(complex(v)) << std::endl;
+  auto i = Complex{0, 1};
+  std::cout << f * v << std::endl;
 }

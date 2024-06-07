@@ -24,6 +24,7 @@
 #include "src/VectorField/VectorFieldComplexToImag.h"
 #include "src/VectorField/VectorFieldComplexToReal.h"
 #include "src/VectorField/VectorFieldComponent.h"
+#include "src/VectorField/VectorFieldConjugate.h"
 #include "src/VectorField/VectorFieldOverloads.h"
 #include "src/VectorField/VectorFieldRealToComplex.h"
 #include "src/VectorField/VectorFieldUnary.h"
