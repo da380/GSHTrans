@@ -67,9 +67,9 @@ class VectorFieldRealToComplex
   auto operator[](Int alpha, Int iTheta, Int iPhi) const -> Complex {
     this->CheckPointIndices(iTheta, iPhi);
     this->CheckCanonicalIndices(alpha);
-    constexpr auto i = Complex{0, 1};
     return alpha == 0 ? _u[0, iTheta, iPhi]
-                      : alpha * _u[1, iTheta, iPhi] + i * _u[-1, iTheta, iPhi];
+                      : alpha * _u[1, iTheta, iPhi] +
+                            Complex{0, 1} * _u[-1, iTheta, iPhi];
   }
 
   // Read access to component.

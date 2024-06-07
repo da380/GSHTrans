@@ -9,6 +9,8 @@ constexpr auto MinusOneToPower(Int m) {
   return m % 2 ? -1 : 1;
 }
 
+template <RealOrComplexFloatingPoint
+
 }  // namespace GSHTrans
 
 #endif  // GSH_TRANS_UTILITY_GUARD_H

@@ -21,6 +21,8 @@
 #include "src/VectorField/VectorFieldBinary.h"
 #include "src/VectorField/VectorFieldBinaryWithScalar.h"
 #include "src/VectorField/VectorFieldBinaryWithScalarField.h"
+#include "src/VectorField/VectorFieldComplexToImag.h"
+#include "src/VectorField/VectorFieldComplexToReal.h"
 #include "src/VectorField/VectorFieldComponent.h"
 #include "src/VectorField/VectorFieldOverloads.h"
 #include "src/VectorField/VectorFieldRealToComplex.h"

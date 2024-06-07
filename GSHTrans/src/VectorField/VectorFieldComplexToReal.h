@@ -26,7 +26,7 @@ template <typename Derived>
 struct Traits<VectorFieldComplexToReal<Derived>> {
   using Int = std::ptrdiff_t;
   using Grid = typename Derived::Grid;
-  using Value = ComplexValued;
+  using Value = RealValued;
   using Real = typename Grid::Real;
   using Complex = typename Grid::Complex;
   using Scalar = Real;
@@ -64,10 +64,10 @@ class VectorFieldComplexToReal
     this->CheckPointIndices(iTheta, iPhi);
     this->CheckCanonicalIndices(alpha);
     constexpr auto half = static_cast<Real>(1) / static_cast<Real>(2);
-    return alpha == 0 ? std::real(_u[0, iTheta, iPhi])
-           : alpha < 0
-               ? half * std::imag(_u[1, iTheta, iPhi] + _u[-1, iTheta, iPhi])
-               : half * std::real(_u[1, iTheta, iPhi] - _u[-1, iTheta, iPhi]);
+    auto u = half * (_u[alpha, iTheta, iPhi] +
+                     static_cast<Real>(MinusOneToPower(alpha)) *
+                         std::conj(_u[-alpha, iTheta, iPhi]));
+    return alpha < 0 ? std::imag(u) : std::real(u);
   }
 
   // Read access to component.

@@ -13,6 +13,7 @@
 #include "VectorFieldBase.h"
 #include "VectorFieldBinary.h"
 #include "VectorFieldBinaryWithScalar.h"
+#include "VectorFieldComplexToImag.h"
 #include "VectorFieldComplexToReal.h"
 #include "VectorFieldRealToComplex.h"
 #include "VectorFieldUnary.h"
@@ -56,13 +57,11 @@ auto real(VectorFieldBase<Derived>&& u) {
   return real(u);
 }
 
-/*
-
 // Imaginary part.
 template <typename Derived>
 requires std::same_as<typename Derived::Value, ComplexValued>
 auto imag(const VectorFieldBase<Derived>& u) {
-  return VectorFieldUnary(u, [](auto x) { return std::imag(x); });
+  return VectorFieldComplexToImag(u);
 }
 
 template <typename Derived>
@@ -70,6 +69,8 @@ requires std::same_as<typename Derived::Value, ComplexValued>
 auto imag(VectorFieldBase<Derived>&& u) {
   return imag(u);
 }
+
+/*
 
 // Complex conjugation.
 template <typename Derived>
