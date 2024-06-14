@@ -12,6 +12,7 @@
 #include "../GridBase.h"
 #include "VectorFieldBase.h"
 #include "VectorFieldBinary.h"
+#include "VectorFieldBinaryToScalarField.h"
 #include "VectorFieldBinaryWithScalar.h"
 #include "VectorFieldComplexToImag.h"
 #include "VectorFieldComplexToReal.h"
@@ -233,6 +234,20 @@ auto operator-(VectorFieldBase<Derived1>&& u1,
 template <typename Derived1, typename Derived2>
 auto operator-(VectorFieldBase<Derived1>&& u1, VectorFieldBase<Derived2>&& u2) {
   return u1 - u2;
+}
+
+// Inner product.
+template <typename Derived0, typename Derived1>
+auto InnerProduct(VectorFieldBase<Derived0>& u0,
+                  VectorFieldBase<Derived1>& u1) {
+  return VectorFieldBinaryToScalarField(
+      u0, u1, [](auto m0, auto z0, auto p0, auto m1, auto z1, auto p1) {
+        if constexpr (std::same_as<typename Derived0::Value, RealValued>) {
+          return 0;
+        } else {
+          return std::conj(m0) * m1 + std::conj(z0) * z1 + std::conj(p0) * p1;
+        }
+      });
 }
 
 /*

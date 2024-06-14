@@ -31,5 +31,5 @@ int main() {
       RealAbstractScalarField(grid, [](auto theta, auto phi) { return 2; });
 
   auto i = Complex{0, 1};
-  std::cout << f * v << std::endl;
+  std::cout << f * v + v / 2 << std::endl;
 }

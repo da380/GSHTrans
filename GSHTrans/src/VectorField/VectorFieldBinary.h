@@ -72,8 +72,7 @@ class VectorFieldBinary
   // Methods needed to inherit from VectorField Base.
   auto GetGrid() const { return _u0.GetGrid(); }
 
-  // Read access to data.
-  auto operator[](Int alpha, Int iTheta, Int iPhi) const -> Scalar {
+  auto operator[](Int alpha, Int iTheta, Int iPhi) const {
     this->CheckCanonicalIndices(alpha);
     this->CheckPointIndices(iTheta, iPhi);
     return _f(_u0[alpha, iTheta, iPhi], _u1[alpha, iTheta, iPhi]);

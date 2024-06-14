@@ -19,6 +19,7 @@
 #include "src/VectorField/VectorField.h"
 #include "src/VectorField/VectorFieldBase.h"
 #include "src/VectorField/VectorFieldBinary.h"
+#include "src/VectorField/VectorFieldBinaryToScalarField.h"
 #include "src/VectorField/VectorFieldBinaryWithScalar.h"
 #include "src/VectorField/VectorFieldBinaryWithScalarField.h"
 #include "src/VectorField/VectorFieldComplexToImag.h"
