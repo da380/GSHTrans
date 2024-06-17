@@ -236,71 +236,118 @@ auto operator-(VectorFieldBase<Derived1>&& u1, VectorFieldBase<Derived2>&& u2) {
   return u1 - u2;
 }
 
-// Inner product.
+// Pointwise inner product.
 template <typename Derived0, typename Derived1>
-auto InnerProduct(VectorFieldBase<Derived0>& u0,
-                  VectorFieldBase<Derived1>& u1) {
+auto InnerProduct(const VectorFieldBase<Derived0>& u0,
+                  const VectorFieldBase<Derived1>& u1) {
   return VectorFieldBinaryToScalarField(
       u0, u1, [](auto m0, auto z0, auto p0, auto m1, auto z1, auto p1) {
         if constexpr (std::same_as<typename Derived0::Value, RealValued>) {
-          return 0;
+          return 2 * m0 * m1 + z0 * z1 + 2 * p0 * p1;
         } else {
           return std::conj(m0) * m1 + std::conj(z0) * z1 + std::conj(p0) * p1;
         }
       });
 }
 
-/*
-
-// Integation.
-template <typename Derived>
-auto Integrate(const VectorFieldBase<Derived>& u) {
-  using Vector = typename Derived::Vector;
-  auto w = u.Weights();
-  auto i = 0;
-  auto sum = Vector{0};
-  for (auto [iTheta, iPhi] : u.PointIndices()) {
-    sum += u(iTheta, iPhi) * w[i++];
-  }
-  return sum;
+template <typename Derived0, typename Derived1>
+auto InnerProduct(VectorFieldBase<Derived0>&& u0,
+                  const VectorFieldBase<Derived1>& u1) {
+  return InnerProduct(u0, u1);
 }
 
-template <typename Derived>
-auto Integrate(VectorFieldBase<Derived>&& u) {
-  return Integrate(u);
+template <typename Derived0, typename Derived1>
+auto InnerProduct(const VectorFieldBase<Derived0>& u0,
+                  VectorFieldBase<Derived1>&& u1) {
+  return InnerProduct(u0, u1);
+}
+
+template <typename Derived0, typename Derived1>
+auto InnerProduct(VectorFieldBase<Derived0>&& u0,
+                  VectorFieldBase<Derived1>&& u1) {
+  return InnerProduct(u0, u1);
+}
+
+// Pointwise duality product.
+template <typename Derived0, typename Derived1>
+auto DualityProduct(const VectorFieldBase<Derived0>& u0,
+                    const VectorFieldBase<Derived1>& u1) {
+  return VectorFieldBinaryToScalarField(
+      u0, u1, [](auto m0, auto z0, auto p0, auto m1, auto z1, auto p1) {
+        if constexpr (std::same_as<typename Derived0::Value, RealValued>) {
+          return -2 * m0 * m1 + z0 * z1 - 2 * p0 * p1;
+        } else {
+          return -m0 * p1 + z0 * z1 - p0 * m1;
+        }
+      });
+}
+
+template <typename Derived0, typename Derived1>
+auto DualityProduct(VectorFieldBase<Derived0>&& u0,
+                    const VectorFieldBase<Derived1>& u1) {
+  return DualityProduct(u0, u1);
+}
+
+template <typename Derived0, typename Derived1>
+auto DualityProduct(const VectorFieldBase<Derived0>& u0,
+                    VectorFieldBase<Derived1>&& u1) {
+  return DualityProduct(u0, u1);
+}
+
+template <typename Derived0, typename Derived1>
+auto DualityProduct(VectorFieldBase<Derived0>&& u0,
+                    VectorFieldBase<Derived1>&& u1) {
+  return DualityProduct(u0, u1);
 }
 
 // L2 inner product.
-template <typename Derived1, typename Derived2>
-requires std::same_as<typename Derived1::Value, typename Derived2::Value>
-auto L2InnerProduct(const VectorFieldBase<Derived1>& u1,
-                    const VectorFieldBase<Derived2>& u2) {
-  if constexpr (std::same_as<typename Derived1::Value, RealValued>) {
-    return Integrate(u1 * u2);
-  } else {
-    return Integrate(conj(u1) * u2);
-  }
+template <typename Derived0, typename Derived1>
+auto L2InnerProduct(const VectorFieldBase<Derived0>& u0,
+                    const VectorFieldBase<Derived1>& u1) {
+  return Integrate(InnerProduct(u0, u1));
 }
 
-template <typename Derived1, typename Derived2>
-requires std::same_as<typename Derived1::Value, typename Derived2::Value>
-auto L2InnerProduct(VectorFieldBase<Derived1>&& u1,
-                    const VectorFieldBase<Derived2>& u2) {
-  return L2InnerProduct(u1, u2);
+template <typename Derived0, typename Derived1>
+auto L2InnerProduct(VectorFieldBase<Derived0>&& u0,
+                    const VectorFieldBase<Derived1>& u1) {
+  return L2InnerProduct(u0, u1);
 }
 
-template <typename Derived1, typename Derived2>
-requires std::same_as<typename Derived1::Value, typename Derived2::Value>
-auto L2InnerProduct(const VectorFieldBase<Derived1>& u1,
-                    VectorFieldBase<Derived2>&& u2) {
-  return L2InnerProduct(u1, u2);
+template <typename Derived0, typename Derived1>
+auto L2InnerProduct(const VectorFieldBase<Derived0>& u0,
+                    VectorFieldBase<Derived1>&& u1) {
+  return L2InnerProduct(u0, u1);
 }
 
-template <typename Derived1, typename Derived2>
-requires std::same_as<typename Derived1::Value, typename Derived2::Value>
-auto L2InnerProduct(VectorFieldBase<Derived1>&& u1,
-                    VectorFieldBase<Derived2>&& u2) {
-  return L2InnerProduct(u1, u2);
+template <typename Derived0, typename Derived1>
+auto L2InnerProduct(VectorFieldBase<Derived0>&& u0,
+                    VectorFieldBase<Derived1>&& u1) {
+  return L2InnerProduct(u0, u1);
+}
+
+// L2 duality product.
+template <typename Derived0, typename Derived1>
+auto L2DualityProduct(const VectorFieldBase<Derived0>& u0,
+                      const VectorFieldBase<Derived1>& u1) {
+  return Integrate(DualityProduct(u0, u1));
+}
+
+template <typename Derived0, typename Derived1>
+auto L2DualityProduct(VectorFieldBase<Derived0>&& u0,
+                      const VectorFieldBase<Derived1>& u1) {
+  return L2DualityProduct(u0, u1);
+}
+
+template <typename Derived0, typename Derived1>
+auto L2DualityProduct(const VectorFieldBase<Derived0>& u0,
+                      VectorFieldBase<Derived1>&& u1) {
+  return L2DualityProduct(u0, u1);
+}
+
+template <typename Derived0, typename Derived1>
+auto L2DualityProduct(VectorFieldBase<Derived0>&& u0,
+                      VectorFieldBase<Derived1>&& u1) {
+  return L2DualityProduct(u0, u1);
 }
 
 // L2 norm.
@@ -315,37 +362,36 @@ auto L2Norm(VectorFieldBase<Derived>&& u) {
 }
 
 // Equality operator (based on L2 norm).
-template <typename Derived1, typename Derived2>
-requires std::same_as<typename Derived1::Value, typename Derived2::Value>
-auto operator==(const VectorFieldBase<Derived1>& u1,
-                const VectorFieldBase<Derived2>& u2) {
-  assert(u1.FieldSize() == u2.FieldSize());
-  return L2Norm(u1 - u2) <
-         std::numeric_limits<typename Derived1::Real>::epsilon();
+template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
+auto operator==(const VectorFieldBase<Derived0>& u0,
+                const VectorFieldBase<Derived1>& u1) {
+  assert(u0.FieldSize() == u1.FieldSize());
+  auto scale = std::max(L2Norm(u0), L2Norm(u1));
+  return L2Norm(u0 - u1) <
+         std::numeric_limits<typename Derived1::Real>::epsilon() * scale;
 }
 
-template <typename Derived1, typename Derived2>
-requires std::same_as<typename Derived1::Value, typename Derived2::Value>
-auto operator==(VectorFieldBase<Derived1>&& u1,
-                const VectorFieldBase<Derived2>& u2) {
-  return u1 == u2;
+template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
+auto operator==(VectorFieldBase<Derived0>&& u0,
+                const VectorFieldBase<Derived1>& u1) {
+  return u0 == u1;
 }
 
-template <typename Derived1, typename Derived2>
-requires std::same_as<typename Derived1::Value, typename Derived2::Value>
-auto operator==(const VectorFieldBase<Derived1>& u1,
-                VectorFieldBase<Derived2>&& u2) {
-  return u1 == u2;
+template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
+auto operator==(const VectorFieldBase<Derived0>& u0,
+                VectorFieldBase<Derived1>&& u1) {
+  return u0 == u1;
 }
 
-template <typename Derived1, typename Derived2>
-requires std::same_as<typename Derived1::Value, typename Derived2::Value>
-auto operator==(VectorFieldBase<Derived1>&& u1,
-                VectorFieldBase<Derived2>&& u2) {
-  return u1 == u2;
+template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
+auto operator==(VectorFieldBase<Derived0>&& u0,
+                VectorFieldBase<Derived1>&& u1) {
+  return u0 == u1;
 }
-
-*/
 
 }  // namespace GSHTrans
 

@@ -283,7 +283,7 @@ auto Integrate(const ScalarFieldBase<Derived>& u) {
   auto i = 0;
   auto sum = Scalar{0};
   for (auto [iTheta, iPhi] : u.PointIndices()) {
-    sum += u(iTheta, iPhi) * w[i++];
+    sum += u[iTheta, iPhi] * w[i++];
   }
   return sum;
 }
@@ -343,8 +343,9 @@ requires std::same_as<typename Derived1::Value, typename Derived2::Value>
 auto operator==(const ScalarFieldBase<Derived1>& u1,
                 const ScalarFieldBase<Derived2>& u2) {
   assert(u1.FieldSize() == u2.FieldSize());
+  auto scale = std::max(L2Norm(u1), L2Norm(u2));
   return L2Norm(u1 - u2) <
-         std::numeric_limits<typename Derived1::Real>::epsilon();
+         std::numeric_limits<typename Derived1::Real>::epsilon() * scale;
 }
 
 template <typename Derived1, typename Derived2>
