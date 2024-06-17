@@ -238,6 +238,7 @@ auto operator-(VectorFieldBase<Derived1>&& u1, VectorFieldBase<Derived2>&& u2) {
 
 // Pointwise inner product.
 template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
 auto InnerProduct(const VectorFieldBase<Derived0>& u0,
                   const VectorFieldBase<Derived1>& u1) {
   return VectorFieldBinaryToScalarField(
@@ -251,18 +252,21 @@ auto InnerProduct(const VectorFieldBase<Derived0>& u0,
 }
 
 template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
 auto InnerProduct(VectorFieldBase<Derived0>&& u0,
                   const VectorFieldBase<Derived1>& u1) {
   return InnerProduct(u0, u1);
 }
 
 template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
 auto InnerProduct(const VectorFieldBase<Derived0>& u0,
                   VectorFieldBase<Derived1>&& u1) {
   return InnerProduct(u0, u1);
 }
 
 template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
 auto InnerProduct(VectorFieldBase<Derived0>&& u0,
                   VectorFieldBase<Derived1>&& u1) {
   return InnerProduct(u0, u1);
@@ -270,6 +274,7 @@ auto InnerProduct(VectorFieldBase<Derived0>&& u0,
 
 // Pointwise duality product.
 template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
 auto DualityProduct(const VectorFieldBase<Derived0>& u0,
                     const VectorFieldBase<Derived1>& u1) {
   return VectorFieldBinaryToScalarField(
@@ -283,18 +288,21 @@ auto DualityProduct(const VectorFieldBase<Derived0>& u0,
 }
 
 template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
 auto DualityProduct(VectorFieldBase<Derived0>&& u0,
                     const VectorFieldBase<Derived1>& u1) {
   return DualityProduct(u0, u1);
 }
 
 template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
 auto DualityProduct(const VectorFieldBase<Derived0>& u0,
                     VectorFieldBase<Derived1>&& u1) {
   return DualityProduct(u0, u1);
 }
 
 template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
 auto DualityProduct(VectorFieldBase<Derived0>&& u0,
                     VectorFieldBase<Derived1>&& u1) {
   return DualityProduct(u0, u1);
@@ -302,24 +310,28 @@ auto DualityProduct(VectorFieldBase<Derived0>&& u0,
 
 // L2 inner product.
 template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
 auto L2InnerProduct(const VectorFieldBase<Derived0>& u0,
                     const VectorFieldBase<Derived1>& u1) {
   return Integrate(InnerProduct(u0, u1));
 }
 
 template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
 auto L2InnerProduct(VectorFieldBase<Derived0>&& u0,
                     const VectorFieldBase<Derived1>& u1) {
   return L2InnerProduct(u0, u1);
 }
 
 template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
 auto L2InnerProduct(const VectorFieldBase<Derived0>& u0,
                     VectorFieldBase<Derived1>&& u1) {
   return L2InnerProduct(u0, u1);
 }
 
 template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
 auto L2InnerProduct(VectorFieldBase<Derived0>&& u0,
                     VectorFieldBase<Derived1>&& u1) {
   return L2InnerProduct(u0, u1);
@@ -327,24 +339,28 @@ auto L2InnerProduct(VectorFieldBase<Derived0>&& u0,
 
 // L2 duality product.
 template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
 auto L2DualityProduct(const VectorFieldBase<Derived0>& u0,
                       const VectorFieldBase<Derived1>& u1) {
   return Integrate(DualityProduct(u0, u1));
 }
 
 template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
 auto L2DualityProduct(VectorFieldBase<Derived0>&& u0,
                       const VectorFieldBase<Derived1>& u1) {
   return L2DualityProduct(u0, u1);
 }
 
 template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
 auto L2DualityProduct(const VectorFieldBase<Derived0>& u0,
                       VectorFieldBase<Derived1>&& u1) {
   return L2DualityProduct(u0, u1);
 }
 
 template <typename Derived0, typename Derived1>
+requires std::same_as<typename Derived0::Value, typename Derived1::Value>
 auto L2DualityProduct(VectorFieldBase<Derived0>&& u0,
                       VectorFieldBase<Derived1>&& u1) {
   return L2DualityProduct(u0, u1);
