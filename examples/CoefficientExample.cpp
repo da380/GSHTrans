@@ -23,5 +23,7 @@ int main() {
 
   u[2, 1] = Complex{1, 2};
 
-  std::cout << u << std::endl;
+  auto v = -u;
+
+  std::cout << v << std::endl;
 }
