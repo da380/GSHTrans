@@ -10,8 +10,6 @@
 
 namespace GSHTrans {
 
-namespace Internal {}  // namespace Internal
-
 template <typename Derived>
 class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
  public:

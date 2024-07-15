@@ -3,15 +3,9 @@
 
 #include <cassert>
 
+#include "Traits.h"
+
 namespace GSHTrans {
-
-// Set up the interal traits struct.
-namespace Internal {
-
-template <typename Derived>
-struct Traits {};
-
-}  // namespace Internal
 
 template <typename Derived>
 class FieldBase {
@@ -32,7 +26,7 @@ class FieldBase {
     return NumberOfCoLatitudes() * NumberOfLongitudes();
   }
 
-  void CheckPointIndices(Int iTheta, Int iPhi) const {
+  constexpr void CheckPointIndices(Int iTheta, Int iPhi) const {
     assert(iTheta >= 0 && iTheta <= this->NumberOfCoLatitudes());
     assert(iPhi >= 0 && iPhi <= this->NumberOfLongitudes());
   }

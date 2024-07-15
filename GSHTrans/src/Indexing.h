@@ -23,14 +23,14 @@ class GSHSubIndices {
   using Int = std::ptrdiff_t;
 
  public:
-  GSHSubIndices(Int l, Int mMax) : _l{l}, _mMax{std::min(l, mMax)} {
+  constexpr GSHSubIndices(Int l, Int mMax) : _l{l}, _mMax{std::min(l, mMax)} {
     assert(_l >= 0);
     assert(_mMax >= 0);
   }
 
-  auto Degree() const { return _l; }
+  constexpr auto Degree() const { return _l; }
 
-  auto MinOrder() const {
+  constexpr auto MinOrder() const {
     if constexpr (std::same_as<MRange, All>) {
       return -_mMax;
     } else {
@@ -38,26 +38,28 @@ class GSHSubIndices {
     }
   }
 
-  auto MaxOrder() const { return _mMax; }
+  constexpr auto MaxOrder() const { return _mMax; }
 
-  auto Orders() const {
+  constexpr auto Orders() const {
     return std::ranges::views::iota(MinOrder(), MaxOrder() + 1);
   }
 
-  auto NegativeOrders() const {
+  constexpr auto NegativeOrders() const {
     return std::ranges::views::iota(MinOrder(), 0);
   }
 
-  auto NonNegativeOrders() const {
+  constexpr auto NonNegativeOrders() const {
     return std::ranges::views::iota(0, MaxOrder() + 1);
   }
 
-  auto size() const { return MaxOrder() - MinOrder() + 1; }
+  constexpr auto size() const { return MaxOrder() - MinOrder() + 1; }
 
-  auto Index(Int m) const {
+  constexpr auto Index(Int m) const {
     if constexpr (std::same_as<MRange, All>) {
+      assert(m >= -_l && m <= _l);
       return m + _mMax;
     } else {
+      assert(m >= 0 && m <= _l);
       return m;
     }
   }
@@ -73,24 +75,24 @@ class GSHIndices {
 
  public:
   GSHIndices() = default;
-  GSHIndices(Int lMax, Int mMax, Int n)
+  constexpr GSHIndices(Int lMax, Int mMax, Int n)
       : _lMax{lMax}, _mMax{std::min(lMax, mMax)}, _n{n} {
     assert(_lMax >= 0);
     assert(_mMax >= 0);
     assert(std::abs(n) <= _lMax);
   }
 
-  auto UpperIndex() const { return _n; }
+  constexpr auto UpperIndex() const { return _n; }
 
-  auto MaxOrder() const { return _mMax; }
+  constexpr auto MaxOrder() const { return _mMax; }
 
-  auto MinDegree() const { return std::abs(_n); }
-  auto MaxDegree() const { return _lMax; }
-  auto Degrees() const {
+  constexpr auto MinDegree() const { return std::abs(_n); }
+  constexpr auto MaxDegree() const { return _lMax; }
+  constexpr auto Degrees() const {
     return std::ranges::views::iota(MinDegree(), MaxDegree() + 1);
   }
 
-  auto Indices() const {
+  constexpr auto Indices() const {
     return Degrees() | std::ranges::views::transform([this](auto l) {
              return std::ranges::views::cartesian_product(
                  std::ranges::views::single(l),
@@ -99,7 +101,7 @@ class GSHIndices {
            std::ranges::views::join;
   }
 
-  auto OffsetForDegree(Int l) const
+  constexpr auto OffsetForDegree(Int l) const
   requires std::same_as<MRange, All>
   {
     assert(l >= MinDegree() && l <= MaxDegree());
@@ -113,7 +115,7 @@ class GSHIndices {
     }
   }
 
-  auto OffsetForDegree(Int l) const
+  constexpr auto OffsetForDegree(Int l) const
   requires std::same_as<MRange, NonNegative>
   {
     assert(l >= MinDegree() && l <= MaxDegree());
@@ -128,22 +130,24 @@ class GSHIndices {
     }
   }
 
-  auto SizeForDegree(Int l) const {
+  constexpr auto SizeForDegree(Int l) const {
     assert(l >= MinDegree() && l <= MaxDegree());
     return GSHSubIndices<MRange>(l, _mMax).size();
   }
 
-  auto Index(Int l) const {
+  constexpr auto Index(Int l) const {
     assert(l >= MinDegree() && l <= MaxDegree());
     return std::pair(OffsetForDegree(l), GSHSubIndices<MRange>(l, _mMax));
   }
 
-  auto Index(Int l, Int m) const {
+  constexpr auto Index(Int l, Int m) const {
     auto [offset, indices] = Index(l);
     return offset + indices.Index(m);
   }
 
-  auto size() const { return OffsetForDegree(_lMax) + SizeForDegree(_lMax); }
+  constexpr auto size() const {
+    return OffsetForDegree(_lMax) + SizeForDegree(_lMax);
+  }
 
  private:
   Int _lMax;

@@ -30,8 +30,8 @@
 #include "src/VectorField/VectorFieldRealToComplex.h"
 #include "src/VectorField/VectorFieldUnary.h"
 
-// #include "ScalarField"
-// #include "VectorField"
-// #include "MatrixField"
+// Matrix field files
+// #include "src/MatrixField/CanonicalMatrix.h"
+#include "src/MatrixField/MatrixFieldBase.h"
 
 #endif

@@ -114,7 +114,7 @@ class GaussLegendreGrid
   }
 
   //-----------------------------------------------------//
-  //                Forward transformation               //
+  //          Forward transformation for ranges          //
   //-----------------------------------------------------//
   template <std::ranges::range InRange, std::ranges::range OutRange>
   requires requires() {
@@ -228,7 +228,7 @@ class GaussLegendreGrid
   }
 
   //------------------------------------------------//
-  //            Inverse  transformation             //
+  //       Inverse  transformation for ranges       //
   //------------------------------------------------//
   template <std::ranges::range InRange, std::ranges::range OutRange>
   requires requires() {

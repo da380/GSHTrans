@@ -5,30 +5,23 @@
 #include <cassert>
 #include <cmath>
 
-namespace GHSTrans {
+#include "Traits.h"
 
-template <typename _Derived>
+namespace GSHTrans {
+
+template <typename Derived>
 class CoefficientBase {
+ public:
   using Int = std::ptrdiff_t;
 
- public:
-  auto GetGrid() const { return Derived().GetGrid(); }
-
-  auto MaxDegree() const { return GetGrid().MaxDegree(); }
-
-  void CheckDegree(Int l, Int n) const {
-    assert(l >= std::abs(n) && l <= MaxDegree());
-  }
-
-  void CheckUpperIndex(Int n) const {
-    assert(std::ranges::contains(GetGrid().UpperIndices(), n));
-  }
+  auto GetGrid() const { return GetDerived().GetGrid(); }
+  auto MaxDegree() const { return GetDerived().GetGrid().MaxDegree(); }
 
  private:
-  auto& Derived() const { return static_cast<const _Derived&>(*this); }
-  auto& Derived() { return static_cast<_Derived&>(*this); }
+  auto& GetDerived() const { return static_cast<const Derived&>(*this); }
+  auto& GetDerived() { return static_cast<Derived&>(*this); }
 };
 
-}  // namespace GHSTrans
+}  // namespace GSHTrans
 
 #endif  // GSH_TRANS_COEFFICIENT_BASE_GUARD_H

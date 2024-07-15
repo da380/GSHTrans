@@ -128,9 +128,8 @@ class GridBase {
     assert(range.size() == ComplexCoefficientSize(lMax, n));
     std::random_device rd{};
     std::mt19937_64 gen{rd()};
-    std::ranges::generate(range, [&gen, &dist]() {
-      return Complex{dist(gen), dist(gen)};
-    });
+    std::ranges::generate(
+        range, [&gen, &dist]() { return Complex{dist(gen), dist(gen)}; });
 
     if (lMax == Derived().MaxDegree()) {
       auto i = GSHIndices<All>(lMax, lMax, n).Index(lMax, lMax);
@@ -156,9 +155,8 @@ class GridBase {
     assert(range.size() == RealCoefficientSize(lMax, n));
     std::random_device rd{};
     std::mt19937_64 gen{rd()};
-    std::ranges::generate(range, [&gen, &dist]() {
-      return Complex{dist(gen), dist(gen)};
-    });
+    std::ranges::generate(
+        range, [&gen, &dist]() { return Complex{dist(gen), dist(gen)}; });
 
     auto indices = GSHIndices<NonNegative>(lMax, lMax, n);
     for (auto l : indices.Degrees()) {

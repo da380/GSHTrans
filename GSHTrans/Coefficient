@@ -1,0 +1,11 @@
+#ifndef GSH_TRANS_COEFFICIENT_MODULE_H
+#define GSH_TRANS_COEFFICIENT_MODULE_H
+
+// Base file.
+#include "src/CoefficientBase.h"
+
+// Scalar coefficient files.
+#include "src/ScalarFieldCoefficient/ScalarFieldCoefficient.h"
+#include "src/ScalarFieldCoefficient/ScalarFieldCoefficientBase.h"
+
+#endif
