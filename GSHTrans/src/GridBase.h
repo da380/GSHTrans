@@ -34,12 +34,14 @@ class GridBase {
 
   auto NumberOfCoLatitudes() const { return Derived().CoLatitudes().size(); }
   auto CoLatitudeIndices() const {
-    return std::ranges::views::iota(std::size_t{0}, NumberOfCoLatitudes());
+    return std::ranges::views::iota(Int{0},
+                                    static_cast<Int>(NumberOfCoLatitudes()));
   }
 
   auto NumberOfLongitudes() const { return Derived().Longitudes().size(); }
   auto LongitudeIndices() const {
-    return std::ranges::views::iota(std::size_t{0}, NumberOfLongitudes());
+    return std::ranges::views::iota(Int{0},
+                                    static_cast<Int>(NumberOfLongitudes()));
   }
 
   auto Points() const {

@@ -67,6 +67,8 @@ int main() {
     auto f = FFTWpp::vector<Scalar>(grid.FieldSize());
     auto glm = FFTWpp::vector<Complex>(size);
 
+    /*
+
     grid.InverseTransformation(lMax, n, flm, f);
 
     grid.ForwardTransformation(lMax, n, f, glm);
@@ -78,6 +80,9 @@ int main() {
 
     std::cout << lMaxGrid << " " << lMax << " " << n << " " << error
               << std::endl;
+
+
+*/
   }
 
   FFTWpp::CleanUp();

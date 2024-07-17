@@ -99,7 +99,10 @@ template <RealFloatingPoint Real, Normalisation Norm = Ortho,
           AngleIndexRange AngleRange = Single,
           WignerStorage Storage = ColumnMajor>
 class Wigner {
+ public:
   using Int = std::ptrdiff_t;
+
+ private:
   using Vector = std::vector<Real>;
 
   template <std::ranges::view V>

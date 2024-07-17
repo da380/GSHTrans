@@ -16,12 +16,16 @@ int main() {
   using Real = double;
 
   // Set the degree, order and upper index
-  int lMax = 4;
-  int mMax = 4;
+  int lMax = 2;
+  int mMax = 2;
   int nMax = 0;
 
-  auto theta = double(1);
+  auto theta = std::vector<Real>(4, 0.1);
 
+  auto d = WignerNew<double, Ortho, All, All, Single, ColumnMajor>(lMax, mMax,
+                                                                   nMax, theta);
+
+  /*
   auto d = Wigner<double, Ortho, All, Single, Single, ColumnMajor>(lMax, mMax,
                                                                    nMax, theta);
 
@@ -30,4 +34,6 @@ int main() {
       std::cout << l << " " << m << " " << d(l)(m) << std::endl;
     }
   }
+
+*/
 }
