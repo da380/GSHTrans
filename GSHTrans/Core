@@ -7,7 +7,7 @@
 #include "src/GridBase.h"
 #include "src/Indexing.h"
 #include "src/Utility.h"
+#include "src/Views.h"
 #include "src/Wigner.h"
-#include "src/WignerNew.h"
 
 #endif

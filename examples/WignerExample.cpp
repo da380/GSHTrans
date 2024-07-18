@@ -20,20 +20,14 @@ int main() {
   int mMax = 2;
   int nMax = 0;
 
-  auto theta = std::vector<Real>(4, 0.1);
+  auto theta = std::vector<Real>(1, 0.1);
 
-  auto d = WignerNew<double, Ortho, All, All, Single, ColumnMajor>(lMax, mMax,
-                                                                   nMax, theta);
+  auto d = Wigner<Real, Ortho, All, Single, Single, ColumnMajor>(lMax, mMax,
+                                                                 nMax, theta);
 
-  /*
-  auto d = Wigner<double, Ortho, All, Single, Single, ColumnMajor>(lMax, mMax,
-                                                                   nMax, theta);
-
-  for (auto l : d.Degrees()) {
-    for (auto m : d(l).Orders()) {
-      std::cout << l << " " << m << " " << d(l)(m) << std::endl;
+  for (auto l : d.Degrees(0)) {
+    for (auto m : d[l].Orders()) {
+      std::cout << l << " " << m << " " << d[l][m] << std::endl;
     }
   }
-
-*/
 }

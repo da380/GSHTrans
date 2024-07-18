@@ -102,227 +102,223 @@ class GaussLegendreGrid
     return std::ranges::views::repeat(dPhi, 2 * _lMax);
   }
 
-  /*
+  //-----------------------------------------------------//
+  //          Forward transformation for ranges          //
+  //-----------------------------------------------------//
+  template <std::ranges::range InRange, std::ranges::range OutRange>
+  requires requires() {
+    requires(std::same_as<_MRange, All> and
+             ComplexFloatingPoint<std::ranges::range_value_t<InRange>>) or
+                RealFloatingPoint<std::ranges::range_value_t<InRange>>;
+    requires std::same_as<RemoveComplex<std::ranges::range_value_t<InRange>>,
+                          Real>;
+    requires std::ranges::input_range<InRange>;
+    requires std::same_as<std::ranges::range_value_t<OutRange>, Complex>;
+    requires std::ranges::output_range<OutRange,
+                                       std::ranges::range_value_t<OutRange>>;
+  }
+  void ForwardTransformation(Int lMax, Int n, InRange&& in,
+                             OutRange& out) const {
+    // Get scalar type for field.
+    using Scalar = std::ranges::range_value_t<InRange>;
 
-    //-----------------------------------------------------//
-    //          Forward transformation for ranges          //
-    //-----------------------------------------------------//
-    template <std::ranges::range InRange, std::ranges::range OutRange>
-    requires requires() {
-      requires(std::same_as<_MRange, All> and
-               ComplexFloatingPoint<std::ranges::range_value_t<InRange>>) or
-                  RealFloatingPoint<std::ranges::range_value_t<InRange>>;
-      requires std::same_as<RemoveComplex<std::ranges::range_value_t<InRange>>,
-                            Real>;
-      requires std::ranges::input_range<InRange>;
-      requires std::same_as<std::ranges::range_value_t<OutRange>, Complex>;
-      requires std::ranges::output_range<OutRange,
-                                         std::ranges::range_value_t<OutRange>>;
+    // Check upper index is possible.
+    assert(std::ranges::contains(this->UpperIndices(), n));
+
+    // Check dimensions of ranges.
+    assert(in.size() == this->FieldSize());
+    if constexpr (RealFloatingPoint<Scalar>) {
+      assert(out.size() == GSHIndices<NonNegative>(lMax, lMax, n).size());
+    } else {
+      assert(out.size() == GSHIndices<All>(lMax, lMax, n).size());
     }
-    void ForwardTransformation(Int lMax, Int n, InRange&& in,
-                               OutRange& out) const {
-      // Get scalar type for field.
-      using Scalar = std::ranges::range_value_t<InRange>;
 
-      // Check upper index is possible.
-      assert(std::ranges::contains(this->UpperIndices(), n));
+    // Deal with lMax = 0
+    if (lMax == 0) {
+      out[0] = in[0] * std::numbers::inv_sqrtpi_v<Real> / static_cast<Real>(2);
+      return;
+    }
 
-      // Check dimensions of ranges.
-      assert(in.size() == this->FieldSize());
-      if constexpr (RealFloatingPoint<Scalar>) {
-        assert(out.size() == GSHIndices<NonNegative>(lMax, lMax, n).size());
+    // Pre compute some constants.
+    const auto nPhi = this->NumberOfLongitudes();
+    const auto scaleFactor = static_cast<Real>(2) * std::numbers::pi_v<Real> /
+                             static_cast<Real>(nPhi);
+
+    // Make the FFT plan.
+    auto [inSize, outSize] = FFTWpp::DataSize<Scalar, Complex>(nPhi);
+    auto inWork = FFTWpp::vector<Scalar>(inSize);
+    auto outWork = FFTWpp::vector<Complex>(outSize);
+    auto inView = FFTWpp::Ranges::View(inWork);
+    auto outView = FFTWpp::Ranges::View(outWork);
+    auto planFunction = [this](auto in, auto out) {
+      if constexpr (ComplexFloatingPoint<Scalar>) {
+        return FFTWpp::Ranges::Plan(in, out, _flag, FFTWpp::Forward);
       } else {
-        assert(out.size() == GSHIndices<All>(lMax, lMax, n).size());
+        return FFTWpp::Ranges::Plan(in, out, _flag);
       }
+    };
+    auto plan = planFunction(inView, outView);
 
-      // Deal with lMax = 0
-      if (lMax == 0) {
-        out[0] = in[0] * std::numbers::inv_sqrtpi_v<Real> /
-  static_cast<Real>(2); return;
-      }
-
-      // Pre compute some constants.
-      const auto nPhi = this->NumberOfLongitudes();
-      const auto scaleFactor = static_cast<Real>(2) * std::numbers::pi_v<Real> /
-                               static_cast<Real>(nPhi);
-
-      // Make the FFT plan.
-      auto [inSize, outSize] = FFTWpp::DataSize<Scalar, Complex>(nPhi);
-      auto inWork = FFTWpp::vector<Scalar>(inSize);
-      auto outWork = FFTWpp::vector<Complex>(outSize);
-      auto inView = FFTWpp::Ranges::View(inWork);
-      auto outView = FFTWpp::Ranges::View(outWork);
-      auto planFunction = [this](auto in, auto out) {
-        if constexpr (ComplexFloatingPoint<Scalar>) {
-          return FFTWpp::Ranges::Plan(in, out, _flag, FFTWpp::Forward);
-        } else {
-          return FFTWpp::Ranges::Plan(in, out, _flag);
-        }
-      };
-      auto plan = planFunction(inView, outView);
-
-      // Loop over the colatitudes.
-      for (auto iTheta : this->CoLatitudeIndices()) {
-        // FFT the current data slice.
-        auto offset = iTheta * nPhi;
-        auto inStart = std::next(in.begin(), offset);
-        auto inFinish = std::next(inStart, nPhi);
-        if constexpr (std::ranges::output_range<InRange, Scalar>) {
-          auto inView = std::ranges::subrange(inStart, inFinish);
-          plan.Execute(inView, outView);
-        } else {
-          std::copy(inStart, inFinish, inWork.begin());
-          plan.Execute();
-        }
-
-        // Get the Wigner values and quadrature weight.
-        auto d = _wigner(n, iTheta);
-        auto w = _quad.W(iTheta) * scaleFactor;
-
-        // Loop over the spherical harmonic coefficients
-        auto outIter = out.begin();
-        auto wigIter = d.cbegin();
-        auto degrees = d.Degrees() | std::ranges::views::filter(
-                                         [lMax](auto l) { return l <= lMax; });
-
-        for (auto l : degrees) {
-          auto dl = d(l);
-
-          if constexpr (ComplexFloatingPoint<Scalar>) {
-            auto workIter = std::prev(outWork.end(), l);
-            for (auto m : dl.NegativeOrders()) {
-              *outIter++ += *wigIter++ * *workIter++ * w;
-            }
-            workIter = outWork.begin();
-            for (auto m : dl.NonNegativeOrders()) {
-              *outIter++ += *wigIter++ * *workIter++ * w;
-            }
-          } else {
-            auto workIter = outWork.begin();
-            if constexpr (std::same_as<_MRange, All>) {
-              std::advance(wigIter, l);
-            }
-            for (auto m : dl.NonNegativeOrders()) {
-              *outIter++ += *wigIter++ * *workIter++ * w;
-            }
-          }
-        }
-
-        if constexpr (ComplexFloatingPoint<Scalar>) {
-          // Zero the (_lMax,_lMax) coefficient.
-          if (lMax == _lMax) {
-            auto view = std::ranges::views::reverse(out);
-            view[0] = 0;
-          }
-        }
-      }
-    }
-
-    //------------------------------------------------//
-    //       Inverse  transformation for ranges       //
-    //------------------------------------------------//
-    template <std::ranges::range InRange, std::ranges::range OutRange>
-    requires requires() {
-      requires(std::same_as<_MRange, All> and
-               ComplexFloatingPoint<std::ranges::range_value_t<OutRange>>) or
-                  RealFloatingPoint<std::ranges::range_value_t<OutRange>>;
-      requires std::ranges::input_range<InRange>;
-      requires std::same_as<std::ranges::range_value_t<InRange>, Complex>;
-      requires std::ranges::output_range<OutRange,
-                                         std::ranges::range_value_t<OutRange>>;
-      requires std::same_as<RemoveComplex<std::ranges::range_value_t<OutRange>>,
-                            Real>;
-    }
-    void InverseTransformation(Int lMax, Int n, InRange&& in,
-                               OutRange& out) const {
-      // Get scalar type for field.
-      using Scalar = std::ranges::range_value_t<OutRange>;
-
-      // Check upper index is possible.
-      assert(std::ranges::contains(this->UpperIndices(), n));
-
-      // Check dimensions of ranges.
-      if constexpr (RealFloatingPoint<Scalar>) {
-        assert(in.size() == GSHIndices<NonNegative>(lMax, lMax, n).size());
-      } else {
-        assert(in.size() == GSHIndices<All>(lMax, lMax, n).size());
-      }
-      assert(out.size() == this->FieldSize());
-
-      // Deal with lMax = 0
-      if (lMax == 0) {
-        if constexpr (RealFloatingPoint<Scalar>) {
-          out[0] = std::real(in[0]) * static_cast<Real>(2) /
-                   std::numbers::inv_sqrtpi_v<Real>;
-        } else {
-          out[0] =
-              in[0] * static_cast<Real>(2) / std::numbers::inv_sqrtpi_v<Real>;
-        }
-        return;
-      }
-
-      // Precompute constants
-      const auto nPhi = this->NumberOfLongitudes();
-
-      // Make the FFT plan.
-      auto [inSize, outSize] = FFTWpp::DataSize<Complex, Scalar>(nPhi);
-      auto inWork = FFTWpp::vector<Complex>(inSize);
-      auto outWork = FFTWpp::vector<Scalar>(outSize);
-      auto inView = FFTWpp::Ranges::View(inWork);
-      auto outView = FFTWpp::Ranges::View(outWork);
-      auto planFunction = [this](auto in, auto out) {
-        if constexpr (ComplexFloatingPoint<Scalar>) {
-          return FFTWpp::Ranges::Plan(in, out, _flag, FFTWpp::Backward);
-        } else {
-          return FFTWpp::Ranges::Plan(in, out, _flag);
-        }
-      };
-      auto plan = planFunction(inView, outView);
-
-      // Loop over the colatitudes.
-      for (auto iTheta : this->CoLatitudeIndices()) {
-        std::ranges::for_each(inWork, [](auto& x) { return x = 0; });
-
-        // Get the Wigner values.
-        auto d = _wigner(0, 0);
-
-        // Loop over the coefficients.
-        auto inIter = in.begin();
-        auto wigIter = d.begin();
-        auto degrees = d.Degrees() | std::ranges::views::filter(
-                                         [lMax](auto l) { return l <= lMax; });
-        for (auto l : degrees) {
-          auto dl = d(l);
-          if constexpr (ComplexFloatingPoint<Scalar>) {
-            auto workIter = std::prev(inWork.end(), l);
-            for (auto m : dl.NegativeOrders()) {
-              *workIter++ += *inIter++ * *wigIter++;
-            }
-            workIter = inWork.begin();
-            for (auto m : dl.NonNegativeOrders()) {
-              *workIter++ += *inIter++ * *wigIter++;
-            }
-          } else {
-            auto workIter = inWork.begin();
-            if constexpr (std::same_as<_MRange, All>) {
-              std::advance(wigIter, l);
-            }
-            for (auto m : dl.NonNegativeOrders()) {
-              *workIter++ += *inIter++ * *wigIter++;
-            }
-          }
-        }
-
-        // Perform FFT to recover field at the colatitude.
-        auto offset = iTheta * nPhi;
-        auto outStart = std::next(out.begin(), offset);
-        auto outFinish = std::next(outStart, nPhi);
-        auto outView = std::ranges::subrange(outStart, outFinish);
+    // Loop over the colatitudes.
+    for (auto iTheta : this->CoLatitudeIndices()) {
+      // FFT the current data slice.
+      auto offset = iTheta * nPhi;
+      auto inStart = std::next(in.begin(), offset);
+      auto inFinish = std::next(inStart, nPhi);
+      if constexpr (std::ranges::output_range<InRange, Scalar>) {
+        auto inView = std::ranges::subrange(inStart, inFinish);
         plan.Execute(inView, outView);
+      } else {
+        std::copy(inStart, inFinish, inWork.begin());
+        plan.Execute();
+      }
+
+      // Get the Wigner values and quadrature weight.
+      auto d = _wigner[n, iTheta];
+      auto w = _quad.W(iTheta) * scaleFactor;
+
+      // Loop over the spherical harmonic coefficients
+      auto outIter = out.begin();
+      auto wigIter = d.begin();
+      auto degrees = d.Degrees() | std::ranges::views::filter(
+                                       [lMax](auto l) { return l <= lMax; });
+
+      for (auto l : degrees) {
+        auto dl = d[l];
+
+        if constexpr (ComplexFloatingPoint<Scalar>) {
+          auto workIter = std::prev(outWork.end(), l);
+          for (auto m : dl.NegativeOrders()) {
+            *outIter++ += *wigIter++ * *workIter++ * w;
+          }
+          workIter = outWork.begin();
+          for (auto m : dl.NonNegativeOrders()) {
+            *outIter++ += *wigIter++ * *workIter++ * w;
+          }
+        } else {
+          auto workIter = outWork.begin();
+          if constexpr (std::same_as<_MRange, All>) {
+            std::advance(wigIter, l);
+          }
+          for (auto m : dl.NonNegativeOrders()) {
+            *outIter++ += *wigIter++ * *workIter++ * w;
+          }
+        }
+      }
+
+      if constexpr (ComplexFloatingPoint<Scalar>) {
+        // Zero the (_lMax,_lMax) coefficient.
+        if (lMax == _lMax) {
+          auto view = std::ranges::views::reverse(out);
+          view[0] = 0;
+        }
       }
     }
+  }
 
-*/
+  //------------------------------------------------//
+  //       Inverse  transformation for ranges       //
+  //------------------------------------------------//
+  template <std::ranges::range InRange, std::ranges::range OutRange>
+  requires requires() {
+    requires(std::same_as<_MRange, All> and
+             ComplexFloatingPoint<std::ranges::range_value_t<OutRange>>) or
+                RealFloatingPoint<std::ranges::range_value_t<OutRange>>;
+    requires std::ranges::input_range<InRange>;
+    requires std::same_as<std::ranges::range_value_t<InRange>, Complex>;
+    requires std::ranges::output_range<OutRange,
+                                       std::ranges::range_value_t<OutRange>>;
+    requires std::same_as<RemoveComplex<std::ranges::range_value_t<OutRange>>,
+                          Real>;
+  }
+  void InverseTransformation(Int lMax, Int n, InRange&& in,
+                             OutRange& out) const {
+    // Get scalar type for field.
+    using Scalar = std::ranges::range_value_t<OutRange>;
+
+    // Check upper index is possible.
+    assert(std::ranges::contains(this->UpperIndices(), n));
+
+    // Check dimensions of ranges.
+    if constexpr (RealFloatingPoint<Scalar>) {
+      assert(in.size() == GSHIndices<NonNegative>(lMax, lMax, n).size());
+    } else {
+      assert(in.size() == GSHIndices<All>(lMax, lMax, n).size());
+    }
+    assert(out.size() == this->FieldSize());
+
+    // Deal with lMax = 0
+    if (lMax == 0) {
+      if constexpr (RealFloatingPoint<Scalar>) {
+        out[0] = std::real(in[0]) * static_cast<Real>(2) /
+                 std::numbers::inv_sqrtpi_v<Real>;
+      } else {
+        out[0] =
+            in[0] * static_cast<Real>(2) / std::numbers::inv_sqrtpi_v<Real>;
+      }
+      return;
+    }
+
+    // Precompute constants
+    const auto nPhi = this->NumberOfLongitudes();
+
+    // Make the FFT plan.
+    auto [inSize, outSize] = FFTWpp::DataSize<Complex, Scalar>(nPhi);
+    auto inWork = FFTWpp::vector<Complex>(inSize);
+    auto outWork = FFTWpp::vector<Scalar>(outSize);
+    auto inView = FFTWpp::Ranges::View(inWork);
+    auto outView = FFTWpp::Ranges::View(outWork);
+    auto planFunction = [this](auto in, auto out) {
+      if constexpr (ComplexFloatingPoint<Scalar>) {
+        return FFTWpp::Ranges::Plan(in, out, _flag, FFTWpp::Backward);
+      } else {
+        return FFTWpp::Ranges::Plan(in, out, _flag);
+      }
+    };
+    auto plan = planFunction(inView, outView);
+
+    // Loop over the colatitudes.
+    for (auto iTheta : this->CoLatitudeIndices()) {
+      std::ranges::for_each(inWork, [](auto& x) { return x = 0; });
+
+      // Get the Wigner values.
+      auto d = _wigner[n, iTheta];
+
+      // Loop over the coefficients.
+      auto inIter = in.begin();
+      auto wigIter = d.begin();
+      auto degrees = d.Degrees() | std::ranges::views::filter(
+                                       [lMax](auto l) { return l <= lMax; });
+      for (auto l : degrees) {
+        auto dl = d[l];
+        if constexpr (ComplexFloatingPoint<Scalar>) {
+          auto workIter = std::prev(inWork.end(), l);
+          for (auto m : dl.NegativeOrders()) {
+            *workIter++ += *inIter++ * *wigIter++;
+          }
+          workIter = inWork.begin();
+          for (auto m : dl.NonNegativeOrders()) {
+            *workIter++ += *inIter++ * *wigIter++;
+          }
+        } else {
+          auto workIter = inWork.begin();
+          if constexpr (std::same_as<_MRange, All>) {
+            std::advance(wigIter, l);
+          }
+          for (auto m : dl.NonNegativeOrders()) {
+            *workIter++ += *inIter++ * *wigIter++;
+          }
+        }
+      }
+
+      // Perform FFT to recover field at the colatitude.
+      auto offset = iTheta * nPhi;
+      auto outStart = std::next(out.begin(), offset);
+      auto outFinish = std::next(outStart, nPhi);
+      auto outView = std::ranges::subrange(outStart, outFinish);
+      plan.Execute(inView, outView);
+    }
+  }
 
  private:
   Int _lMax;
