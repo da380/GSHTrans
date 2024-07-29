@@ -1,5 +1,5 @@
-#ifndef GSH_TRANS_COEFFICIENT_BASE_GUARD_H
-#define GSH_TRANS_COEFFICIENT_BASE_GUARD_H
+#ifndef GSH_TRANS_EXPANSION_BASE_GUARD_H
+#define GSH_TRANS_EXPANSION_BASE_GUARD_H
 
 #include <algorithm>
 #include <cassert>
@@ -10,11 +10,11 @@
 namespace GSHTrans {
 
 template <typename Derived>
-class CoefficientBase {
+class ExpansionBase {
  public:
   using Int = std::ptrdiff_t;
 
-  auto GetGrid() const { return GetDerived().GetGrid(); }
+  auto& GetGrid() const { return GetDerived().GetGrid(); }
   auto MaxDegree() const { return GetDerived().GetGrid().MaxDegree(); }
 
  private:
@@ -24,4 +24,4 @@ class CoefficientBase {
 
 }  // namespace GSHTrans
 
-#endif  // GSH_TRANS_COEFFICIENT_BASE_GUARD_H
+#endif  // GSH_TRANS_EXPANSION_BASE_GUARD_H

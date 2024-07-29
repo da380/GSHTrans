@@ -12,7 +12,7 @@ class FieldBase {
  public:
   using Int = std::ptrdiff_t;
 
-  auto GetGrid() const { return GetDerived().GetGrid(); }
+  auto& GetGrid() const { return GetDerived().GetGrid(); }
 
   auto NumberOfCoLatitudes() const { return GetGrid().NumberOfCoLatitudes(); }
   auto CoLatitudes() const { return GetGrid().CoLatitudes(); }

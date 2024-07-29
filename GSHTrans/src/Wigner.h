@@ -136,6 +136,14 @@ class Wigner {
   requires std::same_as<AngleRange, Single>
       : Wigner(lMax, mMax, nMax, std::vector{theta}) {}
 
+  // Defaut copy and move constructors.
+  Wigner(const Wigner &) = default;
+  Wigner(Wigner &&) = default;
+
+  // Default copy and move assignement
+  Wigner &operator=(const Wigner &) = default;
+  Wigner &operator=(Wigner &&) = default;
+
   // Recompute for new angles.
   template <std::ranges::range Range>
   requires RealFloatingPoint<std::ranges::range_value_t<Range>>
@@ -155,7 +163,18 @@ class Wigner {
     assert(std::abs(n) <= _nMax);
     return std::abs(n);
   }
+  auto MinDegree() const
+  requires std::same_as<NRange, Single>
+  {
+    return std::abs(_nMax);
+  }
   auto MaxDegree() const { return _lMax; }
+
+  auto Degrees() const
+  requires std::same_as<NRange, Single>
+  {
+    return std::ranges::views::iota(MinDegree(), MaxDegree() + 1);
+  }
 
   auto Degrees(Int n) const {
     return std::ranges::views::iota(MinDegree(n), MaxDegree() + 1);

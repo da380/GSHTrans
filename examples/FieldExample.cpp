@@ -1,5 +1,4 @@
-#include <GSHTrans/Core>
-#include <GSHTrans/Field>
+#include <GSHTrans/All>
 #include <array>
 #include <iostream>
 #include <ranges>
@@ -21,14 +20,9 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto data = std::vector<Real>(grid.FieldSize());
+  auto u = ComplexScalarField(grid);
 
-  auto v = RealVectorField(grid, [](auto theta, auto phi) {
-    return CanonicalVector<Real>{1, 2, 3};
-  });
+  auto ulm = ScalarFieldExpansion<Grid, RealValued>(grid);
 
-  auto f =
-      RealAbstractScalarField(grid, [](auto theta, auto phi) { return 2; });
-
-  std::cout << (v == 2 * v) << std::endl;
+  std::cout << u << std::endl;
 }

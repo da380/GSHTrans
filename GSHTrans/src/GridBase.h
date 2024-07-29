@@ -65,7 +65,7 @@ class GridBase {
   }
 
   template <typename Function>
-  auto InterpolateFunction(Function f) {
+  auto ProjectFunction(Function f) {
     return Points() | std::ranges::views::transform([f](auto pair) {
              auto [theta, phi] = pair;
              return f(theta, phi);

@@ -17,7 +17,10 @@ namespace GSHTrans {
 // Forward declare class.
 template <typename _Grid, RealOrComplexValued _Value, typename _Function>
 requires std::derived_from<_Grid, GridBase<_Grid>> &&
-         ScalarValuedFunction<_Function, typename _Grid::Real, _Value>
+         ScalarFunctionS2<
+             _Function, typename _Grid::Real,
+             std::conditional_t<std::same_as<_Value, RealValued>,
+                                typename _Grid::Real, typename _Grid::Complex>>
 class AbstractScalarField;
 
 // Set traits.
@@ -38,7 +41,10 @@ struct Traits<AbstractScalarField<_Grid, _Value, _Function>> {
 }  // namespace Internal
 template <typename _Grid, RealOrComplexValued _Value, typename _Function>
 requires std::derived_from<_Grid, GridBase<_Grid>> &&
-         ScalarValuedFunction<_Function, typename _Grid::Real, _Value>
+         ScalarFunctionS2<
+             _Function, typename _Grid::Real,
+             std::conditional_t<std::same_as<_Value, RealValued>,
+                                typename _Grid::Real, typename _Grid::Complex>>
 class AbstractScalarField
     : public ScalarFieldBase<AbstractScalarField<_Grid, _Value, _Function>> {
  public:
@@ -58,7 +64,7 @@ class AbstractScalarField
       AbstractScalarField<_Grid, _Value, _Function>>::Writeable;
 
   // Return the grid.
-  auto GetGrid() const { return _grid; }
+  auto& GetGrid() const { return _grid; }
 
   // Read access to data.
   auto operator[](Int iTheta, Int iPhi) const {
@@ -72,7 +78,7 @@ class AbstractScalarField
   AbstractScalarField() = default;
 
   // Construct from grid initialising values to zero.
-  AbstractScalarField(_Grid grid, _Function&& f) : _grid{grid}, _f{f} {}
+  AbstractScalarField(_Grid& grid, _Function&& f) : _grid{grid}, _f{f} {}
 
   // Default copy and move constructors.
   AbstractScalarField(const AbstractScalarField&) = default;
@@ -83,9 +89,9 @@ class AbstractScalarField
   AbstractScalarField& operator=(AbstractScalarField&&) = default;
 
  private:
-  _Grid _grid;
+  _Grid& _grid;
   _Function& _f;
-};
+};  // namespace GSHTrans
 
 // Type aliases for real and complex fields.
 template <typename Grid, typename Function>

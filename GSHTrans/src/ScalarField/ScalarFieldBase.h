@@ -2,6 +2,7 @@
 #define GSH_TRANS_SCALAR_FIELD_BASE_GUARD_H
 
 #include <concepts>
+#include <iomanip>
 #include <iostream>
 
 #include "../Concepts.h"
@@ -22,7 +23,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
   using Writeable = typename Internal::Traits<Derived>::Writeable;
 
   // Return the grid.
-  auto GetGrid() const { return GetDerived().GetGrid(); }
+  auto& GetGrid() const { return GetDerived().GetGrid(); }
 
   // Read access to data.
   auto operator[](Int iTheta, Int iPhi) const {
@@ -185,8 +186,18 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
                  std::ranges::views::drop(1) | std::ranges::views::reverse;
     auto last =
         indices | std::ranges::views::reverse | std::ranges::views::take(1);
-    for (auto [iTheta, iPhi] : first) os << u[iTheta, iPhi] << std::endl;
-    for (auto [iTheta, iPhi] : last) os << u[iTheta, iPhi];
+    auto theta = u.CoLatitudes();
+    auto phi = u.Longitudes();
+
+    os << std::setprecision(8);
+    os << std::setw(11);
+
+    for (auto [iTheta, iPhi] : first)
+      os << theta[iTheta] << " " << phi[iPhi] << " " << u[iTheta, iPhi]
+         << std::endl;
+    for (auto [iTheta, iPhi] : last)
+      os << theta[iTheta] << " " << phi[iPhi] << " " << u[iTheta, iPhi];
+
     return os;
   }
 

@@ -58,7 +58,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
       typename Internal::Traits<ScalarFieldView<_Grid, _View>>::Writeable;
 
   // Return the grid.
-  auto GetGrid() const { return _grid; }
+  auto& GetGrid() const { return _grid; }
 
   // Read access to the data.
   auto operator[](Int iTheta, Int iPhi) const {
@@ -78,7 +78,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
   ScalarFieldView() = default;
 
   // Construct from grid initialising values to zero.
-  ScalarFieldView(_Grid grid, _View data) : _grid{grid}, _data{data} {}
+  ScalarFieldView(_Grid& grid, _View data) : _grid{grid}, _data{data} {}
 
   // Default copy and move constructors.
   ScalarFieldView(const ScalarFieldView&) = default;
@@ -95,7 +95,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
   auto Data() { return _data; }
 
  private:
-  _Grid _grid;
+  _Grid& _grid;
   _View _data;
 
   auto Index(Int iTheta, int iPhi) const {
@@ -105,7 +105,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
 
 // Deduction guide to allow construction from a range.
 template <typename Grid, std::ranges::viewable_range R>
-ScalarFieldView(Grid,
+ScalarFieldView(Grid&,
                 R&&) -> ScalarFieldView<Grid, std::ranges::views::all_t<R>>;
 
 }  // namespace GSHTrans

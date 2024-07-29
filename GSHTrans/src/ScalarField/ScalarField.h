@@ -51,7 +51,7 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
       typename Internal::Traits<ScalarField<_Grid, _Value>>::Writeable;
 
   // Return the grid.
-  auto GetGrid() const { return _grid; }
+  auto& GetGrid() const { return _grid; }
 
   // Read access to data.
   auto operator[](Int iTheta, Int iPhi) const {
@@ -69,14 +69,14 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   ScalarField() = default;
 
   // Construct from grid initialising values to zero.
-  ScalarField(_Grid grid)
+  ScalarField(_Grid& grid)
       : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->FieldSize())} {}
 
   // Construction from grid initialising values with a function.
   template <typename Function>
-  requires ScalarValuedFunction<Function, Real, Value>
-  ScalarField(_Grid grid, Function&& f) : ScalarField(grid) {
-    std::ranges::copy(_grid.InterpolateFunction(f), _data.begin());
+  requires ScalarFunctionS2<Function, Real, Scalar>
+  ScalarField(_Grid& grid, Function&& f) : ScalarField(grid) {
+    std::ranges::copy(_grid.ProjectFunction(f), _data.begin());
   }
 
   // Construct from an element of the base class.
@@ -108,7 +108,7 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   auto Data() { return std::ranges::views::all(_data); }
 
  private:
-  _Grid _grid;
+  _Grid& _grid;
   FFTWpp::vector<Scalar> _data;
 
   auto Index(Int iTheta, int iPhi) const {

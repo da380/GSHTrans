@@ -1,29 +1,30 @@
-#ifndef GSH_TRANS_SCALAR_FIELD_COEFFICIENT_BASE_GUARD_H
-#define GSH_TRANS_SCALAR_FIELD_COEFFICIENT_BASE_GUARD_H
+#ifndef GSH_TRANS_SCALAR_FIELD_EXPANSION_BASE_GUARD_H
+#define GSH_TRANS_SCALAR_FIELD_EXPANSION_BASE_GUARD_H
 
 #include <concepts>
 #include <iostream>
 
-#include "../CoefficientBase.h"
 #include "../Concepts.h"
+#include "../ExpansionBase.h"
 #include "../GridBase.h"
 #include "../Indexing.h"
 
 namespace GSHTrans {
 
 template <typename Derived>
-class ScalarFieldCoefficientBase
-    : public CoefficientBase<ScalarFieldCoefficientBase<Derived>> {
+class ScalarFieldExpansionBase
+    : public ExpansionBase<ScalarFieldExpansionBase<Derived>> {
  public:
   using Int = typename Internal::Traits<Derived>::Int;
   using Grid = typename Internal::Traits<Derived>::Grid;
   using Value = typename Internal::Traits<Derived>::Value;
   using Real = typename Internal::Traits<Derived>::Real;
   using Complex = typename Internal::Traits<Derived>::Complex;
+  using Scalar = typename Internal::Traits<Derived>::Scalar;
   using Writeable = typename Internal::Traits<Derived>::Writeable;
 
   // Return the grid.
-  auto GetGrid() const { return GetDerived().GetGrid(); }
+  auto& GetGrid() const { return GetDerived().GetGrid(); }
 
   // Read access to the data.
   auto operator[](Int l, Int m) const { return GetDerived()[l, m]; }
@@ -37,8 +38,8 @@ class ScalarFieldCoefficientBase
   // Return index for degree and order.
   constexpr auto Index(Int l, Int m) const { return _GSHIndices().Index(l, m); }
 
-  // Return size of coefficient vector.
-  constexpr auto CoefficientSize() const { return _GSHIndices().size(); }
+  // Return size of Expansion vector.
+  constexpr auto ExpansionSize() const { return _GSHIndices().size(); }
 
   // Write access to the data.
   auto operator[](Int l, Int m)
@@ -47,7 +48,7 @@ class ScalarFieldCoefficientBase
     return GetDerived()[l, m];
   }
 
-  // Assign values from another coefficient.
+  // Assign values from another Expansion.
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Complex, Complex>
@@ -105,8 +106,8 @@ class ScalarFieldCoefficientBase
   }
 
   // Write values to ostream.
-  friend std::ostream& operator<<(
-      std::ostream& os, const ScalarFieldCoefficientBase<Derived>& u) {
+  friend std::ostream& operator<<(std::ostream& os,
+                                  const ScalarFieldExpansionBase<Derived>& u) {
     for (auto [l, m] : u.Indices()) {
       os << u[l, m];
       if (l < u.MaxDegree() || m < u.MaxDegree()) os << std::endl;
@@ -131,4 +132,4 @@ class ScalarFieldCoefficientBase
 
 }  // namespace GSHTrans
 
-#endif  // GSH_TRANS_SCALAR_FIELD_COEFFICIENT_BASE_GUARD_H
+#endif  // GSH_TRANS_SCALAR_FIELD_EXPANSION_BASE_GUARD_H

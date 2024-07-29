@@ -57,7 +57,7 @@ class ConstantScalarField
       typename Internal::Traits<ConstantScalarField<_Grid, _Value>>::Writeable;
 
   // Return the grid.
-  auto GetGrid() const { return _grid; }
+  auto& GetGrid() const { return _grid; }
 
   // Read access to data.
   auto operator[](Int iTheta, Int iPhi) const {
@@ -69,7 +69,7 @@ class ConstantScalarField
   ConstantScalarField() = default;
 
   // Construct from grid initialising to constant value.
-  ConstantScalarField(_Grid grid, Scalar s) : _grid{grid}, _s{s} {}
+  ConstantScalarField(_Grid& grid, Scalar s) : _grid{grid}, _s{s} {}
 
   // Default copy and move constructors.
   ConstantScalarField(const ConstantScalarField&) = default;
@@ -80,7 +80,7 @@ class ConstantScalarField
   ConstantScalarField& operator=(ConstantScalarField&&) = default;
 
  private:
-  _Grid _grid;
+  _Grid& _grid;
   const Scalar _s;
 };
 

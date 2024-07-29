@@ -1,0 +1,14 @@
+#ifndef GSH_TRANS_EXPANSION_MODULE_H
+#define GSH_TRANS_EXPANSION_MODULE_H
+
+// Base file.
+#include "src/ExpansionBase.h"
+
+// Scalar Expansion files.
+#include "src/ScalarFieldExpansion/ScalarFieldExpansion.h"
+#include "src/ScalarFieldExpansion/ScalarFieldExpansionBase.h"
+#include "src/ScalarFieldExpansion/ScalarFieldExpansionBinary.h"
+#include "src/ScalarFieldExpansion/ScalarFieldExpansionBinaryWithScalar.h"
+#include "src/ScalarFieldExpansion/ScalarFieldExpansionOverloads.h"
+#include "src/ScalarFieldExpansion/ScalarFieldExpansionUnary.h"
+#endif

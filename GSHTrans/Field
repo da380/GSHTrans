@@ -13,6 +13,8 @@
 #include "src/ScalarField/ScalarFieldUnary.h"
 #include "src/ScalarField/ScalarFieldView.h"
 
+/*
+
 // Vector field files.
 #include "src/VectorField/AbstractVectorField.h"
 #include "src/VectorField/CanonicalVector.h"
@@ -33,5 +35,7 @@
 // Matrix field files
 // #include "src/MatrixField/CanonicalMatrix.h"
 #include "src/MatrixField/MatrixFieldBase.h"
+
+*/
 
 #endif

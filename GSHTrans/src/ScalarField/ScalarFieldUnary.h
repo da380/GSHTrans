@@ -74,7 +74,8 @@ class ScalarFieldUnary
       typename Internal::Traits<ScalarFieldUnary<Derived, Function>>::Writeable;
 
   // Methods needed to inherit from ScalarField Base.
-  auto GetGrid() const { return _u.GetGrid(); }
+  auto& GetGrid() const { return _u.GetGrid(); }
+
   auto operator[](Int iTheta, Int iPhi) const {
     this->CheckPointIndices(iTheta, iPhi);
     return _f(_u[iTheta, iPhi]);

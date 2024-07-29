@@ -109,15 +109,20 @@ concept RealOrComplexFloatingPointRange = requires() {
   requires RealOrComplexFloatingPoint<std::ranges::range_value_t<T>>;
 };
 
-// Concept for scalar-valued functions.
-template <typename Function, typename Real, typename Value>
-concept ScalarValuedFunction = requires(Function f, Real theta, Real phi) {
+// Concept for scalar-valued function on S2.
+template <typename Function, typename Real, typename Scalar>
+concept ScalarFunctionS2 = requires(Function f, Real theta, Real phi) {
   requires RealFloatingPoint<Real>;
-  requires RealOrComplexValued<Value>;
-  {
-    f(theta, phi)
-  } -> std::convertible_to<std::conditional_t<std::same_as<Value, RealValued>,
-                                              Real, std::complex<Real>>>;
+  requires RealOrComplexFloatingPoint<Scalar>;
+  { f(theta, phi) } -> std::convertible_to<Scalar>;
+};
+
+// Concept for scalar-valued function of spherical harmonic indices.
+template <typename Function, typename Int, typename Scalar>
+concept ScalarFunctionS2Exapansion = requires(Function f, Int l, Int m) {
+  requires std::integral<Int>;
+  requires RealOrComplexFloatingPoint<Scalar>;
+  { f(l, m) } -> std::convertible_to<Scalar>;
 };
 
 }  // namespace GSHTrans

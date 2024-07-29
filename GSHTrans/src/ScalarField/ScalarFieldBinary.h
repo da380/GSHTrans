@@ -71,7 +71,8 @@ class ScalarFieldBinary
       ScalarFieldBinary<Derived1, Derived2, Function>>::Writeable;
 
   // Methods needed to inherit from ScalarField Base.
-  auto GetGrid() const { return _u1.GetGrid(); }
+  auto& GetGrid() const { return _u1.GetGrid(); }
+
   auto operator[](Int iTheta, Int iPhi) const {
     this->CheckPointIndices(iTheta, iPhi);
     return _f(_u1[iTheta, iPhi], _u2[iTheta, iPhi]);

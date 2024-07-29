@@ -5,7 +5,7 @@
 
 namespace GSHTrans {
 
-// Set up the interal traits struct.
+// Set up the internal traits struct.
 namespace Internal {
 
 template <typename Derived>
