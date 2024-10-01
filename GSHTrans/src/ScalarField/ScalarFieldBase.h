@@ -11,30 +11,39 @@
 
 namespace GSHTrans {
 
-template <typename Derived>
-class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
+template <typename _Derived>
+class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
  public:
-  using Int = typename Internal::Traits<Derived>::Int;
-  using Grid = typename Internal::Traits<Derived>::Grid;
-  using Value = typename Internal::Traits<Derived>::Value;
-  using Real = typename Internal::Traits<Derived>::Real;
-  using Complex = typename Internal::Traits<Derived>::Complex;
-  using Scalar = typename Internal::Traits<Derived>::Scalar;
-  using Writeable = typename Internal::Traits<Derived>::Writeable;
+  using Int = typename Internal::Traits<_Derived>::Int;
+  using GridType = typename Internal::Traits<_Derived>::GridType;
+  using Value = typename Internal::Traits<_Derived>::Value;
+  using Real = typename Internal::Traits<_Derived>::Real;
+  using Complex = typename Internal::Traits<_Derived>::Complex;
+  using Scalar = typename Internal::Traits<_Derived>::Scalar;
+  using Writeable = typename Internal::Traits<_Derived>::Writeable;
 
   // Return the grid.
-  auto& GetGrid() const { return GetDerived().GetGrid(); }
+  auto& Grid() const { return Derived().Grid(); }
 
   // Read access to data.
   auto operator[](Int iTheta, Int iPhi) const {
-    return GetDerived()[iTheta, iPhi];
+    return Derived()[iTheta, iPhi];
   }
 
   // Write access to data.
   auto& operator[](Int iTheta, Int iPhi)
   requires Writeable::value
   {
-    return GetDerived()[iTheta, iPhi];
+    return Derived()[iTheta, iPhi];
+  }
+
+  // Return a view to the values.
+  auto View() const {
+    return Grid().PointIndices() |
+           std::ranges::views::transform([this](auto pair) {
+             auto [iTheta, iPhi] = pair;
+             return this->operator[](iTheta, iPhi);
+           });
   }
 
   // Assign values from another field.
@@ -46,18 +55,18 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) = other[iTheta, iPhi];
     }
-    return GetDerived();
+    return Derived();
   }
 
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
   auto& operator=(ScalarFieldBase<OtherDerived>&& other) {
-    GetDerived() = other;
-    return GetDerived();
+    Derived() = other;
+    return Derived();
   }
 
-  // Compound plus assigment with other field.
+  // Compound plus assignment with other field.
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
@@ -67,28 +76,28 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) += other[iTheta, iPhi];
     }
-    return GetDerived();
+    return Derived();
   }
 
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
   auto& operator+=(ScalarFieldBase<OtherDerived>&& other) {
-    GetDerived() += other;
-    return GetDerived();
+    Derived() += other;
+    return Derived();
   }
 
-  // Compound plus assigment with scalar.
+  // Compound plus assignment with scalar.
   auto& operator+=(Scalar s)
   requires Writeable::value
   {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) += s;
     }
-    return GetDerived();
+    return Derived();
   }
 
-  // Compound minus assigment with other field.
+  // Compound minus assignment with other field.
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
@@ -97,28 +106,28 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) -= other(iTheta, iPhi);
     }
-    return GetDerived();
+    return Derived();
   }
 
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
   auto& operator-=(ScalarFieldBase<OtherDerived>&& other) {
-    GetDerived() -= other;
-    return GetDerived();
+    Derived() -= other;
+    return Derived();
   }
 
-  // Compound minus assigment with scalar.
+  // Compound minus assignment with scalar.
   auto& operator-=(Scalar s)
   requires Writeable::value
   {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) -= s;
     }
-    return GetDerived();
+    return Derived();
   }
 
-  // Compound multiply assigment with other field.
+  // Compound multiply assignment with other field.
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
@@ -127,28 +136,28 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) *= other(iTheta, iPhi);
     }
-    return GetDerived();
+    return Derived();
   }
 
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
   auto& operator*=(ScalarFieldBase<OtherDerived>&& other) {
-    GetDerived() *= other;
-    return GetDerived();
+    Derived() *= other;
+    return Derived();
   }
 
-  // Compound multiply assigment with scalar.
+  // Compound multiply assignment with scalar.
   auto& operator*=(Scalar s)
   requires Writeable::value
   {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) *= s;
     }
-    return GetDerived();
+    return Derived();
   }
 
-  // Compound divide assigment with other field.
+  // Compound divide assignment with other field.
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
@@ -157,53 +166,54 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<Derived>> {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) /= other(iTheta, iPhi);
     }
-    return GetDerived();
+    return Derived();
   }
 
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
   auto& operator/=(ScalarFieldBase<OtherDerived>&& other) {
-    GetDerived() /= other;
-    return GetDerived();
+    Derived() /= other;
+    return Derived();
   }
 
-  // Compound divide assigment with scalar.
+  // Compound divide assignment with scalar.
   auto& operator/=(Scalar s)
   requires Writeable::value
   {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) /= s;
     }
-    return GetDerived();
+    return Derived();
   }
 
   // Write values to ostream.
   friend std::ostream& operator<<(std::ostream& os,
-                                  const ScalarFieldBase<Derived>& u) {
-    auto indices = u.PointIndices();
-    auto first = indices | std::ranges::views::reverse |
-                 std::ranges::views::drop(1) | std::ranges::views::reverse;
-    auto last =
-        indices | std::ranges::views::reverse | std::ranges::views::take(1);
-    auto theta = u.CoLatitudes();
-    auto phi = u.Longitudes();
-
+                                  const ScalarFieldBase<_Derived>& u) {
+    os << std::fixed;
     os << std::setprecision(8);
-    os << std::setw(11);
 
+    auto first = u.View() | std::ranges::views::take(u.FieldSize() - 1);
+    auto last = u.View() | std::ranges::views::drop(u.FieldSize() - 1);
+
+    for (auto value : first) os << value << std::endl;
+    for (auto value : last) os << value;
+
+    /*
     for (auto [iTheta, iPhi] : first)
       os << theta[iTheta] << " " << phi[iPhi] << " " << u[iTheta, iPhi]
          << std::endl;
     for (auto [iTheta, iPhi] : last)
       os << theta[iTheta] << " " << phi[iPhi] << " " << u[iTheta, iPhi];
 
+  */
+
     return os;
   }
 
  private:
-  auto& GetDerived() const { return static_cast<const Derived&>(*this); }
-  auto& GetDerived() { return static_cast<Derived&>(*this); }
+  auto& Derived() const { return static_cast<const _Derived&>(*this); }
+  auto& Derived() { return static_cast<_Derived&>(*this); }
 };
 
 }  // namespace GSHTrans

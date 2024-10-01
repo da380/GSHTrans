@@ -20,9 +20,9 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto u = ComplexScalarField(grid);
+  auto u = RealScalarField(grid, [](auto theta, auto phi) { return 1; });
 
-  auto ulm = ScalarFieldExpansion<Grid, RealValued>(grid);
+  // auto ulm = ScalarFieldExpansion<Grid, RealValued>(grid);
 
   std::cout << u << std::endl;
 }

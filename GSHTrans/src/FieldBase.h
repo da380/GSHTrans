@@ -2,46 +2,47 @@
 #define GSH_TRANS_FIELD_BASE_GUARD_H
 
 #include <cassert>
+#include <ranges>
 
 #include "Traits.h"
 
 namespace GSHTrans {
 
-template <typename Derived>
+template <typename _Derived>
 class FieldBase {
  public:
   using Int = std::ptrdiff_t;
 
-  auto& GetGrid() const { return GetDerived().GetGrid(); }
+  auto& Grid() const { return Derived().Grid(); }
 
-  auto NumberOfCoLatitudes() const { return GetGrid().NumberOfCoLatitudes(); }
-  auto CoLatitudes() const { return GetGrid().CoLatitudes(); }
-  auto CoLatitudeIndices() const { return GetGrid().CoLatitudeIndices(); }
+  auto NumberOfCoLatitudes() const { return Grid().NumberOfCoLatitudes(); }
+  auto CoLatitudes() const { return Grid().CoLatitudes(); }
+  auto CoLatitudeIndices() const { return Grid().CoLatitudeIndices(); }
 
-  auto NumberOfLongitudes() const { return GetGrid().NumberOfLongitudes(); }
-  auto Longitudes() const { return GetGrid().Longitudes(); }
-  auto LongitudeIndices() const { return GetGrid().LongitudeIndices(); }
+  auto NumberOfLongitudes() const { return Grid().NumberOfLongitudes(); }
+  auto Longitudes() const { return Grid().Longitudes(); }
+  auto LongitudeIndices() const { return Grid().LongitudeIndices(); }
 
   auto FieldSize() const {
     return NumberOfCoLatitudes() * NumberOfLongitudes();
   }
 
   constexpr void CheckPointIndices(Int iTheta, Int iPhi) const {
-    assert(iTheta >= 0 && iTheta <= this->NumberOfCoLatitudes());
-    assert(iPhi >= 0 && iPhi <= this->NumberOfLongitudes());
+    assert(iTheta >= 0 && iTheta <= NumberOfCoLatitudes());
+    assert(iPhi >= 0 && iPhi <= NumberOfLongitudes());
   }
 
-  auto Points() const { return GetGrid().Points(); }
-  auto PointIndices() const { return GetGrid().PointIndices(); }
+  auto Points() const { return Grid().Points(); }
+  auto PointIndices() const { return Grid().PointIndices(); }
   auto EnumeratePointIndices() const {
     return std::ranges::views::enumerate(PointIndices());
   }
 
-  auto Weights() const { return GetGrid().Weights(); }
+  auto Weights() const { return Grid().Weights(); }
 
  private:
-  auto& GetDerived() const { return static_cast<const Derived&>(*this); }
-  auto& GetDerived() { return static_cast<Derived&>(*this); }
+  auto& Derived() const { return static_cast<const _Derived&>(*this); }
+  auto& Derived() { return static_cast<_Derived&>(*this); }
 };
 
 }  // namespace GSHTrans

@@ -25,10 +25,10 @@ namespace Internal {
 template <typename _Grid, RealOrComplexValued _Value>
 struct Traits<ScalarField<_Grid, _Value>> {
   using Int = std::ptrdiff_t;
-  using Grid = _Grid;
+  using GridType = _Grid;
   using Value = _Value;
-  using Real = typename Grid::Real;
-  using Complex = typename Grid::Complex;
+  using Real = typename _Grid::Real;
+  using Complex = typename _Grid::Complex;
   using Scalar =
       std::conditional_t<std::same_as<Value, RealValued>, Real, Complex>;
   using Writeable = std::true_type;
@@ -40,7 +40,8 @@ template <typename _Grid, RealOrComplexValued _Value>
 requires std::derived_from<_Grid, GridBase<_Grid>>
 class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
  public:
-  using Grid = typename Internal::Traits<ScalarField<_Grid, _Value>>::Grid;
+  using GridType =
+      typename Internal::Traits<ScalarField<_Grid, _Value>>::GridType;
   using Value = typename Internal::Traits<ScalarField<_Grid, _Value>>::Value;
   using Int = typename Internal::Traits<ScalarField<_Grid, _Value>>::Int;
   using Real = typename Internal::Traits<ScalarField<_Grid, _Value>>::Real;
@@ -51,7 +52,7 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
       typename Internal::Traits<ScalarField<_Grid, _Value>>::Writeable;
 
   // Return the grid.
-  auto& GetGrid() const { return _grid; }
+  auto& Grid() const { return _grid; }
 
   // Read access to data.
   auto operator[](Int iTheta, Int iPhi) const {
@@ -83,7 +84,7 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   template <typename Derived>
   requires std::convertible_to<typename Derived::Scalar, Scalar>
   ScalarField(const ScalarFieldBase<Derived>& other)
-      : ScalarField(other.GetGrid()) {
+      : ScalarField(other.Grid()) {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) = other[iTheta, iPhi];
     }
@@ -97,7 +98,7 @@ class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
   ScalarField(const ScalarField&) = default;
   ScalarField(ScalarField&&) = default;
 
-  // Default copy and move assigment.
+  // Default copy and move assignment.
   ScalarField& operator=(const ScalarField&) = default;
   ScalarField& operator=(ScalarField&&) = default;
 
