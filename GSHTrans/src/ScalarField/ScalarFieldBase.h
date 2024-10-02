@@ -2,6 +2,7 @@
 #define GSH_TRANS_SCALAR_FIELD_BASE_GUARD_H
 
 #include <concepts>
+#include <format>
 #include <iomanip>
 #include <iostream>
 
@@ -15,7 +16,6 @@ template <typename _Derived>
 class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
  public:
   using Int = typename Internal::Traits<_Derived>::Int;
-  using GridType = typename Internal::Traits<_Derived>::GridType;
   using Value = typename Internal::Traits<_Derived>::Value;
   using Real = typename Internal::Traits<_Derived>::Real;
   using Complex = typename Internal::Traits<_Derived>::Complex;
@@ -190,24 +190,15 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
   // Write values to ostream.
   friend std::ostream& operator<<(std::ostream& os,
                                   const ScalarFieldBase<_Derived>& u) {
-    os << std::fixed;
-    os << std::setprecision(8);
-
-    auto first = u.View() | std::ranges::views::take(u.FieldSize() - 1);
-    auto last = u.View() | std::ranges::views::drop(u.FieldSize() - 1);
-
-    for (auto value : first) os << value << std::endl;
-    for (auto value : last) os << value;
-
-    /*
-    for (auto [iTheta, iPhi] : first)
-      os << theta[iTheta] << " " << phi[iPhi] << " " << u[iTheta, iPhi]
-         << std::endl;
-    for (auto [iTheta, iPhi] : last)
-      os << theta[iTheta] << " " << phi[iPhi] << " " << u[iTheta, iPhi];
-
-  */
-
+    for (auto [lat, lon, val] :
+         std::ranges::views::zip(u.CoLatitudes(), u.Longitudes(), u.View())) {
+      if constexpr (std::same_as<typename _Derived::Value, ComplexValued>) {
+        os << std::format("{:+.8e}  {:+.8e}  ({:+.8e},  {:+.8e})\n", lat, lon,
+                          val.real(), val.imag());
+      } else {
+        os << std::format("{:+.8e}  {:+8e}  {:+.8e}\n", lat, lon, val);
+      }
+    }
     return os;
   }
 

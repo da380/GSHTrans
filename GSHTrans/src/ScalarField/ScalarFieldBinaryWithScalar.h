@@ -12,28 +12,27 @@
 namespace GSHTrans {
 
 // Forward declare class.
-template <typename Derived, typename Function>
+template <typename _Derived, typename Function>
 requires requires() {
-  requires std::invocable<Function, typename Derived::Scalar,
-                          typename Derived::Scalar>;
+  requires std::invocable<Function, typename _Derived::Scalar,
+                          typename _Derived::Scalar>;
   requires std::convertible_to<
-      std::invoke_result_t<Function, typename Derived::Scalar,
-                           typename Derived::Scalar>,
-      typename Derived::Scalar>;
+      std::invoke_result_t<Function, typename _Derived::Scalar,
+                           typename _Derived::Scalar>,
+      typename _Derived::Scalar>;
 }
 class ScalarFieldBinaryWithScalar;
 
 // Set traits.
 namespace Internal {
 
-template <typename Derived, typename Function>
-struct Traits<ScalarFieldBinaryWithScalar<Derived, Function>> {
+template <typename _Derived, typename Function>
+struct Traits<ScalarFieldBinaryWithScalar<_Derived, Function>> {
   using Int = std::ptrdiff_t;
-  using Grid = typename Derived::Grid;
-  using Real = typename Grid::Real;
-  using Complex = typename Grid::Complex;
-  using Scalar = std::invoke_result_t<Function, typename Derived::Scalar,
-                                      typename Derived::Scalar>;
+  using Real = typename _Derived::Real;
+  using Complex = typename _Derived::Complex;
+  using Scalar = std::invoke_result_t<Function, typename _Derived::Scalar,
+                                      typename _Derived::Scalar>;
   using Value =
       std::conditional_t<RealFloatingPoint<Scalar>, RealValued, ComplexValued>;
   using Writeable = std::false_type;
@@ -41,35 +40,33 @@ struct Traits<ScalarFieldBinaryWithScalar<Derived, Function>> {
 
 }  // namespace Internal
 
-template <typename Derived, typename Function>
+template <typename _Derived, typename Function>
 requires requires() {
-  requires std::invocable<Function, typename Derived::Scalar,
-                          typename Derived::Scalar>;
+  requires std::invocable<Function, typename _Derived::Scalar,
+                          typename _Derived::Scalar>;
   requires std::convertible_to<
-      std::invoke_result_t<Function, typename Derived::Scalar,
-                           typename Derived::Scalar>,
-      typename Derived::Scalar>;
+      std::invoke_result_t<Function, typename _Derived::Scalar,
+                           typename _Derived::Scalar>,
+      typename _Derived::Scalar>;
 }
 class ScalarFieldBinaryWithScalar
-    : public ScalarFieldBase<ScalarFieldBinaryWithScalar<Derived, Function>> {
+    : public ScalarFieldBase<ScalarFieldBinaryWithScalar<_Derived, Function>> {
  public:
   using Int = typename Internal::Traits<
-      ScalarFieldBinaryWithScalar<Derived, Function>>::Int;
-  using Grid = typename Internal::Traits<
-      ScalarFieldBinaryWithScalar<Derived, Function>>::Grid;
+      ScalarFieldBinaryWithScalar<_Derived, Function>>::Int;
   using Value = typename Internal::Traits<
-      ScalarFieldBinaryWithScalar<Derived, Function>>::Value;
+      ScalarFieldBinaryWithScalar<_Derived, Function>>::Value;
   using Real = typename Internal::Traits<
-      ScalarFieldBinaryWithScalar<Derived, Function>>::Real;
+      ScalarFieldBinaryWithScalar<_Derived, Function>>::Real;
   using Complex = typename Internal::Traits<
-      ScalarFieldBinaryWithScalar<Derived, Function>>::Complex;
+      ScalarFieldBinaryWithScalar<_Derived, Function>>::Complex;
   using Scalar = typename Internal::Traits<
-      ScalarFieldBinaryWithScalar<Derived, Function>>::Scalar;
+      ScalarFieldBinaryWithScalar<_Derived, Function>>::Scalar;
   using Writeable = typename Internal::Traits<
-      ScalarFieldBinaryWithScalar<Derived, Function>>::Writeable;
+      ScalarFieldBinaryWithScalar<_Derived, Function>>::Writeable;
 
   // Methods needed to inherit from ScalarField Base.
-  auto& GetGrid() const { return _u.GetGrid(); }
+  auto& Grid() const { return _u.Grid(); }
 
   auto operator[](Int iTheta, Int iPhi) const {
     this->CheckPointIndices(iTheta, iPhi);
@@ -78,7 +75,7 @@ class ScalarFieldBinaryWithScalar
 
   // Constructors.
   ScalarFieldBinaryWithScalar() = delete;
-  ScalarFieldBinaryWithScalar(const ScalarFieldBase<Derived>& u, Scalar s,
+  ScalarFieldBinaryWithScalar(const ScalarFieldBase<_Derived>& u, Scalar s,
                               Function&& f)
       : _u{u}, _f{f}, _s{s} {}
 
@@ -92,7 +89,7 @@ class ScalarFieldBinaryWithScalar
       default;
 
  private:
-  const ScalarFieldBase<Derived>& _u;
+  const ScalarFieldBase<_Derived>& _u;
   Function& _f;
   Scalar _s;
 };

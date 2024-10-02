@@ -1,6 +1,8 @@
 #include <GSHTrans/All>
 #include <array>
+#include <format>
 #include <iostream>
+#include <print>
 #include <ranges>
 #include <tuple>
 
@@ -22,7 +24,10 @@ int main() {
 
   auto u = RealScalarField(grid, [](auto theta, auto phi) { return 1; });
 
-  // auto ulm = ScalarFieldExpansion<Grid, RealValued>(grid);
+  auto v =
+      RealAbstractScalarField(grid, [](auto theta, auto phi) { return 1; });
 
-  std::cout << u << std::endl;
+  auto w = ComplexConstantScalarField(grid, 1);
+
+  std::cout << 2 * w + 1;
 }

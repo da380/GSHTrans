@@ -24,11 +24,10 @@ namespace Internal {
 
 template <typename _Grid, RealOrComplexValued _Value>
 struct Traits<ConstantScalarField<_Grid, _Value>> {
-  using Grid = _Grid;
   using Value = _Value;
   using Int = std::ptrdiff_t;
-  using Real = typename Grid::Real;
-  using Complex = typename Grid::Complex;
+  using Real = typename _Grid::Real;
+  using Complex = typename _Grid::Complex;
   using Scalar =
       std::conditional_t<std::same_as<Value, RealValued>, Real, Complex>;
   using Writeable = std::false_type;
@@ -43,8 +42,6 @@ class ConstantScalarField
  public:
   using Int =
       typename Internal::Traits<ConstantScalarField<_Grid, _Value>>::Int;
-  using Grid =
-      typename Internal::Traits<ConstantScalarField<_Grid, _Value>>::Grid;
   using Value =
       typename Internal::Traits<ConstantScalarField<_Grid, _Value>>::Value;
   using Real =
@@ -57,7 +54,7 @@ class ConstantScalarField
       typename Internal::Traits<ConstantScalarField<_Grid, _Value>>::Writeable;
 
   // Return the grid.
-  auto& GetGrid() const { return _grid; }
+  auto& Grid() const { return _grid; }
 
   // Read access to data.
   auto operator[](Int iTheta, Int iPhi) const {

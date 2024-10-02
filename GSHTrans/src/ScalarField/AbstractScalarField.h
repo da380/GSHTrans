@@ -29,10 +29,9 @@ namespace Internal {
 template <typename _Grid, RealOrComplexValued _Value, typename _Function>
 struct Traits<AbstractScalarField<_Grid, _Value, _Function>> {
   using Int = std::ptrdiff_t;
-  using Grid = _Grid;
   using Value = _Value;
-  using Real = typename Grid::Real;
-  using Complex = typename Grid::Complex;
+  using Real = typename _Grid::Real;
+  using Complex = typename _Grid::Complex;
   using Scalar =
       std::conditional_t<std::same_as<Value, RealValued>, Real, Complex>;
   using Writeable = std::false_type;
@@ -48,8 +47,6 @@ requires std::derived_from<_Grid, GridBase<_Grid>> &&
 class AbstractScalarField
     : public ScalarFieldBase<AbstractScalarField<_Grid, _Value, _Function>> {
  public:
-  using Grid = typename Internal::Traits<
-      AbstractScalarField<_Grid, _Value, _Function>>::Grid;
   using Value = typename Internal::Traits<
       AbstractScalarField<_Grid, _Value, _Function>>::Value;
   using Int = typename Internal::Traits<
@@ -64,7 +61,7 @@ class AbstractScalarField
       AbstractScalarField<_Grid, _Value, _Function>>::Writeable;
 
   // Return the grid.
-  auto& GetGrid() const { return _grid; }
+  auto& Grid() const { return _grid; }
 
   // Read access to data.
   auto operator[](Int iTheta, Int iPhi) const {
@@ -75,7 +72,7 @@ class AbstractScalarField
   }
 
   // Default constructor.
-  AbstractScalarField() = default;
+  AbstractScalarField() = delete;
 
   // Construct from grid initialising values to zero.
   AbstractScalarField(_Grid& grid, _Function&& f) : _grid{grid}, _f{f} {}

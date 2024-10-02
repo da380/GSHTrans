@@ -25,7 +25,6 @@ namespace Internal {
 template <typename _Grid, RealOrComplexValued _Value>
 struct Traits<ScalarField<_Grid, _Value>> {
   using Int = std::ptrdiff_t;
-  using GridType = _Grid;
   using Value = _Value;
   using Real = typename _Grid::Real;
   using Complex = typename _Grid::Complex;
@@ -40,8 +39,6 @@ template <typename _Grid, RealOrComplexValued _Value>
 requires std::derived_from<_Grid, GridBase<_Grid>>
 class ScalarField : public ScalarFieldBase<ScalarField<_Grid, _Value>> {
  public:
-  using GridType =
-      typename Internal::Traits<ScalarField<_Grid, _Value>>::GridType;
   using Value = typename Internal::Traits<ScalarField<_Grid, _Value>>::Value;
   using Int = typename Internal::Traits<ScalarField<_Grid, _Value>>::Int;
   using Real = typename Internal::Traits<ScalarField<_Grid, _Value>>::Real;

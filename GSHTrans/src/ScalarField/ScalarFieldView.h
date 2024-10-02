@@ -27,9 +27,8 @@ namespace Internal {
 template <typename _Grid, std::ranges::view _View>
 struct Traits<ScalarFieldView<_Grid, _View>> {
   using Int = std::ptrdiff_t;
-  using Grid = _Grid;
-  using Real = typename Grid::Real;
-  using Complex = typename Grid::Complex;
+  using Real = typename _Grid::Real;
+  using Complex = typename _Grid::Complex;
   using Scalar = std::ranges::range_value_t<_View>;
   using Value =
       std::conditional_t<RealFloatingPoint<Scalar>, RealValued, ComplexValued>;
@@ -46,7 +45,6 @@ requires std::derived_from<_Grid, GridBase<_Grid>> &&
                       typename _Grid::Real>
 class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
  public:
-  using Grid = typename Internal::Traits<ScalarFieldView<_Grid, _View>>::Grid;
   using Value = typename Internal::Traits<ScalarFieldView<_Grid, _View>>::Value;
   using Int = typename Internal::Traits<ScalarFieldView<_Grid, _View>>::Int;
   using Real = typename Internal::Traits<ScalarFieldView<_Grid, _View>>::Real;
@@ -58,7 +56,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
       typename Internal::Traits<ScalarFieldView<_Grid, _View>>::Writeable;
 
   // Return the grid.
-  auto& GetGrid() const { return _grid; }
+  auto& Grid() const { return _grid; }
 
   // Read access to the data.
   auto operator[](Int iTheta, Int iPhi) const {
@@ -84,7 +82,7 @@ class ScalarFieldView : public ScalarFieldBase<ScalarFieldView<_Grid, _View>> {
   ScalarFieldView(const ScalarFieldView&) = default;
   ScalarFieldView(ScalarFieldView&&) = default;
 
-  // Default copy and move assigment.
+  // Default copy and move assignment.
   ScalarFieldView& operator=(const ScalarFieldView&) = default;
   ScalarFieldView& operator=(ScalarFieldView&&) = default;
 
