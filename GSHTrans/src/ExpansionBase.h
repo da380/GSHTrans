@@ -9,17 +9,17 @@
 
 namespace GSHTrans {
 
-template <typename Derived>
+template <typename _Derived>
 class ExpansionBase {
  public:
   using Int = std::ptrdiff_t;
 
-  auto& GetGrid() const { return GetDerived().GetGrid(); }
-  auto MaxDegree() const { return GetDerived().GetGrid().MaxDegree(); }
+  auto& Grid() const { return Derived().Grid(); }
+  auto MaxDegree() const { return Derived().Grid().MaxDegree(); }
 
  private:
-  auto& GetDerived() const { return static_cast<const Derived&>(*this); }
-  auto& GetDerived() { return static_cast<Derived&>(*this); }
+  auto& Derived() const { return static_cast<const _Derived&>(*this); }
+  auto& Derived() { return static_cast<_Derived&>(*this); }
 };
 
 }  // namespace GSHTrans

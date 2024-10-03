@@ -24,10 +24,5 @@ int main() {
 
   auto u = RealScalarField(grid, [](auto theta, auto phi) { return 1; });
 
-  auto v =
-      RealAbstractScalarField(grid, [](auto theta, auto phi) { return 1; });
-
-  auto w = ComplexConstantScalarField(grid, 1);
-
-  std::cout << 2 * w + 1;
+  std::cout << 2 * u + 1;
 }

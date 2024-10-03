@@ -119,7 +119,7 @@ concept ScalarFunctionS2 = requires(Function f, Real theta, Real phi) {
 
 // Concept for scalar-valued function of spherical harmonic indices.
 template <typename Function, typename Int, typename Scalar>
-concept ScalarFunctionS2Exapansion = requires(Function f, Int l, Int m) {
+concept ScalarFunctionS2Expansion = requires(Function f, Int l, Int m) {
   requires std::integral<Int>;
   requires RealOrComplexFloatingPoint<Scalar>;
   { f(l, m) } -> std::convertible_to<Scalar>;

@@ -25,10 +25,9 @@ namespace Internal {
 template <typename _Grid, RealOrComplexValued _Value>
 struct Traits<ScalarFieldExpansion<_Grid, _Value>> {
   using Int = std::ptrdiff_t;
-  using Grid = _Grid;
   using Value = _Value;
-  using Real = typename Grid::Real;
-  using Complex = typename Grid::Complex;
+  using Real = typename _Grid::Real;
+  using Complex = typename _Grid::Complex;
   using Scalar =
       std::conditional_t<std::same_as<Value, RealValued>, Real, Complex>;
   using Writeable = std::true_type;
@@ -41,8 +40,6 @@ requires std::derived_from<_Grid, GridBase<_Grid>>
 class ScalarFieldExpansion
     : public ScalarFieldExpansionBase<ScalarFieldExpansion<_Grid, _Value>> {
  public:
-  using Grid =
-      typename Internal::Traits<ScalarFieldExpansion<_Grid, _Value>>::Grid;
   using Value =
       typename Internal::Traits<ScalarFieldExpansion<_Grid, _Value>>::Value;
   using Int =
@@ -57,7 +54,7 @@ class ScalarFieldExpansion
       typename Internal::Traits<ScalarFieldExpansion<_Grid, _Value>>::Writeable;
 
   // Return the grid.
-  auto& GetGrid() const { return _grid; }
+  auto& Grid() const { return _grid; }
 
   // Read access to data.
   auto operator[](Int l, Int m) const { return _data[this->Index(l, m)]; }
@@ -77,7 +74,7 @@ class ScalarFieldExpansion
 
   // Construction from grid using function to initialise values.
   template <typename Function>
-  requires ScalarFunctionS2Exapansion<Function, Int, Complex>
+  requires ScalarFunctionS2Expansion<Function, Int, Complex>
   ScalarFieldExpansion(_Grid& grid, Function&& f) : ScalarFieldExpansion(grid) {
     std::ranges::copy(
         this->Indices() | std::ranges::views::transform([&f](auto index) {
@@ -88,25 +85,25 @@ class ScalarFieldExpansion
   }
 
   // Construct from an element of the base class.
-  template <typename Derived>
-  requires std::convertible_to<typename Derived::Complex, Complex>
-  ScalarFieldExpansion(const ScalarFieldExpansionBase<Derived>& other)
+  template <typename _Derived>
+  requires std::convertible_to<typename _Derived::Complex, Complex>
+  ScalarFieldExpansion(const ScalarFieldExpansionBase<_Derived>& other)
       : ScalarFieldExpansion(other.GetGrid()) {
     for (auto [l, m] : this->Indices()) {
       operator[](l, m) = other[l, m];
     }
   }
 
-  template <typename Derived>
-  requires std::convertible_to<typename Derived::Complex, Complex>
-  ScalarFieldExpansion(ScalarFieldExpansionBase<Derived>&& other)
+  template <typename _Derived>
+  requires std::convertible_to<typename _Derived::Complex, Complex>
+  ScalarFieldExpansion(ScalarFieldExpansionBase<_Derived>&& other)
       : ScalarFieldExpansion(other) {}
 
   // Default copy and move constructors.
   ScalarFieldExpansion(const ScalarFieldExpansion&) = default;
   ScalarFieldExpansion(ScalarFieldExpansion&&) = default;
 
-  // Default copy and move assigment.
+  // Default copy and move assignment.
   ScalarFieldExpansion& operator=(const ScalarFieldExpansion&) = default;
   ScalarFieldExpansion& operator=(ScalarFieldExpansion&&) = default;
 

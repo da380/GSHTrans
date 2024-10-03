@@ -11,23 +11,22 @@
 
 namespace GSHTrans {
 
-template <typename Derived>
+template <typename _Derived>
 class ScalarFieldExpansionBase
-    : public ExpansionBase<ScalarFieldExpansionBase<Derived>> {
+    : public ExpansionBase<ScalarFieldExpansionBase<_Derived>> {
  public:
-  using Int = typename Internal::Traits<Derived>::Int;
-  using Grid = typename Internal::Traits<Derived>::Grid;
-  using Value = typename Internal::Traits<Derived>::Value;
-  using Real = typename Internal::Traits<Derived>::Real;
-  using Complex = typename Internal::Traits<Derived>::Complex;
-  using Scalar = typename Internal::Traits<Derived>::Scalar;
-  using Writeable = typename Internal::Traits<Derived>::Writeable;
+  using Int = typename Internal::Traits<_Derived>::Int;
+  using Value = typename Internal::Traits<_Derived>::Value;
+  using Real = typename Internal::Traits<_Derived>::Real;
+  using Complex = typename Internal::Traits<_Derived>::Complex;
+  using Scalar = typename Internal::Traits<_Derived>::Scalar;
+  using Writeable = typename Internal::Traits<_Derived>::Writeable;
 
   // Return the grid.
-  auto& GetGrid() const { return GetDerived().GetGrid(); }
+  auto& Grid() const { return Derived().Grid(); }
 
   // Read access to the data.
-  auto operator[](Int l, Int m) const { return GetDerived()[l, m]; }
+  auto operator[](Int l, Int m) const { return Derived()[l, m]; }
 
   // Return degrees.
   constexpr auto Degrees() const { _GSHIndices().Degrees(); }
@@ -45,7 +44,7 @@ class ScalarFieldExpansionBase
   auto operator[](Int l, Int m)
   requires Writeable::value
   {
-    return GetDerived()[l, m];
+    return Derived()[l, m];
   }
 
   // Assign values from another Expansion.
@@ -56,25 +55,25 @@ class ScalarFieldExpansionBase
     for (auto [l, m] : Indices()) {
       operator[](l, m) = other[l, m];
     }
-    return GetDerived();
+    return Derived();
   }
 
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Complex, Complex>
   auto& operator=(OtherDerived&& other) {
-    GetDerived() = other;
-    return GetDerived();
+    Derived() = other;
+    return Derived();
   }
 
-  // Compound multiply assigment with scalar.
+  // Compound multiply assignment with scalar.
   auto& operator*=(Complex s)
   requires Writeable::value && std::same_as<Value, ComplexValued>
   {
     for (auto [l, m] : Indices()) {
       operator[](l, m) *= s;
     }
-    return GetDerived();
+    return Derived();
   }
 
   auto& operator*=(Real s)
@@ -83,17 +82,17 @@ class ScalarFieldExpansionBase
     for (auto [l, m] : Indices()) {
       operator[](l, m) *= s;
     }
-    return GetDerived();
+    return Derived();
   }
 
-  // Compound divide assigment with scalar.
+  // Compound divide assignment with scalar.
   auto& operator/=(Complex s)
   requires Writeable::value && std::same_as<Value, ComplexValued>
   {
     for (auto [l, m] : Indices()) {
       operator[](l, m) /= s;
     }
-    return GetDerived();
+    return Derived();
   }
 
   auto& operator/=(Real s)
@@ -102,22 +101,21 @@ class ScalarFieldExpansionBase
     for (auto [l, m] : Indices()) {
       operator[](l, m) /= s;
     }
-    return GetDerived();
+    return Derived();
   }
 
   // Write values to ostream.
   friend std::ostream& operator<<(std::ostream& os,
-                                  const ScalarFieldExpansionBase<Derived>& u) {
+                                  const ScalarFieldExpansionBase<_Derived>& u) {
     for (auto [l, m] : u.Indices()) {
-      os << u[l, m];
-      if (l < u.MaxDegree() || m < u.MaxDegree()) os << std::endl;
+      os << u[l, m] << std::endl;
     }
     return os;
   }
 
  private:
-  auto& GetDerived() const { return static_cast<const Derived&>(*this); }
-  auto& GetDerived() { return static_cast<Derived&>(*this); }
+  auto& Derived() const { return static_cast<const _Derived&>(*this); }
+  auto& Derived() { return static_cast<_Derived&>(*this); }
 
   // Return GSHIndices.
   constexpr auto _GSHIndices() const {
