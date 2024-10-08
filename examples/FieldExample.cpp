@@ -21,11 +21,15 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto u = RealScalarField(grid, [](auto theta, auto phi) { return 1; });
+  auto u = GSHTrans::CanonicalComponentField<Grid, RealValued, 0>(
+      grid, [](auto theta, auto phi) { return 1; });
 
-  auto ulm = RealScalarFieldExpansion(grid, [](auto l, auto m) { return 1; });
+  std::cout << u;
 
-  L2Norm(ulm);
+  std::cout << u.UpperIndex() << std::endl;
+
+  //  auto ulm = RealScalarFieldExpansion(grid, [](auto l, auto m) { return 1;
+  //  });
 
   // for (auto [l, m] : ulm.Indices()) std::cout << l << " " << m << std::endl;
 }

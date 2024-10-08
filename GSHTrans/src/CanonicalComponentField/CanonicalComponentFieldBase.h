@@ -1,5 +1,5 @@
-#ifndef GSH_TRANS_SCALAR_FIELD_BASE_GUARD_H
-#define GSH_TRANS_SCALAR_FIELD_BASE_GUARD_H
+#ifndef GSH_TRANS_CANONICAL_COMPONENT_FIELD_BASE_GUARD_H
+#define GSH_TRANS_CANONICAL_COMPONENT_FIELD_BASE_GUARD_H
 
 #include <concepts>
 #include <format>
@@ -12,7 +12,8 @@
 namespace GSHTrans {
 
 template <typename _Derived>
-class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
+class CanonicalComponentFieldBase
+    : public FieldBase<CanonicalComponentFieldBase<_Derived>> {
  public:
   using Int = typename Internal::Traits<_Derived>::Int;
   using Value = typename Internal::Traits<_Derived>::Value;
@@ -23,6 +24,9 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
 
   // Return the grid.
   auto& Grid() const { return Derived().Grid(); }
+
+  // Return the upper index.
+  constexpr auto UpperIndex() const { return Derived().UpperIndex(); }
 
   // Read access to data.
   auto operator[](Int iTheta, Int iPhi) const {
@@ -49,7 +53,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator=(const ScalarFieldBase<OtherDerived>& other) {
+  auto& operator=(const CanonicalComponentFieldBase<OtherDerived>& other) {
     assert(other.FieldSize() == this->FieldSize());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) = other[iTheta, iPhi];
@@ -60,7 +64,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator=(ScalarFieldBase<OtherDerived>&& other) {
+  auto& operator=(CanonicalComponentFieldBase<OtherDerived>&& other) {
     Derived() = other;
     return Derived();
   }
@@ -69,7 +73,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator+=(const ScalarFieldBase<OtherDerived>& other) {
+  auto& operator+=(const CanonicalComponentFieldBase<OtherDerived>& other) {
     assert(other.FieldSize() == this->FieldSize());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) += other[iTheta, iPhi];
@@ -80,7 +84,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator+=(ScalarFieldBase<OtherDerived>&& other) {
+  auto& operator+=(CanonicalComponentFieldBase<OtherDerived>&& other) {
     Derived() += other;
     return Derived();
   }
@@ -99,7 +103,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator-=(const ScalarFieldBase<OtherDerived>& other) {
+  auto& operator-=(const CanonicalComponentFieldBase<OtherDerived>& other) {
     assert(other.FieldSize() == this->FieldSize());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) -= other(iTheta, iPhi);
@@ -110,7 +114,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator-=(ScalarFieldBase<OtherDerived>&& other) {
+  auto& operator-=(CanonicalComponentFieldBase<OtherDerived>&& other) {
     Derived() -= other;
     return Derived();
   }
@@ -129,7 +133,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator*=(const ScalarFieldBase<OtherDerived>& other) {
+  auto& operator*=(const CanonicalComponentFieldBase<OtherDerived>& other) {
     assert(other.FieldSize() == this->FieldSize());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) *= other(iTheta, iPhi);
@@ -140,7 +144,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator*=(ScalarFieldBase<OtherDerived>&& other) {
+  auto& operator*=(CanonicalComponentFieldBase<OtherDerived>&& other) {
     Derived() *= other;
     return Derived();
   }
@@ -159,7 +163,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator/=(const ScalarFieldBase<OtherDerived>& other) {
+  auto& operator/=(const CanonicalComponentFieldBase<OtherDerived>& other) {
     assert(other.FieldSize() == this->FieldSize());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) /= other(iTheta, iPhi);
@@ -170,7 +174,7 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
   template <typename OtherDerived>
   requires Writeable::value &&
            std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator/=(ScalarFieldBase<OtherDerived>&& other) {
+  auto& operator/=(CanonicalComponentFieldBase<OtherDerived>&& other) {
     Derived() /= other;
     return Derived();
   }
@@ -186,8 +190,8 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
   }
 
   // Write values to ostream.
-  friend std::ostream& operator<<(std::ostream& os,
-                                  const ScalarFieldBase<_Derived>& u) {
+  friend std::ostream& operator<<(
+      std::ostream& os, const CanonicalComponentFieldBase<_Derived>& u) {
     for (auto [lat, lon, val] :
          std::ranges::views::zip(u.CoLatitudes(), u.Longitudes(), u.View())) {
       if constexpr (std::same_as<typename _Derived::Value, ComplexValued>) {
@@ -197,14 +201,17 @@ class ScalarFieldBase : public FieldBase<ScalarFieldBase<_Derived>> {
         os << std::format("{:+.8e}  {:+8e}  {:+.8e}\n", lat, lon, val);
       }
     }
+    if constexpr (u.UpperIndex() == 0) std::cout << "Hello!\n";
     return os;
   }
 
  private:
-  auto& Derived() const { return static_cast<const _Derived&>(*this); }
-  auto& Derived() { return static_cast<_Derived&>(*this); }
+  constexpr auto& Derived() const {
+    return static_cast<const _Derived&>(*this);
+  }
+  constexpr auto& Derived() { return static_cast<_Derived&>(*this); }
 };
 
 }  // namespace GSHTrans
 
-#endif  // GSH_TRANS_SCALAR_FIELD_BASE_GUARD_H
+#endif

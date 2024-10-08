@@ -1,6 +1,9 @@
 #ifndef GSH_TRANS_FIELD_MODULE_H
 #define GSH_TRANS_FIELD_MODULE_H
 
+#include "src/CanonicalComponentField/CanonicalComponentField.h"
+#include "src/CanonicalComponentField/CanonicalComponentFieldBase.h"
+
 // Scalar field files.
 #include "src/FieldBase.h"
 #include "src/ScalarField/AbstractScalarField.h"
