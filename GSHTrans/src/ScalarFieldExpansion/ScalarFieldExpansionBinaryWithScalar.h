@@ -12,65 +12,62 @@
 namespace GSHTrans {
 
 // Forward declare class.
-template <typename Derived, typename Function>
+template <typename _Derived, typename Function>
 requires requires() {
   requires std::convertible_to<
-      std::invoke_result_t<Function, typename Derived::Complex,
-                           typename Derived::Complex>,
-      typename Derived::Complex>;
+      std::invoke_result_t<Function, typename _Derived::Complex,
+                           typename _Derived::Complex>,
+      typename _Derived::Complex>;
 }
 class ScalarFieldExpansionBinaryWithScalar;
 
 // Set traits.
 namespace Internal {
 
-template <typename Derived, typename Function>
-struct Traits<ScalarFieldExpansionBinaryWithScalar<Derived, Function>> {
+template <typename _Derived, typename Function>
+struct Traits<ScalarFieldExpansionBinaryWithScalar<_Derived, Function>> {
   using Int = std::ptrdiff_t;
-  using Grid = typename Derived::Grid;
-  using Real = typename Grid::Real;
-  using Complex = typename Grid::Complex;
-  using Value = typename Derived::Value;
-  using Scalar = typename Derived::Scalar;
+  using Real = typename _Derived::Real;
+  using Complex = typename _Derived::Complex;
+  using Value = typename _Derived::Value;
+  using Scalar = typename _Derived::Scalar;
   using Writeable = std::false_type;
 };
 
 }  // namespace Internal
 
-template <typename Derived, typename Function>
+template <typename _Derived, typename Function>
 requires requires() {
   requires std::convertible_to<
-      std::invoke_result_t<Function, typename Derived::Complex,
-                           typename Derived::Complex>,
-      typename Derived::Complex>;
+      std::invoke_result_t<Function, typename _Derived::Complex,
+                           typename _Derived::Complex>,
+      typename _Derived::Complex>;
 }
 class ScalarFieldExpansionBinaryWithScalar
     : public ScalarFieldExpansionBase<
-          ScalarFieldExpansionBinaryWithScalar<Derived, Function>> {
+          ScalarFieldExpansionBinaryWithScalar<_Derived, Function>> {
  public:
   using Int = typename Internal::Traits<
-      ScalarFieldExpansionBinaryWithScalar<Derived, Function>>::Int;
-  using Grid = typename Internal::Traits<
-      ScalarFieldExpansionBinaryWithScalar<Derived, Function>>::Grid;
+      ScalarFieldExpansionBinaryWithScalar<_Derived, Function>>::Int;
   using Value = typename Internal::Traits<
-      ScalarFieldExpansionBinaryWithScalar<Derived, Function>>::Value;
+      ScalarFieldExpansionBinaryWithScalar<_Derived, Function>>::Value;
   using Real = typename Internal::Traits<
-      ScalarFieldExpansionBinaryWithScalar<Derived, Function>>::Real;
+      ScalarFieldExpansionBinaryWithScalar<_Derived, Function>>::Real;
   using Complex = typename Internal::Traits<
-      ScalarFieldExpansionBinaryWithScalar<Derived, Function>>::Complex;
+      ScalarFieldExpansionBinaryWithScalar<_Derived, Function>>::Complex;
   using Scalar = typename Internal::Traits<
-      ScalarFieldExpansionBinaryWithScalar<Derived, Function>>::Scalar;
+      ScalarFieldExpansionBinaryWithScalar<_Derived, Function>>::Scalar;
   using Writeable = typename Internal::Traits<
-      ScalarFieldExpansionBinaryWithScalar<Derived, Function>>::Writeable;
+      ScalarFieldExpansionBinaryWithScalar<_Derived, Function>>::Writeable;
 
   // Methods needed to inherit from ScalarFieldExpansion Base.
-  auto& GetGrid() const { return _u.GetGrid(); }
+  auto& Grid() const { return _u.Grid(); }
   auto operator[](Int l, Int m) const { return _f(_u[l, m], _s); }
 
   // Constructors.
   ScalarFieldExpansionBinaryWithScalar() = delete;
   ScalarFieldExpansionBinaryWithScalar(
-      const ScalarFieldExpansionBase<Derived>& u, Scalar s, Function&& f)
+      const ScalarFieldExpansionBase<_Derived>& u, Scalar s, Function&& f)
       : _u{u}, _s{s}, _f{f} {}
 
   ScalarFieldExpansionBinaryWithScalar(
@@ -85,7 +82,7 @@ class ScalarFieldExpansionBinaryWithScalar
       ScalarFieldExpansionBinaryWithScalar&&) = default;
 
  private:
-  const ScalarFieldExpansionBase<Derived>& _u;
+  const ScalarFieldExpansionBase<_Derived>& _u;
   Scalar _s;
   Function& _f;
 };

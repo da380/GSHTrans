@@ -2,6 +2,7 @@
 #define GSH_TRANS_SCALAR_FIELD_EXPANSION_BASE_GUARD_H
 
 #include <concepts>
+#include <format>
 #include <iostream>
 
 #include "../Concepts.h"
@@ -27,6 +28,14 @@ class ScalarFieldExpansionBase
 
   // Read access to the data.
   auto operator[](Int l, Int m) const { return Derived()[l, m]; }
+
+  // Return view to the data.
+  auto View() const {
+    return Indices() | std::ranges::views::transform([this](auto index) {
+             auto [l, m] = index;
+             return operator[](l, m);
+           });
+  }
 
   // Return degrees.
   constexpr auto Degrees() const { _GSHIndices().Degrees(); }
@@ -107,8 +116,12 @@ class ScalarFieldExpansionBase
   // Write values to ostream.
   friend std::ostream& operator<<(std::ostream& os,
                                   const ScalarFieldExpansionBase<_Derived>& u) {
-    for (auto [l, m] : u.Indices()) {
-      os << u[l, m] << std::endl;
+    for (auto [index, val] : std::ranges::views::zip(u.Indices(), u.View())) {
+      auto [l, m] = index;
+      // os << std::format("{:+.8e}  {:+.8e}  ({:+.8e},  {:+.8e})\n", l, m,
+      //                           val.real(), val.imag());
+      os << std::format("({:4}, {:+4}) ({:+.8e}, {:+.8e})\n", l, m, val.real(),
+                        val.imag());
     }
     return os;
   }

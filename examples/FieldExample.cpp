@@ -12,7 +12,6 @@ int main() {
 
   using Real = double;
   using Complex = std::complex<Real>;
-  using Scalar = Complex;
   using MRange = All;
   using NRange = All;
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
@@ -24,5 +23,9 @@ int main() {
 
   auto u = RealScalarField(grid, [](auto theta, auto phi) { return 1; });
 
-  std::cout << 2 * u + 1;
+  auto ulm = RealScalarFieldExpansion(grid, [](auto l, auto m) { return 1; });
+
+  L2Norm(ulm);
+
+  // for (auto [l, m] : ulm.Indices()) std::cout << l << " " << m << std::endl;
 }
