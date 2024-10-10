@@ -23,7 +23,8 @@ class CanonicalComponentFieldBase
   using Writeable = typename Internal::Traits<_Derived>::Writeable;
 
   // Return upper index.
-  auto& UpperIndex() const { return Derived().UpperIndex(); }
+  auto UpperIndex() const { return Derived().UpperIndex(); }
+  auto& UpperIndex() { return Derived().UpperIndex(); }
 
   // Return the grid.
   auto& Grid() const { return Derived().Grid(); }

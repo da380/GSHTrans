@@ -21,13 +21,12 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto u = ComplexCanonicalComponentField(
-      1, grid, [](auto theta, auto phi) { return 1; });
+  auto u = RealCanonicalComponentField(1, grid,
+                                       [](auto theta, auto phi) { return 1; });
+  auto v = RealCanonicalComponentField(1, grid,
+                                       [](auto theta, auto phi) { return 5; });
 
-  auto v =
-      CanonicalComponentFieldUnaryTransformation(u, [](auto x) { return -x; });
-
-  std::cout << v;
+  std::cout << u + 2 * v;
 
   //  auto ulm = RealScalarFieldExpansion(grid, [](auto l, auto m) { return 1;
   //  });

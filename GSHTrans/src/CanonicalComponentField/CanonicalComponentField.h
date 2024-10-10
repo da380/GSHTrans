@@ -55,7 +55,8 @@ class CanonicalComponentField : public CanonicalComponentFieldBase<
       CanonicalComponentField<_Grid, _Value>>::Writeable;
 
   // Return the upper index.
-  auto& UpperIndex() const { return _N; }
+  auto UpperIndex() const { return _N; }
+  auto& UpperIndex() { return _N; }
 
   // Return the grid.
   auto& Grid() const { return _grid; }
