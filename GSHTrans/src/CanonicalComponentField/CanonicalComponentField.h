@@ -1,4 +1,4 @@
-#ifndef GSH_TRANS_CANONCIAL_COMPONENT_FIELD_GUARD_H
+#ifndef GSH_TRANS_CANONICAL_COMPONENT_FIELD_GUARD_H
 #define GSH_TRANS_CANONICAL_COMPONENT_FIELD_GUARD_H
 
 #include <FFTWpp/Core>
@@ -16,15 +16,15 @@
 namespace GSHTrans {
 
 // Forward declare class.
-template <typename _Grid, RealOrComplexValued _Value, int _N>
+template <typename _Grid, RealOrComplexValued _Value>
 requires std::derived_from<_Grid, GridBase<_Grid>>
 class CanonicalComponentField;
 
 // Set traits.
 namespace Internal {
 
-template <typename _Grid, RealOrComplexValued _Value, int _N>
-struct Traits<CanonicalComponentField<_Grid, _Value, _N>> {
+template <typename _Grid, RealOrComplexValued _Value>
+struct Traits<CanonicalComponentField<_Grid, _Value>> {
   using Int = std::ptrdiff_t;
   using Value = _Value;
   using Real = typename _Grid::Real;
@@ -36,24 +36,26 @@ struct Traits<CanonicalComponentField<_Grid, _Value, _N>> {
 
 }  // namespace Internal
 
-template <typename _Grid, RealOrComplexValued _Value, int _N>
+template <typename _Grid, RealOrComplexValued _Value>
 requires std::derived_from<_Grid, GridBase<_Grid>>
-class CanonicalComponentField
-    : public CanonicalComponentFieldBase<
-          CanonicalComponentField<_Grid, _Value, _N>> {
+class CanonicalComponentField : public CanonicalComponentFieldBase<
+                                    CanonicalComponentField<_Grid, _Value>> {
  public:
-  using Value = typename Internal::Traits<
-      CanonicalComponentField<_Grid, _Value, _N>>::Value;
-  using Int = typename Internal::Traits<
-      CanonicalComponentField<_Grid, _Value, _N>>::Int;
-  using Real = typename Internal::Traits<
-      CanonicalComponentField<_Grid, _Value, _N>>::Real;
+  using Value =
+      typename Internal::Traits<CanonicalComponentField<_Grid, _Value>>::Value;
+  using Int =
+      typename Internal::Traits<CanonicalComponentField<_Grid, _Value>>::Int;
+  using Real =
+      typename Internal::Traits<CanonicalComponentField<_Grid, _Value>>::Real;
   using Complex = typename Internal::Traits<
-      CanonicalComponentField<_Grid, _Value, _N>>::Complex;
-  using Scalar = typename Internal::Traits<
-      CanonicalComponentField<_Grid, _Value, _N>>::Scalar;
+      CanonicalComponentField<_Grid, _Value>>::Complex;
+  using Scalar =
+      typename Internal::Traits<CanonicalComponentField<_Grid, _Value>>::Scalar;
   using Writeable = typename Internal::Traits<
-      CanonicalComponentField<_Grid, _Value, _N>>::Writeable;
+      CanonicalComponentField<_Grid, _Value>>::Writeable;
+
+  // Return the upper index.
+  auto& UpperIndex() const { return _N; }
 
   // Return the grid.
   auto& Grid() const { return _grid; }
@@ -74,14 +76,14 @@ class CanonicalComponentField
   CanonicalComponentField() = default;
 
   // Construct from grid initialising values to zero.
-  CanonicalComponentField(_Grid& grid)
-      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->FieldSize())} {}
+  CanonicalComponentField(Int N, _Grid& grid)
+      : _N{N}, _grid{grid}, _data{FFTWpp::vector<Scalar>(this->FieldSize())} {}
 
   // Construction from grid initialising values with a function.
   template <typename Function>
   requires ScalarFunctionS2<Function, Real, Scalar>
-  CanonicalComponentField(_Grid& grid, Function&& f)
-      : CanonicalComponentField(grid) {
+  CanonicalComponentField(Int N, _Grid& grid, Function&& f)
+      : CanonicalComponentField(N, grid) {
     std::ranges::copy(_grid.ProjectFunction(f), _data.begin());
   }
 
@@ -89,7 +91,7 @@ class CanonicalComponentField
   template <typename Derived>
   requires std::convertible_to<typename Derived::Scalar, Scalar>
   CanonicalComponentField(const CanonicalComponentFieldBase<Derived>& other)
-      : CanonicalComponentField(other.Grid()) {
+      : CanonicalComponentField(other.UpperIndex(), other.Grid()) {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) = other[iTheta, iPhi];
     }
@@ -110,15 +112,13 @@ class CanonicalComponentField
 
   // Use assignment defined in base class.
   using CanonicalComponentFieldBase<
-      CanonicalComponentField<_Grid, _Value, _N>>::operator=;
-
-  // Return the upper index.
-  constexpr auto UpperIndex() const { return _N; }
+      CanonicalComponentField<_Grid, _Value>>::operator=;
 
   // Return view to the data.
   auto Data() { return std::ranges::views::all(_data); }
 
  private:
+  Int _N;
   _Grid& _grid;
   FFTWpp::vector<Scalar> _data;
 
@@ -127,7 +127,6 @@ class CanonicalComponentField
   }
 };
 
-/*
 // Type aliases for real and complex fields.
 template <typename Grid>
 requires std::derived_from<Grid, GridBase<Grid>>
@@ -137,7 +136,7 @@ template <typename Grid>
 requires std::derived_from<Grid, GridBase<Grid>>
 using ComplexCanonicalComponentField =
     CanonicalComponentField<Grid, ComplexValued>;
-*/
+
 }  // namespace GSHTrans
 
 #endif  // GSH_TRANS_SCALAR_FIELD_GUARD_H

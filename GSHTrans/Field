@@ -3,6 +3,7 @@
 
 #include "src/CanonicalComponentField/CanonicalComponentField.h"
 #include "src/CanonicalComponentField/CanonicalComponentFieldBase.h"
+#include "src/CanonicalComponentField/CanonicalComponentUnary.h"
 
 // Scalar field files.
 #include "src/FieldBase.h"

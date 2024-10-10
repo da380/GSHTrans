@@ -22,11 +22,11 @@ class CanonicalComponentFieldBase
   using Scalar = typename Internal::Traits<_Derived>::Scalar;
   using Writeable = typename Internal::Traits<_Derived>::Writeable;
 
+  // Return upper index.
+  auto& UpperIndex() const { return Derived().UpperIndex(); }
+
   // Return the grid.
   auto& Grid() const { return Derived().Grid(); }
-
-  // Return the upper index.
-  constexpr auto UpperIndex() const { return Derived().UpperIndex(); }
 
   // Read access to data.
   auto operator[](Int iTheta, Int iPhi) const {
@@ -201,7 +201,6 @@ class CanonicalComponentFieldBase
         os << std::format("{:+.8e}  {:+8e}  {:+.8e}\n", lat, lon, val);
       }
     }
-    if constexpr (u.UpperIndex() == 0) std::cout << "Hello!\n";
     return os;
   }
 
