@@ -17,22 +17,21 @@ namespace GSHTrans {
 
 // Forward declare the classes.
 
-template <typename Derived0, typename Derived1, typename Function>
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
 requires requires() {
-  requires std::same_as<typename Derived0::Value, typename Derived1::Value>;
-  requires std::convertible_to<
-      std::invoke_result_t<Function, typename Derived0::Scalar,
-                           typename Derived1::Scalar>,
-      typename Derived0::Scalar>;
+  requires std::same_as<typename Derived0::Scalar, typename Derived1::Scalar>;
+  requires(N0 == N1);
 }
-class CanonicalComponentFieldBinary;
+class CanonicalComponentFieldAdd;
 
 // Set up the traits
 
 namespace Internal {
 
-template <typename Derived0, typename Derived1, typename Function>
-struct Traits<CanonicalComponentFieldBinary<Derived0, Derived1, Function>> {
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
+struct Traits<CanonicalComponentFieldAdd<N0, Derived0, N1, Derived1>> {
   using Int = typename Derived0::Int;
   using Real = typename Derived0::Real;
   using Complex = typename Derived0::Complex;
@@ -42,61 +41,53 @@ struct Traits<CanonicalComponentFieldBinary<Derived0, Derived1, Function>> {
 };
 }  // namespace Internal
 
-template <typename Derived0, typename Derived1, typename Function>
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
 requires requires() {
-  requires std::same_as<typename Derived0::Value, typename Derived1::Value>;
-  requires std::convertible_to<
-      std::invoke_result_t<Function, typename Derived0::Scalar,
-                           typename Derived1::Scalar>,
-      typename Derived0::Scalar>;
+  requires std::same_as<typename Derived0::Scalar, typename Derived1::Scalar>;
+  requires(N0 == N1);
 }
-class CanonicalComponentFieldBinary
+class CanonicalComponentFieldAdd
     : public CanonicalComponentFieldBase<
-          CanonicalComponentFieldBinary<Derived0, Derived1, Function>> {
+          N0, CanonicalComponentFieldAdd<N0, Derived0, N1, Derived1>> {
  public:
   using Int = Internal::Traits<
-      CanonicalComponentFieldBinary<Derived0, Derived1, Function>>::Int;
+      CanonicalComponentFieldAdd<N0, Derived0, N1, Derived1>>::Int;
   using Real = Internal::Traits<
-      CanonicalComponentFieldBinary<Derived0, Derived1, Function>>::Real;
+      CanonicalComponentFieldAdd<N0, Derived0, N1, Derived1>>::Real;
   using Complex = Internal::Traits<
-      CanonicalComponentFieldBinary<Derived0, Derived1, Function>>::Complex;
+      CanonicalComponentFieldAdd<N0, Derived0, N1, Derived1>>::Complex;
   using Scalar = Internal::Traits<
-      CanonicalComponentFieldBinary<Derived0, Derived1, Function>>::Scalar;
+      CanonicalComponentFieldAdd<N0, Derived0, N1, Derived1>>::Scalar;
   using Value = Internal::Traits<
-      CanonicalComponentFieldBinary<Derived0, Derived1, Function>>::Value;
+      CanonicalComponentFieldAdd<N0, Derived0, N1, Derived1>>::Value;
   using Writeable = Internal::Traits<
-      CanonicalComponentFieldBinary<Derived0, Derived1, Function>>::Writeable;
+      CanonicalComponentFieldAdd<N0, Derived0, N1, Derived1>>::Writeable;
 
-  auto UpperIndex() const { return _N; }
-  auto& UpperIndex() { return _N; }
   auto& Grid() const { return _u0.Grid(); }
 
   auto operator[](Int iTheta, Int iPhi) const {
     this->CheckPointIndices(iTheta, iPhi);
-    return _f(_u0[iTheta, iPhi], _u1[iTheta, iPhi]);
+    return _u0[iTheta, iPhi] + _u1[iTheta, iPhi];
   }
 
   // Constructors.
-  CanonicalComponentFieldBinary() = delete;
-  CanonicalComponentFieldBinary(const CanonicalComponentFieldBase<Derived0>& u0,
-                                const CanonicalComponentFieldBase<Derived1>& u1,
-                                Function&& f, Int N)
-      : _u0{u0}, _u1{u1}, _f{f}, _N{N} {}
+  CanonicalComponentFieldAdd() = delete;
+  CanonicalComponentFieldAdd(
+      const CanonicalComponentFieldBase<N0, Derived0>& u0,
+      const CanonicalComponentFieldBase<N0, Derived1>& u1)
+      : _u0{u0}, _u1{u1} {}
 
-  CanonicalComponentFieldBinary(const CanonicalComponentFieldBinary&) = default;
-  CanonicalComponentFieldBinary(CanonicalComponentFieldBinary&&) = default;
+  CanonicalComponentFieldAdd(const CanonicalComponentFieldAdd&) = default;
+  CanonicalComponentFieldAdd(CanonicalComponentFieldAdd&&) = default;
 
   // Assignment.
-  CanonicalComponentFieldBinary& operator=(CanonicalComponentFieldBinary&) =
-      default;
-  CanonicalComponentFieldBinary& operator=(CanonicalComponentFieldBinary&&) =
-      default;
+  CanonicalComponentFieldAdd& operator=(CanonicalComponentFieldAdd&) = default;
+  CanonicalComponentFieldAdd& operator=(CanonicalComponentFieldAdd&&) = default;
 
  private:
-  const CanonicalComponentFieldBase<Derived0>& _u0;
-  const CanonicalComponentFieldBase<Derived1>& _u1;
-  const Function& _f;
-  Int _N;
+  const CanonicalComponentFieldBase<N0, Derived0>& _u0;
+  const CanonicalComponentFieldBase<N0, Derived1>& _u1;
 };
 
 }  // namespace GSHTrans

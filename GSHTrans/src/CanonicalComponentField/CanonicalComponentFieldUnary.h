@@ -3,6 +3,7 @@
 
 #include <complex>
 #include <concepts>
+#include <cstddef>
 #include <vector>
 
 #include "../Concepts.h"
@@ -15,16 +16,16 @@ namespace GSHTrans {
 
 // Forward declare the classes.
 
-template <typename Derived>
+template <std::ptrdiff_t N, typename Derived>
 class CanonicalComponentFieldConj;
 
-template <typename Derived>
+template <std::ptrdiff_t N, typename Derived>
 class CanonicalComponentFieldReal;
 
-template <typename Derived>
+template <std::ptrdiff_t N, typename Derived>
 class CanonicalComponentFieldImag;
 
-template <typename Derived, typename Function>
+template <std::ptrdiff_t N, typename Derived, typename Function>
 requires requires() {
   requires std::invocable<Function, typename Derived::Scalar>;
   requires std::convertible_to<
@@ -33,7 +34,7 @@ requires requires() {
 }
 class CanonicalComponentFieldUnary;
 
-template <typename Derived, typename Function>
+template <std::ptrdiff_t N, typename Derived, typename Function>
 requires requires() {
   requires std::invocable<Function, typename Derived::Scalar,
                           typename Derived::Scalar>;
@@ -47,8 +48,8 @@ class CanonicalComponentFieldUnaryWithScalar;
 // Set the traits
 namespace Internal {
 
-template <typename Derived>
-struct Traits<CanonicalComponentFieldConj<Derived>> {
+template <std::ptrdiff_t N, typename Derived>
+struct Traits<CanonicalComponentFieldConj<N, Derived>> {
   using Int = typename Derived::Int;
   using Real = typename Derived::Real;
   using Complex = typename Derived::Complex;
@@ -57,8 +58,8 @@ struct Traits<CanonicalComponentFieldConj<Derived>> {
   using Writeable = std::false_type;
 };
 
-template <typename Derived>
-struct Traits<CanonicalComponentFieldReal<Derived>> {
+template <std::ptrdiff_t N, typename Derived>
+struct Traits<CanonicalComponentFieldReal<N, Derived>> {
   using Int = typename Derived::Int;
   using Real = typename Derived::Real;
   using Complex = typename Derived::Complex;
@@ -67,8 +68,8 @@ struct Traits<CanonicalComponentFieldReal<Derived>> {
   using Writeable = std::false_type;
 };
 
-template <typename Derived>
-struct Traits<CanonicalComponentFieldImag<Derived>> {
+template <std::ptrdiff_t N, typename Derived>
+struct Traits<CanonicalComponentFieldImag<N, Derived>> {
   using Int = typename Derived::Int;
   using Real = typename Derived::Real;
   using Complex = typename Derived::Complex;
@@ -77,8 +78,8 @@ struct Traits<CanonicalComponentFieldImag<Derived>> {
   using Writeable = std::false_type;
 };
 
-template <typename Derived, typename Function>
-struct Traits<CanonicalComponentFieldUnary<Derived, Function>> {
+template <std::ptrdiff_t N, typename Derived, typename Function>
+struct Traits<CanonicalComponentFieldUnary<N, Derived, Function>> {
   using Int = typename Derived::Int;
   using Real = typename Derived::Real;
   using Complex = typename Derived::Complex;
@@ -87,8 +88,8 @@ struct Traits<CanonicalComponentFieldUnary<Derived, Function>> {
   using Writeable = std::false_type;
 };
 
-template <typename Derived, typename Function>
-struct Traits<CanonicalComponentFieldUnaryWithScalar<Derived, Function>> {
+template <std::ptrdiff_t N, typename Derived, typename Function>
+struct Traits<CanonicalComponentFieldUnaryWithScalar<N, Derived, Function>> {
   using Int = typename Derived::Int;
   using Real = typename Derived::Real;
   using Complex = typename Derived::Complex;
@@ -100,25 +101,23 @@ struct Traits<CanonicalComponentFieldUnaryWithScalar<Derived, Function>> {
 }  // namespace Internal
 
 // Class for the conjugate operation.
-template <typename Derived>
+template <std::ptrdiff_t _N, typename Derived>
 class CanonicalComponentFieldConj
-    : public CanonicalComponentFieldBase<CanonicalComponentFieldConj<Derived>> {
+    : public CanonicalComponentFieldBase<
+          _N, CanonicalComponentFieldConj<_N, Derived>> {
  public:
   using Int =
-      typename Internal::Traits<CanonicalComponentFieldConj<Derived>>::Int;
+      typename Internal::Traits<CanonicalComponentFieldConj<_N, Derived>>::Int;
   using Real =
-      typename Internal::Traits<CanonicalComponentFieldConj<Derived>>::Real;
-  using Complex =
-      typename Internal::Traits<CanonicalComponentFieldConj<Derived>>::Complex;
-  using Scalar =
-      typename Internal::Traits<CanonicalComponentFieldConj<Derived>>::Scalar;
-  using Value =
-      typename Internal::Traits<CanonicalComponentFieldConj<Derived>>::Value;
+      typename Internal::Traits<CanonicalComponentFieldConj<_N, Derived>>::Real;
+  using Complex = typename Internal::Traits<
+      CanonicalComponentFieldConj<_N, Derived>>::Complex;
+  using Scalar = typename Internal::Traits<
+      CanonicalComponentFieldConj<_N, Derived>>::Scalar;
+  using Value = typename Internal::Traits<
+      CanonicalComponentFieldConj<_N, Derived>>::Value;
   using Writeable = typename Internal::Traits<
-      CanonicalComponentFieldConj<Derived>>::Writeable;
-
-  auto UpperIndex() const { return _N; }
-  auto& UpperIndex() { return _N; }
+      CanonicalComponentFieldConj<_N, Derived>>::Writeable;
 
   auto& Grid() const { return _u.Grid(); }
 
@@ -133,8 +132,8 @@ class CanonicalComponentFieldConj
 
   // Constructors.
   CanonicalComponentFieldConj() = delete;
-  CanonicalComponentFieldConj(const CanonicalComponentFieldBase<Derived>& u)
-      : _u{u}, _N{u.UpperIndex()} {}
+  CanonicalComponentFieldConj(const CanonicalComponentFieldBase<_N, Derived>& u)
+      : _u{u} {}
 
   CanonicalComponentFieldConj(const CanonicalComponentFieldConj&) = default;
   CanonicalComponentFieldConj(CanonicalComponentFieldConj&&) = default;
@@ -146,30 +145,27 @@ class CanonicalComponentFieldConj
       default;
 
  private:
-  const CanonicalComponentFieldBase<Derived>& _u;
-  Int _N;
+  const CanonicalComponentFieldBase<_N, Derived>& _u;
 };
 
 // Class for the real operation.
-template <typename Derived>
+template <std::ptrdiff_t _N, typename Derived>
 class CanonicalComponentFieldReal
-    : public CanonicalComponentFieldBase<CanonicalComponentFieldReal<Derived>> {
+    : public CanonicalComponentFieldBase<
+          _N, CanonicalComponentFieldReal<_N, Derived>> {
  public:
   using Int =
-      typename Internal::Traits<CanonicalComponentFieldReal<Derived>>::Int;
+      typename Internal::Traits<CanonicalComponentFieldReal<_N, Derived>>::Int;
   using Real =
-      typename Internal::Traits<CanonicalComponentFieldReal<Derived>>::Real;
-  using Complex =
-      typename Internal::Traits<CanonicalComponentFieldReal<Derived>>::Complex;
-  using Scalar =
-      typename Internal::Traits<CanonicalComponentFieldReal<Derived>>::Scalar;
-  using Value =
-      typename Internal::Traits<CanonicalComponentFieldReal<Derived>>::Value;
+      typename Internal::Traits<CanonicalComponentFieldReal<_N, Derived>>::Real;
+  using Complex = typename Internal::Traits<
+      CanonicalComponentFieldReal<_N, Derived>>::Complex;
+  using Scalar = typename Internal::Traits<
+      CanonicalComponentFieldReal<_N, Derived>>::Scalar;
+  using Value = typename Internal::Traits<
+      CanonicalComponentFieldReal<_N, Derived>>::Value;
   using Writeable = typename Internal::Traits<
-      CanonicalComponentFieldReal<Derived>>::Writeable;
-
-  auto UpperIndex() const { return _N; }
-  auto& UpperIndex() { return _N; }
+      CanonicalComponentFieldReal<_N, Derived>>::Writeable;
 
   auto& Grid() const { return _u.Grid(); }
 
@@ -184,8 +180,8 @@ class CanonicalComponentFieldReal
 
   // Constructors.
   CanonicalComponentFieldReal() = delete;
-  CanonicalComponentFieldReal(const CanonicalComponentFieldBase<Derived>& u)
-      : _u{u}, _N{u.UpperIndex()} {}
+  CanonicalComponentFieldReal(const CanonicalComponentFieldBase<_N, Derived>& u)
+      : _u{u} {}
 
   CanonicalComponentFieldReal(const CanonicalComponentFieldReal&) = default;
   CanonicalComponentFieldReal(CanonicalComponentFieldReal&&) = default;
@@ -197,30 +193,27 @@ class CanonicalComponentFieldReal
       default;
 
  private:
-  const CanonicalComponentFieldBase<Derived>& _u;
-  Int _N;
+  const CanonicalComponentFieldBase<_N, Derived>& _u;
 };
 
 // Class for the imag operation.
-template <typename Derived>
+template <std::ptrdiff_t _N, typename Derived>
 class CanonicalComponentFieldImag
-    : public CanonicalComponentFieldBase<CanonicalComponentFieldImag<Derived>> {
+    : public CanonicalComponentFieldBase<
+          _N, CanonicalComponentFieldImag<_N, Derived>> {
  public:
   using Int =
-      typename Internal::Traits<CanonicalComponentFieldImag<Derived>>::Int;
+      typename Internal::Traits<CanonicalComponentFieldImag<_N, Derived>>::Int;
   using Real =
-      typename Internal::Traits<CanonicalComponentFieldImag<Derived>>::Real;
-  using Complex =
-      typename Internal::Traits<CanonicalComponentFieldImag<Derived>>::Complex;
-  using Scalar =
-      typename Internal::Traits<CanonicalComponentFieldImag<Derived>>::Scalar;
-  using Value =
-      typename Internal::Traits<CanonicalComponentFieldImag<Derived>>::Value;
+      typename Internal::Traits<CanonicalComponentFieldImag<_N, Derived>>::Real;
+  using Complex = typename Internal::Traits<
+      CanonicalComponentFieldImag<_N, Derived>>::Complex;
+  using Scalar = typename Internal::Traits<
+      CanonicalComponentFieldImag<_N, Derived>>::Scalar;
+  using Value = typename Internal::Traits<
+      CanonicalComponentFieldImag<_N, Derived>>::Value;
   using Writeable = typename Internal::Traits<
-      CanonicalComponentFieldImag<Derived>>::Writeable;
-
-  auto UpperIndex() const { return _N; }
-  auto& UpperIndex() { return _N; }
+      CanonicalComponentFieldImag<_N, Derived>>::Writeable;
 
   auto& Grid() const { return _u.Grid(); }
 
@@ -235,8 +228,8 @@ class CanonicalComponentFieldImag
 
   // Constructors.
   CanonicalComponentFieldImag() = delete;
-  CanonicalComponentFieldImag(const CanonicalComponentFieldBase<Derived>& u)
-      : _u{u}, _N{u.UpperIndex()} {}
+  CanonicalComponentFieldImag(const CanonicalComponentFieldBase<_N, Derived>& u)
+      : _u{u} {}
 
   CanonicalComponentFieldImag(const CanonicalComponentFieldImag&) = default;
   CanonicalComponentFieldImag(CanonicalComponentFieldImag&&) = default;
@@ -248,12 +241,11 @@ class CanonicalComponentFieldImag
       default;
 
  private:
-  const CanonicalComponentFieldBase<Derived>& _u;
-  Int _N;
+  const CanonicalComponentFieldBase<_N, Derived>& _u;
 };
 
 // Class for unary transformation.
-template <typename Derived, typename Function>
+template <std::ptrdiff_t _N, typename Derived, typename Function>
 requires requires() {
   requires std::invocable<Function, typename Derived::Scalar>;
   requires std::convertible_to<
@@ -262,23 +254,21 @@ requires requires() {
 }
 class CanonicalComponentFieldUnary
     : public CanonicalComponentFieldBase<
-          CanonicalComponentFieldUnary<Derived, Function>> {
+          _N, CanonicalComponentFieldUnary<_N, Derived, Function>> {
  public:
   using Int = typename Internal::Traits<
-      CanonicalComponentFieldUnary<Derived, Function>>::Int;
+      CanonicalComponentFieldUnary<_N, Derived, Function>>::Int;
   using Real = typename Internal::Traits<
-      CanonicalComponentFieldUnary<Derived, Function>>::Real;
+      CanonicalComponentFieldUnary<_N, Derived, Function>>::Real;
   using Complex = typename Internal::Traits<
-      CanonicalComponentFieldUnary<Derived, Function>>::Complex;
+      CanonicalComponentFieldUnary<_N, Derived, Function>>::Complex;
   using Scalar = typename Internal::Traits<
-      CanonicalComponentFieldUnary<Derived, Function>>::Scalar;
+      CanonicalComponentFieldUnary<_N, Derived, Function>>::Scalar;
   using Value = typename Internal::Traits<
-      CanonicalComponentFieldUnary<Derived, Function>>::Value;
+      CanonicalComponentFieldUnary<_N, Derived, Function>>::Value;
   using Writeable = typename Internal::Traits<
-      CanonicalComponentFieldUnary<Derived, Function>>::Writeable;
+      CanonicalComponentFieldUnary<_N, Derived, Function>>::Writeable;
 
-  auto UpperIndex() const { return _N; }
-  auto& UpperIndex() { return _N; }
   auto& Grid() const { return _u.Grid(); }
 
   auto operator[](Int iTheta, Int iPhi) const {
@@ -288,9 +278,9 @@ class CanonicalComponentFieldUnary
 
   // Constructors.
   CanonicalComponentFieldUnary() = delete;
-  CanonicalComponentFieldUnary(const CanonicalComponentFieldBase<Derived>& u,
-                               Function&& f)
-      : _u{u}, _N{u.UpperIndex()}, _f{f} {}
+  CanonicalComponentFieldUnary(
+      const CanonicalComponentFieldBase<_N, Derived>& u, Function&& f)
+      : _u{u}, _f{f} {}
 
   CanonicalComponentFieldUnary(const CanonicalComponentFieldUnary&) = default;
   CanonicalComponentFieldUnary(CanonicalComponentFieldUnary&&) = default;
@@ -302,13 +292,12 @@ class CanonicalComponentFieldUnary
       default;
 
  private:
-  const CanonicalComponentFieldBase<Derived>& _u;
-  Int _N;
+  const CanonicalComponentFieldBase<_N, Derived>& _u;
   Function& _f;
 };
 
 // Class for unary transformation with a scalar parameter.
-template <typename Derived, typename Function>
+template <std::ptrdiff_t _N, typename Derived, typename Function>
 requires requires() {
   requires std::invocable<Function, typename Derived::Scalar,
                           typename Derived::Scalar>;
@@ -319,23 +308,20 @@ requires requires() {
 }
 class CanonicalComponentFieldUnaryWithScalar
     : public CanonicalComponentFieldBase<
-          CanonicalComponentFieldUnaryWithScalar<Derived, Function>> {
+          _N, CanonicalComponentFieldUnaryWithScalar<_N, Derived, Function>> {
  public:
   using Int = typename Internal::Traits<
-      CanonicalComponentFieldUnaryWithScalar<Derived, Function>>::Int;
+      CanonicalComponentFieldUnaryWithScalar<_N, Derived, Function>>::Int;
   using Real = typename Internal::Traits<
-      CanonicalComponentFieldUnaryWithScalar<Derived, Function>>::Real;
+      CanonicalComponentFieldUnaryWithScalar<_N, Derived, Function>>::Real;
   using Complex = typename Internal::Traits<
-      CanonicalComponentFieldUnaryWithScalar<Derived, Function>>::Complex;
+      CanonicalComponentFieldUnaryWithScalar<_N, Derived, Function>>::Complex;
   using Scalar = typename Internal::Traits<
-      CanonicalComponentFieldUnaryWithScalar<Derived, Function>>::Scalar;
+      CanonicalComponentFieldUnaryWithScalar<_N, Derived, Function>>::Scalar;
   using Value = typename Internal::Traits<
-      CanonicalComponentFieldUnaryWithScalar<Derived, Function>>::Value;
+      CanonicalComponentFieldUnaryWithScalar<_N, Derived, Function>>::Value;
   using Writeable = typename Internal::Traits<
-      CanonicalComponentFieldUnaryWithScalar<Derived, Function>>::Writeable;
-
-  auto UpperIndex() const { return _N; }
-  auto& UpperIndex() { return _N; }
+      CanonicalComponentFieldUnaryWithScalar<_N, Derived, Function>>::Writeable;
 
   auto& Grid() const { return _u.Grid(); }
 
@@ -347,8 +333,8 @@ class CanonicalComponentFieldUnaryWithScalar
   // Constructors.
   CanonicalComponentFieldUnaryWithScalar() = delete;
   CanonicalComponentFieldUnaryWithScalar(
-      const CanonicalComponentFieldBase<Derived>& u, Function&& f, Scalar s)
-      : _u{u}, _N{u.UpperIndex()}, _f{f}, _s{s} {}
+      const CanonicalComponentFieldBase<_N, Derived>& u, Function&& f, Scalar s)
+      : _u{u}, _f{f}, _s{s} {}
 
   CanonicalComponentFieldUnaryWithScalar(
       const CanonicalComponentFieldUnaryWithScalar&) = default;
@@ -362,8 +348,7 @@ class CanonicalComponentFieldUnaryWithScalar
       CanonicalComponentFieldUnaryWithScalar&&) = default;
 
  private:
-  const CanonicalComponentFieldBase<Derived>& _u;
-  Int _N;
+  const CanonicalComponentFieldBase<_N, Derived>& _u;
   const Function& _f;
   Scalar _s;
 };

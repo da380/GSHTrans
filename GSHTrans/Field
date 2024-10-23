@@ -8,6 +8,7 @@
 #include "src/CanonicalComponentField/CanonicalComponentFieldUnary.h"
 
 // Scalar field files.
+/*
 #include "src/FieldBase.h"
 #include "src/ScalarField/AbstractScalarField.h"
 #include "src/ScalarField/ConstantScalarField.h"
@@ -18,7 +19,7 @@
 #include "src/ScalarField/ScalarFieldOverloads.h"
 #include "src/ScalarField/ScalarFieldUnary.h"
 #include "src/ScalarField/ScalarFieldView.h"
-
+*/
 /*
 
 // Vector field files.

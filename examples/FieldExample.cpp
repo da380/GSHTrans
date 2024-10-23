@@ -21,12 +21,13 @@ int main() {
 
   auto grid = Grid(lMax, nMax);
 
-  auto u = RealCanonicalComponentField(1, grid,
-                                       [](auto theta, auto phi) { return 1; });
-  auto v = RealCanonicalComponentField(1, grid,
-                                       [](auto theta, auto phi) { return 5; });
+  auto u = GSHTrans::RealCanonicalComponentField<0, Grid>(
+      grid, [](auto theta, auto phi) { return 1; });
+  //  auto v =
+  //      RealCanonicalComponentField(grid, [](auto theta, auto phi) { return 5;
+  //      });
 
-  std::cout << u + 2 * v;
+  std::cout << u + 1;
 
   //  auto ulm = RealScalarFieldExpansion(grid, [](auto l, auto m) { return 1;
   //  });

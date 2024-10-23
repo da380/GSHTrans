@@ -11,9 +11,9 @@
 
 namespace GSHTrans {
 
-template <typename _Derived>
+template <std::ptrdiff_t _N, typename _Derived>
 class CanonicalComponentFieldBase
-    : public FieldBase<CanonicalComponentFieldBase<_Derived>> {
+    : public FieldBase<CanonicalComponentFieldBase<_N, _Derived>> {
  public:
   using Int = typename Internal::Traits<_Derived>::Int;
   using Value = typename Internal::Traits<_Derived>::Value;
@@ -22,9 +22,8 @@ class CanonicalComponentFieldBase
   using Scalar = typename Internal::Traits<_Derived>::Scalar;
   using Writeable = typename Internal::Traits<_Derived>::Writeable;
 
-  // Return upper index.
-  auto UpperIndex() const { return Derived().UpperIndex(); }
-  auto& UpperIndex() { return Derived().UpperIndex(); }
+  // Return the upper index.
+  constexpr auto UpperIndex() const { return _N; }
 
   // Return the grid.
   auto& Grid() const { return Derived().Grid(); }
@@ -51,10 +50,10 @@ class CanonicalComponentFieldBase
   }
 
   // Assign values from another field.
-  template <typename OtherDerived>
+  template <typename __Derived>
   requires Writeable::value &&
-           std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator=(const CanonicalComponentFieldBase<OtherDerived>& other) {
+           std::convertible_to<typename __Derived::Scalar, Scalar>
+  auto& operator=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
     assert(other.FieldSize() == this->FieldSize());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) = other[iTheta, iPhi];
@@ -62,19 +61,19 @@ class CanonicalComponentFieldBase
     return Derived();
   }
 
-  template <typename OtherDerived>
+  template <typename __Derived>
   requires Writeable::value &&
-           std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator=(CanonicalComponentFieldBase<OtherDerived>&& other) {
+           std::convertible_to<typename __Derived::Scalar, Scalar>
+  auto& operator=(CanonicalComponentFieldBase<_N, __Derived>&& other) {
     Derived() = other;
     return Derived();
   }
 
   // Compound plus assignment with other field.
-  template <typename OtherDerived>
+  template <typename __Derived>
   requires Writeable::value &&
-           std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator+=(const CanonicalComponentFieldBase<OtherDerived>& other) {
+           std::convertible_to<typename __Derived::Scalar, Scalar>
+  auto& operator+=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
     assert(other.FieldSize() == this->FieldSize());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) += other[iTheta, iPhi];
@@ -82,10 +81,10 @@ class CanonicalComponentFieldBase
     return Derived();
   }
 
-  template <typename OtherDerived>
+  template <typename __Derived>
   requires Writeable::value &&
-           std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator+=(CanonicalComponentFieldBase<OtherDerived>&& other) {
+           std::convertible_to<typename __Derived::Scalar, Scalar>
+  auto& operator+=(CanonicalComponentFieldBase<_N, __Derived>&& other) {
     Derived() += other;
     return Derived();
   }
@@ -101,10 +100,10 @@ class CanonicalComponentFieldBase
   }
 
   // Compound minus assignment with other field.
-  template <typename OtherDerived>
+  template <typename __Derived>
   requires Writeable::value &&
-           std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator-=(const CanonicalComponentFieldBase<OtherDerived>& other) {
+           std::convertible_to<typename __Derived::Scalar, Scalar>
+  auto& operator-=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
     assert(other.FieldSize() == this->FieldSize());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) -= other(iTheta, iPhi);
@@ -112,10 +111,10 @@ class CanonicalComponentFieldBase
     return Derived();
   }
 
-  template <typename OtherDerived>
+  template <typename __Derived>
   requires Writeable::value &&
-           std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator-=(CanonicalComponentFieldBase<OtherDerived>&& other) {
+           std::convertible_to<typename __Derived::Scalar, Scalar>
+  auto& operator-=(CanonicalComponentFieldBase<_N, __Derived>&& other) {
     Derived() -= other;
     return Derived();
   }
@@ -131,10 +130,10 @@ class CanonicalComponentFieldBase
   }
 
   // Compound multiply assignment with other field.
-  template <typename OtherDerived>
+  template <typename __Derived>
   requires Writeable::value &&
-           std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator*=(const CanonicalComponentFieldBase<OtherDerived>& other) {
+           std::convertible_to<typename __Derived::Scalar, Scalar>
+  auto& operator*=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
     assert(other.FieldSize() == this->FieldSize());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) *= other(iTheta, iPhi);
@@ -142,10 +141,10 @@ class CanonicalComponentFieldBase
     return Derived();
   }
 
-  template <typename OtherDerived>
+  template <typename __Derived>
   requires Writeable::value &&
-           std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator*=(CanonicalComponentFieldBase<OtherDerived>&& other) {
+           std::convertible_to<typename __Derived::Scalar, Scalar>
+  auto& operator*=(CanonicalComponentFieldBase<_N, __Derived>&& other) {
     Derived() *= other;
     return Derived();
   }
@@ -161,10 +160,10 @@ class CanonicalComponentFieldBase
   }
 
   // Compound divide assignment with other field.
-  template <typename OtherDerived>
+  template <typename __Derived>
   requires Writeable::value &&
-           std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator/=(const CanonicalComponentFieldBase<OtherDerived>& other) {
+           std::convertible_to<typename __Derived::Scalar, Scalar>
+  auto& operator/=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
     assert(other.FieldSize() == this->FieldSize());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) /= other(iTheta, iPhi);
@@ -172,10 +171,10 @@ class CanonicalComponentFieldBase
     return Derived();
   }
 
-  template <typename OtherDerived>
+  template <typename __Derived>
   requires Writeable::value &&
-           std::convertible_to<typename OtherDerived::Scalar, Scalar>
-  auto& operator/=(CanonicalComponentFieldBase<OtherDerived>&& other) {
+           std::convertible_to<typename __Derived::Scalar, Scalar>
+  auto& operator/=(CanonicalComponentFieldBase<_N, __Derived>&& other) {
     Derived() /= other;
     return Derived();
   }
@@ -192,7 +191,7 @@ class CanonicalComponentFieldBase
 
   // Write values to ostream.
   friend std::ostream& operator<<(
-      std::ostream& os, const CanonicalComponentFieldBase<_Derived>& u) {
+      std::ostream& os, const CanonicalComponentFieldBase<_N, _Derived>& u) {
     for (auto [lat, lon, val] :
          std::ranges::views::zip(u.CoLatitudes(), u.Longitudes(), u.View())) {
       if constexpr (std::same_as<typename _Derived::Value, ComplexValued>) {
