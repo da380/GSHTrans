@@ -14,6 +14,7 @@
 #include "../Utility.h"
 #include "CanonicalComponentFieldBase.h"
 // #include "CanonicalComponentFieldBinary.h"
+#include "CanonicalComponentFieldBinary.h"
 #include "CanonicalComponentFieldUnary.h"
 
 namespace GSHTrans {
@@ -144,110 +145,122 @@ auto operator/(CanonicalComponentFieldBase<N, Derived>&& u,
   return u / s;
 }
 
-/*
-
 // Overloads for addition.
-template <typename Derived0, typename Derived1>
-auto operator+(const CanonicalComponentFieldBase<Derived0>& u0,
-               const CanonicalComponentFieldBase<Derived1>& u1) {
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
+auto operator+(const CanonicalComponentFieldBase<N0, Derived0>& u0,
+               const CanonicalComponentFieldBase<N1, Derived1>& u1) {
   return CanonicalComponentFieldAdd(u0, u1);
 }
 
-template <typename Derived0, typename Derived1>
-auto operator+(const CanonicalComponentFieldBase<Derived0>& u0,
-               CanonicalComponentFieldBase<Derived1>&& u1) {
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
+auto operator+(const CanonicalComponentFieldBase<N0, Derived0>& u0,
+               CanonicalComponentFieldBase<N1, Derived1>&& u1) {
   return u0 + u1;
 }
 
-template <typename Derived0, typename Derived1>
-auto operator+(CanonicalComponentFieldBase<Derived0>&& u0,
-               const CanonicalComponentFieldBase<Derived1>& u1) {
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
+auto operator+(CanonicalComponentFieldBase<N0, Derived0>&& u0,
+               const CanonicalComponentFieldBase<N1, Derived1>& u1) {
   return u0 + u1;
 }
 
-template <typename Derived0, typename Derived1>
-auto operator+(CanonicalComponentFieldBase<Derived0>&& u0,
-               CanonicalComponentFieldBase<Derived1>&& u1) {
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
+auto operator+(CanonicalComponentFieldBase<N0, Derived0>&& u0,
+               CanonicalComponentFieldBase<N1, Derived1>&& u1) {
   return u0 + u1;
 }
-
 
 // Overloads for subtraction.
-template <typename Derived0, typename Derived1>
-auto operator-(const CanonicalComponentFieldBase<Derived0>& u0,
-               const CanonicalComponentFieldBase<Derived1>& u1) {
-  return CanonicalComponentFieldBinary(u0, u1, std::minus<>());
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
+auto operator-(const CanonicalComponentFieldBase<N0, Derived0>& u0,
+               const CanonicalComponentFieldBase<N1, Derived1>& u1) {
+  return CanonicalComponentFieldSubtract(u0, u1);
 }
 
-template <typename Derived0, typename Derived1>
-auto operator-(const CanonicalComponentFieldBase<Derived0>& u0,
-               CanonicalComponentFieldBase<Derived1>&& u1) {
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
+auto operator-(const CanonicalComponentFieldBase<N0, Derived0>& u0,
+               CanonicalComponentFieldBase<N1, Derived1>&& u1) {
   return u0 - u1;
 }
 
-template <typename Derived0, typename Derived1>
-auto operator-(CanonicalComponentFieldBase<Derived0>&& u0,
-               const CanonicalComponentFieldBase<Derived1>& u1) {
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
+auto operator-(CanonicalComponentFieldBase<N0, Derived0>&& u0,
+               const CanonicalComponentFieldBase<N1, Derived1>& u1) {
   return u0 - u1;
 }
 
-template <typename Derived0, typename Derived1>
-auto operator-(CanonicalComponentFieldBase<Derived0>&& u0,
-               CanonicalComponentFieldBase<Derived1>&& u1) {
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
+auto operator-(CanonicalComponentFieldBase<N0, Derived0>&& u0,
+               CanonicalComponentFieldBase<N1, Derived1>&& u1) {
   return u0 - u1;
 }
 
 // Overloads for multiplication.
-template <typename Derived0, typename Derived1>
-auto operator*(const CanonicalComponentFieldBase<Derived0>& u0,
-               const CanonicalComponentFieldBase<Derived1>& u1) {
-  return CanonicalComponentFieldBinary(u0, u1, std::multiplies<>());
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
+auto operator*(const CanonicalComponentFieldBase<N0, Derived0>& u0,
+               const CanonicalComponentFieldBase<N1, Derived1>& u1) {
+  return CanonicalComponentFieldMultiply(u0, u1);
 }
 
-template <typename Derived0, typename Derived1>
-auto operator*(const CanonicalComponentFieldBase<Derived0>& u0,
-               CanonicalComponentFieldBase<Derived1>&& u1) {
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
+auto operator*(const CanonicalComponentFieldBase<N0, Derived0>& u0,
+               CanonicalComponentFieldBase<N1, Derived1>&& u1) {
   return u0 * u1;
 }
 
-template <typename Derived0, typename Derived1>
-auto operator*(CanonicalComponentFieldBase<Derived0>&& u0,
-               const CanonicalComponentFieldBase<Derived1>& u1) {
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
+auto operator*(CanonicalComponentFieldBase<N0, Derived0>&& u0,
+               const CanonicalComponentFieldBase<N1, Derived1>& u1) {
   return u0 * u1;
 }
 
-template <typename Derived0, typename Derived1>
-auto operator*(CanonicalComponentFieldBase<Derived0>&& u0,
-               CanonicalComponentFieldBase<Derived1>&& u1) {
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
+auto operator*(CanonicalComponentFieldBase<N0, Derived0>&& u0,
+               CanonicalComponentFieldBase<N1, Derived1>&& u1) {
   return u0 * u1;
 }
 
 // Overloads for division.
-template <typename Derived0, typename Derived1>
-auto operator/(const CanonicalComponentFieldBase<Derived0>& u0,
-               const CanonicalComponentFieldBase<Derived1>& u1) {
-  return CanonicalComponentFieldBinary(u0, u1, std::divides<>());
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
+auto operator/(const CanonicalComponentFieldBase<N0, Derived0>& u0,
+               const CanonicalComponentFieldBase<N1, Derived1>& u1) {
+  return CanonicalComponentFieldDivide(u0, u1);
 }
 
-template <typename Derived0, typename Derived1>
-auto operator/(const CanonicalComponentFieldBase<Derived0>& u0,
-               CanonicalComponentFieldBase<Derived1>&& u1) {
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
+auto operator/(const CanonicalComponentFieldBase<N0, Derived0>& u0,
+               CanonicalComponentFieldBase<N1, Derived1>&& u1) {
   return u0 / u1;
 }
 
-template <typename Derived0, typename Derived1>
-auto operator/(CanonicalComponentFieldBase<Derived0>&& u0,
-               const CanonicalComponentFieldBase<Derived1>& u1) {
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
+auto operator/(CanonicalComponentFieldBase<N0, Derived0>&& u0,
+               const CanonicalComponentFieldBase<N1, Derived1>& u1) {
   return u0 / u1;
 }
 
-template <typename Derived0, typename Derived1>
-auto operator/(CanonicalComponentFieldBase<Derived0>&& u0,
-               CanonicalComponentFieldBase<Derived1>&& u1) {
+template <std::ptrdiff_t N0, typename Derived0, std::ptrdiff_t N1,
+          typename Derived1>
+auto operator/(CanonicalComponentFieldBase<N0, Derived0>&& u0,
+               CanonicalComponentFieldBase<N1, Derived1>&& u1) {
   return u0 / u1;
 }
 
-*/
 }  // namespace GSHTrans
 
 #endif
