@@ -17,7 +17,7 @@ int main() {
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
 
   auto lMax = 4;
-  auto nMax = 2;
+  auto nMax = 0;
 
   auto grid = Grid(lMax, nMax);
 
@@ -26,7 +26,7 @@ int main() {
   auto v = RealCanonicalComponentField<0, Grid>(
       grid, [](auto theta, auto phi) { return 5; });
 
-  auto w = u - 2 * v * u;
+  auto ulm = CanonicalComponentExpansion<0, Grid, ComplexValued>(grid);
 
-  std::cout << w;
+  std::cout << ulm << std::endl;
 }

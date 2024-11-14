@@ -16,7 +16,7 @@ class GSHSubView : public GSHSubIndices<MRange> {
       : GSHSubIndices<MRange>(l, mMax), _start{start} {}
 
   constexpr auto begin() { return _start; }
-  constexpr auto end() { return std::next(begin(), this->size()); }
+  constexpr auto end() { return std::next(begin(), this->Size()); }
 
   constexpr auto& operator[](Int m) { return _start[this->Index(m)]; }
 
@@ -33,7 +33,7 @@ class GSHView : public GSHIndices<MRange> {
       : GSHIndices<MRange>(lMax, mMax, n), _start{start} {}
 
   constexpr auto begin() { return _start; }
-  constexpr auto end() { return std::next(begin(), this->size()); }
+  constexpr auto end() { return std::next(begin(), this->Size()); }
 
   constexpr auto operator[](Int l) {
     return GSHSubView<Scalar, MRange>(
@@ -57,7 +57,7 @@ class ConstGSHSubView : public GSHSubIndices<MRange> {
       : GSHSubIndices<MRange>(l, mMax), _start{start} {}
 
   constexpr auto begin() const { return _start; }
-  constexpr auto end() const { return std::next(begin(), this->size()); }
+  constexpr auto end() const { return std::next(begin(), this->Size()); }
 
   constexpr auto operator[](Int m) const { return _start[this->Index(m)]; }
 
@@ -74,7 +74,7 @@ class ConstGSHView : public GSHIndices<MRange> {
       : GSHIndices<MRange>(lMax, mMax, n), _start{start} {}
 
   constexpr auto begin() const { return _start; }
-  constexpr auto end() const { return std::next(begin(), this->size()); }
+  constexpr auto end() const { return std::next(begin(), this->Size()); }
 
   constexpr auto operator[](Int l) const {
     return ConstGSHSubView<Scalar, MRange>(

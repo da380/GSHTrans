@@ -77,39 +77,39 @@ class GridBase {
   }
 
   auto RealCoefficientSize(Int lMax, Int n) const {
-    return GSHIndices<NonNegative>(lMax, lMax, n).size();
+    return GSHIndices<NonNegative>(lMax, lMax, n).Size();
   }
 
   auto ComplexCoefficientSize(Int lMax, Int n) const {
-    return GSHIndices<All>(lMax, lMax, n).size();
+    return GSHIndices<All>(lMax, lMax, n).Size();
   }
 
   auto RealCoefficientSize(Int n) const {
     auto lMax = Derived().MaxDegree();
-    return GSHIndices<NonNegative>(lMax, lMax, n).size();
+    return GSHIndices<NonNegative>(lMax, lMax, n).Size();
   }
 
   auto ComplexCoefficientSize(Int n) const {
     auto lMax = Derived().MaxDegree();
-    return GSHIndices<All>(lMax, lMax, n).size();
+    return GSHIndices<All>(lMax, lMax, n).Size();
   }
 
   auto CoefficientSize(Int lMax, Int n) const {
-    return GSHIndices<All>(lMax, lMax, n).size();
+    return GSHIndices<All>(lMax, lMax, n).Size();
   }
 
   auto CoefficientSize(Int n) const {
     auto lMax = Derived().MaxDegree();
-    return GSHIndices<All>(lMax, lMax, n).size();
+    return GSHIndices<All>(lMax, lMax, n).Size();
   }
 
   auto CoefficientSizeNonNegative(Int lMax, Int n) const {
-    return GSHIndices<NonNegative>(lMax, lMax, n).size();
+    return GSHIndices<NonNegative>(lMax, lMax, n).Size();
   }
 
   auto CoefficientSizeNonNegative(Int n) const {
     auto lMax = Derived().MaxDegree();
-    return GSHIndices<NonNegative>(lMax, lMax, n).size();
+    return GSHIndices<NonNegative>(lMax, lMax, n).Size();
   }
 
   template <std::ranges::range Range,

@@ -1,6 +1,9 @@
 #ifndef GSH_TRANS_FIELD_MODULE_H
 #define GSH_TRANS_FIELD_MODULE_H
 
+#include "src/FieldBase.h"
+
+// Canonical component fields
 #include "src/CanonicalComponentField//CanonicalComponentFieldOverloads.h"
 #include "src/CanonicalComponentField/CanonicalComponentField.h"
 #include "src/CanonicalComponentField/CanonicalComponentFieldBase.h"

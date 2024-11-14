@@ -124,7 +124,7 @@ class Wigner {
       auto size = std::size_t{0};
       for (auto [n, iTheta] : Indices()) {
         _offset.push_back(size);
-        size += GSHIndices<MRange>(MaxDegree(), _mMax, n).size();
+        size += GSHIndices<MRange>(MaxDegree(), _mMax, n).Size();
       }
       _data = std::vector<Real>(size);
     }

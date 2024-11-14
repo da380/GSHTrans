@@ -52,7 +52,7 @@ class GSHSubIndices {
     return std::ranges::views::iota(0, MaxOrder() + 1);
   }
 
-  constexpr auto size() const { return MaxOrder() - MinOrder() + 1; }
+  constexpr auto Size() const { return MaxOrder() - MinOrder() + 1; }
 
   constexpr auto Index(Int m) const {
     if constexpr (std::same_as<MRange, All>) {
@@ -132,7 +132,7 @@ class GSHIndices {
 
   constexpr auto SizeForDegree(Int l) const {
     assert(l >= MinDegree() && l <= MaxDegree());
-    return GSHSubIndices<MRange>(l, _mMax).size();
+    return GSHSubIndices<MRange>(l, _mMax).Size();
   }
 
   constexpr auto Index(Int l) const {
@@ -145,7 +145,7 @@ class GSHIndices {
     return offset + indices.Index(m);
   }
 
-  constexpr auto size() const {
+  constexpr auto Size() const {
     return OffsetForDegree(_lMax) + SizeForDegree(_lMax);
   }
 

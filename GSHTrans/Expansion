@@ -4,6 +4,10 @@
 // Base file.
 #include "src/ExpansionBase.h"
 
+// Canonical Component expansions
+#include "src/CanonicalComponentExpansion/CanonicalComponentExpansion.h"
+#include "src/CanonicalComponentExpansion/CanonicalComponentExpansionBase.h"
+
 // Scalar Expansion files.
 /*
 #include "src/ScalarFieldExpansion/ScalarFieldExpansion.h"

@@ -23,10 +23,6 @@ class FieldBase {
   auto Longitudes() const { return Grid().Longitudes(); }
   auto LongitudeIndices() const { return Grid().LongitudeIndices(); }
 
-  auto FieldSize() const {
-    return NumberOfCoLatitudes() * NumberOfLongitudes();
-  }
-
   constexpr void CheckPointIndices(Int iTheta, Int iPhi) const {
     assert(iTheta >= 0 && iTheta <= NumberOfCoLatitudes());
     assert(iPhi >= 0 && iPhi <= NumberOfLongitudes());

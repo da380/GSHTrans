@@ -28,6 +28,11 @@ class CanonicalComponentFieldBase
   // Return the grid.
   auto& Grid() const { return Derived().Grid(); }
 
+  // Return the data size.
+  auto Size() const {
+    return this->NumberOfLongitudes() * this->NumberOfCoLatitudes();
+  }
+
   // Read access to data.
   auto operator[](Int iTheta, Int iPhi) const {
     return Derived()[iTheta, iPhi];
@@ -40,21 +45,12 @@ class CanonicalComponentFieldBase
     return Derived()[iTheta, iPhi];
   }
 
-  // Return a view to the values.
-  auto View() const {
-    return Grid().PointIndices() |
-           std::ranges::views::transform([this](auto pair) {
-             auto [iTheta, iPhi] = pair;
-             return this->operator[](iTheta, iPhi);
-           });
-  }
-
   // Assign values from another field.
   template <typename __Derived>
   requires Writeable::value &&
            std::convertible_to<typename __Derived::Scalar, Scalar>
   auto& operator=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
-    assert(other.FieldSize() == this->FieldSize());
+    assert(other.Size() == Size());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) = other[iTheta, iPhi];
     }
@@ -74,7 +70,7 @@ class CanonicalComponentFieldBase
   requires Writeable::value &&
            std::convertible_to<typename __Derived::Scalar, Scalar>
   auto& operator+=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
-    assert(other.FieldSize() == this->FieldSize());
+    assert(other.Size() == Size());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) += other[iTheta, iPhi];
     }
@@ -104,7 +100,7 @@ class CanonicalComponentFieldBase
   requires Writeable::value &&
            std::convertible_to<typename __Derived::Scalar, Scalar>
   auto& operator-=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
-    assert(other.FieldSize() == this->FieldSize());
+    assert(other.Size() == Size());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) -= other(iTheta, iPhi);
     }
@@ -134,7 +130,7 @@ class CanonicalComponentFieldBase
   requires Writeable::value &&
            std::convertible_to<typename __Derived::Scalar, Scalar>
   auto& operator*=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
-    assert(other.FieldSize() == this->FieldSize());
+    assert(other.Size() == Size());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) *= other(iTheta, iPhi);
     }
@@ -164,7 +160,7 @@ class CanonicalComponentFieldBase
   requires Writeable::value &&
            std::convertible_to<typename __Derived::Scalar, Scalar>
   auto& operator/=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
-    assert(other.FieldSize() == this->FieldSize());
+    assert(other.Size() == Size());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) /= other(iTheta, iPhi);
     }
@@ -192,14 +188,28 @@ class CanonicalComponentFieldBase
   // Write values to ostream.
   friend std::ostream& operator<<(
       std::ostream& os, const CanonicalComponentFieldBase<_N, _Derived>& u) {
-    for (auto [lat, lon, val] :
-         std::ranges::views::zip(u.CoLatitudes(), u.Longitudes(), u.View())) {
+    auto values =
+        u.PointIndices() | std::ranges::views::transform([&u](auto pair) {
+          auto [iTheta, iPhi] = pair;
+          return u[iTheta, iPhi];
+        });
+    auto range =
+        std::ranges::views::zip(u.CoLatitudes(), u.Longitudes(), values);
+    auto n = range.size();
+    auto printValues = [&os](auto lat, auto lon, auto val, auto newLine) {
       if constexpr (std::same_as<typename _Derived::Value, ComplexValued>) {
-        os << std::format("{:+.8e}  {:+.8e}  ({:+.8e},  {:+.8e})\n", lat, lon,
+        os << std::format("{:+.8e}  {:+.8e}  ({:+.8e},  {:+.8e})", lat, lon,
                           val.real(), val.imag());
       } else {
-        os << std::format("{:+.8e}  {:+8e}  {:+.8e}\n", lat, lon, val);
+        os << std::format("{:+.8e}  {:+8e}  {:+.8e}", lat, lon, val);
       }
+      if (newLine) os << '\n';
+    };
+    for (auto [lat, lon, val] : range | std::ranges::views::take(n - 1)) {
+      printValues(lat, lon, val, true);
+    }
+    for (auto [lat, lon, val] : range | std::ranges::views::drop(n - 1)) {
+      printValues(lat, lon, val, false);
     }
     return os;
   }

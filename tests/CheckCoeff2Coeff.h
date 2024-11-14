@@ -51,9 +51,9 @@ auto Coeff2Coeff() {
 
   auto getSize = [](Int lMax, Int n) {
     if constexpr (RealFloatingPoint<Scalar>) {
-      return GSHIndices<NonNegative>(lMax, lMax, n).size();
+      return GSHIndices<NonNegative>(lMax, lMax, n).Size();
     } else {
-      return GSHIndices<All>(lMax, lMax, n).size();
+      return GSHIndices<All>(lMax, lMax, n).Size();
     }
   };
 

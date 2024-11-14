@@ -70,12 +70,15 @@ class CanonicalComponentField
     return _data[Index(iTheta, iPhi)];
   }
 
+  // Return a view to the data.
+  auto Data() { return std::ranges::views::all(_data); }
+
   // Default constructor.
   CanonicalComponentField() = default;
 
   // Construct from grid initialising values to zero.
   CanonicalComponentField(_Grid& grid)
-      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->FieldSize())} {}
+      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->Size())} {}
 
   // Construction from grid initialising values with a function.
   template <typename Function>
@@ -111,9 +114,6 @@ class CanonicalComponentField
   // Use assignment defined in base class.
   using CanonicalComponentFieldBase<
       _N, CanonicalComponentField<_N, _Grid, _Value>>::operator=;
-
-  // Return view to the data.
-  auto Data() { return std::ranges::views::all(_data); }
 
  private:
   _Grid& _grid;

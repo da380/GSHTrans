@@ -128,9 +128,9 @@ class GaussLegendreGrid
     // Check dimensions of ranges.
     assert(in.size() == this->FieldSize());
     if constexpr (RealFloatingPoint<Scalar>) {
-      assert(out.size() == GSHIndices<NonNegative>(lMax, lMax, n).size());
+      assert(out.size() == GSHIndices<NonNegative>(lMax, lMax, n).Size());
     } else {
-      assert(out.size() == GSHIndices<All>(lMax, lMax, n).size());
+      assert(out.size() == GSHIndices<All>(lMax, lMax, n).Size());
     }
 
     // Deal with lMax = 0
@@ -241,9 +241,9 @@ class GaussLegendreGrid
 
     // Check dimensions of ranges.
     if constexpr (RealFloatingPoint<Scalar>) {
-      assert(in.size() == GSHIndices<NonNegative>(lMax, lMax, n).size());
+      assert(in.size() == GSHIndices<NonNegative>(lMax, lMax, n).Size());
     } else {
-      assert(in.size() == GSHIndices<All>(lMax, lMax, n).size());
+      assert(in.size() == GSHIndices<All>(lMax, lMax, n).Size());
     }
     assert(out.size() == this->FieldSize());
 
