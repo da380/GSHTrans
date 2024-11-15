@@ -3,6 +3,7 @@
 
 #include <concepts>
 #include <format>
+#include <type_traits>
 
 #include "../Concepts.h"
 #include "CanonicalComponentExpansionBase.h"
@@ -36,7 +37,9 @@ template <std::ptrdiff_t _N, typename _Grid, RealOrComplexValued _Value>
 requires std::derived_from<_Grid, GridBase<_Grid>>
 class CanonicalComponentExpansion
     : public CanonicalComponentExpansionBase<
-          _N, CanonicalComponentExpansion<_N, _Grid, _Value>> {
+          _N, CanonicalComponentExpansion<_N, _Grid, _Value>>,
+      public GSHIndices<std::conditional_t<std::same_as<_Value, RealValued>,
+                                           NonNegative, All>> {
  public:
   using Value = typename Internal::Traits<
       CanonicalComponentExpansion<_N, _Grid, _Value>>::Value;
@@ -70,7 +73,9 @@ class CanonicalComponentExpansion
 
   // Construct from grid initialising values to zero.
   CanonicalComponentExpansion(_Grid& grid)
-      : _grid{grid}, _data{FFTWpp::vector<Complex>(this->Size())} {}
+      : GSHIndices<MRange>(grid.MaxDegree(), grid.MaxDegree(), _N),
+        _grid{grid},
+        _data{FFTWpp::vector<Complex>(this->Size())} {}
 
   /*
 

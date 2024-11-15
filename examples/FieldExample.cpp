@@ -26,7 +26,9 @@ int main() {
   auto v = RealCanonicalComponentField<0, Grid>(
       grid, [](auto theta, auto phi) { return 5; });
 
-  auto ulm = CanonicalComponentExpansion<0, Grid, ComplexValued>(grid);
+  auto ulm = CanonicalComponentExpansion<0, Grid, RealValued>(grid);
 
-  std::cout << ulm << std::endl;
+  // for (auto [l, m] : ulm.Indices()) std::cout << l << " " << m << std::endl;
+
+  //  std::cout << ulm << std::endl;
 }

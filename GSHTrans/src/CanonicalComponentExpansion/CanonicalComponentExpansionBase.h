@@ -7,15 +7,13 @@
 #include <type_traits>
 
 #include "../Concepts.h"
-#include "../ExpansionBase.h"
 #include "../GridBase.h"
 #include "../Indexing.h"
 
 namespace GSHTrans {
 
 template <std::ptrdiff_t _N, typename _Derived>
-class CanonicalComponentExpansionBase
-    : public ExpansionBase<CanonicalComponentExpansionBase<_N, _Derived>> {
+class CanonicalComponentExpansionBase {
  public:
   using Int = typename Internal::Traits<_Derived>::Int;
   using Value = typename Internal::Traits<_Derived>::Value;
@@ -25,37 +23,50 @@ class CanonicalComponentExpansionBase
   using MRange = typename Internal::Traits<_Derived>::MRange;
   using Writeable = typename Internal::Traits<_Derived>::Writeable;
 
-  // Return the upper index.
-  constexpr auto UpperIndex() const { return _N; }
+  // Return the Upper Index
+  auto UpperIndex() const { return _N; }
 
-  // Return the minimum degree.
-  auto MinimumDegree() const { return std::abs(UpperIndex()); }
+  // Minimum degree.
+  auto MinDegree() const { return Derived().MinDegree(); }
+
+  // Maximum degree.
+  auto MaxDegree() const { return Derived().MaxDegree(); }
+
+  // Return the degrees.
+  auto Degrees() const { return Derived().Degrees(); }
+
+  // Return the spherical harmonic indices.
+  // auto Indices() const { return Derived().Indices(); }
+
+  // Return the data index for the (l,m)th value.
+  auto Index(Int l, Int m) const { return Derived().Index(l, m); }
 
   // Return the grid.
   auto& Grid() const { return Derived().Grid(); }
 
   // Return spherical harmonic indices.
-  auto Indices() const {
-    return GSHIndices<MRange>(this->MaxDegree(), this->MaxDegree(), _N)
-        .Indices();
-  }
+  // auto Indices() const {
+  //  return GSHIndices<MRange>(this->MaxDegree(), this->MaxDegree(), _N)
+  //      .Indices();
+  // }
 
   // Return the index for the (l,m)th coefficient.
-  auto Index(Int l, Int m) const {
-    return GSHIndices<MRange>(this->MaxDegree(), this->MaxDegree(), _N)
-        .Index(l, m);
-  }
+  // auto Index(Int l, Int m) const {
+  //  return GSHIndices<MRange>(this->MaxDegree(), this->MaxDegree(), _N)
+  //      .Index(l, m);
+  // }
 
   // Return the spherical harmonic degree for each datum.
-  auto Degrees() const { return Indices() | std::ranges::views::keys; }
+  // auto Degrees() const { return Indices() | std::ranges::views::keys; }
 
   // Return the spherical harmonic order for each datum.
-  auto Orders() const { return Indices() | std::ranges::views::values; }
+  // auto Orders() const { return Indices() | std::ranges::views::values; }
 
   // Return the total number of coefficients.
-  auto Size() const {
-    return GSHIndices<MRange>(this->MaxDegree(), this->MaxDegree(), _N).Size();
-  }
+  // auto Size() const {
+  /// return GSHIndices<MRange>(this->MaxDegree(), this->MaxDegree(),
+  /// _N).Size();
+  // }
 
   // Read access to data.
   auto operator[](Int l, Int m) const { return Derived()[l, m]; }
@@ -144,6 +155,7 @@ class CanonicalComponentExpansionBase
   }
 
   // Write values to ostream.
+  /*
   friend std::ostream& operator<<(
       std::ostream& os,
       const CanonicalComponentExpansionBase<_N, _Derived>& u) {
@@ -166,6 +178,7 @@ class CanonicalComponentExpansionBase
     }
     return os;
   }
+*/
 
  private:
   constexpr auto& Derived() const {
