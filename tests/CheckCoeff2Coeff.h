@@ -11,6 +11,8 @@
 #include <numbers>
 #include <random>
 
+#include "NumericConcepts/NumericConcepts.hpp"
+
 using namespace GSHTrans;
 
 using Int = std::ptrdiff_t;
@@ -38,7 +40,7 @@ Int RandomUpperIndex(Int nMax) {
 template <RealOrComplexFloatingPoint Scalar, OrderIndexRange MRange,
           IndexRange NRange>
 auto Coeff2Coeff() {
-  using Real = FFTWpp::RemoveComplex<Scalar>;
+  using Real = NumericConcepts::RemoveComplex<Scalar>;
   using Complex = std::complex<Real>;
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
 

@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.5)
+cmake_minimum_required (VERSION 3.20)
 
 
 project(GSHTrans
@@ -20,6 +20,14 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 # add in GaussQuad
 include(FetchContent)
 FetchContent_Declare(
+  NumericConcepts
+  GIT_REPOSITORY https://github.com/da380/NumericConcepts.git
+  GIT_TAG main
+)
+FetchContent_MakeAvailable(NumericConcepts)
+
+# add in GaussQuad
+FetchContent_Declare(
   GaussQuad
   GIT_REPOSITORY https://github.com/da380/GaussQuad.git
   GIT_TAG main
@@ -27,7 +35,6 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(GaussQuad)
 
 # add in FFTWpp
-include(FetchContent)
 FetchContent_Declare(
   FFTWpp
   GIT_REPOSITORY https://github.com/da380/FFTWpp.git
@@ -42,6 +49,7 @@ find_package(OpenMP)
 # Set up the library
 add_library (GSHTrans INTERFACE)
 target_link_libraries(GSHTrans INTERFACE
+  NumericConcepts
   FFTWpp
   GaussQuad
   OpenMP::OpenMP_CXX)
