@@ -21,44 +21,38 @@
 
 namespace GSHTrans {
 
-template <RealFloatingPoint Real, OrderIndexRange MRange, IndexRange NRange>
+template <RealFloatingPoint _Real, OrderIndexRange _MRange, IndexRange _NRange>
 class GaussLegendreGrid
-    : public GridBase<GaussLegendreGrid<Real, MRange, NRange>> {
- private:
-  using Int = std::ptrdiff_t;
-  using Complex = std::complex<Real>;
-
-  using WignerType = Wigner<Real, Ortho, MRange, NRange, Multiple, ColumnMajor>;
-  using QuadType = GaussQuad::Quadrature1D<Real>;
-
+    : public GridBase<GaussLegendreGrid<_Real, _MRange, _NRange>> {
  public:
-  using real_type = Real;
-  using complex_type = Complex;
-  using MRange_type = MRange;
-  using NRange_type = NRange;
+  // Public type aliases.
+  using Int = std::ptrdiff_t;
+  using Real = _Real;
+  using Complex = std::complex<Real>;
+  using MRange = _MRange;
+  using NRange = _NRange;
 
   // Constructors.
   GaussLegendreGrid() = default;
 
   GaussLegendreGrid(int lMax, int nMax, FFTWpp::Flag flag = FFTWpp::Measure)
-      : _lMax{lMax}, _nMax{nMax} {
+      : _lMax{lMax}, _nMax{nMax}, _flag{flag} {
     // Check the inputs.
     assert(MaxDegree() >= 0);
     assert(MaxUpperIndex() <= MaxDegree());
     assert(std::abs(this->MinUpperIndex()) <= MaxDegree());
+    assert(_flag != FFTWpp::WisdomOnly);
 
     // Get the quadrature points.
-    _quadPointer = std::make_shared<QuadType>(
-        GaussQuad::LegendrePolynomial<Real>{}.GaussQuadrature(_lMax + 1));
-
-    _quadPointer->Transform([](auto x) { return std::acos(-x); },
-                            [](auto x) -> Real { return 1; });
+    _quad = GaussQuad::LegendrePolynomial<Real>{}.GaussQuadrature(_lMax + 1);
+    _quad.Transform([](auto x) { return std::acos(-x); },
+                    [](auto x) -> Real { return 1; });
 
     //  Get the Winger values.
-    _wignerPointer = std::make_shared<WignerType>(_lMax, _lMax, _nMax,
-                                                  _quadPointer->Points());
+    _wigner = Wigner<Real, Ortho, _MRange, _NRange, Multiple, ColumnMajor>(
+        _lMax, _lMax, _nMax, _quad.Points());
 
-    if (_lMax > 0) {
+    if (_lMax > 0 && _flag != FFTWpp::Estimate) {
       // Generate wisdom for FFTs.
       auto nPhi = this->NumberOfLongitudes();
       auto in = FFTWpp::Ranges::Layout(nPhi);
@@ -72,6 +66,9 @@ class GaussLegendreGrid
         auto out = FFTWpp::Ranges::Layout(nPhi);
         FFTWpp::GenerateWisdom<Complex, Complex>(in, out, flag);
       }
+      _flag = FFTWpp::WisdomOnly;
+    } else {
+      _flag = FFTWpp::Estimate;
     }
   }
 
@@ -89,11 +86,9 @@ class GaussLegendreGrid
   auto MaxDegree() const { return _lMax; }
   auto MaxUpperIndex() const { return _nMax; }
 
-  auto CoLatitudes() const {
-    return std::ranges::views::all(_quadPointer->Points());
-  }
+  auto CoLatitudes() const { return std::ranges::views::all(_quad.Points()); }
   auto CoLatitudeWeights() const {
-    return std::ranges::views::all(_quadPointer->Weights());
+    return std::ranges::views::all(_quad.Weights());
   }
 
   auto Longitudes() const {
@@ -108,21 +103,19 @@ class GaussLegendreGrid
   }
 
   //-----------------------------------------------------//
-  //                Forward transformation               //
+  //          Forward transformation for ranges          //
   //-----------------------------------------------------//
   template <std::ranges::range InRange, std::ranges::range OutRange>
   requires requires() {
-    requires(std::same_as<MRange, All> and
+    requires(std::same_as<_MRange, All> and
              ComplexFloatingPoint<std::ranges::range_value_t<InRange>>) or
                 RealFloatingPoint<std::ranges::range_value_t<InRange>>;
-    requires std::ranges::input_range<InRange>;
     requires std::same_as<RemoveComplex<std::ranges::range_value_t<InRange>>,
                           Real>;
-    requires ComplexFloatingPoint<std::ranges::range_value_t<OutRange>>;
+    requires std::ranges::input_range<InRange>;
+    requires std::same_as<std::ranges::range_value_t<OutRange>, Complex>;
     requires std::ranges::output_range<OutRange,
                                        std::ranges::range_value_t<OutRange>>;
-    requires std::same_as<RemoveComplex<std::ranges::range_value_t<OutRange>>,
-                          Real>;
   }
   void ForwardTransformation(Int lMax, Int n, InRange&& in,
                              OutRange& out) const {
@@ -133,11 +126,11 @@ class GaussLegendreGrid
     assert(std::ranges::contains(this->UpperIndices(), n));
 
     // Check dimensions of ranges.
-    assert(in.size() == this->ComponentSize());
+    assert(in.size() == this->FieldSize());
     if constexpr (RealFloatingPoint<Scalar>) {
-      assert(out.size() == GSHIndices<NonNegative>(lMax, lMax, n).size());
+      assert(out.size() == GSHIndices<NonNegative>(lMax, lMax, n).Size());
     } else {
-      assert(out.size() == GSHIndices<All>(lMax, lMax, n).size());
+      assert(out.size() == GSHIndices<All>(lMax, lMax, n).Size());
     }
 
     // Deal with lMax = 0
@@ -157,12 +150,11 @@ class GaussLegendreGrid
     auto outWork = FFTWpp::vector<Complex>(outSize);
     auto inView = FFTWpp::Ranges::View(inWork);
     auto outView = FFTWpp::Ranges::View(outWork);
-    auto planFunction = [](auto in, auto out) {
+    auto planFunction = [this](auto in, auto out) {
       if constexpr (ComplexFloatingPoint<Scalar>) {
-        return FFTWpp::Ranges::Plan(in, out, FFTWpp::WisdomOnly,
-                                    FFTWpp::Forward);
+        return FFTWpp::Ranges::Plan(in, out, _flag, FFTWpp::Forward);
       } else {
-        return FFTWpp::Ranges::Plan(in, out, FFTWpp::WisdomOnly);
+        return FFTWpp::Ranges::Plan(in, out, _flag);
       }
     };
     auto plan = planFunction(inView, outView);
@@ -182,17 +174,17 @@ class GaussLegendreGrid
       }
 
       // Get the Wigner values and quadrature weight.
-      auto d = _wignerPointer->operator()(n, iTheta);
-      auto w = _quadPointer->W(iTheta) * scaleFactor;
+      auto d = _wigner[n, iTheta];
+      auto w = _quad.W(iTheta) * scaleFactor;
 
       // Loop over the spherical harmonic coefficients
       auto outIter = out.begin();
-      auto wigIter = d.cbegin();
+      auto wigIter = d.begin();
       auto degrees = d.Degrees() | std::ranges::views::filter(
                                        [lMax](auto l) { return l <= lMax; });
 
       for (auto l : degrees) {
-        auto dl = d(l);
+        auto dl = d[l];
 
         if constexpr (ComplexFloatingPoint<Scalar>) {
           auto workIter = std::prev(outWork.end(), l);
@@ -205,7 +197,7 @@ class GaussLegendreGrid
           }
         } else {
           auto workIter = outWork.begin();
-          if constexpr (std::same_as<MRange, All>) {
+          if constexpr (std::same_as<_MRange, All>) {
             std::advance(wigIter, l);
           }
           for (auto m : dl.NonNegativeOrders()) {
@@ -225,17 +217,15 @@ class GaussLegendreGrid
   }
 
   //------------------------------------------------//
-  //            Inverse  transformation             //
+  //       Inverse  transformation for ranges       //
   //------------------------------------------------//
   template <std::ranges::range InRange, std::ranges::range OutRange>
   requires requires() {
-    requires ComplexFloatingPoint<std::ranges::range_value_t<InRange>>;
-    requires std::ranges::input_range<InRange>;
-    requires std::same_as<RemoveComplex<std::ranges::range_value_t<InRange>>,
-                          Real>;
-    requires(std::same_as<MRange, All> and
+    requires(std::same_as<_MRange, All> and
              ComplexFloatingPoint<std::ranges::range_value_t<OutRange>>) or
                 RealFloatingPoint<std::ranges::range_value_t<OutRange>>;
+    requires std::ranges::input_range<InRange>;
+    requires std::same_as<std::ranges::range_value_t<InRange>, Complex>;
     requires std::ranges::output_range<OutRange,
                                        std::ranges::range_value_t<OutRange>>;
     requires std::same_as<RemoveComplex<std::ranges::range_value_t<OutRange>>,
@@ -251,11 +241,11 @@ class GaussLegendreGrid
 
     // Check dimensions of ranges.
     if constexpr (RealFloatingPoint<Scalar>) {
-      assert(in.size() == GSHIndices<NonNegative>(lMax, lMax, n).size());
+      assert(in.size() == GSHIndices<NonNegative>(lMax, lMax, n).Size());
     } else {
-      assert(in.size() == GSHIndices<All>(lMax, lMax, n).size());
+      assert(in.size() == GSHIndices<All>(lMax, lMax, n).Size());
     }
-    assert(out.size() == this->ComponentSize());
+    assert(out.size() == this->FieldSize());
 
     // Deal with lMax = 0
     if (lMax == 0) {
@@ -278,12 +268,11 @@ class GaussLegendreGrid
     auto outWork = FFTWpp::vector<Scalar>(outSize);
     auto inView = FFTWpp::Ranges::View(inWork);
     auto outView = FFTWpp::Ranges::View(outWork);
-    auto planFunction = [](auto in, auto out) {
+    auto planFunction = [this](auto in, auto out) {
       if constexpr (ComplexFloatingPoint<Scalar>) {
-        return FFTWpp::Ranges::Plan(in, out, FFTWpp::WisdomOnly,
-                                    FFTWpp::Backward);
+        return FFTWpp::Ranges::Plan(in, out, _flag, FFTWpp::Backward);
       } else {
-        return FFTWpp::Ranges::Plan(in, out, FFTWpp::WisdomOnly);
+        return FFTWpp::Ranges::Plan(in, out, _flag);
       }
     };
     auto plan = planFunction(inView, outView);
@@ -293,7 +282,7 @@ class GaussLegendreGrid
       std::ranges::for_each(inWork, [](auto& x) { return x = 0; });
 
       // Get the Wigner values.
-      auto d = _wignerPointer->operator()(n, iTheta);
+      auto d = _wigner[n, iTheta];
 
       // Loop over the coefficients.
       auto inIter = in.begin();
@@ -301,7 +290,7 @@ class GaussLegendreGrid
       auto degrees = d.Degrees() | std::ranges::views::filter(
                                        [lMax](auto l) { return l <= lMax; });
       for (auto l : degrees) {
-        auto dl = d(l);
+        auto dl = d[l];
         if constexpr (ComplexFloatingPoint<Scalar>) {
           auto workIter = std::prev(inWork.end(), l);
           for (auto m : dl.NegativeOrders()) {
@@ -313,7 +302,7 @@ class GaussLegendreGrid
           }
         } else {
           auto workIter = inWork.begin();
-          if constexpr (std::same_as<MRange, All>) {
+          if constexpr (std::same_as<_MRange, All>) {
             std::advance(wigIter, l);
           }
           for (auto m : dl.NonNegativeOrders()) {
@@ -334,18 +323,13 @@ class GaussLegendreGrid
  private:
   Int _lMax;
   Int _nMax;
+  FFTWpp::Flag _flag;
 
-  std::shared_ptr<QuadType> _quadPointer;
-  std::shared_ptr<WignerType> _wignerPointer;
+  GaussQuad::Quadrature1D<Real> _quad;
+  Wigner<Real, Ortho, _MRange, _NRange, Multiple, ColumnMajor> _wigner;
 
-  template <RealOrComplexFloatingPoint Scalar>
-  auto WorkSize() const {
-    if constexpr (RealFloatingPoint<Scalar>) {
-      return _lMax + 1;
-    } else {
-      return 2 * _lMax;
-    }
-  }
+  // std::shared_ptr<QuadType> _quadPointer;
+  // std::shared_ptr<WignerType> _wignerPointer;
 };
 
 }  // namespace GSHTrans

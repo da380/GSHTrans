@@ -9,90 +9,118 @@
 
 namespace GSHTrans {
 
-template <typename Derived>
+template <typename _Derived>
 class GridBase {
   using Int = std::ptrdiff_t;
 
  public:
   auto MinUpperIndex() const {
-    using NRange = Derived::NRange_type;
+    using NRange = _Derived::NRange;
     if constexpr (std::same_as<NRange, All>) {
-      return -_Derived().MaxUpperIndex();
+      return -Derived().MaxUpperIndex();
     }
     if constexpr (std::same_as<NRange, NonNegative>) {
       return Int{0};
     }
     if constexpr (std::same_as<NRange, Single>) {
-      return _Derived().MaxUpperIndex();
+      return Derived().MaxUpperIndex();
     }
   }
 
   auto UpperIndices() const {
     return std::ranges::views::iota(MinUpperIndex(),
-                                    _Derived().MaxUpperIndex() + 1);
+                                    Derived().MaxUpperIndex() + 1);
   }
 
-  auto NumberOfCoLatitudes() const { return _Derived().CoLatitudes().size(); }
+  auto NumberOfCoLatitudes() const { return Derived().CoLatitudes().size(); }
   auto CoLatitudeIndices() const {
-    return std::ranges::views::iota(std::size_t{0}, NumberOfCoLatitudes());
+    return std::ranges::views::iota(Int{0},
+                                    static_cast<Int>(NumberOfCoLatitudes()));
   }
 
-  auto NumberOfLongitudes() const { return _Derived().Longitudes().size(); }
+  auto NumberOfLongitudes() const { return Derived().Longitudes().size(); }
   auto LongitudeIndices() const {
-    return std::ranges::views::iota(std::size_t{0}, NumberOfLongitudes());
+    return std::ranges::views::iota(Int{0},
+                                    static_cast<Int>(NumberOfLongitudes()));
   }
 
   auto Points() const {
-    return std::ranges::views::cartesian_product(_Derived().CoLatitudes(),
-                                                 _Derived().Longitudes());
+    return std::ranges::views::cartesian_product(Derived().CoLatitudes(),
+                                                 Derived().Longitudes());
   }
 
   auto PointIndices() const {
-    return std::ranges::views::cartesian_product(_Derived().CoLatitudeIndices(),
-                                                 _Derived().LongitudeIndices());
+    return std::ranges::views::cartesian_product(Derived().CoLatitudeIndices(),
+                                                 Derived().LongitudeIndices());
   }
 
+  auto CoLatitudeWeights() const { return Derived().CoLatitudeWeights(); }
+  auto LongitudeWeights() const { return Derived().LongitudeWeights(); }
+
   auto Weights() const {
-    return std::ranges::views::cartesian_product(
-               _Derived().CoLatitudeWeights(), _Derived().LongitudeWeights()) |
+    return std::ranges::views::cartesian_product(CoLatitudeWeights(),
+                                                 LongitudeWeights()) |
            std::ranges::views::transform(
                [](auto pair) { return std::get<0>(pair) * std::get<1>(pair); });
   }
 
   template <typename Function>
-  auto InterpolateFunction(Function f) {
+  auto ProjectFunction(Function f) {
     return Points() | std::ranges::views::transform([f](auto pair) {
              auto [theta, phi] = pair;
              return f(theta, phi);
            });
   }
 
-  auto ComponentSize() const {
+  auto FieldSize() const {
     return NumberOfCoLatitudes() * NumberOfLongitudes();
   }
 
   auto RealCoefficientSize(Int lMax, Int n) const {
-    return GSHIndices<NonNegative>(lMax, lMax, n).size();
+    return GSHIndices<NonNegative>(lMax, lMax, n).Size();
   }
 
   auto ComplexCoefficientSize(Int lMax, Int n) const {
-    return GSHIndices<All>(lMax, lMax, n).size();
+    return GSHIndices<All>(lMax, lMax, n).Size();
   }
 
   auto RealCoefficientSize(Int n) const {
-    auto lMax = this->MaxDegree();
-    return GSHIndices<NonNegative>(lMax, lMax, n).size();
+    auto lMax = Derived().MaxDegree();
+    return GSHIndices<NonNegative>(lMax, lMax, n).Size();
   }
 
   auto ComplexCoefficientSize(Int n) const {
-    auto lMax = this->MaxDegree();
-    return GSHIndices<All>(lMax, lMax, n).size();
+    auto lMax = Derived().MaxDegree();
+    return GSHIndices<All>(lMax, lMax, n).Size();
   }
 
-  template <ComplexFloatingPointRange Range,
+  auto CoefficientSize(Int lMax, Int n) const {
+    return GSHIndices<All>(lMax, lMax, n).Size();
+  }
+
+  auto CoefficientSize(Int n) const {
+    auto lMax = Derived().MaxDegree();
+    return GSHIndices<All>(lMax, lMax, n).Size();
+  }
+
+  auto CoefficientSizeNonNegative(Int lMax, Int n) const {
+    return GSHIndices<NonNegative>(lMax, lMax, n).Size();
+  }
+
+  auto CoefficientSizeNonNegative(Int n) const {
+    auto lMax = Derived().MaxDegree();
+    return GSHIndices<NonNegative>(lMax, lMax, n).Size();
+  }
+
+  template <std::ranges::range Range,
             typename Distribution =
                 decltype(std::normal_distribution<
                          RemoveComplex<std::ranges::range_value_t<Range>>>())>
+  requires requires() {
+    requires ComplexFloatingPoint<std::ranges::range_value_t<Range>>;
+    requires std::ranges::output_range<Range,
+                                       std::ranges::range_value_t<Range>>;
+  }
   void RandomComplexCoefficient(
       Int lMax, Int n, Range& range,
       Distribution dist = std::normal_distribution<
@@ -102,20 +130,24 @@ class GridBase {
     assert(range.size() == ComplexCoefficientSize(lMax, n));
     std::random_device rd{};
     std::mt19937_64 gen{rd()};
-    std::ranges::generate(range, [&gen, &dist]() {
-      return Complex{dist(gen), dist(gen)};
-    });
+    std::ranges::generate(
+        range, [&gen, &dist]() { return Complex{dist(gen), dist(gen)}; });
 
-    if (lMax == _Derived().MaxDegree()) {
+    if (lMax == Derived().MaxDegree()) {
       auto i = GSHIndices<All>(lMax, lMax, n).Index(lMax, lMax);
       range[i] = 0;
     }
   }
 
-  template <ComplexFloatingPointRange Range,
+  template <std::ranges::range Range,
             typename Distribution =
                 decltype(std::normal_distribution<
                          RemoveComplex<std::ranges::range_value_t<Range>>>())>
+  requires requires() {
+    requires ComplexFloatingPoint<std::ranges::range_value_t<Range>>;
+    requires std::ranges::output_range<Range,
+                                       std::ranges::range_value_t<Range>>;
+  }
   void RandomRealCoefficient(
       Int lMax, Int n, Range& range,
       Distribution dist = std::normal_distribution<
@@ -125,24 +157,23 @@ class GridBase {
     assert(range.size() == RealCoefficientSize(lMax, n));
     std::random_device rd{};
     std::mt19937_64 gen{rd()};
-    std::ranges::generate(range, [&gen, &dist]() {
-      return Complex{dist(gen), dist(gen)};
-    });
+    std::ranges::generate(
+        range, [&gen, &dist]() { return Complex{dist(gen), dist(gen)}; });
 
     auto indices = GSHIndices<NonNegative>(lMax, lMax, n);
     for (auto l : indices.Degrees()) {
       auto i = indices.Index(l, 0);
       range[i].imag(0);
     }
-    if (lMax == _Derived().MaxDegree()) {
+    if (lMax == Derived().MaxDegree()) {
       auto i = indices.Index(lMax, lMax);
       range[i].imag(0);
     }
   }
 
  private:
-  auto& _Derived() const { return static_cast<const Derived&>(*this); }
-  auto& _Derived() { return static_cast<Derived&>(*this); }
+  auto& Derived() const { return static_cast<const _Derived&>(*this); }
+  auto& Derived() { return static_cast<_Derived&>(*this); }
 };
 
 }  // namespace GSHTrans

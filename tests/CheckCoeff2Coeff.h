@@ -11,6 +11,8 @@
 #include <numbers>
 #include <random>
 
+#include "NumericConcepts/NumericConcepts.hpp"
+
 using namespace GSHTrans;
 
 using Int = std::ptrdiff_t;
@@ -38,7 +40,7 @@ Int RandomUpperIndex(Int nMax) {
 template <RealOrComplexFloatingPoint Scalar, OrderIndexRange MRange,
           IndexRange NRange>
 auto Coeff2Coeff() {
-  using Real = FFTWpp::RemoveComplex<Scalar>;
+  using Real = NumericConcepts::RemoveComplex<Scalar>;
   using Complex = std::complex<Real>;
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
 
@@ -51,9 +53,9 @@ auto Coeff2Coeff() {
 
   auto getSize = [](Int lMax, Int n) {
     if constexpr (RealFloatingPoint<Scalar>) {
-      return GSHIndices<NonNegative>(lMax, lMax, n).size();
+      return GSHIndices<NonNegative>(lMax, lMax, n).Size();
     } else {
-      return GSHIndices<All>(lMax, lMax, n).size();
+      return GSHIndices<All>(lMax, lMax, n).Size();
     }
   };
 
@@ -66,7 +68,7 @@ auto Coeff2Coeff() {
     grid.RandomRealCoefficient(lMax, n, flm);
   }
 
-  auto f = FFTWpp::vector<Scalar>(grid.ComponentSize());
+  auto f = FFTWpp::vector<Scalar>(grid.FieldSize());
   auto glm = FFTWpp::vector<Complex>(size);
 
   grid.InverseTransformation(lMax, n, flm, f);

@@ -1,0 +1,51 @@
+#ifndef GSH_TRANS_FIELD_MODULE_H
+#define GSH_TRANS_FIELD_MODULE_H
+
+#include "src/FieldBase.h"
+
+// Canonical component fields
+#include "src/CanonicalComponentField//CanonicalComponentFieldOverloads.h"
+#include "src/CanonicalComponentField/CanonicalComponentField.h"
+#include "src/CanonicalComponentField/CanonicalComponentFieldBase.h"
+#include "src/CanonicalComponentField/CanonicalComponentFieldBinary.h"
+#include "src/CanonicalComponentField/CanonicalComponentFieldUnary.h"
+
+// Scalar field files.
+/*
+#include "src/FieldBase.h"
+#include "src/ScalarField/AbstractScalarField.h"
+#include "src/ScalarField/ConstantScalarField.h"
+#include "src/ScalarField/ScalarField.h"
+#include "src/ScalarField/ScalarFieldBase.h"
+#include "src/ScalarField/ScalarFieldBinary.h"
+#include "src/ScalarField/ScalarFieldBinaryWithScalar.h"
+#include "src/ScalarField/ScalarFieldOverloads.h"
+#include "src/ScalarField/ScalarFieldUnary.h"
+#include "src/ScalarField/ScalarFieldView.h"
+*/
+/*
+
+// Vector field files.
+#include "src/VectorField/AbstractVectorField.h"
+#include "src/VectorField/CanonicalVector.h"
+#include "src/VectorField/VectorField.h"
+#include "src/VectorField/VectorFieldBase.h"
+#include "src/VectorField/VectorFieldBinary.h"
+#include "src/VectorField/VectorFieldBinaryToScalarField.h"
+#include "src/VectorField/VectorFieldBinaryWithScalar.h"
+#include "src/VectorField/VectorFieldBinaryWithScalarField.h"
+#include "src/VectorField/VectorFieldComplexToImag.h"
+#include "src/VectorField/VectorFieldComplexToReal.h"
+#include "src/VectorField/VectorFieldComponent.h"
+#include "src/VectorField/VectorFieldConjugate.h"
+#include "src/VectorField/VectorFieldOverloads.h"
+#include "src/VectorField/VectorFieldRealToComplex.h"
+#include "src/VectorField/VectorFieldUnary.h"
+
+// Matrix field files
+// #include "src/MatrixField/CanonicalMatrix.h"
+#include "src/MatrixField/MatrixFieldBase.h"
+
+*/
+
+#endif

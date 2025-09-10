@@ -12,12 +12,12 @@ namespace GSHTrans {
 //                                 Tag classes                              //
 //--------------------------------------------------------------------------//
 
-// Matrix storage options.
+// Matrix storage options for Wigner class.
 struct ColumnMajor {};
 struct RowMajor {};
 
 template <typename T>
-concept MatrixStorage =
+concept WignerStorage =
     std::same_as<T, ColumnMajor> or std::same_as<T, RowMajor>;
 
 // Index storage options.
@@ -57,7 +57,7 @@ template <typename T>
 concept RealOrComplexValued =
     std::same_as<T, RealValued> or std::same_as<T, ComplexValued>;
 
-// Concepts for fields.
+// Concepts for floating point numbers
 template <typename T>
 struct IsComplexFloatingPoint : public std::false_type {};
 
@@ -89,29 +89,8 @@ struct RemoveComplexHelper<std::complex<T>> {
 template <typename T>
 using RemoveComplex = typename RemoveComplexHelper<T>::value_type;
 
-template <typename T>
-concept Field = std::integral<T> or RealOrComplexFloatingPoint<T>;
-
-// Concepts for iterators with real or complex floating point values.
-template <typename T>
-concept RealFloatingPointIterator = requires() {
-  requires std::random_access_iterator<T>;
-  requires RealFloatingPoint<std::iter_value_t<T>>;
-};
-
-template <typename T>
-concept ComplexFloatingPointIterator = requires() {
-  requires std::random_access_iterator<T>;
-  requires ComplexFloatingPoint<std::iter_value_t<T>>;
-};
-
-template <typename T>
-concept RealOrComplexFloatingPointIterator = requires() {
-  requires std::random_access_iterator<T>;
-  requires RealOrComplexFloatingPoint<std::iter_value_t<T>>;
-};
-
 // Concepts for ranges with real or complex floating point values.
+
 template <typename T>
 concept RealFloatingPointRange = requires() {
   requires std::ranges::common_range<T>;
@@ -130,21 +109,20 @@ concept RealOrComplexFloatingPointRange = requires() {
   requires RealOrComplexFloatingPoint<std::ranges::range_value_t<T>>;
 };
 
-// Concepts for scalar-valued functions.
-template <typename Func, typename Real, typename Scalar>
-concept ScalarFunction2D = requires(Real theta, Real phi, Real w, Func f) {
+// Concept for scalar-valued function on S2.
+template <typename Function, typename Real, typename Scalar>
+concept ScalarFunctionS2 = requires(Function f, Real theta, Real phi) {
   requires RealFloatingPoint<Real>;
   requires RealOrComplexFloatingPoint<Scalar>;
   { f(theta, phi) } -> std::convertible_to<Scalar>;
-  { f(theta, phi) * w } -> std::convertible_to<Scalar>;
 };
 
-// Concepts for grid classes.
-template <typename Grid>
-concept SphereGrid = requires(Grid grid) {
-  typename Grid::difference_type;
-  { grid.MaxDegree() } -> std::same_as<typename Grid::difference_type>;
-  { grid.MaxUpperIndex() } -> std::same_as<typename Grid::difference_type>;
+// Concept for scalar-valued function of spherical harmonic indices.
+template <typename Function, typename Int, typename Scalar>
+concept ScalarFunctionS2Expansion = requires(Function f, Int l, Int m) {
+  requires std::integral<Int>;
+  requires RealOrComplexFloatingPoint<Scalar>;
+  { f(l, m) } -> std::convertible_to<Scalar>;
 };
 
 }  // namespace GSHTrans

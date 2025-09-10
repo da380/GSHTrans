@@ -31,12 +31,12 @@ int CheckAdditionTheorem() {
   constexpr auto eps = 1000 * std::numeric_limits<Real>::epsilon();
 
   for (auto n : d.UpperIndices()) {
-    auto d1 = d(n);
+    auto d1 = d[n];
     for (auto np : d.UpperIndices()) {
-      auto d2 = d(np);
+      auto d2 = d[np];
       auto lMin = std::max(std::abs(n), std::abs(np));
       for (auto l = lMin; l <= lMax; l++) {
-        auto sum = std::inner_product(d1(l).begin(), d1(l).end(), d2(l).begin(),
+        auto sum = std::inner_product(d1[l].begin(), d1[l].end(), d2[l].begin(),
                                       Real{0});
         if (n == np) --sum;
         if (std::abs(sum) > eps) return 1;

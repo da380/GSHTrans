@@ -38,7 +38,7 @@ Int RandomUpperIndex(Int nMax) {
 int main() {
   using Real = double;
   using Complex = std::complex<Real>;
-  using Scalar = Real;
+  using Scalar = Complex;
   using MRange = All;
   using NRange = All;
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
@@ -53,9 +53,9 @@ int main() {
 
     Int size;
     if constexpr (ComplexFloatingPoint<Scalar>) {
-      size = grid.ComplexCoefficientSize(lMax, n);
+      size = grid.CoefficientSize(lMax, n);
     } else {
-      size = grid.RealCoefficientSize(lMax, n);
+      size = grid.CoefficientSizeNonNegative(lMax, n);
     }
     auto flm = FFTWpp::vector<Complex>(size);
     if constexpr (ComplexFloatingPoint<Scalar>) {
@@ -64,16 +64,12 @@ int main() {
       grid.RandomRealCoefficient(lMax, n, flm);
     }
 
-    auto f = FFTWpp::vector<Scalar>(grid.ComponentSize());
+    auto f = FFTWpp::vector<Scalar>(grid.FieldSize());
     auto glm = FFTWpp::vector<Complex>(size);
 
-    grid.InverseTransformation(lMax, n, std::ranges::views::all(flm), f);
+    grid.InverseTransformation(lMax, n, flm, f);
 
-    grid.ForwardTransformation(
-        lMax, n,
-        std::ranges::views::all(f) |
-            std::ranges::views::transform([](auto x) { return x; }),
-        glm);
+    grid.ForwardTransformation(lMax, n, f, glm);
 
     auto error = std::ranges::max(std::ranges::views::zip_transform(
         [](auto x, auto y) { return std::abs(x - y); }, flm, glm));
