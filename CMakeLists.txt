@@ -17,6 +17,16 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # Location for cmake modules
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
+
+# add in Eigen3
+include(FetchContent)
+FetchContent_Declare(
+  Eigen3
+  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+  GIT_TAG 3.4.1
+)
+FetchContent_MakeAvailable(Eigen3)
+
 # add in GaussQuad
 include(FetchContent)
 FetchContent_Declare(
@@ -29,7 +39,7 @@ FetchContent_MakeAvailable(NumericConcepts)
 # add in GaussQuad
 FetchContent_Declare(
   GaussQuad
-  GIT_REPOSITORY https://github.com/da380/GaussQuad.git
+  GIT_REPOSITORY git@github.com:da380/GaussQuad.git
   GIT_TAG main
 )
 FetchContent_MakeAvailable(GaussQuad)
@@ -52,6 +62,7 @@ target_link_libraries(GSHTrans INTERFACE
   NumericConcepts
   FFTWpp
   GaussQuad
+  Eigen3::Eigen
   OpenMP::OpenMP_CXX)
 target_include_directories (GaussQuad INTERFACE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
