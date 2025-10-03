@@ -83,7 +83,7 @@ class CanonicalComponentExpansionBase {
   requires Writeable::value && std::same_as<typename __Derived::Scalar, Scalar>
   auto& operator=(const CanonicalComponentExpansionBase<_N, __Derived>& other) {
     assert(other.MaxDegree() == this->MaxDegree());
-    for (auto [l, m] : this->Indices()) {
+    for (auto [l, m] : static_cast<_Derived*>(this)->Indices()) {
       operator[](l, m) = other[l, m];
     }
     return Derived();
@@ -102,7 +102,7 @@ class CanonicalComponentExpansionBase {
   auto& operator+=(
       const CanonicalComponentExpansionBase<_N, __Derived>& other) {
     assert(other.MaxDegree() == this->MaxDegree());
-    for (auto [l, m] : this->Indices()) {
+    for (auto [l, m] : static_cast<_Derived*>(this)->Indices()) {
       operator[](l, m) += other[l, m];
     }
     return Derived();
@@ -121,7 +121,7 @@ class CanonicalComponentExpansionBase {
   auto& operator-=(
       const CanonicalComponentExpansionBase<_N, __Derived>& other) {
     assert(other.MaxDegree() == this->MaxDegree());
-    for (auto [l, m] : this->Indices()) {
+    for (auto [l, m] : static_cast<_Derived*>(this)->Indices()) {
       operator[](l, m) -= other(l, m);
     }
     return Derived();
@@ -138,7 +138,7 @@ class CanonicalComponentExpansionBase {
   auto& operator*=(Scalar s)
   requires Writeable::value
   {
-    for (auto [l, m] : this->Indices()) {
+    for (auto [l, m] : static_cast<_Derived*>(this)->Indices()) {
       operator[](l, m) *= s;
     }
     return Derived();
@@ -148,7 +148,7 @@ class CanonicalComponentExpansionBase {
   auto& operator/=(Scalar s)
   requires Writeable::value
   {
-    for (auto [l, m] : this->Indices()) {
+    for (auto [l, m] : static_cast<_Derived*>(this)->Indices()) {
       operator[](l, m) /= s;
     }
     return Derived();
