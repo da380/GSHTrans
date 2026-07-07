@@ -9,3 +9,6 @@ target_link_libraries(GridExample GSHTrans)
 add_executable(FieldExample FieldExample.cpp)
 target_link_libraries(FieldExample GSHTrans)
 
+add_executable(concepts concepts.cpp)
+target_link_libraries(concepts GSHTrans)
+
