@@ -9,6 +9,9 @@ target_link_libraries(GridExample GSHTrans)
 add_executable(FieldExample FieldExample.cpp)
 target_link_libraries(FieldExample GSHTrans)
 
-add_executable(3j 3j.cpp)
-target_link_libraries(3j GSHTrans)
+add_executable(wig wig.cpp)
+target_link_libraries(wig GSHTrans)
+
+add_executable(wigner3j_tests wigner3j_tests.cpp)
+
 
