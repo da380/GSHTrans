@@ -64,7 +64,7 @@ target_link_libraries(GSHTrans INTERFACE
   GaussQuad
   Eigen3::Eigen
   OpenMP::OpenMP_CXX)
-target_include_directories (GaussQuad INTERFACE
+target_include_directories (GSHTrans INTERFACE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${INCLUDE_INSTALL_DIR}>
 )
