@@ -151,4 +151,61 @@ Branch: `fix/correctness-and-safety`
   the ptraced execution environment.
 - `git diff --check` passed.
 
-All approved phases are complete.
+## Second pull request review corrections
+
+1. [x] Reject differently sized field compound operations in all build modes.
+2. [x] Reject differently sized expansion compound operations in all build
+   modes.
+3. [x] Validate requested transform degrees against the grid.
+
+### Issue 1 verification
+
+- All seven canonical-field tests passed in a fresh Debug build.
+- All seven canonical-field tests passed in a fresh Release build with
+  AddressSanitizer and UBSan in
+  `/tmp/gshtrans-review2-field-release-asan-uudG2Z`.
+- Leak detection was disabled because it is unsupported in the ptraced
+  execution environment.
+
+### Issue 2 implementation
+
+- Expansion assignment, addition-assignment, and subtraction-assignment now
+  share one runtime size check.
+- Added a regression covering both operand orderings for mismatched `+=` and
+  `-=`.
+
+### Issue 2 verification
+
+- All six canonical-expansion tests passed in the fresh Debug build.
+- All six canonical-expansion tests passed in the assertion-disabled Release
+  build with AddressSanitizer and UBSan.
+- Leak detection was disabled because it is unsupported in the ptraced
+  execution environment.
+
+### Issue 3 implementation
+
+- Forward and inverse transforms now reject negative degrees, degrees above the
+  grid maximum, and upper indices unsupported by either the requested degree or
+  the grid.
+- Added regressions for the one-point fast path, a larger grid, and upper
+  indices outside the requested degree or the grid's supported range.
+
+### Issue 3 verification
+
+- All nine Gauss-Legendre grid tests passed in the fresh Debug build.
+- All nine Gauss-Legendre grid tests passed in the assertion-disabled Release
+  build with AddressSanitizer and UBSan.
+- Leak detection was disabled because it is unsupported in the ptraced
+  execution environment.
+
+### Integrated verification
+
+- All examples and tests built in the fresh Debug and assertion-disabled
+  Release sanitizer builds.
+- All 32 tests passed across three repeated Debug runs.
+- All 32 tests passed in Release with AddressSanitizer and UBSan.
+- Leak detection was disabled because it is unsupported in the ptraced
+  execution environment.
+- `git diff --check` passed.
+
+All approved second-review corrections are complete.

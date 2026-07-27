@@ -12,6 +12,7 @@
 #include <numbers>
 #include <numeric>
 #include <ranges>
+#include <stdexcept>
 #include <vector>
 
 #include "Concepts.h"
@@ -125,8 +126,7 @@ class GaussLegendreGrid
     // Get scalar type for field.
     using Scalar = std::ranges::range_value_t<InRange>;
 
-    // Check upper index is possible.
-    assert(std::ranges::contains(this->UpperIndices(), n));
+    ValidateTransformRequest(lMax, n);
 
     // Check dimensions of ranges.
     assert(in.size() == this->FieldSize());
@@ -240,8 +240,7 @@ class GaussLegendreGrid
     // Get scalar type for field.
     using Scalar = std::ranges::range_value_t<OutRange>;
 
-    // Check upper index is possible.
-    assert(std::ranges::contains(this->UpperIndices(), n));
+    ValidateTransformRequest(lMax, n);
 
     // Check dimensions of ranges.
     if constexpr (RealFloatingPoint<Scalar>) {
@@ -325,6 +324,18 @@ class GaussLegendreGrid
   }
 
  private:
+  void ValidateTransformRequest(Int lMax, Int n) const {
+    if (lMax < 0 || lMax > MaxDegree()) {
+      throw std::invalid_argument(
+          "Transform degree must be between zero and the grid maximum degree");
+    }
+    if (std::abs(n) > lMax ||
+        !std::ranges::contains(this->UpperIndices(), n)) {
+      throw std::invalid_argument(
+          "Transform upper index is not supported at the requested degree");
+    }
+  }
+
   Int _lMax;
   Int _nMax;
   FFTWpp::Flag _flag;

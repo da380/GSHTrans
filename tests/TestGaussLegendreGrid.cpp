@@ -2,6 +2,7 @@
 
 #include <limits>
 #include <numbers>
+#include <stdexcept>
 
 #include "CheckCoeff2Coeff.h"
 
@@ -118,6 +119,41 @@ TEST(GaussLegendreGrid, DegreeZeroTruncationUsesTheWholeGrid) {
     EXPECT_NEAR(reconstructedComplex[j].real(), constant.real(), tolerance);
     EXPECT_NEAR(reconstructedComplex[j].imag(), constant.imag(), tolerance);
   }
+}
+
+TEST(GaussLegendreGrid, RejectsUnsupportedTransformRequests) {
+  using Real = double;
+  using Complex = std::complex<Real>;
+  using Grid = GaussLegendreGrid<Real, All, All>;
+
+  auto onePointGrid = Grid(0, 0, FFTWpp::Estimate);
+  auto onePointField = FFTWpp::vector<Real>(onePointGrid.FieldSize());
+  auto degreeOneCoefficients = FFTWpp::vector<Complex>(3);
+
+  EXPECT_THROW(onePointGrid.ForwardTransformation(
+                   1, 0, onePointField, degreeOneCoefficients),
+               std::invalid_argument);
+  EXPECT_THROW(onePointGrid.InverseTransformation(
+                   1, 0, degreeOneCoefficients, onePointField),
+               std::invalid_argument);
+
+  auto largerGrid = Grid(2, 2, FFTWpp::Estimate);
+  auto largerField = FFTWpp::vector<Real>(largerGrid.FieldSize());
+  auto degreeThreeCoefficients = FFTWpp::vector<Complex>(10);
+  EXPECT_THROW(largerGrid.ForwardTransformation(
+                   3, 0, largerField, degreeThreeCoefficients),
+               std::invalid_argument);
+  EXPECT_THROW(largerGrid.InverseTransformation(
+                   3, 0, degreeThreeCoefficients, largerField),
+               std::invalid_argument);
+  EXPECT_THROW(largerGrid.ForwardTransformation(
+                   1, 2, largerField, degreeOneCoefficients),
+               std::invalid_argument);
+
+  auto scalarGrid = Grid(2, 0, FFTWpp::Estimate);
+  EXPECT_THROW(scalarGrid.ForwardTransformation(
+                   1, 1, largerField, degreeOneCoefficients),
+               std::invalid_argument);
 }
 
 TEST(GaussLegendreGrid, Coeff2CoeffDoubleR2C) {

@@ -51,10 +51,7 @@ class CanonicalComponentFieldBase
   requires Writeable::value &&
            std::convertible_to<typename __Derived::Scalar, Scalar>
   auto& operator=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
-    if (other.Size() != Size()) {
-      throw std::invalid_argument(
-          "Cannot assign canonical component fields with different sizes");
-    }
+    RequireSameSize(other);
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) = other[iTheta, iPhi];
     }
@@ -74,7 +71,7 @@ class CanonicalComponentFieldBase
   requires Writeable::value &&
            std::convertible_to<typename __Derived::Scalar, Scalar>
   auto& operator+=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
-    assert(other.Size() == Size());
+    RequireSameSize(other);
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) += other[iTheta, iPhi];
     }
@@ -104,7 +101,7 @@ class CanonicalComponentFieldBase
   requires Writeable::value &&
            std::convertible_to<typename __Derived::Scalar, Scalar>
   auto& operator-=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
-    assert(other.Size() == Size());
+    RequireSameSize(other);
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) -= other[iTheta, iPhi];
     }
@@ -134,7 +131,7 @@ class CanonicalComponentFieldBase
   requires Writeable::value &&
            std::convertible_to<typename __Derived::Scalar, Scalar>
   auto& operator*=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
-    assert(other.Size() == Size());
+    RequireSameSize(other);
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) *= other[iTheta, iPhi];
     }
@@ -164,7 +161,7 @@ class CanonicalComponentFieldBase
   requires Writeable::value &&
            std::convertible_to<typename __Derived::Scalar, Scalar>
   auto& operator/=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
-    assert(other.Size() == Size());
+    RequireSameSize(other);
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) /= other[iTheta, iPhi];
     }
@@ -219,6 +216,15 @@ class CanonicalComponentFieldBase
   }
 
  private:
+  template <typename OtherDerived>
+  void RequireSameSize(
+      const CanonicalComponentFieldBase<_N, OtherDerived>& other) const {
+    if (other.Size() != Size()) {
+      throw std::invalid_argument(
+          "Canonical component fields must have the same size");
+    }
+  }
+
   constexpr auto& Derived() const {
     return static_cast<const _Derived&>(*this);
   }

@@ -352,6 +352,22 @@ TEST(CanonicalComponentField, AssignmentRejectsMismatchedGridSizes) {
   EXPECT_THROW(large = small + 1.0, std::invalid_argument);
 }
 
+TEST(CanonicalComponentField, CompoundAssignmentsRejectMismatchedGridSizes) {
+  auto smallGrid = Grid(1, 0, FFTWpp::Estimate);
+  auto largeGrid = Grid(2, 0, FFTWpp::Estimate);
+  auto small = RealField(smallGrid);
+  auto large = RealField(largeGrid);
+
+  EXPECT_THROW(small += large, std::invalid_argument);
+  EXPECT_THROW(small -= large, std::invalid_argument);
+  EXPECT_THROW(small *= large, std::invalid_argument);
+  EXPECT_THROW(small /= large, std::invalid_argument);
+  EXPECT_THROW(large += small, std::invalid_argument);
+  EXPECT_THROW(large -= small, std::invalid_argument);
+  EXPECT_THROW(large *= small, std::invalid_argument);
+  EXPECT_THROW(large /= small, std::invalid_argument);
+}
+
 TEST(CanonicalComponentField, CallableExpressionsOwnForwardedState) {
   auto grid = Grid(2, 0, FFTWpp::Estimate);
   auto field = RealField(grid);

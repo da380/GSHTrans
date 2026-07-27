@@ -1,7 +1,6 @@
 #ifndef GSH_TRANS_CANONICAL_COMPONENT_EXPANSION_BASE_GUARD_H
 #define GSH_TRANS_CANONICAL_COMPONENT_EXPANSION_BASE_GUARD_H
 
-#include <cassert>
 #include <concepts>
 #include <cstddef>
 #include <stdexcept>
@@ -49,10 +48,7 @@ class CanonicalComponentExpansionBase {
            std::same_as<typename __Derived::Scalar, Scalar> &&
            std::same_as<typename __Derived::MRange, MRange>
   auto& operator=(const CanonicalComponentExpansionBase<_N, __Derived>& other) {
-    if (other.Size() != Size()) {
-      throw std::invalid_argument(
-          "Cannot assign canonical component expansions with different sizes");
-    }
+    RequireSameSize(other);
     for (auto [l, m] : Indices()) {
       operator[](l, m) = other[l, m];
     }
@@ -73,7 +69,7 @@ class CanonicalComponentExpansionBase {
            std::same_as<typename __Derived::MRange, MRange>
   auto& operator+=(
       const CanonicalComponentExpansionBase<_N, __Derived>& other) {
-    assert(other.MaxDegree() == MaxDegree());
+    RequireSameSize(other);
     for (auto [l, m] : Indices()) {
       operator[](l, m) += other[l, m];
     }
@@ -94,7 +90,7 @@ class CanonicalComponentExpansionBase {
            std::same_as<typename __Derived::MRange, MRange>
   auto& operator-=(
       const CanonicalComponentExpansionBase<_N, __Derived>& other) {
-    assert(other.MaxDegree() == MaxDegree());
+    RequireSameSize(other);
     for (auto [l, m] : Indices()) {
       operator[](l, m) -= other[l, m];
     }
@@ -128,6 +124,15 @@ class CanonicalComponentExpansionBase {
   }
 
  private:
+  template <typename __Derived>
+  void RequireSameSize(
+      const CanonicalComponentExpansionBase<_N, __Derived>& other) const {
+    if (other.Size() != Size()) {
+      throw std::invalid_argument(
+          "Canonical component expansions must have the same size");
+    }
+  }
+
   constexpr auto& Derived() const {
     return static_cast<const _Derived&>(*this);
   }
