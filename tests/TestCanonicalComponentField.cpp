@@ -4,7 +4,9 @@
 
 #include <complex>
 #include <memory>
+#include <stdexcept>
 #include <type_traits>
+#include <utility>
 
 namespace {
 
@@ -146,6 +148,34 @@ class StatefulScalarCallable {
  private:
   Real _factor;
 };
+
+class MutableUnary {
+ public:
+  Real operator()(Real value) { return value; }
+};
+
+class MutableScalarCallable {
+ public:
+  Real operator()(Real value, Real scalar) { return value + scalar; }
+};
+
+template <typename Callable>
+concept FormsUnaryExpression = requires(RealField& field, Callable&& callable) {
+  CanonicalComponentFieldUnary(field,
+                               std::forward<Callable>(callable));
+};
+
+template <typename Callable>
+concept FormsScalarExpression =
+    requires(RealField& field, Callable&& callable) {
+      CanonicalComponentFieldUnaryWithScalar(
+          field, std::forward<Callable>(callable), Real{});
+    };
+
+static_assert(FormsUnaryExpression<MoveOnlyUnary>);
+static_assert(FormsScalarExpression<MoveOnlyScalarCallable>);
+static_assert(!FormsUnaryExpression<MutableUnary>);
+static_assert(!FormsScalarExpression<MutableScalarCallable>);
 
 }  // namespace
 
@@ -308,6 +338,18 @@ TEST(CanonicalComponentField, AssignmentPreservesDestinationGrid) {
   ExpectValues(destination, [&](auto iTheta, auto iPhi) {
     return 2.0 * expectedAfterMove[iTheta, iPhi];
   });
+}
+
+TEST(CanonicalComponentField, AssignmentRejectsMismatchedGridSizes) {
+  auto smallGrid = Grid(1, 0, FFTWpp::Estimate);
+  auto largeGrid = Grid(2, 0, FFTWpp::Estimate);
+  auto small = RealField(smallGrid);
+  auto large = RealField(largeGrid);
+
+  EXPECT_THROW(small = large, std::invalid_argument);
+  EXPECT_THROW(small = std::move(large), std::invalid_argument);
+  EXPECT_THROW(small = large + 1.0, std::invalid_argument);
+  EXPECT_THROW(large = small + 1.0, std::invalid_argument);
 }
 
 TEST(CanonicalComponentField, CallableExpressionsOwnForwardedState) {

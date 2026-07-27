@@ -136,8 +136,8 @@ class GaussLegendreGrid
       assert(out.size() == GSHIndices<All>(lMax, lMax, n).Size());
     }
 
-    // Deal with lMax = 0
-    if (lMax == 0) {
+    // A one-point grid needs no FFT.
+    if (_lMax == 0) {
       out[0] =
           in[0] * static_cast<Real>(2) / std::numbers::inv_sqrtpi_v<Real>;
       return;
@@ -251,8 +251,8 @@ class GaussLegendreGrid
     }
     assert(out.size() == this->FieldSize());
 
-    // Deal with lMax = 0
-    if (lMax == 0) {
+    // A one-point grid needs no FFT.
+    if (_lMax == 0) {
       if constexpr (RealFloatingPoint<Scalar>) {
         out[0] = std::real(in[0]) * std::numbers::inv_sqrtpi_v<Real> /
                  static_cast<Real>(2);

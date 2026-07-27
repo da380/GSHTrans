@@ -5,6 +5,7 @@
 #include <complex>
 #include <cstddef>
 #include <ranges>
+#include <stdexcept>
 #include <type_traits>
 #include <utility>
 
@@ -184,4 +185,19 @@ TEST(CanonicalComponentExpansion, RealAssignmentAndArithmetic) {
 
 TEST(CanonicalComponentExpansion, ComplexAssignmentAndArithmetic) {
   CheckAssignmentAndArithmetic<ComplexExpansion>();
+}
+
+TEST(CanonicalComponentExpansion, AssignmentRejectsMismatchedGridSizes) {
+  auto smallGrid = Grid(1, 0, FFTWpp::Estimate);
+  auto largeGrid = Grid(2, 0, FFTWpp::Estimate);
+  auto small = RealExpansion(smallGrid);
+  auto large = RealExpansion(largeGrid);
+
+  EXPECT_THROW(small = large, std::invalid_argument);
+  EXPECT_THROW(small = std::move(large), std::invalid_argument);
+
+  using Base = CanonicalComponentExpansionBase<1, RealExpansion>;
+  auto& smallBase = static_cast<Base&>(small);
+  EXPECT_THROW(smallBase.template operator=<RealExpansion>(large),
+               std::invalid_argument);
 }

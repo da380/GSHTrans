@@ -29,19 +29,19 @@ class CanonicalComponentFieldImag;
 
 template <std::ptrdiff_t N, typename Derived, typename Function>
 requires requires() {
-  requires std::invocable<Function, typename Derived::Scalar>;
+  requires std::invocable<const Function&, typename Derived::Scalar>;
   requires std::convertible_to<
-      std::invoke_result_t<Function, typename Derived::Scalar>,
+      std::invoke_result_t<const Function&, typename Derived::Scalar>,
       typename Derived::Scalar>;
 }
 class CanonicalComponentFieldUnary;
 
 template <std::ptrdiff_t N, typename Derived, typename Function>
 requires requires() {
-  requires std::invocable<Function, typename Derived::Scalar,
+  requires std::invocable<const Function&, typename Derived::Scalar,
                           typename Derived::Scalar>;
   requires std::convertible_to<
-      std::invoke_result_t<Function, typename Derived::Scalar,
+      std::invoke_result_t<const Function&, typename Derived::Scalar,
                            typename Derived::Scalar>,
       typename Derived::Scalar>;
 }
@@ -249,9 +249,9 @@ class CanonicalComponentFieldImag
 // Class for unary transformation.
 template <std::ptrdiff_t _N, typename Derived, typename Function>
 requires requires() {
-  requires std::invocable<Function, typename Derived::Scalar>;
+  requires std::invocable<const Function&, typename Derived::Scalar>;
   requires std::convertible_to<
-      std::invoke_result_t<Function, typename Derived::Scalar>,
+      std::invoke_result_t<const Function&, typename Derived::Scalar>,
       typename Derived::Scalar>;
 }
 class CanonicalComponentFieldUnary
@@ -303,10 +303,10 @@ class CanonicalComponentFieldUnary
 // Class for unary transformation with a scalar parameter.
 template <std::ptrdiff_t _N, typename Derived, typename Function>
 requires requires() {
-  requires std::invocable<Function, typename Derived::Scalar,
+  requires std::invocable<const Function&, typename Derived::Scalar,
                           typename Derived::Scalar>;
   requires std::convertible_to<
-      std::invoke_result_t<Function, typename Derived::Scalar,
+      std::invoke_result_t<const Function&, typename Derived::Scalar,
                            typename Derived::Scalar>,
       typename Derived::Scalar>;
 }

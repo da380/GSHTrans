@@ -4,6 +4,7 @@
 #include <cassert>
 #include <concepts>
 #include <cstddef>
+#include <stdexcept>
 
 #include "../Concepts.h"
 #include "../GridBase.h"
@@ -48,7 +49,10 @@ class CanonicalComponentExpansionBase {
            std::same_as<typename __Derived::Scalar, Scalar> &&
            std::same_as<typename __Derived::MRange, MRange>
   auto& operator=(const CanonicalComponentExpansionBase<_N, __Derived>& other) {
-    assert(other.MaxDegree() == MaxDegree());
+    if (other.Size() != Size()) {
+      throw std::invalid_argument(
+          "Cannot assign canonical component expansions with different sizes");
+    }
     for (auto [l, m] : Indices()) {
       operator[](l, m) = other[l, m];
     }

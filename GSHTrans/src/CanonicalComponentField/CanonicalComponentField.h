@@ -3,11 +3,11 @@
 
 #include <FFTWpp/Core>
 #include <algorithm>
-#include <cassert>
 #include <concepts>
 #include <cstddef>
 #include <iostream>
 #include <limits>
+#include <stdexcept>
 #include <vector>
 
 #include "../Concepts.h"
@@ -130,7 +130,10 @@ class CanonicalComponentField
   }
 
   auto& AssignValues(const CanonicalComponentField& other) {
-    assert(other.Size() == this->Size());
+    if (other.Size() != this->Size()) {
+      throw std::invalid_argument(
+          "Cannot assign canonical component fields with different sizes");
+    }
     std::ranges::copy(other._data, _data.begin());
     return *this;
   }

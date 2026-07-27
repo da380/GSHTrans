@@ -70,6 +70,56 @@ TEST(GaussLegendreGrid, DegreeZeroComplexKnownAnswer) {
               32.0 * std::numeric_limits<Real>::epsilon());
 }
 
+TEST(GaussLegendreGrid, DegreeZeroTruncationUsesTheWholeGrid) {
+  using Real = double;
+  using Complex = std::complex<Real>;
+  using Grid = GaussLegendreGrid<Real, All, All>;
+  constexpr auto tolerance = 64.0 * std::numeric_limits<Real>::epsilon();
+
+  auto grid = Grid(2, 0, FFTWpp::Estimate);
+  auto realField = FFTWpp::vector<Real>(grid.FieldSize());
+  auto complexField = FFTWpp::vector<Complex>(grid.FieldSize());
+  for (auto i = std::ptrdiff_t{0}; i < grid.FieldSize(); ++i) {
+    const auto value = static_cast<Real>(i + 1);
+    realField[i] = value;
+    complexField[i] = Complex{value, -0.5 * value};
+  }
+
+  auto expectedReal = Real{};
+  auto expectedComplex = Complex{};
+  auto i = std::ptrdiff_t{0};
+  for (const auto weight : grid.Weights()) {
+    expectedReal += realField[i] * weight;
+    expectedComplex += complexField[i] * weight;
+    ++i;
+  }
+  const auto y00 = std::numbers::inv_sqrtpi_v<Real> / 2.0;
+  expectedReal *= y00;
+  expectedComplex *= y00;
+
+  auto realCoefficient = FFTWpp::vector<Complex>(1);
+  auto complexCoefficient = FFTWpp::vector<Complex>(1);
+  grid.ForwardTransformation(0, 0, realField, realCoefficient);
+  grid.ForwardTransformation(0, 0, complexField, complexCoefficient);
+  EXPECT_NEAR(realCoefficient[0].real(), expectedReal, tolerance);
+  EXPECT_NEAR(realCoefficient[0].imag(), 0.0, tolerance);
+  EXPECT_NEAR(complexCoefficient[0].real(), expectedComplex.real(), tolerance);
+  EXPECT_NEAR(complexCoefficient[0].imag(), expectedComplex.imag(), tolerance);
+
+  const auto constant = Complex{2.0, -0.75};
+  complexCoefficient[0] = constant / y00;
+  realCoefficient[0] = Complex{constant.real() / y00, 0.0};
+  auto reconstructedReal = FFTWpp::vector<Real>(grid.FieldSize());
+  auto reconstructedComplex = FFTWpp::vector<Complex>(grid.FieldSize());
+  grid.InverseTransformation(0, 0, realCoefficient, reconstructedReal);
+  grid.InverseTransformation(0, 0, complexCoefficient, reconstructedComplex);
+  for (auto j = std::ptrdiff_t{0}; j < grid.FieldSize(); ++j) {
+    EXPECT_NEAR(reconstructedReal[j], constant.real(), tolerance);
+    EXPECT_NEAR(reconstructedComplex[j].real(), constant.real(), tolerance);
+    EXPECT_NEAR(reconstructedComplex[j].imag(), constant.imag(), tolerance);
+  }
+}
+
 TEST(GaussLegendreGrid, Coeff2CoeffDoubleR2C) {
   using Scalar = double;
   bool result = Coeff2Coeff<Scalar, All, All>();

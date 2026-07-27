@@ -4,6 +4,7 @@
 #include <concepts>
 #include <format>
 #include <iostream>
+#include <stdexcept>
 
 #include "../Concepts.h"
 #include "../FieldBase.h"
@@ -50,7 +51,10 @@ class CanonicalComponentFieldBase
   requires Writeable::value &&
            std::convertible_to<typename __Derived::Scalar, Scalar>
   auto& operator=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
-    assert(other.Size() == Size());
+    if (other.Size() != Size()) {
+      throw std::invalid_argument(
+          "Cannot assign canonical component fields with different sizes");
+    }
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) = other[iTheta, iPhi];
     }

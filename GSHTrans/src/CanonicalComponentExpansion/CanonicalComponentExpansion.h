@@ -3,10 +3,10 @@
 
 #include <FFTWpp/Core>
 #include <algorithm>
-#include <cassert>
 #include <concepts>
 #include <cstddef>
 #include <ranges>
+#include <stdexcept>
 #include <type_traits>
 
 #include "../Concepts.h"
@@ -116,7 +116,10 @@ class CanonicalComponentExpansion
   FFTWpp::vector<Complex> _data;
 
   auto& AssignValues(const CanonicalComponentExpansion& other) {
-    assert(other.Size() == Size());
+    if (other.Size() != Size()) {
+      throw std::invalid_argument(
+          "Cannot assign canonical component expansions with different sizes");
+    }
     std::ranges::copy(other._data, _data.begin());
     return *this;
   }

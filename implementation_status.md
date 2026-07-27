@@ -133,4 +133,22 @@ Branch: `fix/correctness-and-safety`
   disabled because it is unsupported in the ptraced execution environment.
 - The new lvalue-callable regression passed in both builds.
 
+## Independent pull request review corrections
+
+- [x] Reject differently sized field and expansion assignments in all build
+  modes before copying into destination storage.
+- [x] Correct degree-zero truncation on grids whose maximum degree is nonzero.
+- [x] Align callable constraints with const expression evaluation.
+
+### Verification
+
+- All 29 tests passed across three repeated Debug runs.
+- All 29 tests passed with AddressSanitizer and UBSan in the Debug build.
+- A fresh Release build with AddressSanitizer and UBSan completed in
+  `/tmp/gshtrans-review-release-asan-bb9is6`; all 29 tests passed with
+  assertions disabled.
+- Leak detection was disabled in sanitizer builds because it is unsupported in
+  the ptraced execution environment.
+- `git diff --check` passed.
+
 All approved phases are complete.
