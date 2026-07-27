@@ -82,10 +82,12 @@ void CheckAssignmentAndArithmetic() {
   });
 
   Fill(source, Complex{8.0, 2.0});
+  const auto expectedAfterMove = Expansion(source);
   destination = std::move(source);
   EXPECT_EQ(&destination.Grid(), &destinationGrid);
-  ExpectValues(destination,
-               [&](auto l, auto m) { return source[l, m]; });
+  ExpectValues(destination, [&](auto l, auto m) {
+    return expectedAfterMove[l, m];
+  });
 }
 
 }  // namespace

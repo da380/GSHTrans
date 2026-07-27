@@ -123,6 +123,30 @@ class MoveOnlyScalarCallable {
   std::unique_ptr<Real> _factor;
 };
 
+class StatefulUnary {
+ public:
+  explicit StatefulUnary(Real offset) : _offset{offset} {}
+
+  void SetOffset(Real offset) { _offset = offset; }
+  Real operator()(Real value) const { return value + _offset; }
+
+ private:
+  Real _offset;
+};
+
+class StatefulScalarCallable {
+ public:
+  explicit StatefulScalarCallable(Real factor) : _factor{factor} {}
+
+  void SetFactor(Real factor) { _factor = factor; }
+  Real operator()(Real value, Real scalar) const {
+    return _factor * value + scalar;
+  }
+
+ private:
+  Real _factor;
+};
+
 }  // namespace
 
 TEST(CanonicalComponentField, RealArithmeticAndMaterialization) {
@@ -272,16 +296,17 @@ TEST(CanonicalComponentField, AssignmentPreservesDestinationGrid) {
   Fill(source, [](auto iTheta, auto iPhi) {
     return 11.0 + static_cast<Real>(iTheta + 4 * iPhi);
   });
+  const auto expectedAfterMove = RealField(source);
   destination = std::move(source);
   EXPECT_EQ(&destination.Grid(), &destinationGrid);
   ExpectValues(destination, [&](auto iTheta, auto iPhi) {
-    return source[iTheta, iPhi];
+    return expectedAfterMove[iTheta, iPhi];
   });
 
   destination = destination + destination;
   EXPECT_EQ(&destination.Grid(), &destinationGrid);
   ExpectValues(destination, [&](auto iTheta, auto iPhi) {
-    return 2.0 * source[iTheta, iPhi];
+    return 2.0 * expectedAfterMove[iTheta, iPhi];
   });
 }
 
@@ -296,6 +321,33 @@ TEST(CanonicalComponentField, CallableExpressionsOwnForwardedState) {
       CanonicalComponentFieldUnary(field, MoveOnlyUnary{4.0});
   auto scalarExpression = CanonicalComponentFieldUnaryWithScalar(
       field, MoveOnlyScalarCallable{3.0}, 2.0);
+
+  auto unaryResult = RealField(unaryExpression);
+  auto scalarResult = RealField(scalarExpression);
+  ExpectValues(unaryResult, [&](auto iTheta, auto iPhi) {
+    return field[iTheta, iPhi] + 4.0;
+  });
+  ExpectValues(scalarResult, [&](auto iTheta, auto iPhi) {
+    return 3.0 * field[iTheta, iPhi] + 2.0;
+  });
+}
+
+TEST(CanonicalComponentField, LvalueCallablesAreCopiedIntoExpressions) {
+  auto grid = Grid(2, 0, FFTWpp::Estimate);
+  auto field = RealField(grid);
+  Fill(field, [](auto iTheta, auto iPhi) {
+    return 1.0 + static_cast<Real>(iTheta + iPhi);
+  });
+
+  auto unaryCallable = StatefulUnary{4.0};
+  auto scalarCallable = StatefulScalarCallable{3.0};
+  auto unaryExpression =
+      CanonicalComponentFieldUnary(field, unaryCallable);
+  auto scalarExpression = CanonicalComponentFieldUnaryWithScalar(
+      field, scalarCallable, 2.0);
+
+  unaryCallable.SetOffset(40.0);
+  scalarCallable.SetFactor(30.0);
 
   auto unaryResult = RealField(unaryExpression);
   auto scalarResult = RealField(scalarExpression);

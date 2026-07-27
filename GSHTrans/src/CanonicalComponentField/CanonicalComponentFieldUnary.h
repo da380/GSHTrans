@@ -4,6 +4,7 @@
 #include <complex>
 #include <concepts>
 #include <cstddef>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -279,9 +280,11 @@ class CanonicalComponentFieldUnary
 
   // Constructors.
   CanonicalComponentFieldUnary() = delete;
+  template <typename Callable>
+  requires std::constructible_from<Function, Callable&&>
   CanonicalComponentFieldUnary(
-      const CanonicalComponentFieldBase<_N, Derived>& u, Function&& f)
-      : _u{u}, _f{std::forward<Function>(f)} {}
+      const CanonicalComponentFieldBase<_N, Derived>& u, Callable&& f)
+      : _u{u}, _f{std::forward<Callable>(f)} {}
 
   CanonicalComponentFieldUnary(const CanonicalComponentFieldUnary&) = default;
   CanonicalComponentFieldUnary(CanonicalComponentFieldUnary&&) = default;
@@ -333,9 +336,11 @@ class CanonicalComponentFieldUnaryWithScalar
 
   // Constructors.
   CanonicalComponentFieldUnaryWithScalar() = delete;
+  template <typename Callable>
+  requires std::constructible_from<Function, Callable&&>
   CanonicalComponentFieldUnaryWithScalar(
-      const CanonicalComponentFieldBase<_N, Derived>& u, Function&& f, Scalar s)
-      : _u{u}, _f{std::forward<Function>(f)}, _s{s} {}
+      const CanonicalComponentFieldBase<_N, Derived>& u, Callable&& f, Scalar s)
+      : _u{u}, _f{std::forward<Callable>(f)}, _s{s} {}
 
   CanonicalComponentFieldUnaryWithScalar(
       const CanonicalComponentFieldUnaryWithScalar&) = default;
@@ -353,6 +358,18 @@ class CanonicalComponentFieldUnaryWithScalar
   Function _f;
   Scalar _s;
 };
+
+template <std::ptrdiff_t N, typename Derived, typename Function>
+CanonicalComponentFieldUnary(const CanonicalComponentFieldBase<N, Derived>&,
+                             Function&&)
+    -> CanonicalComponentFieldUnary<N, Derived, std::decay_t<Function>>;
+
+template <std::ptrdiff_t N, typename Derived, typename Function>
+CanonicalComponentFieldUnaryWithScalar(
+    const CanonicalComponentFieldBase<N, Derived>&, Function&&,
+    typename Derived::Scalar)
+    -> CanonicalComponentFieldUnaryWithScalar<N, Derived,
+                                              std::decay_t<Function>>;
 
 }  // namespace GSHTrans
 

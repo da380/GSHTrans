@@ -108,12 +108,29 @@ Branch: `fix/correctness-and-safety`
 - Fresh Debug configure and build completed in
   `/tmp/gshtrans-phase5-debug-Z6EAn1`, reusing only previously downloaded
   dependency source trees.
-- All 25 tests passed, including five repeated runs of every test.
-- All 17 focused sanitizer probes passed in
+- All 26 tests passed, including five repeated runs of every test.
+- All 26 tests passed with AddressSanitizer and UBSan in
   `/tmp/gshtrans-phase1-asan-KpyRbq`; leak detection was disabled because it is
   unsupported in the ptraced execution environment.
 - `git diff --check` passed.
 - Only the approved source headers, focused tests, test registration, and this
   status file changed.
+
+## Pull request review follow-up
+
+- [x] Add the direct `<type_traits>` dependency used by callable decay.
+- [x] Decay lvalue callable types during class template argument deduction and
+  forward them into expression-owned state.
+- [x] Add a regression proving unary and scalar expressions copy lvalue
+  callables rather than retaining references.
+- [x] Remove assumptions about moved-from values from field and expansion
+  assignment tests.
+
+### Verification
+
+- All 26 tests passed, including five repeated Debug runs of every test.
+- All 26 tests passed with AddressSanitizer and UBSan; leak detection was
+  disabled because it is unsupported in the ptraced execution environment.
+- The new lvalue-callable regression passed in both builds.
 
 All approved phases are complete.
