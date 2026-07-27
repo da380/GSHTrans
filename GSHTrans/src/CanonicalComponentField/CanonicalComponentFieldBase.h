@@ -102,7 +102,7 @@ class CanonicalComponentFieldBase
   auto& operator-=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
     assert(other.Size() == Size());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      operator[](iTheta, iPhi) -= other(iTheta, iPhi);
+      operator[](iTheta, iPhi) -= other[iTheta, iPhi];
     }
     return Derived();
   }
@@ -132,7 +132,7 @@ class CanonicalComponentFieldBase
   auto& operator*=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
     assert(other.Size() == Size());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      operator[](iTheta, iPhi) *= other(iTheta, iPhi);
+      operator[](iTheta, iPhi) *= other[iTheta, iPhi];
     }
     return Derived();
   }
@@ -162,7 +162,7 @@ class CanonicalComponentFieldBase
   auto& operator/=(const CanonicalComponentFieldBase<_N, __Derived>& other) {
     assert(other.Size() == Size());
     for (auto [iTheta, iPhi] : this->PointIndices()) {
-      operator[](iTheta, iPhi) /= other(iTheta, iPhi);
+      operator[](iTheta, iPhi) /= other[iTheta, iPhi];
     }
     return Derived();
   }

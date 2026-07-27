@@ -1,8 +1,12 @@
 #ifndef GSH_TRANS_CANONICAL_COMPONENT_EXPANSION_GUARD_H
 #define GSH_TRANS_CANONICAL_COMPONENT_EXPANSION_GUARD_H
 
+#include <FFTWpp/Core>
+#include <algorithm>
+#include <cassert>
 #include <concepts>
-#include <format>
+#include <cstddef>
+#include <ranges>
 #include <type_traits>
 
 #include "../Concepts.h"
@@ -10,12 +14,10 @@
 
 namespace GSHTrans {
 
-// Forward declare class.
 template <std::ptrdiff_t _N, typename _Grid, RealOrComplexValued _Value>
 requires std::derived_from<_Grid, GridBase<_Grid>>
 class CanonicalComponentExpansion;
 
-// Set traits.
 namespace Internal {
 
 template <std::ptrdiff_t _N, typename _Grid, RealOrComplexValued _Value>
@@ -24,10 +26,13 @@ struct Traits<CanonicalComponentExpansion<_N, _Grid, _Value>> {
   using Value = _Value;
   using Real = typename _Grid::Real;
   using Complex = typename _Grid::Complex;
-  using Scalar =
-      std::conditional_t<std::same_as<Value, RealValued>, Real, Complex>;
-  using MRange = typename std::conditional_t<std::same_as<Value, RealValued>,
-                                             NonNegative, All>;
+
+  // RealValued describes real grid samples represented by the reduced m >= 0
+  // spectrum. Its stored coefficients remain complex; negative Fourier modes
+  // are implicit and are related to the expansion at -n by GSH symmetry.
+  using Scalar = Complex;
+  using MRange =
+      std::conditional_t<std::same_as<Value, RealValued>, NonNegative, All>;
   using Writeable = std::true_type;
 };
 
@@ -37,105 +42,86 @@ template <std::ptrdiff_t _N, typename _Grid, RealOrComplexValued _Value>
 requires std::derived_from<_Grid, GridBase<_Grid>>
 class CanonicalComponentExpansion
     : public CanonicalComponentExpansionBase<
-          _N, CanonicalComponentExpansion<_N, _Grid, _Value>>,
-      public GSHIndices<std::conditional_t<std::same_as<_Value, RealValued>,
-                                           NonNegative, All>> {
+          _N, CanonicalComponentExpansion<_N, _Grid, _Value>> {
  public:
-  using Value = typename Internal::Traits<
-      CanonicalComponentExpansion<_N, _Grid, _Value>>::Value;
-  using Int = typename Internal::Traits<
-      CanonicalComponentExpansion<_N, _Grid, _Value>>::Int;
-  using Real = typename Internal::Traits<
-      CanonicalComponentExpansion<_N, _Grid, _Value>>::Real;
-  using Complex = typename Internal::Traits<
-      CanonicalComponentExpansion<_N, _Grid, _Value>>::Complex;
-  using Scalar = typename Internal::Traits<
-      CanonicalComponentExpansion<_N, _Grid, _Value>>::Scalar;
-  using MRange = typename Internal::Traits<
-      CanonicalComponentExpansion<_N, _Grid, _Value>>::MRange;
-  using Writeable = typename Internal::Traits<
-      CanonicalComponentExpansion<_N, _Grid, _Value>>::Writeable;
+  using Self = CanonicalComponentExpansion<_N, _Grid, _Value>;
+  using Base = CanonicalComponentExpansionBase<_N, Self>;
+  using Traits = Internal::Traits<Self>;
+  using Value = typename Traits::Value;
+  using Int = typename Traits::Int;
+  using Real = typename Traits::Real;
+  using Complex = typename Traits::Complex;
+  using Scalar = typename Traits::Scalar;
+  using MRange = typename Traits::MRange;
+  using Writeable = typename Traits::Writeable;
 
-  // Return the grid.
   auto& Grid() const { return _grid; }
 
-  // Read access to data.
-  auto operator[](Int l, Int m) const { return _data[this->Index(l, m)]; }
+  auto MinDegree() const { return _indices.MinDegree(); }
+  auto MaxDegree() const { return _indices.MaxDegree(); }
+  auto MaxOrder() const { return _indices.MaxOrder(); }
+  auto Degrees() const { return _indices.Degrees(); }
+  auto Indices() const { return _indices.Indices(); }
+  auto Orders() const { return Indices() | std::ranges::views::values; }
+  auto Size() const { return _indices.Size(); }
+  auto Index(Int l, Int m) const { return _indices.Index(l, m); }
 
-  // Write access to data.
-  auto& operator[](Int l, Int m) { return _data[this->Index(l, m)]; }
+  auto operator[](Int l, Int m) const { return _data[Index(l, m)]; }
+  auto& operator[](Int l, Int m) { return _data[Index(l, m)]; }
 
-  // Return a view to the data.
   auto Data() { return std::ranges::views::all(_data); }
+  auto Data() const { return std::ranges::views::all(_data); }
 
-  // Default constructor.
-  CanonicalComponentExpansion() = default;
+  CanonicalComponentExpansion() = delete;
 
-  // Construct from grid initialising values to zero.
-  CanonicalComponentExpansion(_Grid& grid)
-      : GSHIndices<MRange>(grid.MaxDegree(), grid.MaxDegree(), _N),
-        _grid{grid},
-        _data{FFTWpp::vector<Complex>(this->Size())} {}
+  explicit CanonicalComponentExpansion(_Grid& grid)
+      : _grid{grid},
+        _indices{grid.MaxDegree(), grid.MaxDegree(), _N},
+        _data{FFTWpp::vector<Complex>(_indices.Size())} {}
 
-  /*
-
-
-
-  // Default constructor.
-  CanonicalComponentExpansion() = default;
-
-  // Construct from grid initialising values to zero.
-  CanonicalComponentExpansion(_Grid& grid)
-      : _grid{grid}, _data{FFTWpp::vector<Scalar>(this->ExpansionSize())} {}
-
-  // Construction from grid initialising values with a function.
-  template <typename Function>
-  requires ScalarFunctionS2<Function, Real, Scalar>
-  CanonicalComponentExpansion(_Grid& grid, Function&& f)
-      : CanonicalComponentExpansion(grid) {
-    std::ranges::copy(_grid.ProjectFunction(f), _data.begin());
-  }
-
-  // Construct from an element of the base class.
   template <typename Derived>
-  requires std::convertible_to<typename Derived::Scalar, Scalar>
+  requires std::same_as<typename Derived::Scalar, Scalar> &&
+           std::same_as<typename Derived::MRange, MRange>
   CanonicalComponentExpansion(
       const CanonicalComponentExpansionBase<_N, Derived>& other)
-      : CanonicalComponentExpansion(other.UpperIndex(), other.Grid()) {
-    for (auto [iTheta, iPhi] : this->PointIndices()) {
-      operator[](iTheta, iPhi) = other[iTheta, iPhi];
+      : CanonicalComponentExpansion(other.Grid()) {
+    for (auto [l, m] : Indices()) {
+      operator[](l, m) = other[l, m];
     }
   }
 
   template <typename Derived>
-  requires std::convertible_to<typename Derived::Scalar, Scalar>
+  requires std::same_as<typename Derived::Scalar, Scalar> &&
+           std::same_as<typename Derived::MRange, MRange>
   CanonicalComponentExpansion(
       CanonicalComponentExpansionBase<_N, Derived>&& other)
       : CanonicalComponentExpansion(other) {}
 
-  // Default copy and move constructors.
   CanonicalComponentExpansion(const CanonicalComponentExpansion&) = default;
   CanonicalComponentExpansion(CanonicalComponentExpansion&&) = default;
 
-  // Default copy and move assignment.
-  CanonicalComponentExpansion& operator=(const CanonicalComponentExpansion&)
-  = default; CanonicalComponentExpansion&
-  operator=(CanonicalComponentExpansion&&) = default;
+  CanonicalComponentExpansion& operator=(
+      const CanonicalComponentExpansion& other) {
+    return AssignValues(other);
+  }
+  CanonicalComponentExpansion& operator=(CanonicalComponentExpansion&& other) {
+    return AssignValues(other);
+  }
 
-  // Use assignment defined in base class.
-  using CanonicalComponentExpansionBase<
-      _N, CanonicalComponentExpansion<_N, _Grid, _Value>>::operator=;
-
-*/
+  using Base::operator=;
 
  private:
   _Grid& _grid;
+  GSHIndices<MRange> _indices;
   FFTWpp::vector<Complex> _data;
+
+  auto& AssignValues(const CanonicalComponentExpansion& other) {
+    assert(other.Size() == Size());
+    std::ranges::copy(other._data, _data.begin());
+    return *this;
+  }
 };
 
-/*
-
-// Type aliases for real and complex Expansions.
 template <std::ptrdiff_t N, typename Grid>
 requires std::derived_from<Grid, GridBase<Grid>>
 using RealCanonicalComponentExpansion =
@@ -146,21 +132,19 @@ requires std::derived_from<Grid, GridBase<Grid>>
 using ComplexCanonicalComponentExpansion =
     CanonicalComponentExpansion<N, Grid, ComplexValued>;
 
-// Type aliases for scalar Expansions.
 template <typename Grid, RealOrComplexValued Value>
 requires std::derived_from<Grid, GridBase<Grid>>
 using ScalarExpansion = CanonicalComponentExpansion<0, Grid, Value>;
 
 template <typename Grid>
 requires std::derived_from<Grid, GridBase<Grid>>
-using RealScalarExpansion = CanonicalComponentExpansion<0, Grid, RealValued>;
+using RealScalarExpansion =
+    CanonicalComponentExpansion<0, Grid, RealValued>;
 
 template <typename Grid>
 requires std::derived_from<Grid, GridBase<Grid>>
 using ComplexScalarExpansion =
     CanonicalComponentExpansion<0, Grid, ComplexValued>;
-
-*/
 
 }  // namespace GSHTrans
 

@@ -1,10 +1,9 @@
 #ifndef GSH_TRANS_CANONICAL_COMPONENT_EXPANSION_BASE_GUARD_H
 #define GSH_TRANS_CANONICAL_COMPONENT_EXPANSION_BASE_GUARD_H
 
+#include <cassert>
 #include <concepts>
-#include <format>
-#include <iostream>
-#include <type_traits>
+#include <cstddef>
 
 #include "../Concepts.h"
 #include "../GridBase.h"
@@ -23,174 +22,112 @@ class CanonicalComponentExpansionBase {
   using MRange = typename Internal::Traits<_Derived>::MRange;
   using Writeable = typename Internal::Traits<_Derived>::Writeable;
 
-  // Return the Upper Index
-  auto UpperIndex() const { return _N; }
+  constexpr auto UpperIndex() const { return _N; }
 
-  // Minimum degree.
   auto MinDegree() const { return Derived().MinDegree(); }
-
-  // Maximum degree.
   auto MaxDegree() const { return Derived().MaxDegree(); }
-
-  // Return the degrees.
+  auto MaxOrder() const { return Derived().MaxOrder(); }
   auto Degrees() const { return Derived().Degrees(); }
-
-  // Return the spherical harmonic indices.
-  // auto Indices() const { return Derived().Indices(); }
-
-  // Return the data index for the (l,m)th value.
+  auto Indices() const { return Derived().Indices(); }
+  auto Orders() const { return Derived().Orders(); }
+  auto Size() const { return Derived().Size(); }
   auto Index(Int l, Int m) const { return Derived().Index(l, m); }
 
-  // Return the grid.
   auto& Grid() const { return Derived().Grid(); }
 
-  // Return spherical harmonic indices.
-  // auto Indices() const {
-  //  return GSHIndices<MRange>(this->MaxDegree(), this->MaxDegree(), _N)
-  //      .Indices();
-  // }
-
-  // Return the index for the (l,m)th coefficient.
-  // auto Index(Int l, Int m) const {
-  //  return GSHIndices<MRange>(this->MaxDegree(), this->MaxDegree(), _N)
-  //      .Index(l, m);
-  // }
-
-  // Return the spherical harmonic degree for each datum.
-  // auto Degrees() const { return Indices() | std::ranges::views::keys; }
-
-  // Return the spherical harmonic order for each datum.
-  // auto Orders() const { return Indices() | std::ranges::views::values; }
-
-  // Return the total number of coefficients.
-  // auto Size() const {
-  /// return GSHIndices<MRange>(this->MaxDegree(), this->MaxDegree(),
-  /// _N).Size();
-  // }
-
-  // Read access to data.
   auto operator[](Int l, Int m) const { return Derived()[l, m]; }
 
-  // Write access to data.
   auto& operator[](Int l, Int m)
   requires Writeable::value
   {
     return Derived()[l, m];
   }
 
-  // Assign values from another Expansion.
   template <typename __Derived>
-  requires Writeable::value && std::same_as<typename __Derived::Scalar, Scalar>
+  requires Writeable::value &&
+           std::same_as<typename __Derived::Scalar, Scalar> &&
+           std::same_as<typename __Derived::MRange, MRange>
   auto& operator=(const CanonicalComponentExpansionBase<_N, __Derived>& other) {
-    assert(other.MaxDegree() == this->MaxDegree());
-    for (auto [l, m] : static_cast<_Derived*>(this)->Indices()) {
+    assert(other.MaxDegree() == MaxDegree());
+    for (auto [l, m] : Indices()) {
       operator[](l, m) = other[l, m];
     }
     return Derived();
   }
 
   template <typename __Derived>
-  requires Writeable::value && std::same_as<typename __Derived::Scalar, Scalar>
+  requires Writeable::value &&
+           std::same_as<typename __Derived::Scalar, Scalar> &&
+           std::same_as<typename __Derived::MRange, MRange>
   auto& operator=(CanonicalComponentExpansionBase<_N, __Derived>&& other) {
-    Derived() = other;
-    return Derived();
+    return operator=(other);
   }
 
-  // Compound plus assignment with other Expansion.
   template <typename __Derived>
-  requires Writeable::value && std::same_as<typename __Derived::Scalar, Scalar>
+  requires Writeable::value &&
+           std::same_as<typename __Derived::Scalar, Scalar> &&
+           std::same_as<typename __Derived::MRange, MRange>
   auto& operator+=(
       const CanonicalComponentExpansionBase<_N, __Derived>& other) {
-    assert(other.MaxDegree() == this->MaxDegree());
-    for (auto [l, m] : static_cast<_Derived*>(this)->Indices()) {
+    assert(other.MaxDegree() == MaxDegree());
+    for (auto [l, m] : Indices()) {
       operator[](l, m) += other[l, m];
     }
     return Derived();
   }
 
   template <typename __Derived>
-  requires Writeable::value && std::same_as<typename __Derived::Scalar, Scalar>
+  requires Writeable::value &&
+           std::same_as<typename __Derived::Scalar, Scalar> &&
+           std::same_as<typename __Derived::MRange, MRange>
   auto& operator+=(CanonicalComponentExpansionBase<_N, __Derived>&& other) {
-    Derived() += other;
-    return Derived();
+    return operator+=(other);
   }
 
-  // Compound minus assignment with other Expansion.
   template <typename __Derived>
-  requires Writeable::value && std::same_as<typename __Derived::Scalar, Scalar>
+  requires Writeable::value &&
+           std::same_as<typename __Derived::Scalar, Scalar> &&
+           std::same_as<typename __Derived::MRange, MRange>
   auto& operator-=(
       const CanonicalComponentExpansionBase<_N, __Derived>& other) {
-    assert(other.MaxDegree() == this->MaxDegree());
-    for (auto [l, m] : static_cast<_Derived*>(this)->Indices()) {
-      operator[](l, m) -= other(l, m);
+    assert(other.MaxDegree() == MaxDegree());
+    for (auto [l, m] : Indices()) {
+      operator[](l, m) -= other[l, m];
     }
     return Derived();
   }
 
   template <typename __Derived>
-  requires Writeable::value && std::same_as<typename __Derived::Scalar, Scalar>
+  requires Writeable::value &&
+           std::same_as<typename __Derived::Scalar, Scalar> &&
+           std::same_as<typename __Derived::MRange, MRange>
   auto& operator-=(CanonicalComponentExpansionBase<_N, __Derived>&& other) {
-    Derived() -= other;
-    return Derived();
+    return operator-=(other);
   }
 
-  // Compound multiply assignment with scalar.
-  auto& operator*=(Scalar s)
+  auto& operator*=(Scalar scalar)
   requires Writeable::value
   {
-    for (auto [l, m] : static_cast<_Derived*>(this)->Indices()) {
-      operator[](l, m) *= s;
+    for (auto [l, m] : Indices()) {
+      operator[](l, m) *= scalar;
     }
     return Derived();
   }
 
-  // Compound divide assignment with scalar.
-  auto& operator/=(Scalar s)
+  auto& operator/=(Scalar scalar)
   requires Writeable::value
   {
-    for (auto [l, m] : static_cast<_Derived*>(this)->Indices()) {
-      operator[](l, m) /= s;
+    for (auto [l, m] : Indices()) {
+      operator[](l, m) /= scalar;
     }
     return Derived();
   }
-
-  // Write values to ostream.
-  /*
-  friend std::ostream& operator<<(
-      std::ostream& os,
-      const CanonicalComponentExpansionBase<_N, _Derived>& u) {
-    auto values = u.Indices() | std::ranges::views::transform([&u](auto pair) {
-                    auto [l, m] = pair;
-                    return u[l, m];
-                  });
-    auto range = std::ranges::views::zip(u.Degrees(), u.Orders(), values);
-    auto n = u.Size();
-    auto printValues = [&os](auto l, auto m, auto val, auto newLine) {
-      os << std::format("{:+8}  {:+8}  ({:+.8e},  {:+.8e})", l, m, val.real(),
-                        val.imag());
-      if (newLine) os << '\n';
-    };
-    for (auto [l, m, val] : range | std::ranges::views::take(n - 1)) {
-      printValues(l, m, val, true);
-    }
-    for (auto [l, m, val] : range | std::ranges::views::drop(n - 1)) {
-      printValues(l, m, val, false);
-    }
-    return os;
-  }
-*/
 
  private:
   constexpr auto& Derived() const {
     return static_cast<const _Derived&>(*this);
   }
   constexpr auto& Derived() { return static_cast<_Derived&>(*this); }
-
-  // Return the GSHIndex.
-  auto GSHIndex() const {
-    return std::move(
-        GSHIndices<MRange>(this->MaxDegree(), this->MaxDegree(), _N));
-  }
 };
 
 }  // namespace GSHTrans

@@ -4,6 +4,7 @@
 #include <complex>
 #include <concepts>
 #include <cstddef>
+#include <utility>
 #include <vector>
 
 #include "../Concepts.h"
@@ -280,7 +281,7 @@ class CanonicalComponentFieldUnary
   CanonicalComponentFieldUnary() = delete;
   CanonicalComponentFieldUnary(
       const CanonicalComponentFieldBase<_N, Derived>& u, Function&& f)
-      : _u{u}, _f{f} {}
+      : _u{u}, _f{std::forward<Function>(f)} {}
 
   CanonicalComponentFieldUnary(const CanonicalComponentFieldUnary&) = default;
   CanonicalComponentFieldUnary(CanonicalComponentFieldUnary&&) = default;
@@ -293,7 +294,7 @@ class CanonicalComponentFieldUnary
 
  private:
   const CanonicalComponentFieldBase<_N, Derived>& _u;
-  Function& _f;
+  Function _f;
 };
 
 // Class for unary transformation with a scalar parameter.
@@ -334,7 +335,7 @@ class CanonicalComponentFieldUnaryWithScalar
   CanonicalComponentFieldUnaryWithScalar() = delete;
   CanonicalComponentFieldUnaryWithScalar(
       const CanonicalComponentFieldBase<_N, Derived>& u, Function&& f, Scalar s)
-      : _u{u}, _f{f}, _s{s} {}
+      : _u{u}, _f{std::forward<Function>(f)}, _s{s} {}
 
   CanonicalComponentFieldUnaryWithScalar(
       const CanonicalComponentFieldUnaryWithScalar&) = default;
@@ -349,7 +350,7 @@ class CanonicalComponentFieldUnaryWithScalar
 
  private:
   const CanonicalComponentFieldBase<_N, Derived>& _u;
-  const Function& _f;
+  Function _f;
   Scalar _s;
 };
 

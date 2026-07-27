@@ -92,14 +92,17 @@ class GaussLegendreGrid
   }
 
   auto Longitudes() const {
-    auto dPhi = 2 * std::numbers::pi_v<Real> / static_cast<Real>(2 * _lMax);
-    return std::ranges::views::iota(0, 2 * _lMax) |
+    const auto nPhi = std::max(Int{1}, 2 * _lMax);
+    const auto dPhi =
+        2 * std::numbers::pi_v<Real> / static_cast<Real>(nPhi);
+    return std::ranges::views::iota(Int{0}, nPhi) |
            std::ranges::views::transform([dPhi](auto i) { return i * dPhi; });
   }
   auto LongitudeWeights() const {
-    auto dPhi = 2 * std::numbers::pi_v<Real> / static_cast<Real>(2 * _lMax);
-    ;
-    return std::ranges::views::repeat(dPhi, 2 * _lMax);
+    const auto nPhi = std::max(Int{1}, 2 * _lMax);
+    const auto dPhi =
+        2 * std::numbers::pi_v<Real> / static_cast<Real>(nPhi);
+    return std::ranges::views::repeat(dPhi, nPhi);
   }
 
   //-----------------------------------------------------//
@@ -135,7 +138,8 @@ class GaussLegendreGrid
 
     // Deal with lMax = 0
     if (lMax == 0) {
-      out[0] = in[0] * std::numbers::inv_sqrtpi_v<Real> / static_cast<Real>(2);
+      out[0] =
+          in[0] * static_cast<Real>(2) / std::numbers::inv_sqrtpi_v<Real>;
       return;
     }
 
@@ -250,11 +254,11 @@ class GaussLegendreGrid
     // Deal with lMax = 0
     if (lMax == 0) {
       if constexpr (RealFloatingPoint<Scalar>) {
-        out[0] = std::real(in[0]) * static_cast<Real>(2) /
-                 std::numbers::inv_sqrtpi_v<Real>;
+        out[0] = std::real(in[0]) * std::numbers::inv_sqrtpi_v<Real> /
+                 static_cast<Real>(2);
       } else {
-        out[0] =
-            in[0] * static_cast<Real>(2) / std::numbers::inv_sqrtpi_v<Real>;
+        out[0] = in[0] * std::numbers::inv_sqrtpi_v<Real> /
+                 static_cast<Real>(2);
       }
       return;
     }
