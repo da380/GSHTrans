@@ -190,7 +190,7 @@ class Wigner {
     }
   }
   auto MaxOrder() const { return _mMax; }
-  auto MaxOrder(Int l) const { return std::max(l, _mMax); }
+  auto MaxOrder(Int l) const { return std::min(l, _mMax); }
 
   auto Orders(Int l) const {
     return std::ranges::views::iota(MinOrder(l), MaxOrder(l) + 1);
