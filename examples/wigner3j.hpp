@@ -53,8 +53,7 @@ class Wigner3j {
         l2_(l2),
         rows_(2 * l1 + 1),
         cols_(2 * l2 + 1),
-        data_(static_cast<std::size_t>(rows_) *
-                  static_cast<std::size_t>(cols_),
+        data_(static_cast<std::size_t>(rows_) * static_cast<std::size_t>(cols_),
               T{0}) {
     compute();
   }
@@ -129,23 +128,23 @@ class Wigner3j {
     const int num1 = std::min(is_ - l1_ + l2_, l2_);
     for (int n = 1; n <= num1; ++n) {
       const int m2 = -l2_ + n;
-      A(0, n) = -A(0, n - 1) *
-                std::sqrt(f(l1_ + is_ + m2) * f(is_ - l1_ - m2 + 1) /
-                          (f(l2_ - m2 + 1) * f(l2_ + m2)));
+      A(0, n) =
+          -A(0, n - 1) * std::sqrt(f(l1_ + is_ + m2) * f(is_ - l1_ - m2 + 1) /
+                                   (f(l2_ - m2 + 1) * f(l2_ + m2)));
     }
 
     // 3. First column.
     const int num2 = is_ - l2_ + l1_;
     for (int n = 1; n <= num2; ++n) {
       const int m1 = -l1_ + n;
-      A(n, 0) = -A(n - 1, 0) *
-                std::sqrt(f(l2_ + is_ + m1) * f(-l2_ + is_ - m1 + 1) /
-                          (f(l1_ + m1) * f(l1_ - m1 + 1)));
+      A(n, 0) =
+          -A(n - 1, 0) * std::sqrt(f(l2_ + is_ + m1) * f(-l2_ + is_ - m1 + 1) /
+                                   (f(l1_ + m1) * f(l1_ - m1 + 1)));
     }
 
     // 4. Iterate south-east.
-    const long long iss = 1LL * is_ * (is_ + 1) - 1LL * l1_ * (l1_ + 1) -
-                          1LL * l2_ * (l2_ + 1);
+    const long long iss =
+        1LL * is_ * (is_ + 1) - 1LL * l1_ * (l1_ + 1) - 1LL * l2_ * (l2_ + 1);
     const int numd = std::min(2 * is_ + 1, is_ + l1_);
     for (int nd = 1; nd <= numd; ++nd) {
       const int m1b = std::max(-l1_, is_ - l2_ - nd + 1);
@@ -161,8 +160,8 @@ class Wigner3j {
 
         T val = -diag * std::sqrt(f(l1_ + m1 - 1) * f(l1_ - m1 + 2) *
                                   f(l2_ - m2 + 2) * f(l2_ + m2 - 1));
-        val += static_cast<T>(iss + 2LL * (m1 - 1) * (m2 - 1)) *
-               A(i - 1, j - 1);
+        val +=
+            static_cast<T>(iss + 2LL * (m1 - 1) * (m2 - 1)) * A(i - 1, j - 1);
         val /= std::sqrt(f(l1_ + m1) * f(l1_ - m1 + 1) * f(l2_ - m2 + 1) *
                          f(l2_ + m2));
         A(i, j) = val;
