@@ -2,10 +2,12 @@
 #define GSH_TRANS_CANONICAL_COMPONENT_FIELD_GUARD_H
 
 #include <FFTWpp/Core>
+#include <algorithm>
 #include <concepts>
 #include <cstddef>
 #include <iostream>
 #include <limits>
+#include <stdexcept>
 #include <vector>
 
 #include "../Concepts.h"
@@ -73,8 +75,8 @@ class CanonicalComponentField
   // Return a view to the data.
   auto Data() { return std::ranges::views::all(_data); }
 
-  // Default constructor.
-  CanonicalComponentField() = default;
+  // A field must always refer to a grid.
+  CanonicalComponentField() = delete;
 
   // Construct from grid initialising values to zero.
   CanonicalComponentField(_Grid& grid)
@@ -92,7 +94,7 @@ class CanonicalComponentField
   template <typename Derived>
   requires std::convertible_to<typename Derived::Scalar, Scalar>
   CanonicalComponentField(const CanonicalComponentFieldBase<_N, Derived>& other)
-      : CanonicalComponentField(other.UpperIndex(), other.Grid()) {
+      : CanonicalComponentField(other.Grid()) {
     for (auto [iTheta, iPhi] : this->PointIndices()) {
       operator[](iTheta, iPhi) = other[iTheta, iPhi];
     }
@@ -107,9 +109,13 @@ class CanonicalComponentField
   CanonicalComponentField(const CanonicalComponentField&) = default;
   CanonicalComponentField(CanonicalComponentField&&) = default;
 
-  // Default copy and move assignment.
-  CanonicalComponentField& operator=(const CanonicalComponentField&) = default;
-  CanonicalComponentField& operator=(CanonicalComponentField&&) = default;
+  // Assignment copies values while retaining this field's grid.
+  CanonicalComponentField& operator=(const CanonicalComponentField& other) {
+    return AssignValues(other);
+  }
+  CanonicalComponentField& operator=(CanonicalComponentField&& other) {
+    return AssignValues(other);
+  }
 
   // Use assignment defined in base class.
   using CanonicalComponentFieldBase<
@@ -121,6 +127,15 @@ class CanonicalComponentField
 
   auto Index(Int iTheta, int iPhi) const {
     return iTheta * this->NumberOfLongitudes() + iPhi;
+  }
+
+  auto& AssignValues(const CanonicalComponentField& other) {
+    if (other.Size() != this->Size()) {
+      throw std::invalid_argument(
+          "Cannot assign canonical component fields with different sizes");
+    }
+    std::ranges::copy(other._data, _data.begin());
+    return *this;
   }
 };
 
