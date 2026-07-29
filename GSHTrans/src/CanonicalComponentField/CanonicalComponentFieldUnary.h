@@ -4,6 +4,8 @@
 #include <complex>
 #include <concepts>
 #include <cstddef>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "../Concepts.h"
@@ -27,19 +29,19 @@ class CanonicalComponentFieldImag;
 
 template <std::ptrdiff_t N, typename Derived, typename Function>
 requires requires() {
-  requires std::invocable<Function, typename Derived::Scalar>;
+  requires std::invocable<const Function&, typename Derived::Scalar>;
   requires std::convertible_to<
-      std::invoke_result_t<Function, typename Derived::Scalar>,
+      std::invoke_result_t<const Function&, typename Derived::Scalar>,
       typename Derived::Scalar>;
 }
 class CanonicalComponentFieldUnary;
 
 template <std::ptrdiff_t N, typename Derived, typename Function>
 requires requires() {
-  requires std::invocable<Function, typename Derived::Scalar,
+  requires std::invocable<const Function&, typename Derived::Scalar,
                           typename Derived::Scalar>;
   requires std::convertible_to<
-      std::invoke_result_t<Function, typename Derived::Scalar,
+      std::invoke_result_t<const Function&, typename Derived::Scalar,
                            typename Derived::Scalar>,
       typename Derived::Scalar>;
 }
@@ -247,9 +249,9 @@ class CanonicalComponentFieldImag
 // Class for unary transformation.
 template <std::ptrdiff_t _N, typename Derived, typename Function>
 requires requires() {
-  requires std::invocable<Function, typename Derived::Scalar>;
+  requires std::invocable<const Function&, typename Derived::Scalar>;
   requires std::convertible_to<
-      std::invoke_result_t<Function, typename Derived::Scalar>,
+      std::invoke_result_t<const Function&, typename Derived::Scalar>,
       typename Derived::Scalar>;
 }
 class CanonicalComponentFieldUnary
@@ -278,9 +280,11 @@ class CanonicalComponentFieldUnary
 
   // Constructors.
   CanonicalComponentFieldUnary() = delete;
+  template <typename Callable>
+  requires std::constructible_from<Function, Callable&&>
   CanonicalComponentFieldUnary(
-      const CanonicalComponentFieldBase<_N, Derived>& u, Function&& f)
-      : _u{u}, _f{f} {}
+      const CanonicalComponentFieldBase<_N, Derived>& u, Callable&& f)
+      : _u{u}, _f{std::forward<Callable>(f)} {}
 
   CanonicalComponentFieldUnary(const CanonicalComponentFieldUnary&) = default;
   CanonicalComponentFieldUnary(CanonicalComponentFieldUnary&&) = default;
@@ -293,16 +297,16 @@ class CanonicalComponentFieldUnary
 
  private:
   const CanonicalComponentFieldBase<_N, Derived>& _u;
-  Function& _f;
+  Function _f;
 };
 
 // Class for unary transformation with a scalar parameter.
 template <std::ptrdiff_t _N, typename Derived, typename Function>
 requires requires() {
-  requires std::invocable<Function, typename Derived::Scalar,
+  requires std::invocable<const Function&, typename Derived::Scalar,
                           typename Derived::Scalar>;
   requires std::convertible_to<
-      std::invoke_result_t<Function, typename Derived::Scalar,
+      std::invoke_result_t<const Function&, typename Derived::Scalar,
                            typename Derived::Scalar>,
       typename Derived::Scalar>;
 }
@@ -332,9 +336,11 @@ class CanonicalComponentFieldUnaryWithScalar
 
   // Constructors.
   CanonicalComponentFieldUnaryWithScalar() = delete;
+  template <typename Callable>
+  requires std::constructible_from<Function, Callable&&>
   CanonicalComponentFieldUnaryWithScalar(
-      const CanonicalComponentFieldBase<_N, Derived>& u, Function&& f, Scalar s)
-      : _u{u}, _f{f}, _s{s} {}
+      const CanonicalComponentFieldBase<_N, Derived>& u, Callable&& f, Scalar s)
+      : _u{u}, _f{std::forward<Callable>(f)}, _s{s} {}
 
   CanonicalComponentFieldUnaryWithScalar(
       const CanonicalComponentFieldUnaryWithScalar&) = default;
@@ -349,9 +355,21 @@ class CanonicalComponentFieldUnaryWithScalar
 
  private:
   const CanonicalComponentFieldBase<_N, Derived>& _u;
-  const Function& _f;
+  Function _f;
   Scalar _s;
 };
+
+template <std::ptrdiff_t N, typename Derived, typename Function>
+CanonicalComponentFieldUnary(const CanonicalComponentFieldBase<N, Derived>&,
+                             Function&&)
+    -> CanonicalComponentFieldUnary<N, Derived, std::decay_t<Function>>;
+
+template <std::ptrdiff_t N, typename Derived, typename Function>
+CanonicalComponentFieldUnaryWithScalar(
+    const CanonicalComponentFieldBase<N, Derived>&, Function&&,
+    typename Derived::Scalar)
+    -> CanonicalComponentFieldUnaryWithScalar<N, Derived,
+                                              std::decay_t<Function>>;
 
 }  // namespace GSHTrans
 

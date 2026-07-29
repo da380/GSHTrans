@@ -12,6 +12,7 @@
 #include <numbers>
 #include <numeric>
 #include <ranges>
+#include <stdexcept>
 #include <vector>
 
 #include "Concepts.h"
@@ -92,14 +93,17 @@ class GaussLegendreGrid
   }
 
   auto Longitudes() const {
-    auto dPhi = 2 * std::numbers::pi_v<Real> / static_cast<Real>(2 * _lMax);
-    return std::ranges::views::iota(0, 2 * _lMax) |
+    const auto nPhi = std::max(Int{1}, 2 * _lMax);
+    const auto dPhi =
+        2 * std::numbers::pi_v<Real> / static_cast<Real>(nPhi);
+    return std::ranges::views::iota(Int{0}, nPhi) |
            std::ranges::views::transform([dPhi](auto i) { return i * dPhi; });
   }
   auto LongitudeWeights() const {
-    auto dPhi = 2 * std::numbers::pi_v<Real> / static_cast<Real>(2 * _lMax);
-    ;
-    return std::ranges::views::repeat(dPhi, 2 * _lMax);
+    const auto nPhi = std::max(Int{1}, 2 * _lMax);
+    const auto dPhi =
+        2 * std::numbers::pi_v<Real> / static_cast<Real>(nPhi);
+    return std::ranges::views::repeat(dPhi, nPhi);
   }
 
   //-----------------------------------------------------//
@@ -122,8 +126,7 @@ class GaussLegendreGrid
     // Get scalar type for field.
     using Scalar = std::ranges::range_value_t<InRange>;
 
-    // Check upper index is possible.
-    assert(std::ranges::contains(this->UpperIndices(), n));
+    ValidateTransformRequest(lMax, n);
 
     // Check dimensions of ranges.
     assert(in.size() == this->FieldSize());
@@ -133,9 +136,10 @@ class GaussLegendreGrid
       assert(out.size() == GSHIndices<All>(lMax, lMax, n).Size());
     }
 
-    // Deal with lMax = 0
-    if (lMax == 0) {
-      out[0] = in[0] * std::numbers::inv_sqrtpi_v<Real> / static_cast<Real>(2);
+    // A one-point grid needs no FFT.
+    if (_lMax == 0) {
+      out[0] =
+          in[0] * static_cast<Real>(2) / std::numbers::inv_sqrtpi_v<Real>;
       return;
     }
 
@@ -236,8 +240,7 @@ class GaussLegendreGrid
     // Get scalar type for field.
     using Scalar = std::ranges::range_value_t<OutRange>;
 
-    // Check upper index is possible.
-    assert(std::ranges::contains(this->UpperIndices(), n));
+    ValidateTransformRequest(lMax, n);
 
     // Check dimensions of ranges.
     if constexpr (RealFloatingPoint<Scalar>) {
@@ -247,14 +250,14 @@ class GaussLegendreGrid
     }
     assert(out.size() == this->FieldSize());
 
-    // Deal with lMax = 0
-    if (lMax == 0) {
+    // A one-point grid needs no FFT.
+    if (_lMax == 0) {
       if constexpr (RealFloatingPoint<Scalar>) {
-        out[0] = std::real(in[0]) * static_cast<Real>(2) /
-                 std::numbers::inv_sqrtpi_v<Real>;
+        out[0] = std::real(in[0]) * std::numbers::inv_sqrtpi_v<Real> /
+                 static_cast<Real>(2);
       } else {
-        out[0] =
-            in[0] * static_cast<Real>(2) / std::numbers::inv_sqrtpi_v<Real>;
+        out[0] = in[0] * std::numbers::inv_sqrtpi_v<Real> /
+                 static_cast<Real>(2);
       }
       return;
     }
@@ -321,6 +324,18 @@ class GaussLegendreGrid
   }
 
  private:
+  void ValidateTransformRequest(Int lMax, Int n) const {
+    if (lMax < 0 || lMax > MaxDegree()) {
+      throw std::invalid_argument(
+          "Transform degree must be between zero and the grid maximum degree");
+    }
+    if (std::abs(n) > lMax ||
+        !std::ranges::contains(this->UpperIndices(), n)) {
+      throw std::invalid_argument(
+          "Transform upper index is not supported at the requested degree");
+    }
+  }
+
   Int _lMax;
   Int _nMax;
   FFTWpp::Flag _flag;

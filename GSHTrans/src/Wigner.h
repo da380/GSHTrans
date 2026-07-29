@@ -254,14 +254,14 @@ class Wigner {
   auto operator[](Int iTheta) const
   requires std::same_as<NRange, Single> && (!std::same_as<AngleRange, Single>)
   {
-    return operator[](0, iTheta);
+    return operator[](_nMax, iTheta);
   }
 
   // Return subview to data for l when NRange = Single and AngleRange = Single
   auto operator[](Int l) const
   requires std::same_as<NRange, Single> && std::same_as<AngleRange, Single>
   {
-    return operator[](0, 0)[l];
+    return operator[](_nMax, 0)[l];
   }
 
  private:
