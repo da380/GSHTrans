@@ -11,6 +11,10 @@ add_executable(TestConcepts
                TestConcepts.cpp)
 target_link_libraries(TestConcepts PRIVATE GSHTrans gtest_main)
 
+add_executable(TestSpinField
+               TestSpinField.cpp)
+target_link_libraries(TestSpinField PRIVATE GSHTrans gtest_main)
+
 add_executable(TestWigner
   TestWigner.cpp)
 target_link_libraries(TestWigner PRIVATE GSHTrans gtest_main)
@@ -49,6 +53,7 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/Utility.h
   GSHTrans/src/Views.h
   GSHTrans/src/Wigner.h
+  GSHTrans/src/SpinField/SpinWeighted.h
   GSHTrans/Core
   GSHTrans/All
 )
@@ -69,6 +74,7 @@ target_link_libraries(HeaderSelfSufficiency PRIVATE GSHTrans)
 
 include(GoogleTest)
 gtest_discover_tests(TestConcepts)
+gtest_discover_tests(TestSpinField)
 gtest_discover_tests(TestWigner)
 gtest_discover_tests(TestGaussLegendreGrid)
 gtest_discover_tests(TestCanonicalComponentField)
