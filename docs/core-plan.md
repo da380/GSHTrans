@@ -444,6 +444,12 @@ Move plan creation and work-buffer allocation into `Impl`: plans cached by
 per-thread. Revisit the `WisdomOnly` flag policy so that an uncached plan shape
 falls back to planning instead of failing.
 
+**The flag policy is a hard prerequisite for F, not a tidiness item.** The
+constructor generates wisdom for exactly two shapes — `(nPhi → nPhi/2+1)` and
+`(nPhi → nPhi)`, both at `howmany = 1` — and then sets `WisdomOnly`. Every
+batched shape is by definition absent from that wisdom, so it would fail to
+plan rather than fall back. Batching cannot be attempted until this changes.
+
 *Risk:* low–medium (concurrency). *Effort:* medium. *Measure:* per-call
 overhead at small `lMax`, where it is proportionally largest.
 
@@ -457,6 +463,22 @@ field as `k = 1` — not a scalar primitive looped from outside. The batch is
 contiguity; the threading policy is an explicit per-call argument defaulting to
 sequential. Both are settled in [C9], which also explains why the batch is a
 first-class facility rather than an internal lever for phase 5.
+
+**Prerequisites, and how big this actually is.** Step E's flag policy must
+land first (above). Beyond that, the FFT half is smaller than this document
+assumed: FFTWpp already wraps the whole advanced interface —
+`Layout(rank, n, howMany, embed, stride, dist)` and
+`plan_many_dft`/`_dft_r2c`/`_dft_c2r` — so [C9]'s `(count, stride, dist)`
+descriptor maps onto it directly and P6's "for free" claim is confirmed rather
+than hoped for. The work is concentrated in the Legendre stage and in the
+validation and error reporting around the batch.
+
+**When it must land.** Not before field-algebra phase 1, which never batches;
+**before field-algebra phase 2**, which hands out tensor-component views and
+whose `Layout` policy is designed around what the transform can consume ([C9]
+removed the `PointMajor` repack on the strength of this step existing). A
+public interface with no implementation behind it is fine while nothing
+consumes it and a liability once something does.
 
 Two tiers, to be taken in order:
 
@@ -529,7 +551,8 @@ C  transform I/O      ─┤
 B  grid handle        ─┘
 
 E  plan cache  ─→  F  batching  ─→  G  Wigner storage  ─→  H  threading
-                                   ↘  field-algebra phase 5
+
+           F must land before field-algebra phase 2 ([C9], step F)
 ```
 
 A–D are independent of each other in the sense that none needs another's result.
@@ -549,7 +572,9 @@ There is currently no benchmark harness, and steps F–G are unarguable without
 one. What is needed is small:
 
 - forward and inverse transform, `lMax ∈ {32, 64, 128, 256}`, `n ∈ {0, 2}`,
-  real and complex, `k ∈ {1, 8, 64}`;
+  real and complex, `k ∈ {1, 8, 64}` — the `k > 1` rows need step E's flag
+  policy before they can even be planned, so the harness lands with a `k = 1`
+  baseline and grows the batched rows as F does;
 - grid construction time and resident size as a function of `(lMax, nMax)`;
 - the Legendre stage and the FFT stage timed separately, so that P1's claim is
   checked rather than inherited from this document;

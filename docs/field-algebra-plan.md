@@ -632,6 +632,12 @@ Recorded so phase 1 does not foreclose them. None is implemented now.
 
 ### Phase 2 — tensor storage
 
+*Prerequisite:* `core-plan.md` step F. Phase 2's `Layout` policy is designed
+around what the transform can consume, and [C9] dropped the `PointMajor` repack
+requirement on the strength of the batched, strided transform existing. Phase 1
+never batches and is unblocked; phase 2 should not start until F has landed.
+
+
 - `MultiIndex<Rank>` with constexpr conversion to and from a flat index, and
   `constexpr UpperIndex(MultiIndex)` implementing the signed sum of theory
   note `eq:N`.
