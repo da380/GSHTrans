@@ -85,6 +85,32 @@ template <typename T>
 using Node = std::remove_cvref_t<T>;
 
 //--------------------------------------------------------------------------//
+//                          What this layer needs of a grid                  //
+//--------------------------------------------------------------------------//
+
+// Deliberately much less than GaussLegendreGrid offers. Stating it as a
+// concept documents the coupling, gives a readable error when a grid is
+// missing something, and is what the layered and tensor layers will check
+// against too.
+template <typename G>
+concept AngularGrid = requires(const G& grid) {
+  typename G::Real;
+  requires RealFloatingPoint<typename G::Real>;
+  typename G::NRange;
+
+  // Value-semantic: a terminal holds one by value and expressions copy it.
+  requires std::copy_constructible<G>;
+
+  // Identity, not structure: two grids are the same grid when they share an
+  // implementation.
+  { grid.Identity() } -> std::equality_comparable;
+
+  { grid.FieldSize() } -> std::integral;
+  { grid.MaxUpperIndex() } -> std::integral;
+  grid.UpperIndices();
+};
+
+//--------------------------------------------------------------------------//
 //                          Terminals versus expressions                     //
 //--------------------------------------------------------------------------//
 

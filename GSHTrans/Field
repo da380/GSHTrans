@@ -4,6 +4,7 @@
 #include "src/FieldBase.h"
 
 // Spin fields: the phase-1 rebuild.
+#include "src/SpinField/SpinField.h"
 #include "src/SpinField/SpinWeighted.h"
 
 // Canonical component fields

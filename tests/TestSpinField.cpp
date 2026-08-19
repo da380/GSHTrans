@@ -3,8 +3,11 @@
 #include <GSHTrans/All>
 #include <complex>
 #include <cstddef>
+#include <cmath>
 #include <span>
+#include <string>
 #include <type_traits>
+#include <vector>
 
 // Test family 1: the compile-time algebra.
 //
@@ -241,6 +244,184 @@ static_assert(Lawful<RealValued, R::Negate::Apply<0>>);
 static_assert(Lawful<RealValued, R::Zero::Apply<2>>);
 static_assert(Lawful<RealValued, R::Zero::Apply<-2>>);
 
+//--------------------------------------------------------------------------//
+//                    The terminal satisfies the concept                     //
+//--------------------------------------------------------------------------//
+
+using Grid = GaussLegendreGrid<double, All, All>;
+using ScalarGrid = GaussLegendreGrid<double, NonNegative, All>;
+using Complex = std::complex<double>;
+
+static_assert(SpinWeighted<SpinField<0, Grid, RealValued>>);
+static_assert(SpinWeighted<SpinField<0, Grid, ComplexValued>>);
+static_assert(SpinWeighted<SpinField<2, Grid>>);
+static_assert(SpinWeighted<SpinField<-2, Grid>>);
+
+// ComplexValued is the default, since it is the only lawful choice away from
+// zero.
+static_assert(std::same_as<SpinField<2, Grid>::Value, ComplexValued>);
+static_assert(std::same_as<SpinField<2, Grid>::Scalar, std::complex<double>>);
+static_assert(std::same_as<SpinField<0, Grid, RealValued>::Scalar, double>);
+
+static_assert(IsTerminal<SpinField<2, Grid>>);
+static_assert(!std::is_default_constructible_v<SpinField<2, Grid>>);
+static_assert(std::copy_constructible<SpinField<2, Grid>>);
+
+// A real-valued field at nonzero upper index, and a negative upper index on a
+// grid that stores only non-negative ones, are rejected by static_assert
+// inside the class. Those cannot be written as static_assert(!...) here,
+// because naming the type is not enough to fire them and instantiating it is a
+// hard error by design. The equivalent facts are tested through the concept
+// above, on stub nodes.
+static_assert(SpinWeighted<SpinField<0, ScalarGrid, RealValued>>);
+
+// EvaluateInto widens a real field into a complex destination and refuses the
+// reverse, which would be a truncation. Written as a concept because a bare
+// requires-expression naming a member template of a non-dependent type is a
+// hard error on GCC rather than a false constraint.
+template <typename Field, typename S>
+concept EvaluatesInto = requires(const Field& field, std::span<S> target) {
+  field.EvaluateInto(target);
+};
+
+static_assert(EvaluatesInto<SpinField<0, Grid, RealValued>, double>);
+static_assert(EvaluatesInto<SpinField<0, Grid, RealValued>, Complex>);
+static_assert(EvaluatesInto<SpinField<2, Grid>, Complex>);
+static_assert(!EvaluatesInto<SpinField<2, Grid>, double>);
+static_assert(!EvaluatesInto<SpinField<0, Grid, ComplexValued>, double>);
+
 }  // namespace
 
 TEST(SpinField, CompileTimeAlgebraIsPinned) { SUCCEED(); }
+
+namespace {
+
+constexpr Int lMax = 6;
+constexpr Int nMax = 2;
+
+auto TestGrid() { return Grid(lMax, nMax, FFTWpp::Estimate); }
+
+}  // namespace
+
+TEST(SpinField, StoresSamplesInTheCanonicalOrder) {
+  auto grid = TestGrid();
+  auto u = SpinField<2, Grid>(grid);
+
+  ASSERT_EQ(u.Size(), grid.FieldSize());
+  const auto nPhi = static_cast<Int>(grid.NumberOfLongitudes());
+
+  // A freshly built field is zero.
+  for (auto value : u) EXPECT_EQ(value, Complex{});
+
+  // Mutable access writes where the flat layout says it should: phi fastest.
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    for (auto iPhi : grid.LongitudeIndices()) {
+      u[iTheta, iPhi] = Complex{static_cast<double>(iTheta),
+                                static_cast<double>(iPhi)};
+    }
+  }
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    for (auto iPhi : grid.LongitudeIndices()) {
+      const auto flat = iTheta * nPhi + iPhi;
+      EXPECT_EQ(u.Data()[flat], (Complex{static_cast<double>(iTheta),
+                                         static_cast<double>(iPhi)}));
+      EXPECT_EQ((u[iTheta, iPhi]), u.Data()[flat]);
+    }
+  }
+}
+
+TEST(SpinField, SamplesAFunctionOfPosition) {
+  auto grid = TestGrid();
+  auto f = [](auto theta, auto phi) {
+    return Complex{std::cos(theta), std::sin(phi)};
+  };
+  auto u = SpinField<1, Grid>(grid, f);
+
+  auto i = Int{0};
+  for (auto [theta, phi] : grid.Points()) {
+    EXPECT_EQ(u.Data()[i], f(theta, phi));
+    ++i;
+  }
+  EXPECT_EQ(i, grid.FieldSize());
+}
+
+TEST(SpinField, EvaluateIntoAgreesWithTheElementLoop) {
+  auto grid = TestGrid();
+  auto u = SpinField<2, Grid>(grid, [](auto theta, auto phi) {
+    return Complex{theta * phi, theta - phi};
+  });
+
+  auto target = std::vector<Complex>(u.Size());
+  u.EvaluateInto(std::span(target));
+
+  auto i = Int{0};
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    for (auto iPhi : grid.LongitudeIndices()) {
+      EXPECT_EQ(target[i], (u[iTheta, iPhi]));
+      ++i;
+    }
+  }
+}
+
+TEST(SpinField, EvaluateIntoWidensRealToComplexButNotBack) {
+  auto grid = TestGrid();
+  auto u = SpinField<0, Grid, RealValued>(
+      grid, [](auto theta, auto phi) { return theta + phi; });
+
+  auto target = std::vector<Complex>(u.Size());
+  u.EvaluateInto(std::span(target));
+  for (auto i = Int{0}; i < u.Size(); ++i) {
+    EXPECT_EQ(target[i].real(), u.Data()[i]);
+    EXPECT_EQ(target[i].imag(), 0.0);
+  }
+}
+
+TEST(SpinField, RejectsAMismatchedEvaluationTarget) {
+  auto grid = TestGrid();
+  auto u = SpinField<2, Grid>(grid);
+  auto shortTarget = std::vector<Complex>(u.Size() - 1);
+  auto longTarget = std::vector<Complex>(u.Size() + 1);
+
+  EXPECT_THROW(u.EvaluateInto(std::span(shortTarget)), std::invalid_argument);
+  EXPECT_THROW(u.EvaluateInto(std::span(longTarget)), std::invalid_argument);
+}
+
+TEST(SpinField, RejectsAnUpperIndexTheGridDoesNotCarry) {
+  auto narrow = Grid(lMax, 1, FFTWpp::Estimate);
+  EXPECT_THROW((SpinField<2, Grid>(narrow)), std::invalid_argument);
+  EXPECT_THROW((SpinField<-2, Grid>(narrow)), std::invalid_argument);
+  EXPECT_NO_THROW((SpinField<1, Grid>(narrow)));
+  EXPECT_NO_THROW((SpinField<0, Grid>(narrow)));
+
+  // The message says what the grid does carry.
+  try {
+    auto rejected = SpinField<2, Grid>(narrow);
+    FAIL() << "expected a throw";
+  } catch (const std::invalid_argument& error) {
+    EXPECT_NE(std::string(error.what()).find("upper index 2"),
+              std::string::npos)
+        << error.what();
+  }
+}
+
+TEST(SpinField, CopiesDataButSharesTheGrid) {
+  auto grid = TestGrid();
+  auto u = SpinField<2, Grid>(grid);
+  u[0, 0] = Complex{1.0, 2.0};
+
+  auto v = u;
+  EXPECT_EQ(u.Grid().Identity(), v.Grid().Identity());
+  EXPECT_EQ((v[0, 0]), (Complex{1.0, 2.0}));
+
+  // The data is a copy, not a share.
+  v[0, 0] = Complex{3.0, 4.0};
+  EXPECT_EQ((u[0, 0]), (Complex{1.0, 2.0}));
+
+  // And the field keeps the grid alive on its own.
+  auto escaped = [&grid] {
+    auto local = Grid(lMax, nMax, FFTWpp::Estimate);
+    return SpinField<2, Grid>(local);
+  }();
+  EXPECT_EQ(escaped.Size(), grid.FieldSize());
+  EXPECT_NE(escaped.Grid().Identity(), grid.Identity());
+}
