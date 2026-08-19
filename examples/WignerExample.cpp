@@ -22,7 +22,7 @@ int main() {
 
   auto theta = std::vector<Real>{0.1};
 
-  auto d = Wigner<Real, Ortho, All, Single, Single, ColumnMajor>(lMax, mMax,
+  auto d = Wigner<Real, All, Single, Single, ColumnMajor>(lMax, mMax,
                                                                  nMax, theta);
 
   for (auto l : d.Degrees()) {

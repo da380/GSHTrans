@@ -4,6 +4,7 @@
 
 #include "CheckAdditionTheorem.h"
 #include "CheckLegendre.h"
+#include "CheckWignerConvention.h"
 
 namespace {
 
@@ -14,7 +15,7 @@ void CheckSingleUpperIndexAccess(std::ptrdiff_t n) {
   constexpr std::ptrdiff_t mMax = 3;
 
   auto singleAngle =
-      Wigner<double, FourPi, All, Single, Single>(lMax, mMax, n, 0.7);
+      Wigner<double, All, Single, Single>(lMax, mMax, n, 0.7);
   auto explicitSingleAngle = singleAngle[n, 0];
   for (auto l : singleAngle.Degrees()) {
     for (auto m : explicitSingleAngle[l].Orders()) {
@@ -24,7 +25,7 @@ void CheckSingleUpperIndexAccess(std::ptrdiff_t n) {
 
   const auto angles = std::array{0.2, 0.7, 1.3};
   auto multipleAngles =
-      Wigner<double, FourPi, All, Single, Multiple>(lMax, mMax, n, angles);
+      Wigner<double, All, Single, Multiple>(lMax, mMax, n, angles);
   for (auto iTheta : multipleAngles.AngleIndices()) {
     auto implicitView = multipleAngles[iTheta];
     auto explicitView = multipleAngles[n, iTheta];
@@ -37,6 +38,16 @@ void CheckSingleUpperIndexAccess(std::ptrdiff_t n) {
 }
 
 }  // namespace
+
+// Pin the value convention: stored values are sqrt((2l+1)/(4 pi)) d^l_{Nm},
+// with the upper index first, per Dahlen & Tromp (1998) eq. (C.115).
+TEST(Wigner, CheckConventionDouble) {
+  EXPECT_EQ(CheckWignerConvention<double>(), 0);
+}
+
+TEST(Wigner, CheckConventionLongDouble) {
+  EXPECT_EQ(CheckWignerConvention<long double>(), 0);
+}
 
 // Compare values for n = 0 to the std library function.
 TEST(Wigner, CheckLegendreDouble) {

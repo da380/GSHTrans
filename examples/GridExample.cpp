@@ -15,23 +15,36 @@ using namespace GSHTrans;
 
 using Int = std::ptrdiff_t;
 
+// One generator for the whole example, seeded explicitly so that a run can be
+// repeated. The library no longer supplies random-coefficient generators;
+// they were test scaffolding on GridBase and were removed (core-plan.md F12).
+std::mt19937_64 gen(20260819u);
+
 Int RandomDegree(Int lMin, Int lMax) {
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_int_distribution<Int> d(lMin, lMax);
-  return d(gen);
+  return std::uniform_int_distribution<Int>(lMin, lMax)(gen);
 }
 
 template <IndexRange NRange>
 Int RandomUpperIndex(Int nMax) {
-  std::random_device rd;
-  std::mt19937 gen(rd());
   if constexpr (std::same_as<NRange, All>) {
-    std::uniform_int_distribution<Int> d(-nMax, nMax);
-    return d(gen);
+    return std::uniform_int_distribution<Int>(-nMax, nMax)(gen);
   } else {
-    std::uniform_int_distribution<Int> d(0, nMax);
-    return d(gen);
+    return std::uniform_int_distribution<Int>(0, nMax)(gen);
+  }
+}
+
+// Random coefficients of a complex-valued field. The (lMax, lMax) coefficient
+// is unresolvable while nPhi = 2*lMax, so it is left at zero; that workaround
+// goes with core-plan.md step D.
+template <typename Grid, typename Range>
+void RandomComplexCoefficient(const Grid& grid, Int lMax, Int n, Range& range) {
+  using Complex = std::ranges::range_value_t<Range>;
+  using Real = RemoveComplex<Complex>;
+  auto dist = std::normal_distribution<Real>();
+  std::ranges::generate(range,
+                        [&dist]() { return Complex{dist(gen), dist(gen)}; });
+  if (lMax == grid.MaxDegree()) {
+    range[GSHIndices<All>(lMax, lMax, n).Index(lMax, lMax)] = 0;
   }
 }
 
@@ -55,14 +68,10 @@ int main() {
     if constexpr (ComplexFloatingPoint<Scalar>) {
       size = grid.CoefficientSize(lMax, n);
     } else {
-      size = grid.CoefficientSizeNonNegative(lMax, n);
+      size = grid.RealCoefficientSize(lMax);
     }
     auto flm = FFTWpp::vector<Complex>(size);
-    if constexpr (ComplexFloatingPoint<Scalar>) {
-      grid.RandomComplexCoefficient(lMax, n, flm);
-    } else {
-      grid.RandomRealCoefficient(lMax, n, flm);
-    }
+    RandomComplexCoefficient(grid, lMax, n, flm);
 
     auto f = FFTWpp::vector<Scalar>(grid.FieldSize());
     auto glm = FFTWpp::vector<Complex>(size);

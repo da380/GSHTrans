@@ -156,26 +156,31 @@ TEST(GaussLegendreGrid, RejectsUnsupportedTransformRequests) {
                std::invalid_argument);
 }
 
+// The round-trip tests draw their grid, degree, upper index and coefficients
+// from one seeded generator, and report the seed so that a failure can be
+// reproduced with GSHTRANS_TEST_SEED (core-plan.md F12).
 TEST(GaussLegendreGrid, Coeff2CoeffDoubleR2C) {
-  using Scalar = double;
-  bool result = Coeff2Coeff<Scalar, All, All>();
-  EXPECT_FALSE(result);
+  const auto seed = GSHTransTest::TestSeed();
+  auto gen = GSHTransTest::MakeGenerator(seed);
+  EXPECT_FALSE((Coeff2Coeff<double, All, All>(gen))) << "seed = " << seed;
 }
 
 TEST(GaussLegendreGrid, Coeff2CoeffLongDoubleR2C) {
-  using Scalar = long double;
-  bool result = Coeff2Coeff<Scalar, All, All>();
-  EXPECT_FALSE(result);
+  const auto seed = GSHTransTest::TestSeed();
+  auto gen = GSHTransTest::MakeGenerator(seed);
+  EXPECT_FALSE((Coeff2Coeff<long double, All, All>(gen))) << "seed = " << seed;
 }
 
 TEST(GaussLegendreGrid, Coeff2CoeffDoubleC2C) {
-  using Scalar = std::complex<double>;
-  bool result = Coeff2Coeff<Scalar, All, All>();
-  EXPECT_FALSE(result);
+  const auto seed = GSHTransTest::TestSeed();
+  auto gen = GSHTransTest::MakeGenerator(seed);
+  EXPECT_FALSE((Coeff2Coeff<std::complex<double>, All, All>(gen)))
+      << "seed = " << seed;
 }
 
 TEST(GaussLegendreGrid, Coeff2CoeffLongDoubleC2C) {
-  using Scalar = std::complex<long double>;
-  bool result = Coeff2Coeff<Scalar, All, All>();
-  EXPECT_FALSE(result);
+  const auto seed = GSHTransTest::TestSeed();
+  auto gen = GSHTransTest::MakeGenerator(seed);
+  EXPECT_FALSE((Coeff2Coeff<std::complex<long double>, All, All>(gen)))
+      << "seed = " << seed;
 }

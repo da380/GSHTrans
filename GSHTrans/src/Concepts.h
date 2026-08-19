@@ -42,13 +42,6 @@ template <typename Indices>
 concept AngleIndexRange =
     std::same_as<Indices, Multiple> or std::same_as<Indices, Single>;
 
-// Normalisation options.
-struct Ortho {};
-struct FourPi {};
-
-template <typename Norm>
-concept Normalisation = std::same_as<Norm, Ortho> or std::same_as<Norm, FourPi>;
-
 // Value type options.
 struct RealValued {};
 struct ComplexValued {};

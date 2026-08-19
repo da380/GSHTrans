@@ -81,7 +81,9 @@ class ConstGSHView : public GSHIndices<MRange> {
         l, this->MaxOrder(), std::next(begin(), this->OffsetForDegree(l)));
   }
 
-  constexpr auto operator[](Int l, Int m) { return _start[this->Index(l, m)]; }
+  constexpr auto operator[](Int l, Int m) const {
+    return _start[this->Index(l, m)];
+  }
 
  private:
   const Scalar* _start;

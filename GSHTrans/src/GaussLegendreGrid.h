@@ -44,13 +44,28 @@ class GaussLegendreGrid
     assert(std::abs(this->MinUpperIndex()) <= MaxDegree());
     assert(_flag != FFTWpp::WisdomOnly);
 
+    // An MRange = NonNegative grid stores only m >= 0, so it cannot serve a
+    // complex-valued transform at all, and its real-valued transforms exist
+    // only at upper index zero. Such a grid with nMax != 0 could serve no
+    // transform whatever, so it is a configuration error rather than a
+    // wasteful but usable choice. See core-plan.md step A and [C1]: this is
+    // the "real scalar grid" reading of MRange.
+    if constexpr (std::same_as<_MRange, NonNegative>) {
+      if (_nMax != 0) {
+        throw std::invalid_argument(
+            "A grid storing only non-negative orders serves real-valued "
+            "transforms at upper index zero, so its maximum upper index must "
+            "be zero");
+      }
+    }
+
     // Get the quadrature points.
     _quad = GaussQuad::LegendrePolynomial<Real>{}.GaussQuadrature(_lMax + 1);
     _quad.Transform([](auto x) { return std::acos(-x); },
                     [](auto x) -> Real { return 1; });
 
     //  Get the Winger values.
-    _wigner = Wigner<Real, Ortho, _MRange, _NRange, Multiple, ColumnMajor>(
+    _wigner = Wigner<Real, _MRange, _NRange, Multiple, ColumnMajor>(
         _lMax, _lMax, _nMax, _quad.Points());
 
     if (_lMax > 0 && _flag != FFTWpp::Estimate) {
@@ -126,7 +141,7 @@ class GaussLegendreGrid
     // Get scalar type for field.
     using Scalar = std::ranges::range_value_t<InRange>;
 
-    ValidateTransformRequest(lMax, n);
+    ValidateTransformRequest<Scalar>(lMax, n);
 
     // Check dimensions of ranges.
     assert(in.size() == this->FieldSize());
@@ -240,7 +255,7 @@ class GaussLegendreGrid
     // Get scalar type for field.
     using Scalar = std::ranges::range_value_t<OutRange>;
 
-    ValidateTransformRequest(lMax, n);
+    ValidateTransformRequest<Scalar>(lMax, n);
 
     // Check dimensions of ranges.
     if constexpr (RealFloatingPoint<Scalar>) {
@@ -324,6 +339,7 @@ class GaussLegendreGrid
   }
 
  private:
+  template <RealOrComplexFloatingPoint Scalar>
   void ValidateTransformRequest(Int lMax, Int n) const {
     if (lMax < 0 || lMax > MaxDegree()) {
       throw std::invalid_argument(
@@ -334,6 +350,22 @@ class GaussLegendreGrid
       throw std::invalid_argument(
           "Transform upper index is not supported at the requested degree");
     }
+
+    // A spin-weighted field of nonzero upper index cannot be real-valued:
+    // real-valuedness is not preserved by the frame rotation
+    // e_{+-} -> e^{-+ i psi} e_{+-}, so it is not a property any component of
+    // any tensor can have at N != 0 (theory note section 7, item 5). The
+    // reduced m >= 0 coefficient storage that a real transform uses assumes
+    // the self-relation f^N_{l,-m} = (-1)^{m-N} conj(f^N_{lm}), which holds
+    // only when f is its own conjugate, i.e. only at N = 0. n is a runtime
+    // argument, so this is a throw rather than a static_assert
+    // (core-plan.md step A, [C2]).
+    if constexpr (RealFloatingPoint<Scalar>) {
+      if (n != 0) {
+        throw std::invalid_argument(
+            "Real-valued fields exist only at upper index zero");
+      }
+    }
   }
 
   Int _lMax;
@@ -341,7 +373,7 @@ class GaussLegendreGrid
   FFTWpp::Flag _flag;
 
   GaussQuad::Quadrature1D<Real> _quad;
-  Wigner<Real, Ortho, _MRange, _NRange, Multiple, ColumnMajor> _wigner;
+  Wigner<Real, _MRange, _NRange, Multiple, ColumnMajor> _wigner;
 
   // std::shared_ptr<QuadType> _quadPointer;
   // std::shared_ptr<WignerType> _wignerPointer;

@@ -3,13 +3,16 @@
 
 #include <omp.h>
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <concepts>
 #include <cstddef>
 #include <limits>
+#include <memory>
 #include <numbers>
 #include <ranges>
+#include <tuple>
 #include <vector>
 
 #include "Concepts.h"
@@ -96,15 +99,14 @@ constexpr auto WignerMaxUpperIndex(Int l, Int m, Arguments<Real> &arg) {
 
 }  // namespace WignerDetails
 
-template <RealFloatingPoint _Real, Normalisation _Norm = Ortho,
-          OrderIndexRange _MRange = All, IndexRange _NRange = Single,
+template <RealFloatingPoint _Real, OrderIndexRange _MRange = All,
+          IndexRange _NRange = Single,
           AngleIndexRange _AngleRange = Single,
           WignerStorage _Storage = ColumnMajor>
 class Wigner {
  public:
   using Int = std::ptrdiff_t;
   using Real = _Real;
-  using Norm = _Norm;
   using MRange = _MRange;
   using NRange = _NRange;
   using AngleRange = _AngleRange;
@@ -471,8 +473,10 @@ class Wigner {
       }
     }
 
-    // Normalise the values if needed.
-    if constexpr (std::same_as<Norm, Ortho>) {
+    // Orthonormalise: the stored value at (l, m) becomes
+    // sqrt((2l+1)/(4 pi)) d^l_{nm}. This is the only normalisation the
+    // library offers (core-plan step A2).
+    {
       const auto factor =
           std::numbers::inv_sqrtpi_v<Real> / static_cast<Real>(2);
       for (auto l : d.Degrees()) {

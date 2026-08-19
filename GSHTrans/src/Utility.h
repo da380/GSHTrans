@@ -1,6 +1,8 @@
 #ifndef GSH_TRANS_UTILITY_GUARD_H
 #define GSH_TRANS_UTILITY_GUARD_H
 
+#include <cstddef>
+
 namespace GSHTrans {
 
 // Returns (-1)^m for integer m.
