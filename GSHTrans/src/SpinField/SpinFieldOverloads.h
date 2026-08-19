@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "../Concepts.h"
+#include "SpinField.h"
 #include "SpinFieldNodes.h"
 #include "SpinWeighted.h"
 
@@ -272,6 +273,19 @@ requires ScalarFor_<S, A> and (Node<A>::UpperIndex == 0)
 auto operator/(S s, A&& a) {
   return Unary<SpinFieldOps::ScalarOver<S>, IndexRules::Same, A>(
       std::forward<A>(a), SpinFieldOps::ScalarOver<S>{s});
+}
+
+//--------------------------------------------------------------------------//
+//                             Materialisation                               //
+//--------------------------------------------------------------------------//
+
+// Break a lazy chain deliberately -- before feeding a product into a transform
+// twice, say, or before a loop that would otherwise re-evaluate it.
+template <SpinFieldExpr Expr>
+auto Materialise(Expr&& expr) {
+  using E = Node<Expr>;
+  return SpinField<E::UpperIndex, typename E::GridType, typename E::Value>(
+      expr);
 }
 
 }  // namespace GSHTrans

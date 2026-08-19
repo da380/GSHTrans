@@ -78,6 +78,117 @@ class SpinField {
   SpinField& operator=(SpinField&&) = default;
 
   //------------------------------------------------------------------------//
+  //                    Construction from an expression                     //
+  //------------------------------------------------------------------------//
+
+  // What may be evaluated into a field of this type: the same upper index, the
+  // same precision, and a scalar that converts. The last condition is what
+  // permits a real-valued expression into a complex field and makes the
+  // reverse a compile error rather than a truncation.
+  template <typename Expr>
+  static constexpr bool Compatible =
+      SpinWeighted<Node<Expr>> and Node<Expr>::UpperIndex == UpperIndex and
+      std::same_as<typename Node<Expr>::Real, Real> and
+      std::convertible_to<typename Node<Expr>::Scalar, Scalar>;
+
+  // The grid comes from the expression, so a materialised field is on the
+  // grid its operands were on and nowhere else.
+  template <typename Expr>
+  requires Compatible<Expr> and (not std::same_as<Node<Expr>, SpinField>)
+  SpinField(const Expr& expr)
+      : _grid{expr.Grid()}, _data(CheckedSize(_grid)) {
+    expr.EvaluateInto(std::span<Scalar>(_data));
+  }
+
+  //------------------------------------------------------------------------//
+  //                     Assignment from an expression                      //
+  //------------------------------------------------------------------------//
+
+  // Assignment never rebinds the destination grid: a field stays on the grid
+  // it was built on, and an expression from elsewhere is an error rather than
+  // a silent migration.
+  //
+  // Evaluation is in place and needs no temporary. Every node in this layer is
+  // pointwise and index-preserving, so writing element (iTheta, iPhi) of the
+  // destination happens after reading element (iTheta, iPhi) -- and only that
+  // element -- of every operand, including the destination itself. `u = conj(u)
+  // * v + u` is therefore safe as written. If a re-indexing node ever enters
+  // this layer the argument fails, which is why the invariant is stated as
+  // "pointwise *and index-preserving*" and why there is a regression test for
+  // exactly this shape.
+  template <typename Expr>
+  requires Compatible<Expr> and (not std::same_as<Node<Expr>, SpinField>)
+  SpinField& operator=(const Expr& expr) {
+    CheckSameGrid(expr);
+    expr.EvaluateInto(std::span<Scalar>(_data));
+    return *this;
+  }
+
+  //------------------------------------------------------------------------//
+  //                          Compound assignment                           //
+  //------------------------------------------------------------------------//
+
+  // Each carries exactly the constraints of "form the binary expression, then
+  // assign it", so an unlawful use is an overload-resolution failure at the
+  // call site rather than an error inside the body. That is what makes
+  // static_assert(!requires { u *= v; }) a usable negative test.
+  //
+  // It also gets the index rules right without restating them: += needs equal
+  // upper indices because operator+ does; *= and /= need the right-hand side
+  // at zero because the result must still have the destination's index; and a
+  // complex scalar cannot multiply a real field in place, because the
+  // destination's value kind cannot change under assignment.
+  template <typename Expr>
+  static constexpr bool CanAddAssign =
+      requires(const SpinField& f, const Expr& e) {
+        requires Compatible<decltype(f + e)>;
+      };
+
+  template <typename Expr>
+  static constexpr bool CanSubtractAssign =
+      requires(const SpinField& f, const Expr& e) {
+        requires Compatible<decltype(f - e)>;
+      };
+
+  template <typename Expr>
+  static constexpr bool CanMultiplyAssign =
+      requires(const SpinField& f, const Expr& e) {
+        requires Compatible<decltype(f * e)>;
+      };
+
+  template <typename Expr>
+  static constexpr bool CanDivideAssign =
+      requires(const SpinField& f, const Expr& e) {
+        requires Compatible<decltype(f / e)>;
+      };
+
+  // Expressions and scalars alike: whichever the right-hand side is, the
+  // question is the same one.
+  template <typename Expr>
+  requires CanAddAssign<Expr>
+  SpinField& operator+=(const Expr& expr) {
+    return *this = *this + expr;
+  }
+
+  template <typename Expr>
+  requires CanSubtractAssign<Expr>
+  SpinField& operator-=(const Expr& expr) {
+    return *this = *this - expr;
+  }
+
+  template <typename Expr>
+  requires CanMultiplyAssign<Expr>
+  SpinField& operator*=(const Expr& expr) {
+    return *this = *this * expr;
+  }
+
+  template <typename Expr>
+  requires CanDivideAssign<Expr>
+  SpinField& operator/=(const Expr& expr) {
+    return *this = *this / expr;
+  }
+
+  //------------------------------------------------------------------------//
   //                            The node interface                          //
   //------------------------------------------------------------------------//
 
@@ -141,6 +252,15 @@ class SpinField {
           std::to_string(grid.MaxUpperIndex()));
     }
     return static_cast<std::size_t>(grid.FieldSize());
+  }
+
+  template <typename Expr>
+  void CheckSameGrid(const Expr& expr) const {
+    if (expr.Grid().Identity() != _grid.Identity()) {
+      throw std::invalid_argument(
+          "Cannot assign an expression on a different grid: assignment does "
+          "not rebind the destination's grid");
+    }
   }
 
   void CheckTargetSize(std::size_t given) const {

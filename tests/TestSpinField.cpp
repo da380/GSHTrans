@@ -572,9 +572,11 @@ auto MakeScalarField(const Grid& grid, double a) {
   });
 }
 
-template <typename Node>
-auto Materialise(const Node& node) {
-  auto out = std::vector<typename Node::Scalar>(node.Grid().FieldSize());
+// Evaluate a node into a plain vector. Named Evaluated rather than
+// Materialise, which is now the library's own and returns a SpinField.
+template <typename NodeType>
+auto Evaluated(const NodeType& node) {
+  auto out = std::vector<typename NodeType::Scalar>(node.Grid().FieldSize());
   node.EvaluateInto(std::span(out));
   return out;
 }
@@ -625,7 +627,7 @@ TEST(SpinField, EvaluateIntoAgreesWithTheElementLoopOnExpressions) {
   auto v = MakeField(grid, -0.75);
 
   const auto expression = conj(u) * v + u * conj(v);
-  const auto evaluated = Materialise(expression);
+  const auto evaluated = Evaluated(expression);
 
   auto i = Int{0};
   for (auto iTheta : grid.CoLatitudeIndices()) {
@@ -681,7 +683,7 @@ TEST(SpinField, NestedExpressionsBoundToAutoStayValid) {
   auto middle = inner * w;
   auto outer = conj(middle) + conj(inner) * w;
 
-  const auto evaluated = Materialise(outer);
+  const auto evaluated = Evaluated(outer);
   for (auto iTheta : grid.CoLatitudeIndices()) {
     for (auto iPhi : grid.LongitudeIndices()) {
       const auto a = u[iTheta, iPhi];
@@ -702,7 +704,7 @@ TEST(SpinField, ExpressionsOwnRvalueTerminals) {
   // store a reference to it and this would dangle.
   auto expression = MakeField(grid, 1.5) + v;
 
-  const auto evaluated = Materialise(expression);
+  const auto evaluated = Evaluated(expression);
   const auto reference = MakeField(grid, 1.5);
   for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     ExpectClose(evaluated[i], reference.Data()[i] + v.Data()[i]);
@@ -721,7 +723,7 @@ TEST(SpinField, NamedExpressionsMayDieBeforeWhatIsBuiltFromThem) {
     return inner * w;
   }();
 
-  const auto evaluated = Materialise(outer);
+  const auto evaluated = Evaluated(outer);
   for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     ExpectClose(evaluated[i],
                 (u.Data()[i] + u.Data()[i]) * w.Data()[i]);
@@ -746,11 +748,243 @@ TEST(SpinField, ExpressionsSurviveBeingReturnedAndStored) {
   nodes.push_back(nodes.front());
 
   for (const auto& node : nodes) {
-    const auto evaluated = Materialise(node);
+    const auto evaluated = Evaluated(node);
     for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
       ExpectClose(evaluated[i], u.Data()[i] * std::conj(v.Data()[i]));
     }
   }
+}
+
+//--------------------------------------------------------------------------//
+//              Family 3: materialisation, assignment, aliasing              //
+//--------------------------------------------------------------------------//
+
+namespace {
+
+template <typename F, typename E>
+concept PlusAssignable = requires(F f, E e) { f += e; };
+template <typename F, typename E>
+concept TimesAssignable = requires(F f, E e) { f *= e; };
+template <typename F, typename E>
+concept DivideAssignable = requires(F f, E e) { f /= e; };
+template <typename F, typename E>
+concept AssignableFrom = requires(F f, E e) { f = e; };
+
+using F0 = SpinField<0, Grid>;
+using F2 = SpinField<2, Grid>;
+
+// Assignment needs the same upper index; nothing is coerced.
+static_assert(AssignableFrom<F2&, Add<F2&, F2&>>);
+static_assert(!AssignableFrom<F2&, Add<F0&, F0&>>);
+static_assert(!AssignableFrom<F0&, Mul<F2&, F2&>>);
+
+// A real-valued expression may be assigned into a complex field; the reverse
+// would be a truncation and does not compile.
+static_assert(AssignableFrom<F0&, decltype(abs(std::declval<F2&>()))>);
+static_assert(!AssignableFrom<F0R&, Add<F0&, F0&>>);
+static_assert(AssignableFrom<F0R&, decltype(abs(std::declval<F2&>()))>);
+
+// Compound assignment inherits the index rule of its binary form.
+static_assert(PlusAssignable<F2&, F2&>);
+static_assert(!PlusAssignable<F2&, F0&>);
+static_assert(TimesAssignable<F2&, F0&>);
+static_assert(!TimesAssignable<F2&, F2&>);   // would land at N = 4
+static_assert(DivideAssignable<F2&, F0&>);
+static_assert(!DivideAssignable<F2&, F2&>);
+static_assert(TimesAssignable<F2&, double>);
+static_assert(TimesAssignable<F2&, Complex>);
+static_assert(DivideAssignable<F2&, double>);
+
+// A complex scalar cannot multiply a real field in place: the field's value
+// kind cannot change under assignment.
+static_assert(TimesAssignable<F0R&, double>);
+static_assert(!TimesAssignable<F0R&, Complex>);
+
+// Materialise returns a field of the expression's own index and value kind.
+static_assert(std::same_as<decltype(Materialise(std::declval<Add<F2&, F2&>>())),
+                           SpinField<2, Grid, ComplexValued>>);
+static_assert(
+    std::same_as<decltype(Materialise(std::declval<
+                          decltype(abs(std::declval<F2&>()))>())),
+                 SpinField<0, Grid, RealValued>>);
+
+}  // namespace
+
+TEST(SpinField, ConstructionFromAnExpressionTakesTheExpressionsGrid) {
+  auto grid = TestGrid();
+  auto u = MakeField(grid, 1.5);
+  auto v = MakeField(grid, -0.75);
+
+  SpinField<2, Grid> w = u + v;
+  EXPECT_EQ(w.Grid().Identity(), grid.Identity());
+  EXPECT_EQ(w.Size(), grid.FieldSize());
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+    ExpectClose(w.Data()[i], u.Data()[i] + v.Data()[i]);
+  }
+
+  // And through Materialise, which is the same thing with the type deduced.
+  auto m = Materialise(u * conj(v));
+  static_assert(std::same_as<decltype(m), SpinField<0, Grid, ComplexValued>>);
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+    ExpectClose(m.Data()[i], u.Data()[i] * std::conj(v.Data()[i]));
+  }
+}
+
+TEST(SpinField, RealExpressionsWidenIntoComplexFields) {
+  auto grid = TestGrid();
+  auto u = MakeField(grid, 1.5);
+
+  SpinField<0, Grid> wide = abs2(u);
+  auto narrow = Materialise(abs2(u));
+  static_assert(std::same_as<decltype(narrow),
+                             SpinField<0, Grid, RealValued>>);
+
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+    EXPECT_NEAR(wide.Data()[i].real(), std::norm(u.Data()[i]), tolerance);
+    EXPECT_NEAR(wide.Data()[i].imag(), 0.0, tolerance);
+    EXPECT_NEAR(narrow.Data()[i], std::norm(u.Data()[i]), tolerance);
+  }
+}
+
+TEST(SpinField, AssignmentDoesNotRebindTheGrid) {
+  auto grid = TestGrid();
+  auto other = TestGrid();
+  auto u = MakeField(grid, 1.5);
+  auto v = MakeField(grid, -0.75);
+  auto elsewhere = MakeField(other, 1.0);
+
+  u = v + v;
+  EXPECT_EQ(u.Grid().Identity(), grid.Identity());
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+    ExpectClose(u.Data()[i], v.Data()[i] + v.Data()[i]);
+  }
+
+  EXPECT_THROW(u = elsewhere + elsewhere, std::invalid_argument);
+  // and the destination is untouched by the attempt
+  EXPECT_EQ(u.Grid().Identity(), grid.Identity());
+}
+
+TEST(SpinField, CompoundAssignmentMatchesItsBinaryForm) {
+  auto grid = TestGrid();
+  auto u = MakeField(grid, 1.5);
+  auto v = MakeField(grid, -0.75);
+  auto s = MakeScalarField(grid, 2.0);
+  const auto u0 = u;
+
+  u += v;
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+    ExpectClose(u.Data()[i], u0.Data()[i] + v.Data()[i]);
+  }
+
+  u = u0;
+  u -= v;
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+    ExpectClose(u.Data()[i], u0.Data()[i] - v.Data()[i]);
+  }
+
+  u = u0;
+  u *= s;
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+    ExpectClose(u.Data()[i], u0.Data()[i] * s.Data()[i]);
+  }
+
+  u = u0;
+  u /= s;
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+    ExpectClose(u.Data()[i], u0.Data()[i] / s.Data()[i]);
+  }
+
+  u = u0;
+  u *= Complex{0.0, 2.0};
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+    ExpectClose(u.Data()[i], u0.Data()[i] * Complex{0.0, 2.0});
+  }
+
+  u = u0;
+  u /= 4.0;
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+    ExpectClose(u.Data()[i], u0.Data()[i] / 4.0);
+  }
+}
+
+// The aliasing theorem: every node is pointwise and index-preserving, so an
+// assignment whose right-hand side mentions the destination reads element
+// (iTheta, iPhi) only when writing that same element. No temporary is needed.
+// This is the regression that fails if a re-indexing node ever enters the
+// layer.
+TEST(SpinField, InPlaceAssignmentIsSafeWhenTheDestinationAppears) {
+  auto grid = TestGrid();
+  auto u = SpinField<0, Grid>(grid, [](auto theta, auto phi) {
+    return Complex{std::cos(theta) + 1.5, std::sin(phi) - 0.25};
+  });
+  auto v = MakeScalarField(grid, 0.5);
+  const auto u0 = u;
+
+  u = conj(u) * v + u;
+
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+    const auto expected =
+        std::conj(u0.Data()[i]) * v.Data()[i] + u0.Data()[i];
+    ExpectClose(u.Data()[i], expected);
+  }
+
+  // The same for compound assignment, and for a destination appearing twice.
+  auto w = u0;
+  w += w * v;
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+    ExpectClose(w.Data()[i], u0.Data()[i] + u0.Data()[i] * v.Data()[i]);
+  }
+
+  auto x = u0;
+  x = x * x - x;
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+    const auto a = u0.Data()[i];
+    ExpectClose(x.Data()[i], a * a - a);
+  }
+}
+
+// A deep mixed tree, lazily evaluated and materialised, must agree exactly at
+// every upper index the library exposes.
+template <Int N>
+void CheckLazyAgreesWithMaterialised() {
+  auto grid = Grid(lMax, nMax, FFTWpp::Estimate);
+  auto a = SpinField<N, Grid>(grid, [](auto theta, auto phi) {
+    return Complex{std::cos(theta) + 1.25, std::sin(phi) - 0.3};
+  });
+  auto b = SpinField<N, Grid>(grid, [](auto theta, auto phi) {
+    return Complex{std::sin(theta) * 0.5 + 1.0, std::cos(phi) + 0.4};
+  });
+  auto c = SpinField<0, Grid>(grid, [](auto theta, auto phi) {
+    return Complex{2.0 + std::cos(theta * phi), 0.75};
+  });
+
+  // Upper index N throughout: conj(a) carries -N, so conj(a) * b lands at
+  // zero, and multiplying that scalar back into a returns to N.
+  const auto lazy = (a + b) * c - a * (conj(a) * b) / c + b * 2.0;
+
+  auto stepOne = Materialise(a + b);
+  auto stepTwo = Materialise(stepOne * c);
+  auto stepThree = Materialise(conj(a) * b);
+  auto stepFour = Materialise(a * stepThree);
+  auto stepFive = Materialise(stepFour / c);
+  auto stepSix = Materialise(b * 2.0);
+
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    for (auto iPhi : grid.LongitudeIndices()) {
+      const auto flat = iTheta * grid.NumberOfLongitudes() + iPhi;
+      const auto expected =
+          stepTwo.Data()[flat] - stepFive.Data()[flat] + stepSix.Data()[flat];
+      ExpectClose(lazy[iTheta, iPhi], expected);
+    }
+  }
+}
+
+TEST(SpinField, LazyAndMaterialisedAgreeAtEveryUpperIndex) {
+  CheckLazyAgreesWithMaterialised<-2>();
+  CheckLazyAgreesWithMaterialised<-1>();
+  CheckLazyAgreesWithMaterialised<0>();
+  CheckLazyAgreesWithMaterialised<1>();
+  CheckLazyAgreesWithMaterialised<2>();
 }
 
 TEST(SpinField, CopiesDataButSharesTheGrid) {

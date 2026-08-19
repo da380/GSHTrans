@@ -438,6 +438,26 @@ an unsupported `N` cannot escape into a transform regardless.
   constraints as the binary forms (`+=` requires equal `N`; `*=` and `/=` by an
   expression require the right-hand side have `N == 0`, since the
   destination's `N` cannot change).
+
+  *Implementation note (step 4).* Each compound operator is constrained by
+  "can the binary expression be formed, and is the result assignable here",
+  rather than by restating the index rules. That gets them right by
+  construction — including that a complex scalar cannot multiply a real field
+  in place, because the destination's value kind cannot change — and it keeps
+  the failure at the call site, which is what makes
+  `static_assert(!requires { u *= v; })` a usable negative test. Putting the
+  check in the body instead makes every unlawful use a hard error, and the
+  first draft did exactly that.
+
+  **Small discrepancy, for the author.** "from expressions and scalars" cannot
+  be met in full: `+=` and `-=` by a scalar would need an `f + s` node, and
+  §3.5's inventory does not have one — it lists `s * f`, `f * s`, `f / s` and
+  `s / f`, and says "nothing else". As implemented, `u += 2.0` simply does not
+  compile, which is consistent with §3.5 and inconsistent with the sentence
+  above. Adding `f + s` and `f - s` at `N == 0` would be a ten-line change and
+  is arguably natural (adding a constant to a scalar field), but §3.5 is
+  emphatic and this layer is deliberately small, so nothing was added. Worth a
+  decision either way; it is not blocking.
 - A free `Materialise(expr)` returning `SpinField`, for deliberately breaking a
   lazy chain — e.g. before feeding a product into a transform twice.
 
