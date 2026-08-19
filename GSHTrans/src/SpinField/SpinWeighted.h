@@ -5,6 +5,8 @@
 #include <concepts>
 #include <cstddef>
 #include <span>
+#include <stdexcept>
+#include <string>
 #include <type_traits>
 
 #include "../Concepts.h"
@@ -108,7 +110,40 @@ concept AngularGrid = requires(const G& grid) {
   { grid.FieldSize() } -> std::integral;
   { grid.MaxUpperIndex() } -> std::integral;
   grid.UpperIndices();
+
+  // The point set, and the index ranges an evaluation loop runs over.
+  grid.Points();
+  grid.CoLatitudeIndices();
+  grid.LongitudeIndices();
 };
+
+//--------------------------------------------------------------------------//
+//                         The generic evaluation loop                       //
+//--------------------------------------------------------------------------//
+
+// The default EvaluateInto: read every point through operator[] and write it
+// in the canonical order, phi fastest. Terminals override this with a
+// contiguous copy; expressions and views use it as it stands.
+//
+// Evaluation is const and stateless, so several threads may evaluate the same
+// node concurrently into disjoint targets. That is a documented guarantee, not
+// an accident: the layered layer parallelises over slices on it.
+template <typename NodeType, typename S>
+void EvaluateNodeInto(const NodeType& node, std::span<S> target) {
+  const auto& grid = node.Grid();
+  const auto size = static_cast<std::size_t>(grid.FieldSize());
+  if (target.size() != size) {
+    throw std::invalid_argument(
+        "Evaluation target has size " + std::to_string(target.size()) +
+        ", but this field has " + std::to_string(size) + " points");
+  }
+  auto iter = target.begin();
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    for (auto iPhi : grid.LongitudeIndices()) {
+      *iter++ = static_cast<S>(node[iTheta, iPhi]);
+    }
+  }
+}
 
 //--------------------------------------------------------------------------//
 //                          Terminals versus expressions                     //

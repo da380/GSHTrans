@@ -404,6 +404,355 @@ TEST(SpinField, RejectsAnUpperIndexTheGridDoesNotCarry) {
   }
 }
 
+//--------------------------------------------------------------------------//
+//                  Family 1: the operator matrix over N                     //
+//--------------------------------------------------------------------------//
+
+namespace {
+
+// Whether an operator is available at all. Written as concepts so that a
+// negative case is a false constraint rather than a hard error.
+template <typename L, typename R>
+concept Addable = requires(L l, R r) { l + r; };
+template <typename L, typename R>
+concept Subtractable = requires(L l, R r) { l - r; };
+template <typename L, typename R>
+concept Multipliable = requires(L l, R r) { l * r; };
+template <typename L, typename R>
+concept Divisible = requires(L l, R r) { l / r; };
+template <typename A>
+concept HasRealPart = requires(A a) { real(a); };
+template <typename A>
+concept HasImagPart = requires(A a) { imag(a); };
+template <typename A>
+concept HasAbs = requires(A a) { abs(a); };
+template <typename A>
+concept Negatable = requires(A a) { -a; };
+template <typename A>
+concept HasConj = requires(A a) { conj(a); };
+
+template <Int N>
+using F = SpinField<N, Grid>;
+using F0R = SpinField<0, Grid, RealValued>;
+using OtherGrid = GaussLegendreGrid<long double, All, All>;
+
+template <typename L, typename R>
+using Add = decltype(std::declval<L>() + std::declval<R>());
+template <typename L, typename R>
+using Mul = decltype(std::declval<L>() * std::declval<R>());
+template <typename L, typename R>
+using Div = decltype(std::declval<L>() / std::declval<R>());
+
+// Addition and subtraction need equal upper indices, over the whole range the
+// library exposes.
+static_assert(Addable<F<-2>&, F<-2>&>);
+static_assert(Addable<F<-1>&, F<-1>&>);
+static_assert(Addable<F<0>&, F<0>&>);
+static_assert(Addable<F<1>&, F<1>&>);
+static_assert(Addable<F<2>&, F<2>&>);
+static_assert(!Addable<F<1>&, F<-1>&>);
+static_assert(!Addable<F<0>&, F<2>&>);
+static_assert(!Addable<F<2>&, F<1>&>);
+static_assert(!Subtractable<F<1>&, F<-1>&>);
+static_assert(Add<F<2>&, F<2>&>::UpperIndex == 2);
+static_assert(Add<F<-2>&, F<-2>&>::UpperIndex == -2);
+
+// Multiplication is always admissible and the indices add.
+static_assert(Multipliable<F<2>&, F<-2>&>);
+static_assert(Mul<F<1>&, F<1>&>::UpperIndex == 2);
+static_assert(Mul<F<2>&, F<-2>&>::UpperIndex == 0);
+static_assert(Mul<F<-1>&, F<0>&>::UpperIndex == -1);
+static_assert(Mul<F<2>&, F<2>&>::UpperIndex == 4);
+
+// Division needs the divisor at zero, and keeps the dividend's index.
+static_assert(Divisible<F<2>&, F<0>&>);
+static_assert(!Divisible<F<2>&, F<1>&>);
+static_assert(!Divisible<F<0>&, F<-1>&>);
+static_assert(Div<F<2>&, F<0>&>::UpperIndex == 2);
+
+// Unary minus and conjugation exist everywhere; conj reverses the index and
+// doing it twice returns the original.
+static_assert(Negatable<F<2>&> && HasConj<F<2>&>);
+static_assert(decltype(-std::declval<F<2>&>())::UpperIndex == 2);
+static_assert(decltype(conj(std::declval<F<2>&>()))::UpperIndex == -2);
+static_assert(decltype(conj(std::declval<F<-2>&>()))::UpperIndex == 2);
+static_assert(
+    decltype(conj(conj(std::declval<F<2>&>())))::UpperIndex == 2);
+
+// abs and abs2 exist at every index and land at zero, real-valued.
+static_assert(HasAbs<F<2>&>);
+static_assert(decltype(abs(std::declval<F<2>&>()))::UpperIndex == 0);
+static_assert(std::same_as<decltype(abs(std::declval<F<2>&>()))::Value,
+                           RealValued>);
+static_assert(std::same_as<decltype(abs2(std::declval<F<2>&>()))::Value,
+                           RealValued>);
+static_assert(std::same_as<decltype(abs2(std::declval<F<2>&>()))::Scalar,
+                           double>);
+
+// real and imag exist only at zero.
+static_assert(HasRealPart<F<0>&> && HasImagPart<F<0>&>);
+static_assert(!HasRealPart<F<1>&>);
+static_assert(!HasImagPart<F<1>&>);
+static_assert(!HasRealPart<F<-2>&>);
+static_assert(std::same_as<decltype(real(std::declval<F<0>&>()))::Value,
+                           RealValued>);
+
+// Value propagation through the algebra.
+static_assert(std::same_as<Add<F0R&, F0R&>::Value, RealValued>);
+static_assert(std::same_as<Add<F0R&, F<0>&>::Value, ComplexValued>);
+static_assert(std::same_as<Mul<F0R&, F0R&>::Value, RealValued>);
+static_assert(std::same_as<Mul<F0R&, F<2>&>::Value, ComplexValued>);
+static_assert(std::same_as<Div<F0R&, F0R&>::Value, RealValued>);
+
+// conj on a real-valued field at zero is the identity, and stays real.
+static_assert(std::same_as<decltype(conj(std::declval<F0R&>()))::Value,
+                           RealValued>);
+static_assert(decltype(conj(std::declval<F0R&>()))::UpperIndex == 0);
+
+// Scalar multiplication: real preserves, complex promotes, index untouched.
+static_assert(
+    std::same_as<decltype(std::declval<F0R&>() * 2.0)::Value, RealValued>);
+static_assert(std::same_as<
+              decltype(std::declval<F0R&>() * Complex{0, 1})::Value,
+              ComplexValued>);
+static_assert(std::same_as<decltype(2.0 * std::declval<F<2>&>())::Value,
+                           ComplexValued>);
+static_assert(decltype(2.0 * std::declval<F<2>&>())::UpperIndex == 2);
+static_assert(decltype(std::declval<F<2>&>() / 2.0)::UpperIndex == 2);
+
+// A scalar over a field needs the field at zero.
+static_assert(Divisible<double, F<0>&>);
+static_assert(!Divisible<double, F<2>&>);
+
+// One precision per tree: no mixed-precision promotion, and no mixing grids of
+// different precision.
+static_assert(!Addable<F<0>&, SpinField<0, OtherGrid>&>);
+static_assert(!Multipliable<F<0>&, SpinField<0, OtherGrid>&>);
+static_assert(!Multipliable<F<2>&, float>);
+static_assert(!Multipliable<F<2>&, std::complex<float>>);
+
+// Every lawful expression is itself a node, so expressions compose.
+static_assert(SpinWeighted<Add<F<2>&, F<2>&>>);
+static_assert(SpinWeighted<Mul<F<2>&, F<-2>&>>);
+static_assert(SpinWeighted<decltype(abs(std::declval<F<2>&>()))>);
+static_assert(Addable<Add<F<2>&, F<2>&>, F<2>&>);
+static_assert(Multipliable<decltype(conj(std::declval<F<2>&>())), F<2>&>);
+
+// Expression nodes are copyable and auto never slices, because operands are
+// stored as const T& or T and never as a base reference.
+static_assert(std::copy_constructible<Add<F<2>&, F<2>&>>);
+static_assert(std::copy_constructible<Mul<F<2>&, F<-2>&>>);
+static_assert(std::copy_constructible<decltype(abs2(std::declval<F<2>&>()))>);
+
+// The showcase for the index algebra: conj(f) carries -N, so the product with
+// g at +N lands at zero and can be integrated. It type-checks at every N.
+static_assert(Multipliable<decltype(conj(std::declval<F<2>&>())), F<2>&>);
+static_assert(Mul<decltype(conj(std::declval<F<2>&>())), F<2>&>::UpperIndex ==
+              0);
+static_assert(Mul<decltype(conj(std::declval<F<-1>&>())), F<-1>&>::UpperIndex ==
+              0);
+
+}  // namespace
+
+//--------------------------------------------------------------------------//
+//                 Family 3 (part): the algebra computes                     //
+//--------------------------------------------------------------------------//
+
+namespace {
+
+auto MakeField(const Grid& grid, double a) {
+  return SpinField<2, Grid>(grid, [a](auto theta, auto phi) {
+    return Complex{a * std::cos(theta) + 0.3, a * std::sin(phi) - 0.2};
+  });
+}
+
+auto MakeScalarField(const Grid& grid, double a) {
+  return SpinField<0, Grid>(grid, [a](auto theta, auto phi) {
+    return Complex{a + std::cos(theta) * std::cos(phi), 0.5 * a + theta};
+  });
+}
+
+template <typename Node>
+auto Materialise(const Node& node) {
+  auto out = std::vector<typename Node::Scalar>(node.Grid().FieldSize());
+  node.EvaluateInto(std::span(out));
+  return out;
+}
+
+constexpr double tolerance = 1.0e-14;
+
+void ExpectClose(Complex a, Complex b) {
+  EXPECT_NEAR(a.real(), b.real(), tolerance);
+  EXPECT_NEAR(a.imag(), b.imag(), tolerance);
+}
+
+}  // namespace
+
+TEST(SpinField, PointwiseOperationsAgreeWithScalarArithmetic) {
+  auto grid = TestGrid();
+  auto u = MakeField(grid, 1.5);
+  auto v = MakeField(grid, -0.75);
+  auto s = MakeScalarField(grid, 2.0);
+
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    for (auto iPhi : grid.LongitudeIndices()) {
+      const auto a = u[iTheta, iPhi];
+      const auto b = v[iTheta, iPhi];
+      const auto c = s[iTheta, iPhi];
+
+      ExpectClose((u + v)[iTheta, iPhi], a + b);
+      ExpectClose((u - v)[iTheta, iPhi], a - b);
+      ExpectClose((u * v)[iTheta, iPhi], a * b);
+      ExpectClose((u / s)[iTheta, iPhi], a / c);
+      ExpectClose((-u)[iTheta, iPhi], -a);
+      ExpectClose(conj(u)[iTheta, iPhi], std::conj(a));
+      EXPECT_NEAR((abs(u)[iTheta, iPhi]), std::abs(a), tolerance);
+      EXPECT_NEAR((abs2(u)[iTheta, iPhi]), std::norm(a), tolerance);
+      EXPECT_NEAR((real(s)[iTheta, iPhi]), c.real(), tolerance);
+      EXPECT_NEAR((imag(s)[iTheta, iPhi]), c.imag(), tolerance);
+      ExpectClose((u * 2.0)[iTheta, iPhi], a * 2.0);
+      ExpectClose((2.0 * u)[iTheta, iPhi], 2.0 * a);
+      ExpectClose((u / 2.0)[iTheta, iPhi], a / 2.0);
+      ExpectClose((Complex{0, 1} * u)[iTheta, iPhi], Complex{0, 1} * a);
+      ExpectClose((2.0 / s)[iTheta, iPhi], 2.0 / c);
+    }
+  }
+}
+
+TEST(SpinField, EvaluateIntoAgreesWithTheElementLoopOnExpressions) {
+  auto grid = TestGrid();
+  auto u = MakeField(grid, 1.5);
+  auto v = MakeField(grid, -0.75);
+
+  const auto expression = conj(u) * v + u * conj(v);
+  const auto evaluated = Materialise(expression);
+
+  auto i = Int{0};
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    for (auto iPhi : grid.LongitudeIndices()) {
+      ExpectClose(evaluated[i], expression[iTheta, iPhi]);
+      ++i;
+    }
+  }
+  EXPECT_EQ(i, grid.FieldSize());
+}
+
+TEST(SpinField, BinaryNodesRejectOperandsOnDifferentGrids) {
+  auto grid = TestGrid();
+  auto other = TestGrid();
+  ASSERT_NE(grid.Identity(), other.Identity());
+
+  auto u = MakeField(grid, 1.0);
+  auto v = MakeField(other, 1.0);
+
+  EXPECT_THROW(auto node = u + v, std::invalid_argument);
+  EXPECT_THROW(auto node = u * v, std::invalid_argument);
+  EXPECT_THROW(auto node = u - v, std::invalid_argument);
+
+  // Equal parameters are not enough; it is handle identity that decides.
+  EXPECT_EQ(u.Grid().MaxDegree(), v.Grid().MaxDegree());
+  EXPECT_EQ(u.Size(), v.Size());
+
+  try {
+    auto node = u + v;
+    FAIL() << "expected a throw";
+  } catch (const std::invalid_argument& error) {
+    EXPECT_NE(std::string(error.what()).find("different"), std::string::npos)
+        << error.what();
+  }
+}
+
+//--------------------------------------------------------------------------//
+//                          Family 2: lifetime                               //
+//--------------------------------------------------------------------------//
+//
+// These are the cases the layer being replaced got wrong: it stored operands
+// as references to a CRTP base, so a nested expression bound to auto dangled.
+// They are worth little in a plain build and everything under the sanitisers,
+// which is where the suite also runs.
+
+TEST(SpinField, NestedExpressionsBoundToAutoStayValid) {
+  auto grid = TestGrid();
+  auto u = MakeField(grid, 1.5);
+  auto v = MakeField(grid, -0.75);
+  auto w = MakeScalarField(grid, 2.0);
+
+  auto inner = u + v;
+  auto middle = inner * w;
+  auto outer = conj(middle) + conj(inner) * w;
+
+  const auto evaluated = Materialise(outer);
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    for (auto iPhi : grid.LongitudeIndices()) {
+      const auto a = u[iTheta, iPhi];
+      const auto b = v[iTheta, iPhi];
+      const auto c = w[iTheta, iPhi];
+      const auto expected = std::conj((a + b) * c) + std::conj(a + b) * c;
+      ExpectClose(evaluated[iTheta * grid.NumberOfLongitudes() + iPhi],
+                  expected);
+    }
+  }
+}
+
+TEST(SpinField, ExpressionsOwnRvalueTerminals) {
+  auto grid = TestGrid();
+  auto v = MakeField(grid, -0.75);
+
+  // The terminal on the left is a temporary. A plain IsTerminal test would
+  // store a reference to it and this would dangle.
+  auto expression = MakeField(grid, 1.5) + v;
+
+  const auto evaluated = Materialise(expression);
+  const auto reference = MakeField(grid, 1.5);
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+    ExpectClose(evaluated[i], reference.Data()[i] + v.Data()[i]);
+  }
+}
+
+TEST(SpinField, NamedExpressionsMayDieBeforeWhatIsBuiltFromThem) {
+  auto grid = TestGrid();
+  auto u = MakeField(grid, 1.5);
+  auto w = MakeScalarField(grid, 2.0);
+
+  // `inner` is destroyed at the end of the lambda; `outer` holds a copy of it,
+  // not a reference.
+  auto outer = [&] {
+    auto inner = u + u;
+    return inner * w;
+  }();
+
+  const auto evaluated = Materialise(outer);
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+    ExpectClose(evaluated[i],
+                (u.Data()[i] + u.Data()[i]) * w.Data()[i]);
+  }
+}
+
+TEST(SpinField, ExpressionsSurviveBeingReturnedAndStored) {
+  auto grid = TestGrid();
+  auto u = MakeField(grid, 1.5);
+  auto v = MakeField(grid, -0.75);
+
+  // Returned from a function: the operands are lvalue terminals held by
+  // reference, and they outlive the expression, which is the documented
+  // contract.
+  auto make = [](const auto& a, const auto& b) { return a * conj(b); };
+  auto returned = make(u, v);
+
+  // Stored in a container, which needs copy construction.
+  auto nodes = std::vector<decltype(returned)>{};
+  nodes.push_back(returned);
+  nodes.push_back(make(u, v));
+  nodes.push_back(nodes.front());
+
+  for (const auto& node : nodes) {
+    const auto evaluated = Materialise(node);
+    for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+      ExpectClose(evaluated[i], u.Data()[i] * std::conj(v.Data()[i]));
+    }
+  }
+}
+
 TEST(SpinField, CopiesDataButSharesTheGrid) {
   auto grid = TestGrid();
   auto u = SpinField<2, Grid>(grid);

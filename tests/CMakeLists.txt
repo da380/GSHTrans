@@ -55,6 +55,8 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/Wigner.h
   GSHTrans/src/SpinField/SpinWeighted.h
   GSHTrans/src/SpinField/SpinField.h
+  GSHTrans/src/SpinField/SpinFieldNodes.h
+  GSHTrans/src/SpinField/SpinFieldOverloads.h
   GSHTrans/Core
   GSHTrans/All
 )
