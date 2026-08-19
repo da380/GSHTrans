@@ -1,10 +1,9 @@
 #ifndef GSH_TRANS_CONCEPTS_GUARD_H
 #define GSH_TRANS_CONCEPTS_GUARD_H
 
-#include <complex>
 #include <concepts>
-#include <iterator>
-#include <type_traits>
+
+#include <NumericConcepts/Numeric.hpp>
 
 namespace GSHTrans {
 
@@ -50,57 +49,32 @@ template <typename T>
 concept RealOrComplexValued =
     std::same_as<T, RealValued> or std::same_as<T, ComplexValued>;
 
-// Concepts for floating point numbers
+//-------------------------------------------------------------------------//
+//                      Numeric concepts, from elsewhere                    //
+//--------------------------------------------------------------------------//
+
+// These are NumericConcepts' definitions rather than this library's. The point
+// of that dependency is that the projects built on it agree on what "real",
+// "complex" and "precision" mean, and a second, subtly different set of
+// definitions here would defeat it -- the two did in fact differ, over whether
+// a const-qualified std::complex counts as complex.
+//
+// They are re-spelled rather than imported unqualified because NumericConcepts
+// names them Real and Complex, while this library uses Real and Complex as
+// member type aliases in nearly every class. Importing those names would have
+// them shadowed at exactly the points where the concept is most likely to be
+// wanted, and the resulting errors would be obscure. Anything new should use
+// the NumericConcepts spelling directly, qualified.
 template <typename T>
-struct IsComplexFloatingPoint : public std::false_type {};
+concept RealFloatingPoint = NumericConcepts::Real<T>;
 
 template <typename T>
-struct IsComplexFloatingPoint<std::complex<T>>
-    : public std::bool_constant<std::is_floating_point_v<T>> {};
+concept ComplexFloatingPoint = NumericConcepts::Complex<T>;
 
 template <typename T>
-concept RealFloatingPoint = std::floating_point<T>;
+concept RealOrComplexFloatingPoint = NumericConcepts::RealOrComplex<T>;
 
-template <typename T>
-concept ComplexFloatingPoint =
-    IsComplexFloatingPoint<std::remove_const_t<T>>::value;
-
-template <typename T>
-concept RealOrComplexFloatingPoint =
-    RealFloatingPoint<T> or ComplexFloatingPoint<T>;
-
-template <typename T>
-struct RemoveComplexHelper {
-  using value_type = T;
-};
-
-template <typename T>
-struct RemoveComplexHelper<std::complex<T>> {
-  using value_type = T;
-};
-
-template <typename T>
-using RemoveComplex = typename RemoveComplexHelper<T>::value_type;
-
-// Concepts for ranges with real or complex floating point values.
-
-template <typename T>
-concept RealFloatingPointRange = requires() {
-  requires std::ranges::common_range<T>;
-  requires RealFloatingPoint<std::ranges::range_value_t<T>>;
-};
-
-template <typename T>
-concept ComplexFloatingPointRange = requires() {
-  requires std::ranges::common_range<T>;
-  requires ComplexFloatingPoint<std::ranges::range_value_t<T>>;
-};
-
-template <typename T>
-concept RealOrComplexFloatingPointRange = requires() {
-  requires std::ranges::common_range<T>;
-  requires RealOrComplexFloatingPoint<std::ranges::range_value_t<T>>;
-};
+using NumericConcepts::RemoveComplex;
 
 // Concept for scalar-valued function on S2.
 template <typename Function, typename Real, typename Scalar>

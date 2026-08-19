@@ -7,6 +7,10 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+add_executable(TestConcepts
+               TestConcepts.cpp)
+target_link_libraries(TestConcepts PRIVATE GSHTrans gtest_main)
+
 add_executable(TestWigner
   TestWigner.cpp)
 target_link_libraries(TestWigner PRIVATE GSHTrans gtest_main)
@@ -64,6 +68,7 @@ add_library(HeaderSelfSufficiency OBJECT ${GSHTRANS_SELF_SUFFICIENCY_SOURCES})
 target_link_libraries(HeaderSelfSufficiency PRIVATE GSHTrans)
 
 include(GoogleTest)
+gtest_discover_tests(TestConcepts)
 gtest_discover_tests(TestWigner)
 gtest_discover_tests(TestGaussLegendreGrid)
 gtest_discover_tests(TestCanonicalComponentField)

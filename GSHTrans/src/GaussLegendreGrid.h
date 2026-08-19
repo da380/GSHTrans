@@ -16,6 +16,8 @@
 #include <string>
 #include <vector>
 
+#include <NumericConcepts/Ranges.hpp>
+
 #include "Concepts.h"
 #include "GridBase.h"
 #include "Indexing.h"
@@ -123,17 +125,15 @@ class GaussLegendreGrid
   //-----------------------------------------------------//
   //          Forward transformation for ranges          //
   //-----------------------------------------------------//
-  template <std::ranges::range InRange, std::ranges::range OutRange>
+  template <NumericConcepts::RealOrComplexRange InRange,
+            NumericConcepts::ComplexWritableRange OutRange>
   requires requires() {
-    requires(std::same_as<_MRange, All> and
-             ComplexFloatingPoint<std::ranges::range_value_t<InRange>>) or
-                RealFloatingPoint<std::ranges::range_value_t<InRange>>;
-    requires std::same_as<RemoveComplex<std::ranges::range_value_t<InRange>>,
-                          Real>;
-    requires std::ranges::input_range<InRange>;
+    // A complex-valued field needs all orders in the coefficient storage; a
+    // real-valued one uses the reduced m >= 0 storage and does not.
+    requires std::same_as<_MRange, All> or NumericConcepts::RealRange<InRange>;
+    // Field and coefficients both carry this grid's precision.
+    requires std::same_as<NumericConcepts::RangePrecision<InRange>, Real>;
     requires std::same_as<std::ranges::range_value_t<OutRange>, Complex>;
-    requires std::ranges::output_range<OutRange,
-                                       std::ranges::range_value_t<OutRange>>;
   }
   void ForwardTransformation(Int lMax, Int n, InRange&& in,
                              OutRange& out) const {
@@ -225,17 +225,14 @@ class GaussLegendreGrid
   //------------------------------------------------//
   //       Inverse  transformation for ranges       //
   //------------------------------------------------//
-  template <std::ranges::range InRange, std::ranges::range OutRange>
+  template <NumericConcepts::ComplexRange InRange,
+            NumericConcepts::RealOrComplexWritableRange OutRange>
   requires requires() {
-    requires(std::same_as<_MRange, All> and
-             ComplexFloatingPoint<std::ranges::range_value_t<OutRange>>) or
-                RealFloatingPoint<std::ranges::range_value_t<OutRange>>;
-    requires std::ranges::input_range<InRange>;
+    // As above, read the other way round: the field is the output here.
+    requires std::same_as<_MRange, All> or
+                 NumericConcepts::RealWritableRange<OutRange>;
+    requires std::same_as<NumericConcepts::RangePrecision<OutRange>, Real>;
     requires std::same_as<std::ranges::range_value_t<InRange>, Complex>;
-    requires std::ranges::output_range<OutRange,
-                                       std::ranges::range_value_t<OutRange>>;
-    requires std::same_as<RemoveComplex<std::ranges::range_value_t<OutRange>>,
-                          Real>;
   }
   void InverseTransformation(Int lMax, Int n, InRange&& in,
                              OutRange& out) const {

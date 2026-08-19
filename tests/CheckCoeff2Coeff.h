@@ -10,7 +10,6 @@
 #include <memory>
 #include <numbers>
 
-#include "NumericConcepts/NumericConcepts.hpp"
 #include "TestRandom.h"
 
 using namespace GSHTrans;
@@ -23,7 +22,7 @@ using Int = std::ptrdiff_t;
 template <RealOrComplexFloatingPoint Scalar, OrderIndexRange MRange,
           IndexRange NRange>
 auto Coeff2Coeff(GSHTransTest::Generator& gen) {
-  using Real = NumericConcepts::RemoveComplex<Scalar>;
+  using Real = RemoveComplex<Scalar>;
   using Complex = std::complex<Real>;
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
 
