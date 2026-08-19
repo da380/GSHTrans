@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <fstream>
+#include <limits>
 #include <numeric>
 #include <string>
 #include <vector>
@@ -50,20 +51,31 @@ long ResidentMegabytes() {
 }
 
 // Run `action` enough times to measure it, and return seconds per call.
+//
+// Best of several windows, not the mean of one. This machine's clock scales
+// under load: repeating one measurement a few seconds apart moves it by tens
+// of percent, which is enough to invent a speedup that is not there. Comparing
+// two versions of the code therefore needs them interleaved, and any single
+// number here should be read as an upper bound rather than a value.
 template <typename Action>
-double TimePerCall(Action&& action, double target = 0.3) {
+double TimePerCall(Action&& action, double target = 0.15, int windows = 5) {
   action();  // warm up: first call plans, faults pages, fills caches
   auto repetitions = 1;
-  while (true) {
-    const auto start = Clock::now();
-    for (auto i = 0; i < repetitions; ++i) action();
-    const auto elapsed =
-        std::chrono::duration<double>(Clock::now() - start).count();
-    if (elapsed >= target || repetitions >= (1 << 20)) {
-      return elapsed / repetitions;
+  auto best = std::numeric_limits<double>::max();
+  for (auto window = 0; window < windows; ++window) {
+    while (true) {
+      const auto start = Clock::now();
+      for (auto i = 0; i < repetitions; ++i) action();
+      const auto elapsed =
+          std::chrono::duration<double>(Clock::now() - start).count();
+      if (elapsed >= target || repetitions >= (1 << 20)) {
+        best = std::min(best, elapsed / repetitions);
+        break;
+      }
+      repetitions *= 2;
     }
-    repetitions *= 2;
   }
+  return best;
 }
 
 // A STREAM-style triad, to put the transform's achieved bandwidth on a scale.

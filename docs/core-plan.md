@@ -505,6 +505,40 @@ plan rather than fall back. Batching cannot be attempted until this changes.
 *Risk:* low–medium (concurrency). *Effort:* medium. *Measure:* per-call
 overhead at small `lMax`, where it is proportionally largest.
 
+**Done (T8).** Implemented as a **per-thread** cache of workspaces — the
+aligned buffers together with the plan bound to them — rather than a shared
+plan cache with per-thread buffers. The buffers have to be per-thread whatever
+else happens, since they are scratch; keeping the plan with them means
+execution uses the plan's own buffers rather than FFTW's new-array form, which
+is the alignment obligation F3 was about, and it leaves `Impl` immutable, which
+is what makes a shared grid safe to use concurrently without a lock (step B).
+The price is planning once per thread per shape rather than once per shape,
+which after the first is a wisdom lookup. Plan *creation* is serialised on a
+process-wide mutex, because FFTW's planner is not re-entrant; execution is not
+serialised, and needs no lock since each thread has its own workspace.
+
+The `WisdomOnly` policy is gone rather than patched. Shapes are planned on
+first use with the flag the caller gave, so there is nothing for the
+constructor to anticipate and nothing to fall back from. Wisdom pre-generation
+went with it, which is why grid construction got faster.
+
+*Measured, interleaving the two versions to control for clock drift:*
+**1.22× at `lMax = 32`**, about 1.06× at `lMax = 128`, and **nothing
+measurable at `lMax = 256`** — which is what this step predicted, the overhead
+being proportionally largest where the transform is smallest. The more useful
+effect is on *variance*: repeated calls at `lMax = 32` spanned 0.020–0.049 ms
+before and 0.016–0.022 ms after. Per-call allocation and plan lookup were not
+just a cost but an erratic one.
+
+**A caveat that outlives this step.** A first, non-interleaved comparison
+appeared to show 1.33× at `lMax = 256` and similar gains everywhere. It was an
+artefact: this machine's clock scales under load, and the same measurement
+taken minutes apart moves by tens of percent. Comparing two versions requires
+running them alternately in one session. The §5 harness now reports the best of
+several windows rather than the mean of one, but that only reduces the problem.
+Within-run *ratios* — the P1 stage split, the P2 batching curve — are not
+affected, because their terms are measured moments apart in one process.
+
 ### Step F — the batched transform primitive
 
 *Gates: nothing. Enables phase 5. Implements: P2, P6, [C9].*
@@ -905,6 +939,9 @@ therefore removes documented undefined behaviour rather than an observed
 failure, which is what §1 claimed for it; the value of the test is that it
 pins the contract and will fail on a build where the classes matter.
 
+**T6 — hand over to phase 1.** *Done.* All seven steps of
+`field-algebra-plan.md` §7; see its §11 for what phase 1 has and has not.
+
 **T5 — step B, the grid handle.** *Done.* `shared_ptr<const Impl>`,
 `Identity()`, no default constructor (F4). Expected to be "mechanical but
 broad"; it turned out to be mechanical and *narrow* — no call site changed at
@@ -922,8 +959,8 @@ across grid instantiations, which is the right restriction.
 **With this, steps A–D are complete and field-algebra phase 1 is unblocked.**
 E–H remain, all gated on the §5 benchmark harness that does not yet exist.
 
-**T6 — hand over to phase 1.** `field-algebra-plan.md` §7 steps 1–7. Its step 6
-is unblocked by T1.
+**T8 — step E, the plan and buffer cache.** *Done.* See step E above for what
+it changed and what it measured.
 
 **T7 — the benchmark harness of §5.** *Done.* Then steps E–H, each gated on the
 measurement that justifies it. **The first run of the harness changed what

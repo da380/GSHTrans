@@ -7,6 +7,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <type_traits>
 #include <vector>
 
@@ -546,6 +547,94 @@ TEST(GaussLegendreGrid, IsUsableThroughAConstHandle) {
   EXPECT_EQ(std::ranges::distance(grid.ProjectFunction(
                 [](auto theta, auto phi) { return theta + phi; })),
             grid.FieldSize());
+}
+
+// Plans and work buffers are made once per thread per shape and kept
+// (core-plan.md step E). Two things that must stay true: a grid shared between
+// threads still gives every thread the right answer, and a thread that uses
+// several grids gets the right buffers for each.
+TEST(GaussLegendreGrid, OneGridServesManyThreads) {
+  using Real = double;
+  using Complex = std::complex<Real>;
+  using Grid = GaussLegendreGrid<Real, All, All>;
+  constexpr std::ptrdiff_t lMax = 8;
+  constexpr std::ptrdiff_t n = 1;
+  constexpr auto tolerance = 1.0e-12;
+
+  auto grid = Grid(lMax, n, FFTWpp::Estimate);
+  const auto indices = GSHIndices<All>(lMax, lMax, n);
+
+  auto Given = [&](int seed) {
+    auto given = FFTWpp::vector<Complex>(indices.Size());
+    for (auto j = std::size_t{0}; j < given.size(); ++j) {
+      given[j] = Complex{0.1 * seed + 0.01 * j, -0.05 * seed + 0.02 * j};
+    }
+    return given;
+  };
+
+  constexpr auto threadCount = 8;
+
+  // What each thread should produce, computed serially first.
+  auto reference = std::vector<FFTWpp::vector<Complex>>{};
+  for (auto t = 0; t < threadCount; ++t) {
+    auto given = Given(t);
+    auto field = FFTWpp::vector<Complex>(grid.FieldSize());
+    auto back = FFTWpp::vector<Complex>(indices.Size());
+    grid.InverseTransformation(lMax, n, given, field);
+    grid.ForwardTransformation(lMax, n, field, back);
+    reference.push_back(back);
+  }
+
+  auto results = std::vector<FFTWpp::vector<Complex>>(
+      threadCount, FFTWpp::vector<Complex>(indices.Size()));
+  auto threads = std::vector<std::thread>{};
+  for (auto t = 0; t < threadCount; ++t) {
+    threads.emplace_back([&, t] {
+      auto given = Given(t);
+      auto field = FFTWpp::vector<Complex>(grid.FieldSize());
+      // Several round trips, so the workspace is reused and not merely made.
+      for (auto repeat = 0; repeat < 4; ++repeat) {
+        grid.InverseTransformation(lMax, n, given, field);
+        grid.ForwardTransformation(lMax, n, field, results[t]);
+      }
+    });
+  }
+  for (auto& thread : threads) thread.join();
+
+  for (auto t = 0; t < threadCount; ++t) {
+    for (auto j = std::size_t{0}; j < reference[t].size(); ++j) {
+      EXPECT_NEAR(std::abs(results[t][j] - reference[t][j]), 0.0, tolerance)
+          << "thread " << t << ", coefficient " << j;
+    }
+  }
+}
+
+TEST(GaussLegendreGrid, OneThreadServesManyGrids) {
+  using Real = double;
+  using Complex = std::complex<Real>;
+  using Grid = GaussLegendreGrid<Real, All, All>;
+  constexpr auto tolerance = 1.0e-12;
+
+  // Different degrees mean different nPhi, hence different cached shapes.
+  for (auto repeat = 0; repeat < 3; ++repeat) {
+    for (auto lMax :
+         {std::ptrdiff_t{4}, std::ptrdiff_t{7}, std::ptrdiff_t{12}}) {
+      auto grid = Grid(lMax, 0, FFTWpp::Estimate);
+      const auto indices = GSHIndices<All>(lMax, lMax, 0);
+      auto given = FFTWpp::vector<Complex>(indices.Size());
+      for (auto j = std::size_t{0}; j < given.size(); ++j) {
+        given[j] = Complex{0.25 + 0.01 * j, -0.125 + 0.02 * j};
+      }
+      auto field = FFTWpp::vector<Complex>(grid.FieldSize());
+      auto back = FFTWpp::vector<Complex>(indices.Size());
+      grid.InverseTransformation(lMax, 0, given, field);
+      grid.ForwardTransformation(lMax, 0, field, back);
+      for (auto j = std::size_t{0}; j < given.size(); ++j) {
+        EXPECT_NEAR(std::abs(back[j] - given[j]), 0.0, tolerance)
+            << "lMax " << lMax << ", coefficient " << j;
+      }
+    }
+  }
 }
 
 // The round-trip tests draw their grid, degree, upper index and coefficients

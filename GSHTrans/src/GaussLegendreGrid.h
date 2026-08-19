@@ -11,9 +11,12 @@
 #include <memory>
 #include <numbers>
 #include <numeric>
+#include <map>
+#include <mutex>
 #include <ranges>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <NumericConcepts/Ranges.hpp>
@@ -165,20 +168,11 @@ class GaussLegendreGrid
     const auto scaleFactor = static_cast<Real>(2) * std::numbers::pi_v<Real> /
                              static_cast<Real>(nPhi);
 
-    // Make the FFT plan.
-    auto [inSize, outSize] = FFTWpp::DataSize<Scalar, Complex>(nPhi);
-    auto inWork = FFTWpp::vector<Scalar>(inSize);
-    auto outWork = FFTWpp::vector<Complex>(outSize);
-    auto inView = FFTWpp::Ranges::View(inWork);
-    auto outView = FFTWpp::Ranges::View(outWork);
-    auto planFunction = [this](auto in, auto out) {
-      if constexpr (ComplexFloatingPoint<Scalar>) {
-        return FFTWpp::Ranges::Plan(in, out, _impl->flag, FFTWpp::Forward);
-      } else {
-        return FFTWpp::Ranges::Plan(in, out, _impl->flag);
-      }
-    };
-    auto plan = planFunction(inView, outView);
+    // Buffers and plan for this shape, made once per thread and kept.
+    auto& work = GetWorkspace<Scalar, true>(nPhi, _impl->flag);
+    auto& inWork = work.in;
+    auto& outWork = work.out;
+    auto& plan = work.plan;
 
     // Loop over the colatitudes.
     for (auto iTheta : this->CoLatitudeIndices()) {
@@ -259,20 +253,11 @@ class GaussLegendreGrid
     // Precompute constants
     const auto nPhi = this->NumberOfLongitudes();
 
-    // Make the FFT plan.
-    auto [inSize, outSize] = FFTWpp::DataSize<Complex, Scalar>(nPhi);
-    auto inWork = FFTWpp::vector<Complex>(inSize);
-    auto outWork = FFTWpp::vector<Scalar>(outSize);
-    auto inView = FFTWpp::Ranges::View(inWork);
-    auto outView = FFTWpp::Ranges::View(outWork);
-    auto planFunction = [this](auto in, auto out) {
-      if constexpr (ComplexFloatingPoint<Scalar>) {
-        return FFTWpp::Ranges::Plan(in, out, _impl->flag, FFTWpp::Backward);
-      } else {
-        return FFTWpp::Ranges::Plan(in, out, _impl->flag);
-      }
-    };
-    auto plan = planFunction(inView, outView);
+    // Buffers and plan for this shape, made once per thread and kept.
+    auto& work = GetWorkspace<Scalar, false>(nPhi, _impl->flag);
+    auto& inWork = work.in;
+    auto& outWork = work.out;
+    auto& plan = work.plan;
 
     // Loop over the colatitudes.
     for (auto iTheta : this->CoLatitudeIndices()) {
@@ -316,6 +301,74 @@ class GaussLegendreGrid
   }
 
  private:
+  // FFTW's planner is not re-entrant, so plan creation everywhere in the
+  // process is serialised on this. Execution is not: FFTW does allow a plan to
+  // be executed concurrently, and in any case each thread executes on its own
+  // workspace.
+  static std::mutex& PlannerMutex() {
+    static std::mutex mutex;
+    return mutex;
+  }
+
+  // The aligned buffers a transform works in, and the FFTW plan bound to them.
+  //
+  // Held per thread rather than shared. The buffers are scratch and must be
+  // per-thread whatever else happens; binding the plan to them keeps the two
+  // together, lets execution use the plan's own buffers rather than
+  // FFTW's new-array form, and leaves Impl immutable, which is what makes a
+  // shared grid safe to use concurrently without a lock (core-plan.md step B).
+  // The cost is planning once per thread per shape instead of once per shape,
+  // which after the first is a wisdom lookup.
+  template <RealOrComplexFloatingPoint Scalar, bool IsForward>
+  struct Workspace {
+    using In = std::conditional_t<IsForward, Scalar, Complex>;
+    using Out = std::conditional_t<IsForward, Complex, Scalar>;
+
+    Workspace(Int nPhi, FFTWpp::Flag flag)
+        : in(FFTWpp::DataSize<In, Out>(nPhi).first),
+          out(FFTWpp::DataSize<In, Out>(nPhi).second),
+          plan(MakePlan(in, out, flag)) {}
+
+    static auto MakePlan(FFTWpp::vector<In>& in, FFTWpp::vector<Out>& out,
+                         FFTWpp::Flag flag) {
+      auto inView = FFTWpp::Ranges::View(in);
+      auto outView = FFTWpp::Ranges::View(out);
+      auto lock = std::scoped_lock(PlannerMutex());
+      if constexpr (std::same_as<In, Out>) {
+        return FFTWpp::Ranges::Plan(
+            inView, outView, flag,
+            IsForward ? FFTWpp::Forward : FFTWpp::Backward);
+      } else {
+        return FFTWpp::Ranges::Plan(inView, outView, flag);
+      }
+    }
+
+    FFTWpp::vector<In> in;
+    FFTWpp::vector<Out> out;
+    decltype(MakePlan(std::declval<FFTWpp::vector<In>&>(),
+                      std::declval<FFTWpp::vector<Out>&>(),
+                      std::declval<FFTWpp::Flag>())) plan;
+  };
+
+  // Plans and buffers used to be created on every call -- two allocations and
+  // a plan per transform, with FFTW's non-re-entrant planner run each time
+  // (P7). They are now made once per thread per shape and kept. Held by
+  // pointer so that the plan's reference to its buffers survives any
+  // rehashing of the cache.
+  template <RealOrComplexFloatingPoint Scalar, bool IsForward>
+  static Workspace<Scalar, IsForward>& GetWorkspace(Int nPhi,
+                                                    FFTWpp::Flag flag) {
+    using Entry = Workspace<Scalar, IsForward>;
+    thread_local auto cache =
+        std::map<std::pair<Int, unsigned>, std::unique_ptr<Entry>>{};
+    const auto key = std::pair{nPhi, static_cast<unsigned>(flag)};
+    auto found = cache.find(key);
+    if (found == cache.end()) {
+      found = cache.emplace(key, std::make_unique<Entry>(nPhi, flag)).first;
+    }
+    return *found->second;
+  }
+
   // Move one colatitude row between the caller's field and the plan's own
   // buffer.
   //
@@ -442,24 +495,12 @@ class GaussLegendreGrid
       wigner = Wigner<Real, _MRange, _NRange, Multiple, ColumnMajor>(
           lMax, lMax, nMax, quad.Points());
 
-      if (lMax > 0 && flag != FFTWpp::Estimate) {
-        // Generate wisdom for FFTs.
-        const auto nPhi = FastFFTSize(2 * lMax + 1);
-        auto in = FFTWpp::Ranges::Layout(nPhi);
-        {
-          // Real to complex case.
-          auto out = FFTWpp::Ranges::Layout(nPhi / 2 + 1);
-          FFTWpp::GenerateWisdom<Real, Complex>(in, out, flag);
-        }
-        {
-          // Complex to complex case.
-          auto out = FFTWpp::Ranges::Layout(nPhi);
-          FFTWpp::GenerateWisdom<Complex, Complex>(in, out, flag);
-        }
-        flag = FFTWpp::WisdomOnly;
-      } else {
-        flag = FFTWpp::Estimate;
-      }
+      // The planner flag is kept as the caller gave it. It used to be used to
+      // pre-generate wisdom for exactly two shapes and then replaced by
+      // WisdomOnly, which meant that any shape the constructor had not
+      // anticipated -- every batched shape, in particular -- would fail to
+      // plan rather than fall back (core-plan.md P7). Shapes are now planned
+      // on first use and cached, so there is nothing to anticipate.
     }
 
     Int lMax;
