@@ -35,60 +35,26 @@ class GaussLegendreGrid
   using MRange = _MRange;
   using NRange = _NRange;
 
-  // Constructors.
-  GaussLegendreGrid() = default;
+  // A grid is a value-semantic handle over an immutable, shared
+  // implementation: constructing one builds the quadrature and the Wigner
+  // table, and copying one copies a pointer.
+  //
+  // That is not a convenience. The Wigner table at lMax = 256, nMax = 2 with
+  // all upper indices is about 679 MB, against 2.1 MB for a complex field on
+  // the same grid, and the members used to be held by value with defaulted
+  // copy: copying a grid by accident was not a performance wart but an
+  // out-of-memory event (core-plan.md F9). Putting the indirection inside the
+  // grid rather than leaving each consumer to wrap it in a shared_ptr also
+  // makes the question unaskable, and gives step E's plan cache somewhere to
+  // live that is shared by construction rather than by convention.
+  //
+  // There is no default constructor: a grid without a quadrature is not a
+  // grid, and reading MaxDegree() on a default-constructed one was undefined
+  // (F4).
+  GaussLegendreGrid() = delete;
 
   GaussLegendreGrid(Int lMax, Int nMax, FFTWpp::Flag flag = FFTWpp::Measure)
-      : _lMax{lMax}, _nMax{nMax}, _flag{flag} {
-    // Check the inputs.
-    assert(MaxDegree() >= 0);
-    assert(MaxUpperIndex() <= MaxDegree());
-    assert(std::abs(this->MinUpperIndex()) <= MaxDegree());
-    assert(_flag != FFTWpp::WisdomOnly);
-
-    // An MRange = NonNegative grid stores only m >= 0, so it cannot serve a
-    // complex-valued transform at all, and its real-valued transforms exist
-    // only at upper index zero. Such a grid with nMax != 0 could serve no
-    // transform whatever, so it is a configuration error rather than a
-    // wasteful but usable choice. See core-plan.md step A and [C1]: this is
-    // the "real scalar grid" reading of MRange.
-    if constexpr (std::same_as<_MRange, NonNegative>) {
-      if (_nMax != 0) {
-        throw std::invalid_argument(
-            "A grid storing only non-negative orders serves real-valued "
-            "transforms at upper index zero, so its maximum upper index must "
-            "be zero");
-      }
-    }
-
-    // Get the quadrature points.
-    _quad = GaussQuad::LegendrePolynomial<Real>{}.GaussQuadrature(_lMax + 1);
-    _quad.Transform([](auto x) { return std::acos(-x); },
-                    [](auto x) -> Real { return 1; });
-
-    //  Get the Winger values.
-    _wigner = Wigner<Real, _MRange, _NRange, Multiple, ColumnMajor>(
-        _lMax, _lMax, _nMax, _quad.Points());
-
-    if (_lMax > 0 && _flag != FFTWpp::Estimate) {
-      // Generate wisdom for FFTs.
-      auto nPhi = this->NumberOfLongitudes();
-      auto in = FFTWpp::Ranges::Layout(nPhi);
-      {
-        // Real to complex case.
-        auto out = FFTWpp::Ranges::Layout(nPhi / 2 + 1);
-        FFTWpp::GenerateWisdom<Real, Complex>(in, out, flag);
-      }
-      {
-        // Complex to complex case.
-        auto out = FFTWpp::Ranges::Layout(nPhi);
-        FFTWpp::GenerateWisdom<Complex, Complex>(in, out, flag);
-      }
-      _flag = FFTWpp::WisdomOnly;
-    } else {
-      _flag = FFTWpp::Estimate;
-    }
-  }
+      : _impl{std::make_shared<const Impl>(lMax, nMax, flag)} {}
 
   // A grid for working with fields of maximum degree lBand, with quadrature
   // headroom for degree oversampling * lBand.
@@ -123,15 +89,23 @@ class GaussLegendreGrid
 
   GaussLegendreGrid& operator=(GaussLegendreGrid&&) = default;
 
+  // Two grids are the same grid when they share an implementation. This is
+  // the test the field layer's binary nodes make at construction. Structural
+  // comparison is deliberately not offered: two separately built grids with
+  // equal parameters hold different quadrature objects and different wisdom,
+  // and treating them as interchangeable would make a node's operands
+  // silently disagree about the buffers they index.
+  auto Identity() const { return _impl.get(); }
+
   //------------------------------------------------//
   //    Methods needed to inherit from GridBase     //
   //------------------------------------------------//
-  auto MaxDegree() const { return _lMax; }
-  auto MaxUpperIndex() const { return _nMax; }
+  auto MaxDegree() const { return _impl->lMax; }
+  auto MaxUpperIndex() const { return _impl->nMax; }
 
-  auto CoLatitudes() const { return std::ranges::views::all(_quad.Points()); }
+  auto CoLatitudes() const { return std::ranges::views::all(_impl->quad.Points()); }
   auto CoLatitudeWeights() const {
-    return std::ranges::views::all(_quad.Weights());
+    return std::ranges::views::all(_impl->quad.Weights());
   }
 
   auto Longitudes() const {
@@ -180,7 +154,7 @@ class GaussLegendreGrid
     std::ranges::fill(out, Complex{});
 
     // A one-point grid needs no FFT.
-    if (_lMax == 0) {
+    if (_impl->lMax == 0) {
       out[0] =
           in[0] * static_cast<Real>(2) / std::numbers::inv_sqrtpi_v<Real>;
       return;
@@ -199,9 +173,9 @@ class GaussLegendreGrid
     auto outView = FFTWpp::Ranges::View(outWork);
     auto planFunction = [this](auto in, auto out) {
       if constexpr (ComplexFloatingPoint<Scalar>) {
-        return FFTWpp::Ranges::Plan(in, out, _flag, FFTWpp::Forward);
+        return FFTWpp::Ranges::Plan(in, out, _impl->flag, FFTWpp::Forward);
       } else {
-        return FFTWpp::Ranges::Plan(in, out, _flag);
+        return FFTWpp::Ranges::Plan(in, out, _impl->flag);
       }
     };
     auto plan = planFunction(inView, outView);
@@ -213,8 +187,8 @@ class GaussLegendreGrid
       plan.Execute();
 
       // Get the Wigner values and quadrature weight.
-      auto d = _wigner[n, iTheta];
-      auto w = _quad.W(iTheta) * scaleFactor;
+      auto d = _impl->wigner[n, iTheta];
+      auto w = _impl->quad.W(iTheta) * scaleFactor;
 
       // Loop over the spherical harmonic coefficients
       auto outIter = out.begin();
@@ -274,7 +248,7 @@ class GaussLegendreGrid
     CheckSize(std::ranges::size(out), this->FieldSize(), "field");
 
     // A one-point grid needs no FFT.
-    if (_lMax == 0) {
+    if (_impl->lMax == 0) {
       if constexpr (RealFloatingPoint<Scalar>) {
         out[0] = std::real(in[0]) * std::numbers::inv_sqrtpi_v<Real> /
                  static_cast<Real>(2);
@@ -296,9 +270,9 @@ class GaussLegendreGrid
     auto outView = FFTWpp::Ranges::View(outWork);
     auto planFunction = [this](auto in, auto out) {
       if constexpr (ComplexFloatingPoint<Scalar>) {
-        return FFTWpp::Ranges::Plan(in, out, _flag, FFTWpp::Backward);
+        return FFTWpp::Ranges::Plan(in, out, _impl->flag, FFTWpp::Backward);
       } else {
-        return FFTWpp::Ranges::Plan(in, out, _flag);
+        return FFTWpp::Ranges::Plan(in, out, _impl->flag);
       }
     };
     auto plan = planFunction(inView, outView);
@@ -308,7 +282,7 @@ class GaussLegendreGrid
       std::ranges::for_each(inWork, [](auto& x) { return x = 0; });
 
       // Get the Wigner values.
-      auto d = _wigner[n, iTheta];
+      auto d = _impl->wigner[n, iTheta];
 
       // Loop over the coefficients.
       auto inIter = in.begin();
@@ -406,7 +380,7 @@ class GaussLegendreGrid
   // zero the (lMax, lMax) coefficient rather than compute it (core-plan.md
   // F2). The smallest fast FFT length at or above the bound is used, so that
   // the fix does not land on a length with a large prime factor.
-  auto NPhi() const { return FastFFTSize(2 * _lMax + 1); }
+  auto NPhi() const { return FastFFTSize(2 * _impl->lMax + 1); }
 
   template <RealOrComplexFloatingPoint Scalar>
   void ValidateTransformRequest(Int lMax, Int n) const {
@@ -437,15 +411,68 @@ class GaussLegendreGrid
     }
   }
 
-  Int _lMax;
-  Int _nMax;
-  FFTWpp::Flag _flag;
+  // Everything a grid owns, built once and never mutated afterwards. Shared
+  // by every copy of the handle, which is what makes copying cheap and what
+  // makes concurrent use safe: an immutable object behind a shared_ptr needs
+  // no synchronisation. Step E's plan cache belongs here, and will be the one
+  // mutable member, with its own lock.
+  struct Impl {
+    Impl(Int lMaxIn, Int nMaxIn, FFTWpp::Flag flagIn)
+        : lMax{lMaxIn}, nMax{nMaxIn}, flag{flagIn} {
+      assert(lMax >= 0);
+      assert(std::abs(nMax) <= lMax);
+      assert(flag != FFTWpp::WisdomOnly);
 
-  GaussQuad::Quadrature1D<Real> _quad;
-  Wigner<Real, _MRange, _NRange, Multiple, ColumnMajor> _wigner;
+      // An MRange = NonNegative grid stores only m >= 0, so it cannot serve a
+      // complex-valued transform at all, and its real-valued transforms exist
+      // only at upper index zero. Such a grid with nMax != 0 could serve no
+      // transform whatever, so it is a configuration error rather than a
+      // wasteful but usable choice. See core-plan.md step A and [C1]: this is
+      // the "real scalar grid" reading of MRange.
+      if constexpr (std::same_as<_MRange, NonNegative>) {
+        if (nMax != 0) {
+          throw std::invalid_argument(
+              "A grid storing only non-negative orders serves real-valued "
+              "transforms at upper index zero, so its maximum upper index "
+              "must be zero");
+        }
+      }
 
-  // std::shared_ptr<QuadType> _quadPointer;
-  // std::shared_ptr<WignerType> _wignerPointer;
+      quad = GaussQuad::LegendrePolynomial<Real>{}.GaussQuadrature(lMax + 1);
+      quad.Transform([](auto x) { return std::acos(-x); },
+                     [](auto x) -> Real { return 1; });
+
+      wigner = Wigner<Real, _MRange, _NRange, Multiple, ColumnMajor>(
+          lMax, lMax, nMax, quad.Points());
+
+      if (lMax > 0 && flag != FFTWpp::Estimate) {
+        // Generate wisdom for FFTs.
+        const auto nPhi = FastFFTSize(2 * lMax + 1);
+        auto in = FFTWpp::Ranges::Layout(nPhi);
+        {
+          // Real to complex case.
+          auto out = FFTWpp::Ranges::Layout(nPhi / 2 + 1);
+          FFTWpp::GenerateWisdom<Real, Complex>(in, out, flag);
+        }
+        {
+          // Complex to complex case.
+          auto out = FFTWpp::Ranges::Layout(nPhi);
+          FFTWpp::GenerateWisdom<Complex, Complex>(in, out, flag);
+        }
+        flag = FFTWpp::WisdomOnly;
+      } else {
+        flag = FFTWpp::Estimate;
+      }
+    }
+
+    Int lMax;
+    Int nMax;
+    FFTWpp::Flag flag;
+    GaussQuad::Quadrature1D<Real> quad;
+    Wigner<Real, _MRange, _NRange, Multiple, ColumnMajor> wigner;
+  };
+
+  std::shared_ptr<const Impl> _impl;
 };
 
 }  // namespace GSHTrans

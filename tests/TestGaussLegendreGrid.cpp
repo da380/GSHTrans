@@ -2,10 +2,12 @@
 
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <numbers>
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "CheckCoeff2Coeff.h"
@@ -464,6 +466,86 @@ TEST(GaussLegendreGrid, AcceptsUnalignedCallerStorage) {
     }
     EXPECT_EQ(fieldStorage.back(), Real{});
   }
+}
+
+// The grid is a value-semantic handle over shared immutable state
+// (core-plan.md step B). Copying one must not copy the Wigner table, which at
+// production sizes is hundreds of megabytes against a couple for a field.
+TEST(GaussLegendreGrid, IsAValueSemanticHandle) {
+  using Grid = GaussLegendreGrid<double, All, All>;
+
+  static_assert(!std::is_default_constructible_v<Grid>,
+                "a grid without a quadrature is not a grid (F4)");
+  static_assert(std::copy_constructible<Grid>);
+  static_assert(std::is_copy_assignable_v<Grid>);
+  static_assert(std::is_nothrow_move_constructible_v<Grid>);
+  static_assert(sizeof(Grid) == sizeof(std::shared_ptr<void>),
+                "a grid should be the size of its handle and nothing more");
+
+  auto grid = Grid(8, 2, FFTWpp::Estimate);
+  auto copy = grid;
+  auto assigned = Grid(4, 0, FFTWpp::Estimate);
+  assigned = grid;
+
+  EXPECT_EQ(grid.Identity(), copy.Identity());
+  EXPECT_EQ(grid.Identity(), assigned.Identity());
+
+  // Equal parameters are not the same grid: identity is the handle, not the
+  // configuration.
+  auto other = Grid(8, 2, FFTWpp::Estimate);
+  EXPECT_NE(grid.Identity(), other.Identity());
+  EXPECT_EQ(grid.MaxDegree(), other.MaxDegree());
+  EXPECT_EQ(grid.FieldSize(), other.FieldSize());
+}
+
+// A copy keeps the implementation alive after the grid it was copied from has
+// gone. Without shared ownership this is a use-after-free, and it is exactly
+// what the field layer does when a terminal holds a grid by value.
+TEST(GaussLegendreGrid, CopiesOutliveTheGridTheyCameFrom) {
+  using Real = double;
+  using Complex = std::complex<Real>;
+  using Grid = GaussLegendreGrid<Real, All, All>;
+  constexpr std::ptrdiff_t lMax = 6;
+  constexpr auto tolerance = 1.0e-12;
+
+  auto escaped = [] {
+    auto local = Grid(lMax, 1, FFTWpp::Estimate);
+    auto copy = local;
+    return copy;
+  }();
+
+  auto given = FFTWpp::vector<Complex>(escaped.CoefficientSize(lMax, 1));
+  auto field = FFTWpp::vector<Complex>(escaped.FieldSize());
+  auto back = FFTWpp::vector<Complex>(given.size());
+  std::ranges::fill(given, Complex{});
+  const auto indices = GSHIndices<All>(lMax, lMax, 1);
+  given[indices.Index(4, -3)] = Complex{0.5, -0.25};
+
+  escaped.InverseTransformation(lMax, 1, given, field);
+  escaped.ForwardTransformation(lMax, 1, field, back);
+  for (auto j = std::size_t{0}; j < given.size(); ++j) {
+    EXPECT_NEAR(std::abs(back[j] - given[j]), 0.0, tolerance) << "j = " << j;
+  }
+}
+
+// Everything a transform needs is const, so a shared grid can be used through
+// a const handle from several places at once.
+TEST(GaussLegendreGrid, IsUsableThroughAConstHandle) {
+  using Real = double;
+  using Complex = std::complex<Real>;
+  using Grid = GaussLegendreGrid<Real, All, All>;
+  constexpr std::ptrdiff_t lMax = 4;
+
+  const auto grid = Grid(lMax, 1, FFTWpp::Estimate);
+  auto field = FFTWpp::vector<Complex>(grid.FieldSize());
+  auto coefficients = FFTWpp::vector<Complex>(grid.CoefficientSize(lMax, 0));
+
+  EXPECT_NO_THROW(grid.ForwardTransformation(lMax, 0, field, coefficients));
+  EXPECT_NO_THROW(grid.InverseTransformation(lMax, 0, coefficients, field));
+  EXPECT_EQ(std::ranges::distance(grid.Points()), grid.FieldSize());
+  EXPECT_EQ(std::ranges::distance(grid.ProjectFunction(
+                [](auto theta, auto phi) { return theta + phi; })),
+            grid.FieldSize());
 }
 
 // The round-trip tests draw their grid, degree, upper index and coefficients

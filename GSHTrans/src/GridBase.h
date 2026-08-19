@@ -65,8 +65,10 @@ class GridBase {
                [](auto pair) { return std::get<0>(pair) * std::get<1>(pair); });
   }
 
+  // Const: a value-semantic grid should be as usable through a const handle
+  // as through a mutable one, and this reads nothing but the point set.
   template <typename Function>
-  auto ProjectFunction(Function f) {
+  auto ProjectFunction(Function f) const {
     return Points() | std::ranges::views::transform([f](auto pair) {
              auto [theta, phi] = pair;
              return f(theta, phi);

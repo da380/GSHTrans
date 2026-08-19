@@ -126,7 +126,8 @@ expression takes anyway. This is Q4's answer, and it is what makes the field
 plan's §3.2 slice contract honest.
 
 **F4 — `GaussLegendreGrid() = default` leaves `_lMax`, `_nMax`, `_flag`
-uninitialised.** *Severity: low, easy.* Reading `MaxDegree()` on a
+uninitialised.** *Severity: low, easy. Resolved in T5:* the default
+constructor is deleted, and nothing needed it. Reading `MaxDegree()` on a
 default-constructed grid is undefined. Once the grid is a handle (step B) the
 default constructor should simply not exist.
 
@@ -167,13 +168,19 @@ inside.
 
 ### Interface and hygiene
 
-**F9 — grid copies copy the whole Wigner table.** `_quad` and `_wigner` are
+**F9 — grid copies copy the whole Wigner table.** *Resolved in T5.* `_quad` and `_wigner` are
 held by value with defaulted copy (`GaussLegendreGrid.h:343–344`). At
 `lMax = 256, nMax = 2, NRange = All` the table is
 `5 × 257 × ((257)² − n²) ≈ 8.5 × 10⁷` doubles ≈ **679 MB**. A single complex
 field on the same grid is 2.1 MB. Copying a grid by accident is not a
 performance wart, it is an out-of-memory event. This is the concrete argument
 behind Q3.
+
+*Measured, before and after.* At `lMax = 128, nMax = 2, NRange = All` one grid
+costs 82 MB resident. Twenty copies of it cost **1638 MB more** with the old
+value members and **nothing at all** with the handle; `sizeof(Grid)` goes from
+152 bytes to 16. At `lMax = 256` the same twenty copies would have been about
+14 GB.
 
 **F10 — `GridBase` compiles only through a transitive include.** It uses
 `std::normal_distribution`, `std::random_device`, `std::mt19937_64`,
@@ -782,9 +789,22 @@ therefore removes documented undefined behaviour rather than an observed
 failure, which is what §1 claimed for it; the value of the test is that it
 pins the contract and will fail on a build where the classes matter.
 
-**T5 — step B, the grid handle.** `shared_ptr<const Impl>`, `Identity()`, no
-default constructor (F4). Mechanical but broad; last of the four so that it
-rebases over settled code.
+**T5 — step B, the grid handle.** *Done.* `shared_ptr<const Impl>`,
+`Identity()`, no default constructor (F4). Expected to be "mechanical but
+broad"; it turned out to be mechanical and *narrow* — no call site changed at
+all. Every existing consumer either constructs a grid locally or holds
+`_Grid&`, so widening what a copy costs touched nobody. The one adjustment
+outside the grid was making `GridBase::ProjectFunction` `const`, without which
+a value-semantic grid could not be used through a `const` handle.
+
+`Impl` is immutable after construction and shared behind a `shared_ptr`, so
+concurrent use needs no synchronisation; step E's plan cache will be the first
+mutable member and will bring its own lock. `Identity()` returns
+`const Impl*`, with `Impl` private — usable through `auto`, and not comparable
+across grid instantiations, which is the right restriction.
+
+**With this, steps A–D are complete and field-algebra phase 1 is unblocked.**
+E–H remain, all gated on the §5 benchmark harness that does not yet exist.
 
 **T6 — hand over to phase 1.** `field-algebra-plan.md` §7 steps 1–7. Its step 6
 is unblocked by T1.
