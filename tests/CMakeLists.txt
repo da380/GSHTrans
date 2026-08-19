@@ -24,10 +24,6 @@ add_executable(TestGaussLegendreGrid
                TestGaussLegendreGrid.cpp)
 target_link_libraries(TestGaussLegendreGrid PRIVATE GSHTrans gtest_main)
 
-add_executable(TestCanonicalComponentField
-               TestCanonicalComponentField.cpp)
-target_link_libraries(TestCanonicalComponentField PRIVATE GSHTrans gtest_main)
-
 add_executable(TestCanonicalComponentExpansion
                TestCanonicalComponentExpansion.cpp)
 target_link_libraries(TestCanonicalComponentExpansion PRIVATE GSHTrans gtest_main)
@@ -81,6 +77,5 @@ gtest_discover_tests(TestConcepts)
 gtest_discover_tests(TestSpinField)
 gtest_discover_tests(TestWigner)
 gtest_discover_tests(TestGaussLegendreGrid)
-gtest_discover_tests(TestCanonicalComponentField)
 gtest_discover_tests(TestCanonicalComponentExpansion)
 gtest_discover_tests(TestRealFieldSymmetry)

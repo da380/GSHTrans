@@ -33,8 +33,15 @@ model, and one grid size.
 
 Superseded: `CanonicalComponentField*`, `CanonicalComponentExpansion*`, and the
 dormant `ScalarField/`, `VectorField/`, `MatrixField/`, `MatrixFieldOld/`,
-`ScalarFieldExpansion/` trees. (Verified: `GSHTrans/Field` currently includes
-only the `CanonicalComponentField` tree; the rest are commented out.)
+`ScalarFieldExpansion/` trees.
+
+*Status after phase-1 step 7.* All of those are **deleted** except
+`CanonicalComponentExpansion*`, which is the spectral side and is replaced at
+phase 5 rather than phase 1; deleting it now would remove working, tested code
+with nothing to put in its place. `FieldBase.h` and `ExpansionBase.h` went with
+them, having no remaining users — which settles the `CheckPointIndices`
+question step 7 raises below: the buggy comparison was deleted rather than
+fixed.
 
 | phase | content |
 |---|---|
@@ -624,6 +631,10 @@ Each step compiles and passes its tests before the next begins. Steps A–D of
 `core-plan.md` precede step 1 here; step E onwards is sequenced against phase 5
 and gates nothing below.
 
+**All seven steps are complete.** Phase 1 is implemented, and the four test
+families are in `tests/TestSpinField.cpp`, run in Debug, in Release, and under
+ASan and UBSan. What phase 1 does *not* yet have is recorded in §11.
+
 1. Concepts, `IsTerminal`, `OperandStorage`, index-rule tags, value traits.
    Pure headers plus compile-time tests (family 1 skeleton).
 2. `SpinField` terminal: storage, shared grid handle, construction checks,
@@ -643,6 +654,19 @@ and gates nothing below.
    `CheckPointIndices` uses `<=` where it needs `<` (`FieldBase.h:29–32`), but
    it is used only by superseded and dormant code, so it is a delete-or-fix
    at this step rather than a phase-1 task.
+
+   *Done.* Deleted outright, along with the five dormant trees, `FieldBase.h`
+   and `ExpansionBase.h`; nothing needed quarantining, because nothing outside
+   those trees included them. `FieldBase` was deleted rather than fixed.
+   `CanonicalComponentExpansion*` stays until phase 5 (see §1), and needed one
+   `#include "../Traits.h"` that it had been getting transitively through
+   `ExpansionBase.h` — the same class of defect as core F10.
+
+   `examples/FieldExample.cpp` was rewritten against `SpinField` rather than
+   deleted, so the public API is exercised from outside the test tree. Writing
+   it turned up the index algebra doing its job: `scaled += conj(scaled) * (u *
+   conj(u))` does not compile, because the right-hand side lands at `-N` rather
+   than `N`.
 
 ---
 
@@ -969,3 +993,45 @@ layout and symmetry reduction, a runtime `NRange` set, stored-value precision,
 and the fate of `RowMajor`. None of it reaches this document — the phase-1
 interface of §3.2 was chosen so that it can all land underneath without being
 revisited.
+
+---
+
+## 11. What phase 1 has, and what it does not
+
+Recorded at the end of phase 1 so that phase 2 starts from facts rather than
+from this document's intentions.
+
+**Implemented and tested.** The `SpinWeighted` concept with the reality
+constraint; `SpinField` and `SpinFieldView` as terminals; `Binary` and `Unary`
+with the six index rules; the §3.5 operator set; `Map`; construction,
+assignment and compound assignment from expressions; `Materialise`;
+`Integrate`. Four test families in `tests/TestSpinField.cpp`, run in Debug, in
+Release, and under ASan and UBSan.
+
+**Deliberately absent, per the plan.** `InnerProduct` and `Norm` (§3.9);
+`pow`, `exp`, `log` as named nodes, which are all `Map` (§3.5); a range
+interface on the concept, which stays a possible free adaptor `Values(node)`
+(§5); transforms consuming expressions directly, which is phase 5's use of
+`EvaluateInto`.
+
+**Absent and worth knowing.**
+
+- *No CRTP convenience base.* §3.2 permitted one for `Size()`, `Integrate`
+  forwarding and point iteration. None was written: the only shared code was
+  the default evaluation loop, which is a free function
+  (`EvaluateNodeInto`) that each node calls. Adding a base later is possible;
+  nothing depends on its absence.
+- *The thread-safety contract is documented but not tested.* §3.2 guarantees
+  that concurrent evaluation of one node into disjoint targets is safe, and
+  the code has no mutable state to violate it, but no test exercises it. The
+  layered layer is the first thing that will rely on it, and that is where a
+  test belongs.
+- *`operator[]` does not bounds-check in release builds.* Point indices are
+  `assert`-only, deliberately: §3.10 lists grid, size and upper-index checks as
+  throwing in all build modes and everything else as unchecked.
+- *`f + s` and `f - s` do not exist*, so `u += 2.0` does not compile. See the
+  note in §3.8; it is a decision for the author, not an oversight.
+
+**Constraint on phase 2, restated.** `core-plan.md` step F must land first:
+phase 2's `Layout` policy was designed around the batched, strided transform
+when [C9] dropped the `PointMajor` repack requirement.

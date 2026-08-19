@@ -8,6 +8,7 @@
 #include "../Concepts.h"
 #include "../GridBase.h"
 #include "../Indexing.h"
+#include "../Traits.h"
 
 namespace GSHTrans {
 
