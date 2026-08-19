@@ -987,6 +987,115 @@ TEST(SpinField, LazyAndMaterialisedAgreeAtEveryUpperIndex) {
   CheckLazyAgreesWithMaterialised<2>();
 }
 
+//--------------------------------------------------------------------------//
+//                        Family 3: callable nodes                           //
+//--------------------------------------------------------------------------//
+
+namespace {
+
+template <typename A, typename F>
+concept Mappable = requires(A a, F f) { Map(a, f); };
+
+// Map exists only at upper index zero, like real and imag.
+static_assert(Mappable<F0&, double (*)(Complex)>);
+static_assert(!Mappable<F2&, double (*)(Complex)>);
+static_assert(!Mappable<SpinField<-1, Grid>&, double (*)(Complex)>);
+
+// A callable that cannot be applied to the field's scalar is not a Map.
+static_assert(!Mappable<F0&, int (*)(const char*)>);
+
+// Counts its own copies, so that a test can prove the node owns one rather
+// than referring to the caller's.
+struct CountingCallable {
+  int* copies;
+  CountingCallable(int* c) : copies{c} {}
+  CountingCallable(const CountingCallable& other) : copies{other.copies} {
+    ++*copies;
+  }
+  CountingCallable(CountingCallable&&) = default;
+  Complex operator()(Complex z) const { return z * z; }
+};
+
+}  // namespace
+
+TEST(SpinField, MapAppliesACallablePointwise) {
+  auto grid = TestGrid();
+  auto u = MakeScalarField(grid, 1.25);
+
+  auto squared = Map(u, [](Complex z) { return z * z; });
+  static_assert(std::same_as<decltype(squared)::Value, ComplexValued>);
+  static_assert(decltype(squared)::UpperIndex == 0);
+
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    for (auto iPhi : grid.LongitudeIndices()) {
+      const auto z = u[iTheta, iPhi];
+      ExpectClose(squared[iTheta, iPhi], z * z);
+    }
+  }
+}
+
+TEST(SpinField, MapTakesItsValueKindFromTheCallablesReturnType) {
+  auto grid = TestGrid();
+  auto complexField = MakeScalarField(grid, 1.25);
+  auto realField = SpinField<0, Grid, RealValued>(
+      grid, [](auto theta, auto phi) { return 1.5 + theta * phi; });
+
+  // Complex in, real out: the node is real-valued.
+  auto modulus = Map(complexField, [](Complex z) { return std::abs(z); });
+  static_assert(std::same_as<decltype(modulus)::Value, RealValued>);
+  static_assert(std::same_as<decltype(modulus)::Scalar, double>);
+
+  // Real in, real out: still real-valued.
+  auto exponential = Map(realField, [](double x) { return std::exp(x); });
+  static_assert(std::same_as<decltype(exponential)::Value, RealValued>);
+
+  // Real in, complex out: promoted.
+  auto rotated =
+      Map(realField, [](double x) { return Complex{std::cos(x), std::sin(x)}; });
+  static_assert(std::same_as<decltype(rotated)::Value, ComplexValued>);
+
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    for (auto iPhi : grid.LongitudeIndices()) {
+      EXPECT_NEAR((modulus[iTheta, iPhi]),
+                  std::abs(complexField[iTheta, iPhi]), tolerance);
+      EXPECT_NEAR((exponential[iTheta, iPhi]),
+                  std::exp(realField[iTheta, iPhi]), tolerance);
+    }
+  }
+}
+
+// The ownership regression: an expression must own its callable, so that the
+// caller's lambda may go out of scope first.
+TEST(SpinField, MapOwnsACopyOfAnLvalueCallable) {
+  auto grid = TestGrid();
+  auto u = MakeScalarField(grid, 1.25);
+
+  auto copies = 0;
+  {
+    auto callable = CountingCallable(&copies);
+    auto node = Map(u, callable);   // lvalue: must be copied in
+    EXPECT_GE(copies, 1);
+    for (auto iTheta : grid.CoLatitudeIndices()) {
+      for (auto iPhi : grid.LongitudeIndices()) {
+        const auto z = u[iTheta, iPhi];
+        ExpectClose(node[iTheta, iPhi], z * z);
+      }
+    }
+  }
+
+  // And the node keeps working after the caller's callable has gone.
+  auto escaped = [&] {
+    auto callable = CountingCallable(&copies);
+    return Map(u, callable);
+  }();
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    for (auto iPhi : grid.LongitudeIndices()) {
+      const auto z = u[iTheta, iPhi];
+      ExpectClose(escaped[iTheta, iPhi], z * z);
+    }
+  }
+}
+
 TEST(SpinField, CopiesDataButSharesTheGrid) {
   auto grid = TestGrid();
   auto u = SpinField<2, Grid>(grid);

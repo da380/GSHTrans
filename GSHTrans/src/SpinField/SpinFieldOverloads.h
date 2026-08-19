@@ -5,6 +5,7 @@
 #include <complex>
 #include <concepts>
 #include <cstddef>
+#include <functional>
 #include <type_traits>
 #include <utility>
 
@@ -273,6 +274,39 @@ requires ScalarFor_<S, A> and (Node<A>::UpperIndex == 0)
 auto operator/(S s, A&& a) {
   return Unary<SpinFieldOps::ScalarOver<S>, IndexRules::Same, A>(
       std::forward<A>(a), SpinFieldOps::ScalarOver<S>{s});
+}
+
+//--------------------------------------------------------------------------//
+//                              Callable nodes                               //
+//--------------------------------------------------------------------------//
+
+// Apply an arbitrary callable pointwise. This is where pow, exp, log and
+// anything else of that kind live: they are all Map at upper index zero, and
+// naming each of them would be sugar over one node.
+//
+// Called Map rather than Transform, which would collide with
+// ForwardTransformation and InverseTransformation and with "spherical harmonic
+// transform" throughout this codebase's vocabulary.
+//
+// Restricted to upper index zero, like real and imag: a function applied to a
+// component's value is a statement about that value, and only at N = 0 is the
+// value frame-independent enough for the statement to mean anything.
+//
+// The callable is decayed and stored by value, so the node owns it and an
+// expression outlives the caller's lambda. Its result determines the node's
+// scalar and hence its value kind -- a trait on the return type rather than a
+// guess.
+//
+// Invoked as f(value). Point-dependent callables, f(theta, phi, value), are
+// deliberately not offered here; if wanted they are a second overload rather
+// than a change to this one.
+template <SpinFieldExpr A, typename F>
+requires(Node<A>::UpperIndex == 0) and
+    std::invocable<std::decay_t<F>, typename Node<A>::Scalar>
+auto Map(A&& a, F&& f) {
+  using Functor = std::decay_t<F>;
+  return Unary<Functor, IndexRules::Zero, A>(std::forward<A>(a),
+                                             Functor(std::forward<F>(f)));
 }
 
 //--------------------------------------------------------------------------//
