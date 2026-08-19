@@ -13,6 +13,7 @@
 #include <numeric>
 #include <ranges>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "Concepts.h"
@@ -166,14 +167,17 @@ class GaussLegendreGrid
     using Scalar = std::ranges::range_value_t<InRange>;
 
     ValidateTransformRequest<Scalar>(lMax, n);
+    CheckSize(std::ranges::size(in), this->FieldSize(), "field");
+    CheckSize(std::ranges::size(out), CoefficientSizeFor<Scalar>(lMax, n),
+              "coefficient");
 
-    // Check dimensions of ranges.
-    assert(in.size() == this->FieldSize());
-    if constexpr (RealFloatingPoint<Scalar>) {
-      assert(out.size() == GSHIndices<NonNegative>(lMax, lMax, n).Size());
-    } else {
-      assert(out.size() == GSHIndices<All>(lMax, lMax, n).Size());
-    }
+    // The colatitude loop below is the quadrature sum, so it accumulates into
+    // out. Nothing else initialises it, and every caller happened to arrive
+    // with a zeroed buffer, which made "out arrives zeroed" an unstated and
+    // unchecked precondition: transforming twice into the same buffer doubled
+    // the answer (core-plan.md F1). Zero it here and the routine owns its
+    // output. Accumulation, if ever wanted, is a separate named entry point.
+    std::ranges::fill(out, Complex{});
 
     // A one-point grid needs no FFT.
     if (_lMax == 0) {
@@ -204,17 +208,9 @@ class GaussLegendreGrid
 
     // Loop over the colatitudes.
     for (auto iTheta : this->CoLatitudeIndices()) {
-      // FFT the current data slice.
-      auto offset = iTheta * nPhi;
-      auto inStart = std::next(in.begin(), offset);
-      auto inFinish = std::next(inStart, nPhi);
-      if constexpr (std::ranges::output_range<InRange, Scalar>) {
-        auto inView = std::ranges::subrange(inStart, inFinish);
-        plan.Execute(inView, outView);
-      } else {
-        std::copy(inStart, inFinish, inWork.begin());
-        plan.Execute();
-      }
+      // FFT the current data slice, through the plan's own buffer.
+      PackRow(std::next(in.begin(), iTheta * nPhi), nPhi, inWork);
+      plan.Execute();
 
       // Get the Wigner values and quadrature weight.
       auto d = _wigner[n, iTheta];
@@ -230,7 +226,7 @@ class GaussLegendreGrid
         auto dl = d[l];
 
         if constexpr (ComplexFloatingPoint<Scalar>) {
-          auto workIter = std::prev(outWork.end(), l);
+          auto workIter = std::prev(outWork.end(), dl.MaxOrder());
           for (auto m : dl.NegativeOrders()) {
             *outIter++ += *wigIter++ * *workIter++ * w;
           }
@@ -241,7 +237,7 @@ class GaussLegendreGrid
         } else {
           auto workIter = outWork.begin();
           if constexpr (std::same_as<_MRange, All>) {
-            std::advance(wigIter, l);
+            std::advance(wigIter, dl.MaxOrder());
           }
           for (auto m : dl.NonNegativeOrders()) {
             *outIter++ += *wigIter++ * *workIter++ * w;
@@ -273,14 +269,9 @@ class GaussLegendreGrid
     using Scalar = std::ranges::range_value_t<OutRange>;
 
     ValidateTransformRequest<Scalar>(lMax, n);
-
-    // Check dimensions of ranges.
-    if constexpr (RealFloatingPoint<Scalar>) {
-      assert(in.size() == GSHIndices<NonNegative>(lMax, lMax, n).Size());
-    } else {
-      assert(in.size() == GSHIndices<All>(lMax, lMax, n).Size());
-    }
-    assert(out.size() == this->FieldSize());
+    CheckSize(std::ranges::size(in), CoefficientSizeFor<Scalar>(lMax, n),
+              "coefficient");
+    CheckSize(std::ranges::size(out), this->FieldSize(), "field");
 
     // A one-point grid needs no FFT.
     if (_lMax == 0) {
@@ -327,7 +318,7 @@ class GaussLegendreGrid
       for (auto l : degrees) {
         auto dl = d[l];
         if constexpr (ComplexFloatingPoint<Scalar>) {
-          auto workIter = std::prev(inWork.end(), l);
+          auto workIter = std::prev(inWork.end(), dl.MaxOrder());
           for (auto m : dl.NegativeOrders()) {
             *workIter++ += *inIter++ * *wigIter++;
           }
@@ -338,7 +329,7 @@ class GaussLegendreGrid
         } else {
           auto workIter = inWork.begin();
           if constexpr (std::same_as<_MRange, All>) {
-            std::advance(wigIter, l);
+            std::advance(wigIter, dl.MaxOrder());
           }
           for (auto m : dl.NonNegativeOrders()) {
             *workIter++ += *inIter++ * *wigIter++;
@@ -346,16 +337,67 @@ class GaussLegendreGrid
         }
       }
 
-      // Perform FFT to recover field at the colatitude.
-      auto offset = iTheta * nPhi;
-      auto outStart = std::next(out.begin(), offset);
-      auto outFinish = std::next(outStart, nPhi);
-      auto outView = std::ranges::subrange(outStart, outFinish);
-      plan.Execute(inView, outView);
+      // Perform FFT to recover field at the colatitude, through the plan's
+      // own buffer, then hand the row to the caller.
+      plan.Execute();
+      UnpackRow(outWork, nPhi, std::next(out.begin(), iTheta * nPhi));
     }
   }
 
  private:
+  // Move one colatitude row between the caller's field and the plan's own
+  // buffer.
+  //
+  // These are the only points at which caller storage is touched during a
+  // transform. The FFT plans are created on the grid's own fftw_malloc'd
+  // buffers and are executed on those buffers alone; FFTW's new-array execute
+  // is valid only for storage with the same alignment characteristics as the
+  // planning buffers, and neither FFTW nor FFTWpp checks (core-plan.md F3).
+  // The forward transform used to take that path on any writable input and
+  // the inverse took it unconditionally on the caller's output, which made
+  // alignment an obligation propagating outward into every stride the field
+  // and tensor layers might choose. Copying instead costs one pass over a row
+  // against an FFT of the same row, and it is what makes the field plan's
+  // promise -- that a slice target needs no alignment beyond Scalar's --
+  // true rather than aspirational.
+  //
+  // They are also the seam step F widens: the (stride, dist) of a batch
+  // ([C9]) enters here and nowhere else.
+  template <typename Iterator, typename Buffer>
+  static void PackRow(Iterator first, Int nPhi, Buffer& work) {
+    std::copy_n(first, nPhi, work.begin());
+  }
+
+  template <typename Buffer, typename Iterator>
+  static void UnpackRow(const Buffer& work, Int nPhi, Iterator first) {
+    std::copy_n(work.begin(), nPhi, first);
+  }
+
+  // The coefficient count for a field of the given scalar type: reduced
+  // m >= 0 storage for a real field, all orders for a complex one.
+  // Named distinctly from GridBase::CoefficientSize, which it would otherwise
+  // hide.
+  template <RealOrComplexFloatingPoint Scalar>
+  auto CoefficientSizeFor(Int lMax, Int n) const {
+    if constexpr (RealFloatingPoint<Scalar>) {
+      return GSHIndices<NonNegative>(lMax, lMax, n).Size();
+    } else {
+      return GSHIndices<All>(lMax, lMax, n).Size();
+    }
+  }
+
+  // Size mismatches were assert-only, so under NDEBUG a short output range was
+  // a silent heap overflow (core-plan.md F5). Checked in all build modes.
+  static void CheckSize(std::size_t given, std::integral auto expected,
+                        const char* what) {
+    if (given != static_cast<std::size_t>(expected)) {
+      throw std::invalid_argument(
+          std::string("Transform ") + what + " range has size " +
+          std::to_string(given) + ", but this request needs " +
+          std::to_string(expected));
+    }
+  }
+
   // The longitude quadrature is the trapezoid rule on nPhi equally spaced
   // points, which is exact for exp(i (m - m') phi) only when |m - m'| < nPhi.
   // Resolving orders |m| <= lMax therefore needs nPhi >= 2 * lMax + 1, not

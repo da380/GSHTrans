@@ -1,8 +1,12 @@
 #include <gtest/gtest.h>
 
+#include <cstdint>
 #include <limits>
 #include <numbers>
+#include <span>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 #include "CheckCoeff2Coeff.h"
 
@@ -248,6 +252,218 @@ TEST(GaussLegendreGrid, ForBandGivesRequestedHeadroom) {
   auto coefficients =
       FFTWpp::vector<Complex>(doubled.CoefficientSize(band, 0));
   EXPECT_NO_THROW(doubled.ForwardTransformation(band, 0, field, coefficients));
+}
+
+// The colatitude loop accumulates, so out had to arrive zeroed -- an unstated,
+// unchecked precondition that every caller met by accident. Transforming twice
+// into one buffer doubled the answer (core-plan.md F1).
+TEST(GaussLegendreGrid, ForwardTransformOwnsItsOutputBuffer) {
+  using Real = double;
+  using Complex = std::complex<Real>;
+  using Grid = GaussLegendreGrid<Real, All, All>;
+  constexpr std::ptrdiff_t lMax = 6;
+  constexpr auto tolerance = 1.0e-13;
+
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto field = FFTWpp::vector<Complex>(grid.FieldSize());
+  auto i = std::ptrdiff_t{0};
+  for (auto [theta, phi] : grid.Points()) {
+    field[i++] = Complex{std::cos(theta) + 0.5 * std::sin(3.0 * phi),
+                         0.25 * std::sin(theta) * std::cos(phi)};
+  }
+
+  auto once = FFTWpp::vector<Complex>(grid.CoefficientSize(lMax, 1));
+  auto twice = FFTWpp::vector<Complex>(grid.CoefficientSize(lMax, 1));
+  std::ranges::fill(once, Complex{});
+  std::ranges::fill(twice, Complex{});
+
+  grid.ForwardTransformation(lMax, 1, field, once);
+  grid.ForwardTransformation(lMax, 1, field, twice);
+  grid.ForwardTransformation(lMax, 1, field, twice);
+
+  auto largest = 0.0;
+  for (auto j = std::size_t{0}; j < once.size(); ++j) {
+    EXPECT_NEAR(std::abs(twice[j] - once[j]), 0.0, tolerance) << "j = " << j;
+    largest = std::max(largest, std::abs(once[j]));
+  }
+  EXPECT_GT(largest, tolerance);  // and the spectrum is not simply empty
+
+  // Also true of a buffer arriving with rubbish in it rather than a previous
+  // answer, which is the case an accumulating routine cannot serve at all.
+  auto dirty = FFTWpp::vector<Complex>(once.size());
+  std::ranges::fill(dirty, Complex{1.0e3, -1.0e3});
+  grid.ForwardTransformation(lMax, 1, field, dirty);
+  for (auto j = std::size_t{0}; j < once.size(); ++j) {
+    EXPECT_NEAR(std::abs(dirty[j] - once[j]), 0.0, tolerance) << "j = " << j;
+  }
+}
+
+// Size mismatches were assert-only, so a short output range was a silent heap
+// overflow under NDEBUG (core-plan.md F5). This test is meaningful only
+// because the suite is run in Release as well as Debug.
+TEST(GaussLegendreGrid, RejectsMismatchedRangeSizes) {
+  using Real = double;
+  using Complex = std::complex<Real>;
+  using Grid = GaussLegendreGrid<Real, All, All>;
+  constexpr std::ptrdiff_t lMax = 4;
+
+  auto grid = Grid(lMax, 1, FFTWpp::Estimate);
+  const auto fieldSize = grid.FieldSize();
+  const auto coefficientSize = grid.CoefficientSize(lMax, 0);
+
+  auto field = FFTWpp::vector<Complex>(fieldSize);
+  auto shortField = FFTWpp::vector<Complex>(fieldSize - 1);
+  auto coefficients = FFTWpp::vector<Complex>(coefficientSize);
+  auto shortCoefficients = FFTWpp::vector<Complex>(coefficientSize - 1);
+  auto longCoefficients = FFTWpp::vector<Complex>(coefficientSize + 1);
+
+  EXPECT_THROW(grid.ForwardTransformation(lMax, 0, shortField, coefficients),
+               std::invalid_argument);
+  EXPECT_THROW(grid.ForwardTransformation(lMax, 0, field, shortCoefficients),
+               std::invalid_argument);
+  EXPECT_THROW(grid.ForwardTransformation(lMax, 0, field, longCoefficients),
+               std::invalid_argument);
+  EXPECT_THROW(grid.InverseTransformation(lMax, 0, shortCoefficients, field),
+               std::invalid_argument);
+  EXPECT_THROW(grid.InverseTransformation(lMax, 0, coefficients, shortField),
+               std::invalid_argument);
+
+  // The message says which range and what was expected.
+  try {
+    grid.ForwardTransformation(lMax, 0, field, shortCoefficients);
+    FAIL() << "expected a throw";
+  } catch (const std::invalid_argument& error) {
+    const auto message = std::string(error.what());
+    EXPECT_NE(message.find("coefficient"), std::string::npos) << message;
+    EXPECT_NE(message.find(std::to_string(coefficientSize)),
+              std::string::npos)
+        << message;
+  }
+}
+
+// The FFT plans are executed on the grid's own aligned buffers, never on
+// caller storage (core-plan.md F3), so a caller may hand over any storage
+// aligned for its scalar type -- which is what the field layer promises about
+// slice targets. Here the ranges are offset views into plain std::vectors,
+// chosen so that they are not on a 64-byte boundary: fftw_malloc'd storage is,
+// and FFTW's new-array execute is documented as valid only for buffers sharing
+// the planning buffers' alignment.
+namespace {
+
+// The first offset, in elements, at which the pointer is not aligned to
+// `boundary` bytes.
+template <typename T>
+std::size_t MisalignedOffset(const T* data, std::size_t boundary) {
+  for (auto offset = std::size_t{0}; offset <= boundary / sizeof(T); ++offset) {
+    if (reinterpret_cast<std::uintptr_t>(data + offset) % boundary != 0) {
+      return offset;
+    }
+  }
+  return 0;
+}
+
+// The first offset landing on an 8-byte but not 16-byte boundary. FFTW sorts
+// pointers into alignment classes and refuses to say anything about executing
+// a plan on storage in a different class from the buffer it was planned on;
+// on this build fftw_alignment_of gives 0 for 16-byte-aligned storage and 8
+// for this one, so this is the offset that makes new-array execute genuinely
+// invalid rather than merely unusual.
+std::size_t OddlyAlignedOffset(const double* data) {
+  for (auto offset = std::size_t{0}; offset < 4; ++offset) {
+    if (reinterpret_cast<std::uintptr_t>(data + offset) % 16 == 8) {
+      return offset;
+    }
+  }
+  return 0;
+}
+
+}  // namespace
+
+TEST(GaussLegendreGrid, AcceptsUnalignedCallerStorage) {
+  using Real = double;
+  using Complex = std::complex<Real>;
+  using Grid = GaussLegendreGrid<Real, All, All>;
+  constexpr std::ptrdiff_t lMax = 5;
+  constexpr std::size_t boundary = 64;
+  constexpr auto tolerance = 1.0e-12;
+
+  auto grid = Grid(lMax, 1, FFTWpp::Estimate);
+  const auto fieldSize = static_cast<std::size_t>(grid.FieldSize());
+
+  // Complex field, upper index one: the complex-to-complex path.
+  {
+    const auto size = static_cast<std::size_t>(grid.CoefficientSize(lMax, 1));
+    auto fieldStorage = std::vector<Complex>(fieldSize + 16);
+    auto givenStorage = std::vector<Complex>(size + 16);
+    auto backStorage = std::vector<Complex>(size + 16);
+    auto field = std::span(fieldStorage)
+                     .subspan(MisalignedOffset(fieldStorage.data(), boundary),
+                              fieldSize);
+    auto given = std::span(givenStorage)
+                     .subspan(MisalignedOffset(givenStorage.data(), boundary),
+                              size);
+    auto back = std::span(backStorage)
+                    .subspan(MisalignedOffset(backStorage.data(), boundary),
+                             size);
+
+    ASSERT_NE(reinterpret_cast<std::uintptr_t>(field.data()) % boundary, 0u);
+    ASSERT_NE(reinterpret_cast<std::uintptr_t>(given.data()) % boundary, 0u);
+
+    std::ranges::fill(given, Complex{});
+    const auto indices = GSHIndices<All>(lMax, lMax, 1);
+    given[indices.Index(3, -2)] = Complex{0.5, 0.25};
+    given[indices.Index(4, 1)] = Complex{-0.75, 0.125};
+
+    grid.InverseTransformation(lMax, 1, given, field);
+    grid.ForwardTransformation(lMax, 1, field, back);
+
+    for (auto j = std::size_t{0}; j < size; ++j) {
+      EXPECT_NEAR(std::abs(back[j] - given[j]), 0.0, tolerance) << "j = " << j;
+    }
+    // Storage past the end of each view must be untouched. The offset may
+    // legitimately be zero when the allocation is already misaligned, so the
+    // tail, not the head, is the padding that is always outside.
+    EXPECT_EQ(fieldStorage.back(), Complex{});
+    EXPECT_EQ(backStorage.back(), Complex{});
+  }
+
+  // Real field at upper index zero: the real-to-complex path, and the one
+  // whose elements are small enough to land off a 16-byte boundary too.
+  {
+    const auto size = static_cast<std::size_t>(grid.RealCoefficientSize(lMax));
+    auto fieldStorage = std::vector<Real>(fieldSize + 16);
+    auto givenStorage = std::vector<Complex>(size + 16);
+    auto backStorage = std::vector<Complex>(size + 16);
+    auto field = std::span(fieldStorage)
+                     .subspan(OddlyAlignedOffset(fieldStorage.data()),
+                              fieldSize);
+    auto given = std::span(givenStorage)
+                     .subspan(MisalignedOffset(givenStorage.data(), boundary),
+                              size);
+    auto back = std::span(backStorage)
+                    .subspan(MisalignedOffset(backStorage.data(), boundary),
+                             size);
+
+    // Not merely off a cache line: in a different FFTW alignment class from
+    // the fftw_malloc'd buffers the plans are made on.
+    auto* planningStorage = static_cast<Real*>(fftw_malloc(sizeof(Real)));
+    ASSERT_NE(fftw_alignment_of(field.data()),
+              fftw_alignment_of(planningStorage));
+    fftw_free(planningStorage);
+
+    std::ranges::fill(given, Complex{});
+    const auto indices = GSHIndices<NonNegative>(lMax, lMax, 0);
+    given[indices.Index(2, 0)] = Complex{1.5, 0.0};
+    given[indices.Index(4, 3)] = Complex{-0.25, 0.75};
+
+    grid.InverseTransformation(lMax, 0, given, field);
+    grid.ForwardTransformation(lMax, 0, field, back);
+
+    for (auto j = std::size_t{0}; j < size; ++j) {
+      EXPECT_NEAR(std::abs(back[j] - given[j]), 0.0, tolerance) << "j = " << j;
+    }
+    EXPECT_EQ(fieldStorage.back(), Real{});
+  }
 }
 
 // The round-trip tests draw their grid, degree, upper index and coefficients

@@ -48,7 +48,7 @@ consequence, not effort.
 ### Correctness
 
 **F1 — `ForwardTransformation` accumulates into `out` without zeroing it.**
-*Severity: high. Silent wrong answers.*
+*Severity: high. Silent wrong answers. Resolved in T4.*
 
 The coefficient loop is `*outIter++ += ...`, run once per colatitude, and
 nothing initialises `out` on entry (`GaussLegendreGrid.h:196–208`). The `+=` is
@@ -99,7 +99,7 @@ exactly the predicted `520` at `lMax = 256`, and `3, 5, 11, 13, 18, 33, 70,
 130, 260` at `lMax = 1, 2, 5, 6, 8, 16, 33, 64, 128`.
 
 **F3 — FFTW plans are executed on caller storage.**
-*Severity: medium. Latent, environment-dependent.*
+*Severity: medium. Latent, environment-dependent. Resolved in T4.*
 
 `Plan::Execute(in, out)` is FFTW's new-array execute; FFTWpp documents it as
 valid only for buffers with "the same layout and **alignment** characteristics"
@@ -130,14 +130,20 @@ uninitialised.** *Severity: low, easy.* Reading `MaxDegree()` on a
 default-constructed grid is undefined. Once the grid is a handle (step B) the
 default constructor should simply not exist.
 
-**F5 — size checks are `assert`-only.** `assert(in.size() == FieldSize())` and
+**F5 — size checks are `assert`-only.** *Resolved in T4.* `assert(in.size() == FieldSize())` and
 the coefficient-size asserts (`GaussLegendreGrid.h:132–136`, and the inverse's
 equivalents) vanish under `NDEBUG`, so a short `out` in a release build is a
 silent heap overflow. The field plan §3.10 wants this class of check in all
 build modes; the core is where it belongs.
 
 **F6 — `std::advance(wigIter, l)` should advance by `min(l, mMax)`.**
-*Severity: low, latent.* In the real-valued branch with `MRange = All`, the
+*Severity: low, latent. Resolved in T4, at four sites rather than two:* the
+same `l`-for-`min(l, mMax)` substitution appears in
+`std::prev(outWork.end(), l)` in the complex branch of both transforms, where
+it names the count of negative orders in the FFT output. Still unreachable
+through `GaussLegendreGrid`, which always builds `mMax = lMax`, and therefore
+still untestable from outside; it becomes reachable with a truncated-order
+table. In the real-valued branch with `MRange = All`, the
 negative orders are skipped by advancing `l` entries
 (`GaussLegendreGrid.h:205`, and the inverse's counterpart). But a degree-`l` row
 holds `min(l, mMax)` negative orders, not `l`. The grid always builds its Wigner
@@ -436,11 +442,16 @@ overhead at small `lMax`, where it is proportionally largest.
 
 ### Step F — the batched transform primitive
 
-*Gates: nothing. Enables phase 5. Implements: P2, P6.*
+*Gates: nothing. Enables phase 5. Implements: P2, P6, [C9].*
 
-Make the primitive "transform `k` contiguous same-spin slices", with the single
-field as `k = 1` — not a scalar primitive looped from outside. Two tiers, to be
-taken in order:
+Make the primitive "transform a batch of `k` same-spin fields", with the single
+field as `k = 1` — not a scalar primitive looped from outside. The batch is
+**public API** and is described by `(count, stride, dist)` rather than by
+contiguity; the threading policy is an explicit per-call argument defaulting to
+sequential. Both are settled in [C9], which also explains why the batch is a
+first-class facility rather than an internal lever for phase 5.
+
+Two tiers, to be taken in order:
 
 1. **Tier 1, no layout change.** Keep the θ-outer loop; the inner operation
    becomes an axpy of length `k` per `(l, m)`. The Wigner table is streamed once
@@ -595,6 +606,54 @@ the addition-theorem oracle and delete `RowMajor` as an unused axis.
   storage question is opened and it is cheaper to answer it once, there, than
   to delete and possibly reinstate.
 
+### [C9] The batched transform is public, strided, and explicitly threaded
+
+Raised after T3, on the observation that batching has uses beyond the layered
+3D fields it was planned for — ensembles, realisations, time levels, and any
+collection of fields sharing a grid and an upper index. The plan had treated
+step F as an internal lever for phase 5. It is instead a public facility, which
+makes three things decisions rather than implementation details.
+
+**The batch is `(count, stride, dist)`, not "`k` contiguous slices".** This is
+FFTW's advanced-interface form and costs nothing at the FFT stage, which is
+where the caller's layout is actually read (P6). It covers with one primitive:
+
+| source | `stride` | `dist` |
+|---|---|---|
+| radial slab, tensor components in `ComponentMajor` | `1` | `FieldSize` |
+| tensor components in `PointMajor` | `nComponents` | `1` |
+
+The second row is the consequence worth recording: the field plan states that
+transforms *require* `ComponentMajor`, with an explicit repack from
+`PointMajor` (§8, phase 2). A stride-aware batch removes that requirement. The
+caller's stride appears in only two places — reading samples into the FFT,
+which FFTW absorbs, and writing coefficients out — because the Legendre stage
+works on our own buffers, whose layout we choose regardless. Whether strided
+access is *fast enough* to beat repacking is a benchmark question; what changes
+is that the interface no longer forces the answer.
+
+Full FFTW `nembed` generality is rejected: the angular layout is fixed by the
+grid, so most of it would be unreachable.
+
+**Threading is an explicit per-call policy, defaulting to sequential.** The
+library never creates threads unless asked. The rule, which step H must
+enforce and which is now user-visible rather than internal: *exactly one level
+threads*. The layered layer threads over slices and calls the transform
+sequentially; a caller with one large batch asks the transform to thread; never
+both, and never nested with `Wigner::ComputeAll` (F8).
+
+**A batch shares grid, `lMax` and `n`.** The Wigner block is precisely what is
+being amortised, so fields at different upper indices cannot batch together.
+For a rank-2 tensor that means batching over radii *within* each
+`n ∈ {0, ±1, ±2}`, not across components. Worth stating in the header, because
+"batch all my fields" is the natural thing to expect and it is wrong.
+
+*Sequencing:* the signature is fixed now; the implementation stays at step F,
+after the plan cache (E) and the benchmarks (§5). Nothing in field-algebra
+phase 1 calls a transform except one `k = 1` round trip, so waiting costs no
+rework. What T4 must do is write the row pack and unpack as an explicit seam
+rather than inline, since that is what step F widens.
+
 ### [C8] The Wigner value convention is Dahlen & Tromp, and it is already correct
 
 Raised in the field plan (§10 item 1) rather than here, but it is a fact about
@@ -701,9 +760,27 @@ resulting degree **up**, since rounding down would silently remove the headroom
 the caller asked for. The grid constructor's `lMax`/`nMax` parameters widened
 from `int` to `Int` so that `ForBand`'s computed degree cannot narrow.
 
-**T4 — step C, the transform I/O contract.** F1 (zero `out`), F3 (no new-array
-execute on caller storage), F5 (size checks throw in all build modes), F6.
-After this the field plan's slice contract is honest.
+**T4 — step C, the transform I/O contract.** *Done.* F1 (zero `out`), F3 (no
+new-array execute on caller storage), F5 (size checks throw in all build
+modes), F6. After this the field plan's slice contract is honest. F3's fix
+creates the row pack/unpack seam that step F batches, written as the explicit
+`PackRow`/`UnpackRow` helpers ([C9]).
+
+*Measured, as this step asked.* The copy is invisible, as P1 predicted:
+at `lMax = 256, nMax = 2` a forward transform takes 11.9 ms with the copy
+against 13.0 ms without, and an inverse 12.9 ms against 12.3 ms — differences
+inside run-to-run noise in both directions. There is no case for revisiting it
+before step F, where the copy folds into the pack stage and stops existing.
+
+*On reproducing F3.* It could not be reproduced on this machine. The test
+`AcceptsUnalignedCallerStorage` asserts, via `fftw_alignment_of`, that its
+caller storage really is in a different FFTW alignment class from the
+`fftw_malloc`'d planning buffers — so it exercises the case FFTW's contract
+calls invalid — and the old code passes it anyway, under `Estimate` and under
+`Measure`, at exact equality. This build tolerates the mismatch. The fix
+therefore removes documented undefined behaviour rather than an observed
+failure, which is what §1 claimed for it; the value of the test is that it
+pins the contract and will fail on a build where the classes matter.
 
 **T5 — step B, the grid handle.** `shared_ptr<const Impl>`, `Identity()`, no
 default constructor (F4). Mechanical but broad; last of the four so that it

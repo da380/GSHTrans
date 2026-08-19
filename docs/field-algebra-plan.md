@@ -650,8 +650,12 @@ Recorded so phase 1 does not foreclose them. None is implemented now.
   all components at a point together, which is what a rank-4 tensor applied
   pointwise to a strain field wants. Rank-4 objects are needed both as local
   operators and, as inversion parameters, as transformable fields, so both
-  layouts must exist at rank 4. `ComponentMajor` is the default; transforms
-  require it, with an explicit repack from `PointMajor`.
+  layouts must exist at rank 4. `ComponentMajor` is the default. Transforms
+  do **not** require it: the batched transform primitive is described by
+  `(count, stride, dist)`, so `PointMajor` components are transformable in
+  place with `stride = nComponents, dist = 1` (`core-plan.md` [C9]). A repack
+  to `ComponentMajor` remains available and may well be faster; it is a
+  performance choice to be benchmarked, not a precondition.
 
 *Constraint on phase 1:* the component view must satisfy `SpinWeighted` while
 pointing into a sub-range of someone else's buffer — hence §3.2's view
@@ -702,9 +706,12 @@ Tensor-valued expansions, per-component transforms, then the raising and
 lowering operators of theory note §6. The node interface of §3.2 is chosen so
 this does not require revisiting it.
 
-**Batched transforms.** The transform primitive should be "transform `k`
-contiguous same-spin slices", with the single field as `k = 1` — not a scalar
-primitive looped from outside. The FFT stage batches across `nR × nTheta` rows
+**Batched transforms.** The transform primitive is "transform a batch of `k`
+same-spin fields", with the single field as `k = 1` — not a scalar primitive
+looped from outside. The batch is public API, described by
+`(count, stride, dist)`, and threads only when explicitly asked
+(`core-plan.md` [C9]); a batch shares grid, `lMax` and `n`, since the Wigner
+block is what is being amortised. The FFT stage batches across `nR × nTheta` rows
 via FFTW's advanced interface, and the Wigner stage at fixed `(N, θ)` applies
 the same `d`-values across all radii, turning a bandwidth-bound matrix–vector
 contraction into a matrix–matrix one whose arithmetic intensity grows with
