@@ -75,9 +75,13 @@ if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
     # We're in the root, define additional targets for developers.
     option(MY_PROJECT_BUILD_EXAMPLES   "whether or not examples should be built" ON)
     option(MY_PROJECT_BUILD_TESTS      "whether or not tests should be built" ON)
+    option(MY_PROJECT_BUILD_BENCHMARKS "whether or not benchmarks should be built" ON)
 
     if(MY_PROJECT_BUILD_EXAMPLES)
         add_subdirectory(examples)
+    endif()
+    if(MY_PROJECT_BUILD_BENCHMARKS)
+        add_subdirectory(benchmarks)
     endif()
     if(MY_PROJECT_BUILD_TESTS)
         enable_testing()

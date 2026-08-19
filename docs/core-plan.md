@@ -234,7 +234,8 @@ These are the findings that decide what phase 5 can be built on. They are stated
 with numbers so that the later steps can be argued rather than assumed. All
 figures are for `lMax = 256`, `nMax = 2`, `NRange = All`, double precision.
 
-**P1 — the transform is Legendre-stage bandwidth-bound, by a wide margin.**
+**P1 — the Legendre stage dominates. *Measured: conclusion confirmed,
+reasoning corrected.***
 At fixed `n`, the θ-loop touches the entire `(l, m)` Wigner block once per
 colatitude: `257 × 66049 ≈ 1.7 × 10⁷` entries, **136 MB streamed**, for about
 `3.4 × 10⁷` flops — an arithmetic intensity of ≈ **0.25 flop/byte**. The FFT
@@ -242,11 +243,62 @@ stage over the same data is `257` transforms of length 512, ≈ `6 × 10⁶` flo
 2.1 MB. So the Legendre stage costs ~6× the flops and ~65× the memory traffic of
 the FFT stage. Any optimisation effort that does not address it is misdirected.
 
-**P2 — batching is the lever, and it is nearly free.** With `k` same-spin
-slices transformed together (radii, tensor components, time levels), the Wigner
-table is streamed once for all `k`, so the intensity becomes ≈ `0.25 k`
-flop/byte. This is the largest single factor available and it needs no change to
-the Wigner data at all — only a loop restructure and a batched FFT.
+*Measured (T7 harness, one 8-core Zen 5 machine, `lMax = 256`, `n = 2`,
+double):* forward transform 19.0 ms, of which the FFT stage is **0.43 ms** and
+the Legendre stage **18.6 ms** — the Legendre stage is **44× the FFT stage** in
+wall time. The conclusion holds and is if anything understated.
+
+**The reasoning does not hold, and it matters.** "Bandwidth-bound" is wrong.
+The Legendre stage achieves **7.3 GB/s** on its 136 MB of Wigner values, while
+a single thread on the same machine reads the same array at **37.8 GB/s** once
+the accumulator dependency chain is broken. The stage is running at **19% of
+what one core can pull from memory**, so DRAM bandwidth is not the binding
+constraint.
+
+What binds it is load/store throughput. Per Wigner value the inner loop does
+one 8-byte DRAM read and then, from cache, a read of the FFT bin and a
+read-modify-write of the coefficient — about 40 bytes of cache traffic per 8
+bytes of DRAM traffic, and four memory operations per element. Rewriting the
+kernel three ways (weight hoisted out of the inner loop, real and imaginary
+parts split into separate streams, raw pointers instead of iterators) moved it
+between 5.4 and 8.9 GB/s: none of them is the problem, and none of them is the
+fix.
+
+**P2 — batching helps, but by ~2×, not by `k`. *Measured; this finding is a
+substantial correction.*** With `k` same-spin slices transformed together
+(radii, tensor components, time levels), the Wigner table is streamed once for
+all `k`, so the intensity becomes ≈ `0.25 k` flop/byte. That was expected to be
+the largest single factor available, needing no change to the Wigner data at
+all — only a loop restructure and a batched FFT.
+
+*Measured*, on the true `lMax = 256` geometry with the batch index innermost
+and unit-stride (the layout P6 says the batched FFT can produce for free), time
+**per field**:
+
+| `k` | per field (ms) | speedup | coefficient array |
+|---|---|---|---|
+| 1 | 21.6 | 1.00× | 1.1 MB |
+| 2 | 13.0 | 1.66× | 2.1 MB |
+| 4 | 10.9 | 1.97× | 4.2 MB |
+| 8 | **9.6** | **2.26×** | 8.5 MB |
+| 16 | 14.0 | 1.54× | 16.9 MB |
+| 32 | 16.6 | 1.30× | 33.8 MB |
+
+Two things to take from this. **The gain saturates at about 2.3×**, not at `k`,
+because the intensity argument assumes DRAM bandwidth is what binds, and P1 now
+says it is not: batching removes `(k-1)/k` of the *table* reads but leaves the
+per-element load/store work untouched, which is what the stage is actually
+limited by. **And it reverses beyond a cache-determined optimum**: the
+coefficient array is `k` times larger, and once it stops fitting in L3 — 16 MB
+on this machine, crossed between `k = 8` and `k = 16` — it is streamed from
+DRAM too, and the batch becomes worse than no batch. The optimum is
+`k ≈ L3 / (16 · nCoefficients)` and therefore depends on the machine and on
+`lMax`; it is not a constant to hard-code.
+
+The standalone kernel these numbers come from is a faithful reproduction of the
+geometry and access pattern rather than the production loop itself; it agrees
+with the production Legendre time to within 15% at `k = 1` (21.6 ms against
+18.6 ms), which is the check that it is measuring the right thing.
 
 **P3 — the `(m, n) → (−m, −n)` involution halves the table, and it is one
 relation, not two.** Theory note §4.1 gives
@@ -491,8 +543,34 @@ Two tiers, to be taken in order:
 2. **Tier 2, GEMM.** Per-`m` matrix–matrix products against BLAS, requiring the
    Wigner layout change of P5 — hence step G.
 
-Tier 1 is expected to capture most of the available gain for `k ≳ 8` at a small
-fraction of tier 2's cost. Measure before committing to tier 2. The single-field
+**What the measurements say about this step, and it is not what was expected.**
+Tier 1 was expected to capture most of the available gain for `k ≳ 8`. Measured,
+it captures **2.3×**, at an optimum `k` of about 8 on this machine, and gets
+*worse* beyond it (P2). That is worth having and is not the transformative lever
+this document assumed.
+
+Three consequences for how tier 1 should be built, none of which were in the
+original sketch:
+
+- **`k` must be chosen, not taken.** The optimum is set by the coefficient
+  array fitting in last-level cache, so it depends on the machine and on `lMax`.
+  A batched call with a caller-chosen `k` far above the optimum will be slower
+  than no batching at all. The primitive should therefore process a large batch
+  in *chunks* of an internally chosen size, rather than handing the caller's `k`
+  straight to the inner loop. This does not change [C9]'s public interface —
+  `(count, stride, dist)` still describes what the caller has — but it does
+  change what the implementation does with it.
+- **The reason to batch is no longer principally speed.** It remains the right
+  primitive for phase 5 and the layered layer, and 2.3× is real. But it should
+  not be sequenced ahead of cheaper or larger wins on the strength of P2's
+  original arithmetic.
+- **Tier 2 is where the larger win probably is, and for a different reason than
+  P5 gives.** A GEMM blocks the output in registers so that the per-element
+  load/store count falls, which is exactly the constraint P1 now identifies;
+  the intensity argument was never the point. That makes step G's layout change
+  a prerequisite for the real gain rather than an optimisation on top of it.
+
+Measure before committing to tier 2. The single-field
 signature survives as a thin `k = 1` wrapper over the batched primitive
 (§6, [C3]).
 
@@ -526,6 +604,16 @@ code). *Effort:* large.
 
 *Gates: nothing. Implements: P7's other half, and the field plan's layered
 layer.*
+
+**Possibly the largest single lever, on the T7 measurements.** Reading the
+Wigner-sized array scales from 11.0 GB/s on one thread to 41.9 GB/s on eight
+(and *down* to 19.7 GB/s on sixteen, so simultaneous multithreading hurts and
+the thread count should be cores, not hardware threads). Since the Legendre
+stage is bound by per-core load/store throughput rather than by DRAM (P1), it
+should scale close to linearly until it meets the DRAM roof — roughly a 4× to
+5× ceiling on this machine, against tier-1 batching's 2.3×. This inverts the
+document's original ordering, in which threading was the last thing to do; see
+§9.
 
 Thread the batched transform over `m`-blocks or colatitudes, on per-thread
 buffers from step E. Fix `Wigner::ComputeAll`'s loop form (F8) and settle the
@@ -567,6 +655,9 @@ E–H are strictly ordered and each should be preceded by the measurement that
 justifies it (§5).
 
 ## 5. Benchmarks to establish before step E
+
+*Built in T7 as `benchmarks/TransformBenchmark.cpp`, run with the
+`TransformBenchmark` target. It is not a test and ctest does not run it.*
 
 There is currently no benchmark harness, and steps F–G are unarguable without
 one. What is needed is small:
@@ -834,5 +925,46 @@ E–H remain, all gated on the §5 benchmark harness that does not yet exist.
 **T6 — hand over to phase 1.** `field-algebra-plan.md` §7 steps 1–7. Its step 6
 is unblocked by T1.
 
-**T7 — the benchmark harness of §5**, then steps E–H, each gated on the
-measurement that justifies it.
+**T7 — the benchmark harness of §5.** *Done.* Then steps E–H, each gated on the
+measurement that justifies it. **The first run of the harness changed what
+those steps should be**; see §9.
+
+The two stages are separated without instrumenting the transform. The
+coefficient loop is filtered on the call's truncation degree, so a call at the
+smallest legal degree does the full FFT work and almost no Legendre work; the
+difference from a full-degree call is the Legendre stage, measured on the
+production code rather than a replica.
+
+---
+
+## 9. What the first benchmark run changed
+
+Recorded separately because it revises three findings this document argued
+from, and because the revision is a decision for the author rather than
+something to act on unilaterally.
+
+**Confirmed.** P1's conclusion: the Legendre stage is 44× the FFT stage in wall
+time at `lMax = 256`. Every optimisation should target it. Step C's copy is
+invisible (measured at T4). Grid construction is cheap — 0.23 s and 648 MB
+resident at `lMax = 256, nMax = 2`, matching F9's arithmetic.
+
+**Corrected.** The stage is *not* bandwidth-bound. It runs at 19% of the
+single-thread read rate, and is limited by load/store throughput — about four
+memory operations per Wigner value, only one of which reaches DRAM. Three
+hand-optimised rewrites of the kernel did not move it.
+
+**Consequently changed.** Tier-1 batching delivers 2.3×, not `k`, and reverses
+once the coefficient array leaves last-level cache. Threading looks like the
+larger lever, 4–5×. Tier-2 GEMM is where the remaining gain is, but for the
+load/store reason rather than the intensity reason, which makes step G's layout
+change a prerequisite rather than a follow-on.
+
+**The open question, for the author.** The document orders E → F → G → H. On
+these numbers the ordering that buys the most, soonest, is closer to
+**E → H → F → G**: the plan cache and flag policy first because they are
+prerequisites and cheap, then threading for its 4–5×, then batching for its
+2.3× and because phase 2 needs the interface, then the layout change and GEMM.
+Against that, F is the one with a deadline — field-algebra phase 2 is blocked
+on it ([C9]) — and threading a single transform interacts with the layered
+layer's parallel-over-slices, which is the nesting rule step H has to settle
+anyway. Not reordered unilaterally.
