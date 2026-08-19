@@ -1,6 +1,8 @@
 #ifndef GSH_TRANS_GAUSS_LEGENDRE_GRID_GUARD_H
 #define GSH_TRANS_GAUSS_LEGENDRE_GRID_GUARD_H
 
+#include <omp.h>
+
 #include <FFTWpp/Core>
 #include <FFTWpp/Ranges>
 #include <GaussQuad/All>
@@ -138,8 +140,8 @@ class GaussLegendreGrid
     requires std::same_as<NumericConcepts::RangePrecision<InRange>, Real>;
     requires std::same_as<std::ranges::range_value_t<OutRange>, Complex>;
   }
-  void ForwardTransformation(Int lMax, Int n, InRange&& in,
-                             OutRange& out) const {
+  void ForwardTransformation(Int lMax, Int n, InRange&& in, OutRange& out,
+                             Execution policy = Execution::Sequential()) const {
     // Get scalar type for field.
     using Scalar = std::ranges::range_value_t<InRange>;
 
@@ -168,24 +170,21 @@ class GaussLegendreGrid
     const auto scaleFactor = static_cast<Real>(2) * std::numbers::pi_v<Real> /
                              static_cast<Real>(nPhi);
 
-    // Buffers and plan for this shape, made once per thread and kept.
-    auto& work = GetWorkspace<Scalar, true>(nPhi, _impl->flag);
-    auto& inWork = work.in;
-    auto& outWork = work.out;
-    auto& plan = work.plan;
-
-    // Loop over the colatitudes.
-    for (auto iTheta : this->CoLatitudeIndices()) {
+    // One colatitude's contribution, accumulated wherever the caller says.
+    // Taking the destination as a parameter is what lets the parallel path
+    // give each thread a private accumulator without a second copy of the
+    // loop.
+    auto AccumulateRow = [&](Int iTheta, auto outBegin, auto& work) {
       // FFT the current data slice, through the plan's own buffer.
-      PackRow(std::next(in.begin(), iTheta * nPhi), nPhi, inWork);
-      plan.Execute();
+      PackRow(std::next(in.begin(), iTheta * nPhi), nPhi, work.in);
+      work.plan.Execute();
 
       // Get the Wigner values and quadrature weight.
       auto d = _impl->wigner[n, iTheta];
       auto w = _impl->quad.W(iTheta) * scaleFactor;
 
       // Loop over the spherical harmonic coefficients
-      auto outIter = out.begin();
+      auto outIter = outBegin;
       auto wigIter = d.begin();
       auto degrees = d.Degrees() | std::ranges::views::filter(
                                        [lMax](auto l) { return l <= lMax; });
@@ -194,16 +193,16 @@ class GaussLegendreGrid
         auto dl = d[l];
 
         if constexpr (ComplexFloatingPoint<Scalar>) {
-          auto workIter = std::prev(outWork.end(), dl.MaxOrder());
+          auto workIter = std::prev(work.out.end(), dl.MaxOrder());
           for (auto m : dl.NegativeOrders()) {
             *outIter++ += *wigIter++ * *workIter++ * w;
           }
-          workIter = outWork.begin();
+          workIter = work.out.begin();
           for (auto m : dl.NonNegativeOrders()) {
             *outIter++ += *wigIter++ * *workIter++ * w;
           }
         } else {
-          auto workIter = outWork.begin();
+          auto workIter = work.out.begin();
           if constexpr (std::same_as<_MRange, All>) {
             std::advance(wigIter, dl.MaxOrder());
           }
@@ -212,7 +211,41 @@ class GaussLegendreGrid
           }
         }
       }
+    };
 
+    const auto nTheta = static_cast<Int>(this->NumberOfCoLatitudes());
+
+    if (!RunInParallel(policy)) {
+      auto& work = GetWorkspace<Scalar, true>(nPhi, _impl->flag);
+      for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
+        AccumulateRow(iTheta, out.begin(), work);
+      }
+      return;
+    }
+
+    // Every colatitude contributes to every coefficient, so the colatitudes
+    // cannot simply be divided between threads writing into `out`. Each thread
+    // accumulates into a private buffer and the partial sums are added at the
+    // end. The reduction is one pass over the coefficients per thread, against
+    // a colatitude loop that streams the whole Wigner block, so it does not
+    // show up.
+    const auto size = static_cast<std::size_t>(std::ranges::size(out));
+#pragma omp parallel num_threads(ThreadCount(policy))
+    {
+      auto& work = GetWorkspace<Scalar, true>(nPhi, _impl->flag);
+      auto& partial = Accumulator(size);
+      std::fill_n(partial.begin(), size, Complex{});
+
+#pragma omp for schedule(static) nowait
+      for (Int iTheta = 0; iTheta < nTheta; iTheta++) {
+        AccumulateRow(iTheta, partial.begin(), work);
+      }
+
+#pragma omp critical
+      {
+        auto outIter = out.begin();
+        for (auto i = std::size_t{0}; i < size; i++) *outIter++ += partial[i];
+      }
     }
   }
 
@@ -228,8 +261,8 @@ class GaussLegendreGrid
     requires std::same_as<NumericConcepts::RangePrecision<OutRange>, Real>;
     requires std::same_as<std::ranges::range_value_t<InRange>, Complex>;
   }
-  void InverseTransformation(Int lMax, Int n, InRange&& in,
-                             OutRange& out) const {
+  void InverseTransformation(Int lMax, Int n, InRange&& in, OutRange& out,
+                             Execution policy = Execution::Sequential()) const {
     // Get scalar type for field.
     using Scalar = std::ranges::range_value_t<OutRange>;
 
@@ -253,15 +286,11 @@ class GaussLegendreGrid
     // Precompute constants
     const auto nPhi = this->NumberOfLongitudes();
 
-    // Buffers and plan for this shape, made once per thread and kept.
-    auto& work = GetWorkspace<Scalar, false>(nPhi, _impl->flag);
-    auto& inWork = work.in;
-    auto& outWork = work.out;
-    auto& plan = work.plan;
-
-    // Loop over the colatitudes.
-    for (auto iTheta : this->CoLatitudeIndices()) {
-      std::ranges::for_each(inWork, [](auto& x) { return x = 0; });
+    // One colatitude, synthesised into its own row of the field. Unlike the
+    // forward transform, the colatitudes here write disjoint output and share
+    // only read-only input, so threading over them needs no reduction.
+    auto SynthesiseRow = [&](Int iTheta, auto& work) {
+      std::ranges::for_each(work.in, [](auto& x) { return x = 0; });
 
       // Get the Wigner values.
       auto d = _impl->wigner[n, iTheta];
@@ -274,16 +303,16 @@ class GaussLegendreGrid
       for (auto l : degrees) {
         auto dl = d[l];
         if constexpr (ComplexFloatingPoint<Scalar>) {
-          auto workIter = std::prev(inWork.end(), dl.MaxOrder());
+          auto workIter = std::prev(work.in.end(), dl.MaxOrder());
           for (auto m : dl.NegativeOrders()) {
             *workIter++ += *inIter++ * *wigIter++;
           }
-          workIter = inWork.begin();
+          workIter = work.in.begin();
           for (auto m : dl.NonNegativeOrders()) {
             *workIter++ += *inIter++ * *wigIter++;
           }
         } else {
-          auto workIter = inWork.begin();
+          auto workIter = work.in.begin();
           if constexpr (std::same_as<_MRange, All>) {
             std::advance(wigIter, dl.MaxOrder());
           }
@@ -295,12 +324,53 @@ class GaussLegendreGrid
 
       // Perform FFT to recover field at the colatitude, through the plan's
       // own buffer, then hand the row to the caller.
-      plan.Execute();
-      UnpackRow(outWork, nPhi, std::next(out.begin(), iTheta * nPhi));
+      work.plan.Execute();
+      UnpackRow(work.out, nPhi, std::next(out.begin(), iTheta * nPhi));
+    };
+
+    const auto nTheta = static_cast<Int>(this->NumberOfCoLatitudes());
+
+    if (!RunInParallel(policy)) {
+      auto& work = GetWorkspace<Scalar, false>(nPhi, _impl->flag);
+      for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
+        SynthesiseRow(iTheta, work);
+      }
+      return;
+    }
+
+#pragma omp parallel num_threads(ThreadCount(policy))
+    {
+      auto& work = GetWorkspace<Scalar, false>(nPhi, _impl->flag);
+#pragma omp for schedule(static)
+      for (Int iTheta = 0; iTheta < nTheta; iTheta++) {
+        SynthesiseRow(iTheta, work);
+      }
     }
   }
 
  private:
+  // Exactly one level threads. A transform asked to run in parallel from
+  // inside an existing parallel region runs sequentially instead, so that a
+  // caller parallelising over slices, components or realisations cannot nest
+  // with this, and neither can Wigner::ComputeAll.
+  static bool RunInParallel(Execution policy) {
+    return policy.IsParallel() && !omp_in_parallel();
+  }
+
+  static int ThreadCount(Execution policy) {
+    return policy.Threads() > 0 ? policy.Threads() : omp_get_max_threads();
+  }
+
+  // A per-thread accumulator for the forward transform's partial sums, kept
+  // between calls for the same reason the work buffers are: this is the size
+  // of the coefficient array, and allocating it per call would put back the
+  // per-call allocation step E removed. It only ever grows.
+  static std::vector<Complex>& Accumulator(std::size_t size) {
+    thread_local auto buffer = std::vector<Complex>{};
+    if (buffer.size() < size) buffer.resize(size);
+    return buffer;
+  }
+
   // FFTW's planner is not re-entrant, so plan creation everywhere in the
   // process is serialised on this. Execution is not: FFTW does allow a plan to
   // be executed concurrently, and in any case each thread executes on its own

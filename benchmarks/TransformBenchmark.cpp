@@ -227,6 +227,43 @@ int main() {
     }
   }
 
+  //------------------------------------------------------------------------//
+  //                              Threading                                  //
+  //------------------------------------------------------------------------//
+
+  PrintHeader("Threading (core-plan.md step H)");
+  std::printf("%6s %4s %9s %8s %10s %9s %9s\n", "lMax", "n", "direction",
+              "threads", "time(ms)", "speedup", "GB/s");
+  for (auto lMax : {Int{128}, Int{256}}) {
+    const auto n = Int{2};
+    auto grid = GaussLegendreGrid<Real, All, All>(lMax, n, FFTWpp::Measure);
+    auto field = FFTWpp::vector<Complex>(grid.FieldSize());
+    auto coefficients = FFTWpp::vector<Complex>(grid.CoefficientSize(lMax, n));
+    for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+      field[i] = Complex{0.5 + 0.001 * i, -0.25 + 0.002 * i};
+    }
+    const auto bytes = WignerBytes(lMax, n);
+
+    for (const char* direction : {"forward", "inverse"}) {
+      auto base = 0.0;
+      for (auto threads : {1, 2, 4, 8, 16}) {
+        const auto policy = threads == 1 ? Execution::Sequential()
+                                         : Execution::Parallel(threads);
+        const auto seconds = TimePerCall([&] {
+          if (direction[0] == 'f') {
+            grid.ForwardTransformation(lMax, n, field, coefficients, policy);
+          } else {
+            grid.InverseTransformation(lMax, n, coefficients, field, policy);
+          }
+        });
+        if (threads == 1) base = seconds;
+        std::printf("%6zd %4zd %9s %8d %10.3f %8.2fx %9.1f\n", lMax, n,
+                    direction, threads, seconds * 1e3, base / seconds,
+                    bytes / seconds / 1e9);
+      }
+    }
+  }
+
   std::printf(
       "\nFFT column is a call truncated to the smallest legal degree: full FFT\n"
       "work, negligible Legendre work. Leg is the difference. GB/s is the\n"

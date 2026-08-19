@@ -50,6 +50,42 @@ concept RealOrComplexValued =
     std::same_as<T, RealValued> or std::same_as<T, ComplexValued>;
 
 //-------------------------------------------------------------------------//
+//                            Execution policy                              //
+//--------------------------------------------------------------------------//
+
+// Whether an operation may use threads, and how many.
+//
+// Sequential by default everywhere: a library should not create threads
+// because it can, only because it was asked to. The rule this exists to make
+// keepable is that exactly one level threads -- a caller parallelising over
+// slices, components or realisations calls the transform sequentially, while a
+// caller with one large problem asks the transform to thread. Both at once is
+// worse than either, so an operation asked to run in parallel from inside an
+// existing parallel region runs sequentially instead.
+//
+// A thread count of zero means "whatever OpenMP would choose", which respects
+// OMP_NUM_THREADS. On a machine with simultaneous multithreading that is
+// usually the number of hardware threads, and for this library's memory-bound
+// work that measures *slower* than using one thread per core, so callers who
+// care should say what they want.
+class Execution {
+ public:
+  static Execution Sequential() { return Execution(1); }
+  static Execution Parallel(int threads = 0) {
+    return Execution(threads > 0 ? threads : 0);
+  }
+
+  auto Threads() const { return _threads; }
+  auto IsParallel() const { return _threads != 1; }
+
+  bool operator==(const Execution&) const = default;
+
+ private:
+  explicit Execution(int threads) : _threads{threads} {}
+  int _threads;
+};
+
+//-------------------------------------------------------------------------//
 //                      Numeric concepts, from elsewhere                    //
 //--------------------------------------------------------------------------//
 

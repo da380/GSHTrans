@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <omp.h>
 
 #include <cstdint>
 #include <limits>
@@ -635,6 +636,122 @@ TEST(GaussLegendreGrid, OneThreadServesManyGrids) {
       }
     }
   }
+}
+
+// Threading (core-plan.md step H). The forward transform divides the
+// colatitudes between threads and reduces private partial sums; the inverse
+// divides them and writes disjoint rows.
+TEST(GaussLegendreGrid, ParallelAgreesWithSequential) {
+  using Real = double;
+  using Complex = std::complex<Real>;
+  using Grid = GaussLegendreGrid<Real, All, All>;
+  constexpr std::ptrdiff_t lMax = 24;
+  constexpr std::ptrdiff_t n = 2;
+  constexpr auto tolerance = 1.0e-12;
+
+  auto grid = Grid(lMax, n, FFTWpp::Estimate);
+  const auto indices = GSHIndices<All>(lMax, lMax, n);
+
+  auto given = FFTWpp::vector<Complex>(indices.Size());
+  for (auto j = std::size_t{0}; j < given.size(); ++j) {
+    given[j] = Complex{0.3 + 0.01 * j, -0.2 + 0.017 * j};
+  }
+
+  auto fieldSequential = FFTWpp::vector<Complex>(grid.FieldSize());
+  auto coefficientsSequential = FFTWpp::vector<Complex>(indices.Size());
+  grid.InverseTransformation(lMax, n, given, fieldSequential);
+  grid.ForwardTransformation(lMax, n, fieldSequential,
+                             coefficientsSequential);
+
+  for (auto threads : {1, 2, 3, 4, 8}) {
+    const auto policy = Execution::Parallel(threads);
+
+    auto field = FFTWpp::vector<Complex>(grid.FieldSize());
+    grid.InverseTransformation(lMax, n, given, field, policy);
+    // The inverse writes disjoint rows, each computed exactly as it would be
+    // sequentially, so this is exact rather than close.
+    for (auto i = std::size_t{0}; i < field.size(); ++i) {
+      EXPECT_EQ(field[i], fieldSequential[i])
+          << threads << " threads, point " << i;
+    }
+
+    auto coefficients = FFTWpp::vector<Complex>(indices.Size());
+    grid.ForwardTransformation(lMax, n, field, coefficients, policy);
+    // The forward transform sums the colatitudes in a different order, so
+    // this is close and not exact.
+    for (auto j = std::size_t{0}; j < coefficients.size(); ++j) {
+      EXPECT_NEAR(std::abs(coefficients[j] - coefficientsSequential[j]), 0.0,
+                  tolerance)
+          << threads << " threads, coefficient " << j;
+    }
+  }
+}
+
+// Exactly one level threads. A transform asked to run in parallel from inside
+// a parallel region must run sequentially rather than nest.
+TEST(GaussLegendreGrid, NestedParallelismIsSuppressed) {
+  using Real = double;
+  using Complex = std::complex<Real>;
+  using Grid = GaussLegendreGrid<Real, All, All>;
+  constexpr std::ptrdiff_t lMax = 12;
+  constexpr auto tolerance = 1.0e-12;
+
+  auto grid = Grid(lMax, 0, FFTWpp::Estimate);
+  const auto indices = GSHIndices<All>(lMax, lMax, 0);
+  constexpr auto count = 8;
+
+  auto Given = [&](int seed) {
+    auto given = FFTWpp::vector<Complex>(indices.Size());
+    for (auto j = std::size_t{0}; j < given.size(); ++j) {
+      given[j] = Complex{0.1 * seed + 0.01 * j, -0.05 * seed + 0.013 * j};
+    }
+    return given;
+  };
+
+  auto reference = std::vector<FFTWpp::vector<Complex>>{};
+  for (auto s = 0; s < count; ++s) {
+    auto given = Given(s);
+    auto field = FFTWpp::vector<Complex>(grid.FieldSize());
+    auto back = FFTWpp::vector<Complex>(indices.Size());
+    grid.InverseTransformation(lMax, 0, given, field);
+    grid.ForwardTransformation(lMax, 0, field, back);
+    reference.push_back(back);
+  }
+
+  // The outer loop owns the parallelism; the inner calls ask for it too and
+  // must not get it.
+  auto results = std::vector<FFTWpp::vector<Complex>>(
+      count, FFTWpp::vector<Complex>(indices.Size()));
+  auto sawNesting = 0;
+#pragma omp parallel for schedule(static) reduction(+ : sawNesting)
+  for (auto s = 0; s < count; ++s) {
+    auto given = Given(s);
+    auto field = FFTWpp::vector<Complex>(grid.FieldSize());
+    grid.InverseTransformation(lMax, 0, given, field,
+                               Execution::Parallel(4));
+    grid.ForwardTransformation(lMax, 0, field, results[s],
+                               Execution::Parallel(4));
+    if (omp_get_level() > 1) sawNesting += 1;
+  }
+
+  EXPECT_EQ(sawNesting, 0);
+  for (auto s = 0; s < count; ++s) {
+    for (auto j = std::size_t{0}; j < reference[s].size(); ++j) {
+      EXPECT_NEAR(std::abs(results[s][j] - reference[s][j]), 0.0, tolerance)
+          << "problem " << s << ", coefficient " << j;
+    }
+  }
+}
+
+TEST(GaussLegendreGrid, ExecutionPolicyDefaultsToSequential) {
+  EXPECT_FALSE(Execution::Sequential().IsParallel());
+  EXPECT_TRUE(Execution::Parallel().IsParallel());
+  EXPECT_TRUE(Execution::Parallel(4).IsParallel());
+  EXPECT_EQ(Execution::Parallel(4).Threads(), 4);
+  // Zero means "whatever OpenMP would choose", not "no threads".
+  EXPECT_EQ(Execution::Parallel().Threads(), 0);
+  EXPECT_EQ(Execution::Parallel(0).Threads(), 0);
+  EXPECT_EQ(Execution::Sequential().Threads(), 1);
 }
 
 // The round-trip tests draw their grid, degree, upper index and coefficients

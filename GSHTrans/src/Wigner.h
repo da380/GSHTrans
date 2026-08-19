@@ -309,8 +309,23 @@ class Wigner {
   void ComputeAll(Range &&thetaRange) {
     auto preComputed = PreCompute();
 
-#pragma omp parallel for
-    for (auto [n, iTheta] : Indices()) {
+    // Flattened to an integer loop and decoded inside. OpenMP's canonical loop
+    // form wants an integer induction variable or, from 5.0, a random-access
+    // iterator loop; a structured binding over a cartesian_product view is
+    // neither obviously conforming nor portable (core-plan.md F8).
+    //
+    // The region is suppressed when one is already open, so that a caller
+    // threading over grids or slices does not nest with this one. Exactly one
+    // level threads.
+    const auto nAngles = NumberOfAngles();
+    const auto count = NumberOfUpperIndices() * nAngles;
+    const auto minUpperIndex = MinUpperIndex();
+    const bool nested = omp_in_parallel();
+
+#pragma omp parallel for schedule(static) if (!nested)
+    for (Int index = 0; index < count; index++) {
+      const auto n = minUpperIndex + index / nAngles;
+      const auto iTheta = index % nAngles;
       Compute(n, iTheta, thetaRange[iTheta], preComputed);
     }
   }

@@ -156,7 +156,9 @@ It becomes reachable the moment a truncated-order table is used.
 by value, so binding the result to a `const auto&` and indexing it fails to
 compile. *Resolved in T1.*
 
-**F8 — `Wigner::ComputeAll` parallelises a non-canonical loop.**
+**F8 — `Wigner::ComputeAll` parallelises a non-canonical loop.** *Resolved in
+T9,* flattened to an integer loop with the indices decoded inside, and with the
+region suppressed when one is already open.
 `#pragma omp parallel for` is applied to
 `for (auto [n, iTheta] : Indices())` over a `cartesian_product` view
 (`Wigner.h:310–312`). OpenMP's canonical loop form wants an integer induction
@@ -654,6 +656,57 @@ buffers from step E. Fix `Wigner::ComputeAll`'s loop form (F8) and settle the
 nesting rule: one parallel region at a time, so that the layered layer's
 parallel-over-slices and `ComputeAll`'s internal loop cannot nest.
 
+**Done (T9), over colatitudes, on the unbatched transform.** The two directions
+differ and the difference decides the implementation: the inverse transform's
+colatitudes write disjoint rows of the field and share only read-only input, so
+they divide between threads with no reduction at all; the forward transform's
+colatitudes all contribute to every coefficient, so each thread accumulates
+into a private buffer and the partial sums are added at the end. The
+accumulator is kept per thread between calls, for the same reason step E keeps
+the work buffers.
+
+Threading is an explicit per-call policy defaulting to sequential ([C9]).
+`Execution::Parallel(threads)` names a count; `Execution::Parallel()` takes
+OpenMP's, which respects `OMP_NUM_THREADS`.
+
+**The nesting rule is enforced, not documented.** A transform asked to run in
+parallel from inside an existing parallel region runs sequentially instead, and
+`Wigner::ComputeAll` does the same. Exactly one level threads, whichever level
+asks first.
+
+*Measured, `n = 2`, complex, time per call:*
+
+| `lMax` | 1 thread | 2 | 4 | 8 | 16 |
+|---|---|---|---|---|---|
+| 128, forward | 1.75 ms | 1.89× | 2.98× | **4.02×** | 3.13× |
+| 128, inverse | 1.77 ms | 1.83× | 3.07× | 4.15× | **4.57×** |
+| 256, forward | 12.16 ms | 1.63× | 2.51× | **2.68×** | 2.23× |
+| 256, inverse | 12.54 ms | 1.69× | 2.64× | **2.98×** | 2.97× |
+
+**This closes P1's story.** Single-threaded, the Legendre stage ran at 19% of
+the read bandwidth one core can achieve, bound by load/store throughput. At
+`lMax = 128` on eight threads it reaches **39–40 GB/s**, against a measured
+machine roof near 42: the stage is now genuinely bandwidth-bound, which is what
+P1 assumed it was to begin with. There is nothing further to win there without
+reducing the traffic itself, which is what step G is for.
+
+At `lMax = 256` the gain is smaller, 2.7–3.0×. Two candidates, not separated:
+eight private accumulators of 1 MB each compete for the 16 MB L3 with the
+streaming, and the forward transform's reduction is serialised through one
+critical section. The forward direction is consistently the slower of the two
+at eight threads, which points at the reduction; a tree reduction or a
+partitioned one would be the thing to try.
+
+Sixteen threads is not better than eight and is often worse: this machine has
+eight cores and sixteen hardware threads, and for memory-bound work the second
+thread on a core adds contention rather than throughput. Callers should ask for
+cores.
+
+*Against batching:* threading gives 2.7–4.2× where tier-1 batching measured
+2.3× (P2), which is why the ordering question in §9 was raised. The two should
+compose — threads over colatitudes, batch over fields — but they compete for
+the same cache, so composing them is a measurement rather than an assumption.
+
 ### Cleanup
 
 Not a step of its own. F7 (`Views.h` const), F10 (missing includes in
@@ -959,6 +1012,9 @@ across grid instantiations, which is the right restriction.
 **With this, steps A–D are complete and field-algebra phase 1 is unblocked.**
 E–H remain, all gated on the §5 benchmark harness that does not yet exist.
 
+**T9 — step H, threading.** *Done.* Over colatitudes, with the nesting rule
+enforced rather than documented. See step H for the measurements.
+
 **T8 — step E, the plan and buffer cache.** *Done.* See step E above for what
 it changed and what it measured.
 
@@ -996,9 +1052,17 @@ larger lever, 4–5×. Tier-2 GEMM is where the remaining gain is, but for the
 load/store reason rather than the intensity reason, which makes step G's layout
 change a prerequisite rather than a follow-on.
 
-**The open question, for the author.** The document orders E → F → G → H. On
-these numbers the ordering that buys the most, soonest, is closer to
-**E → H → F → G**: the plan cache and flag policy first because they are
+**Resolved by doing E and H.** The document ordered E → F → G → H; the numbers
+said E → H → F → G, and that is what was done. E and H are complete; F and G
+remain, with F still carrying the deadline that field-algebra phase 2 is
+blocked on it ([C9]). Threading measured 2.7–4.2× against batching's 2.3×, so
+the reordering was worth it, and at `lMax = 128` the stage is now
+bandwidth-bound, which changes what is left to win: F's value is now mostly
+that phase 2 needs the interface, and G's is that it reduces the traffic
+itself.
+
+**The original wording, for the record.** On these numbers the ordering that
+buys the most, soonest, is closer to **E → H → F → G**: the plan cache and flag policy first because they are
 prerequisites and cheap, then threading for its 4–5×, then batching for its
 2.3× and because phase 2 needs the interface, then the layout change and GEMM.
 Against that, F is the one with a deadline — field-algebra phase 2 is blocked
