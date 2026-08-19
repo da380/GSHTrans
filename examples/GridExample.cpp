@@ -33,19 +33,14 @@ Int RandomUpperIndex(Int nMax) {
   }
 }
 
-// Random coefficients of a complex-valued field. The (lMax, lMax) coefficient
-// is unresolvable while nPhi = 2*lMax, so it is left at zero; that workaround
-// goes with core-plan.md step D.
-template <typename Grid, typename Range>
-void RandomComplexCoefficient(const Grid& grid, Int lMax, Int n, Range& range) {
+// Random coefficients of a complex-valued field.
+template <typename Range>
+void RandomComplexCoefficient(Range& range) {
   using Complex = std::ranges::range_value_t<Range>;
   using Real = RemoveComplex<Complex>;
   auto dist = std::normal_distribution<Real>();
   std::ranges::generate(range,
                         [&dist]() { return Complex{dist(gen), dist(gen)}; });
-  if (lMax == grid.MaxDegree()) {
-    range[GSHIndices<All>(lMax, lMax, n).Index(lMax, lMax)] = 0;
-  }
 }
 
 int main() {
@@ -71,7 +66,7 @@ int main() {
       size = grid.RealCoefficientSize(lMax);
     }
     auto flm = FFTWpp::vector<Complex>(size);
-    RandomComplexCoefficient(grid, lMax, n, flm);
+    RandomComplexCoefficient(flm);
 
     auto f = FFTWpp::vector<Scalar>(grid.FieldSize());
     auto glm = FFTWpp::vector<Complex>(size);

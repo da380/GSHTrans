@@ -65,7 +65,7 @@ inconsistent with itself — the one-point-grid early exit *assigns*
 named entry point.
 
 **F2 — `nPhi = 2·lMax` is one sample short of resolving `|m| ≤ lMax`.**
-*Severity: high. Currently masked by two workarounds.*
+*Severity: high. Was masked by two workarounds. Resolved in T3.*
 
 The longitude quadrature is the trapezoid rule on `nPhi` equally spaced points,
 which is exact for `e^{i(m−m′)φ}` only when `|m − m′| < nPhi`. Analysis of a
@@ -92,6 +92,11 @@ which is a bad FFT length. A small helper returning the least 2-3-5-7-11-13
 smooth integer `≥ 2·lMax + 1` gives `520 = 2³·5·13` there, at a cost of ~1.5% more
 FFT work — and the FFT is not the expensive stage (§2). Both workarounds then
 delete, and so does the field plan's caveat.
+
+*As landed:* `FastFFTSize` in `Utility.h`, restricted to `2^a 3^b 5^c 7^d 11^e
+13^f` with `e + f ≤ 1`, which is the set FFTW has codelets for. It gives
+exactly the predicted `520` at `lMax = 256`, and `3, 5, 11, 13, 18, 33, 70,
+130, 260` at `lMax = 1, 2, 5, 6, 8, 16, 33, 64, 128`.
 
 **F3 — FFTW plans are executed on caller storage.**
 *Severity: medium. Latent, environment-dependent.*
@@ -678,10 +683,23 @@ rather than the `CanonicalComponentExpansion` classes it used before: those are
 superseded and are deleted at step 7 of the field-algebra plan, so an oracle
 that phase 4 is meant to reuse could not keep depending on them.
 
-**T3 — step D, grid sizing.** The riskiest of the four and the one that must
-not be deferred: `nPhi` changes `FieldSize()`. Smooth-integer helper, the
+**T3 — step D, grid sizing.** *Done.* The riskiest of the four and the one that
+must not be deferred: `nPhi` changes `FieldSize()`. Smooth-integer helper, the
 `ForBand` named constructor, deletion of both `(lMax, lMax)` workarounds, and
-the round-trip test at `m = ±lMax` that is impossible today.
+the round-trip test at `m = ±lMax` that was impossible before.
+
+It went more smoothly than its risk rating suggested, for a reason worth
+recording: no test carried a hard-coded `FieldSize()`. They compute sizes from
+the grid, so the only ones that failed were the two that asserted the aliasing
+behaviour itself — including the test T2 deliberately left as a tripwire, which
+fired exactly as intended. Four tests now guard the sizing, each checked
+against the old `nPhi` to confirm it fails there.
+
+`ForBand(lBand, nMax, oversampling)` takes a real oversampling factor rather
+than an integer one, so the 3/2 dealiasing rule is expressible; it rounds the
+resulting degree **up**, since rounding down would silently remove the headroom
+the caller asked for. The grid constructor's `lMax`/`nMax` parameters widened
+from `int` to `Int` so that `ForBand`'s computed degree cannot narrow.
 
 **T4 — step C, the transform I/O contract.** F1 (zero `out`), F3 (no new-array
 execute on caller storage), F5 (size checks throw in all build modes), F6.

@@ -54,9 +54,12 @@ void ExpectNear(Complex actual, Complex expected) {
   EXPECT_NEAR(actual.imag(), expected.imag(), tolerance);
 }
 
-// A real-valued field on the grid, in both real and complex storage. The
-// cos(lMax * phi) term deliberately excites the orders m = +-lMax, which the
-// grid cannot separate while nPhi = 2 * lMax.
+// A real-valued field on the grid, in both real and complex storage. The last
+// two terms deliberately excite the orders m = +-lMax. Both a cosine and a
+// sine are present so that the resulting coefficient at (lMax, lMax) is
+// genuinely complex: while nPhi = 2 * lMax those two orders were one mode and
+// that coefficient was forced real, so a test built only from the cosine would
+// not notice a return to that behaviour.
 template <typename AnyGrid>
 void MakeRealSamples(const AnyGrid& grid, FFTWpp::vector<Real>& realSamples,
                      FFTWpp::vector<Complex>& complexSamples) {
@@ -67,7 +70,8 @@ void MakeRealSamples(const AnyGrid& grid, FFTWpp::vector<Real>& realSamples,
                        0.2 * std::sin(2.0 * theta) * std::sin(2.0 * phi) +
                        0.15 * std::cos(3.0 * theta) * std::cos(3.0 * phi) +
                        0.45 * (1.0 + 0.3 * std::cos(theta)) *
-                           std::cos(lMax * phi);
+                           std::cos(lMax * phi) +
+                       0.35 * std::sin(theta) * std::sin(lMax * phi);
     realSamples[i] = value;
     complexSamples[i] = Complex{value, 0.0};
     ++i;
@@ -145,7 +149,6 @@ TEST(RealFieldSymmetry, ReducedSpectrumMatchesFullNonNegativeOrders) {
   const auto fullIndices = FullIndices(0);
 
   for (auto [l, m] : reducedIndices.Indices()) {
-    if (l == lMax && m == lMax) continue;  // see the Nyquist test below
     ExpectNear(reduced[reducedIndices.Index(l, m)],
                full[fullIndices.Index(l, m)]);
   }
@@ -169,32 +172,41 @@ TEST(RealFieldSymmetry, RealFieldIsSelfConjugateAtUpperIndexZero) {
   const auto indices = FullIndices(0);
 
   for (auto [l, m] : indices.Indices()) {
-    if (l == lMax && std::abs(m) == lMax) continue;  // unresolvable, see below
     ExpectNear(full[indices.Index(l, -m)],
                Phase(m) * std::conj(full[indices.Index(l, m)]));
   }
 }
 
-// The orders m = +-lMax are the same discrete mode while nPhi = 2 * lMax, so
-// the complex forward transform zeroes (lMax, lMax) and the real transform
-// does not. These expectations record the current aliasing behaviour rather
-// than any mathematics, and they are expected to change when core-plan.md
-// step D (task T3) makes nPhi large enough to resolve both orders.
-TEST(RealFieldSymmetry, UnresolvableOrdersFollowTheCurrentAliasingRule) {
+// The orders m = +-lMax are separate discrete modes now that nPhi exceeds
+// 2 * lMax (core-plan.md step D). Both carry the amplitude the sample field
+// puts into cos(lMax * phi), and neither is zeroed. Before step D the complex
+// transform zeroed (lMax, lMax) outright and the reduced storage held the sum
+// of the two, so this test replaces one that asserted the opposite.
+TEST(RealFieldSymmetry, HighestOrdersAreResolvedSeparately) {
   auto grid = Grid(lMax, nSpin, FFTWpp::Estimate);
+  ASSERT_GT(grid.NumberOfLongitudes(), 2 * lMax);
+
   auto realSamples = FFTWpp::vector<Real>(grid.FieldSize());
   auto complexSamples = FFTWpp::vector<Complex>(grid.FieldSize());
   MakeRealSamples(grid, realSamples, complexSamples);
 
   const auto reduced = ReducedCoefficients(grid, realSamples);
   const auto full = FullCoefficients(grid, 0, complexSamples);
-  const auto nyquist = reduced[ReducedIndices().Index(lMax, lMax)];
   const auto indices = FullIndices(0);
 
-  EXPECT_NEAR(nyquist.imag(), 0.0, tolerance);
-  EXPECT_GT(std::abs(nyquist), tolerance);
-  ExpectNear(full[indices.Index(lMax, lMax)], Complex{});
-  ExpectNear(full[indices.Index(lMax, -lMax)], Phase(lMax) * std::conj(nyquist));
+  const auto top = full[indices.Index(lMax, lMax)];
+  const auto bottom = full[indices.Index(lMax, -lMax)];
+
+  // Both are present, and the top one is genuinely complex -- which it could
+  // not be while the two orders were a single real mode.
+  EXPECT_GT(std::abs(top), tolerance);
+  EXPECT_GT(std::abs(bottom), tolerance);
+  EXPECT_GT(std::abs(top.imag()), tolerance);
+
+  // The reduced storage agrees with the full storage at m = +lMax, and the
+  // partner follows from the self-relation rather than being lost.
+  ExpectNear(reduced[ReducedIndices().Index(lMax, lMax)], top);
+  ExpectNear(bottom, Phase(lMax) * std::conj(top));
 }
 
 // eq:basiclevel at n = 2, through complex transforms of a real-valued field:
@@ -212,7 +224,6 @@ TEST(RealFieldSymmetry, FullTransformsSatisfyCrossUpperIndexIdentity) {
   const auto minusIndices = FullIndices(-nSpin);
 
   for (auto [l, m] : plusIndices.Indices()) {
-    if (l == lMax && std::abs(m) == lMax) continue;
     ExpectNear(minus[minusIndices.Index(l, -m)],
                Phase(m - nSpin) * std::conj(plus[plusIndices.Index(l, m)]));
   }
@@ -235,7 +246,7 @@ TEST(RealFieldSymmetry, ReducedInverseUsesTheImplicitHermitianPair) {
   for (auto [l, m] : reducedIndices.Indices()) {
     const auto value = reduced[reducedIndices.Index(l, m)];
     expanded[fullIndices.Index(l, m)] = value;
-    if (m > 0 && m < lMax) {
+    if (m > 0) {
       expanded[fullIndices.Index(l, -m)] = Phase(m) * std::conj(value);
     }
   }
@@ -308,9 +319,7 @@ TEST(RealFieldSymmetry, ScalarGridRoundTripsAtUpperIndexZero) {
   auto reconstructed = FFTWpp::vector<Real>(grid.FieldSize());
   grid.InverseTransformation(lMax, 0, coefficients, reconstructed);
 
-  // The (lMax, lMax) mode is not resolvable at nPhi = 2 * lMax, so the round
-  // trip is checked against a field with that mode projected out: forward,
-  // inverse, forward again must reproduce the first spectrum.
+  // Forward, inverse, forward again must reproduce the first spectrum.
   auto again = FFTWpp::vector<Complex>(grid.RealCoefficientSize(lMax));
   std::ranges::fill(again, Complex{});
   grid.ForwardTransformation(lMax, 0, reconstructed, again);

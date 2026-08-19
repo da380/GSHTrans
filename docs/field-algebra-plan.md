@@ -505,7 +505,7 @@ Verified, so the plan does not have to guess:
 | fact | where |
 |---|---|
 | Spatial layout is theta-major, phi fastest, flat index `iTheta*nPhi + iPhi` | `GaussLegendreGrid.h:169`, `GridBase::Points()` |
-| `nTheta = lMax + 1` (Gauss–Legendre), `nPhi = max(1, 2*lMax)` | `GaussLegendreGrid.h:48`, `:96` |
+| `nTheta = lMax + 1` (Gauss–Legendre); `nPhi` = the least fast FFT length `≥ 2·lMax + 1` (`520` at `lMax = 256`). *Was `max(1, 2*lMax)`; changed in `core-plan.md` T3* | `GaussLegendreGrid.h`, `Utility.h` |
 | `FieldSize()`, `Weights()`, `CoLatitudeWeights()`, `LongitudeWeights()`, `PointIndices()`, `ProjectFunction()` all exist on `GridBase` | `GridBase.h` |
 | Longitude weights are uniform (`repeat(dPhi, nPhi)`) | `GaussLegendreGrid.h:103` |
 | `MaxUpperIndex()` runtime; `NRange` compile-time (`All`/`NonNegative`/`Single`); `MinUpperIndex()`/`UpperIndices()` derived | `GaussLegendreGrid.h:88`, `GridBase.h:17` |
@@ -515,20 +515,20 @@ Verified, so the plan does not have to guess:
 | Complex-valued transforms require `MRange = All` | `GaussLegendreGrid.h:114` |
 | Terminals allocate `FFTWpp::vector<Scalar>` — `fftw_malloc`, SIMD-aligned | `CanonicalComponentField.h:82`, FFTWpp `Core.h:116` |
 | `Wigner` indexed `[n][iTheta][l][m]`, holding `sqrt((2l+1)/(4π)) · d^l_{nm}` — upper index **first**, per Dahlen & Tromp (C.115). Verified, §2 | `GaussLegendreGrid.h:181`, `Wigner.h:474–486` |
-| The `(lMax, lMax)` coefficient is explicitly zeroed on complex forward transforms, and again in the random-coefficient generators. *Workaround for an `nPhi` that is one sample short — `core-plan.md` F2, removed by step D* | `GaussLegendreGrid.h:217`, `GridBase.h:138` |
+| ~~The `(lMax, lMax)` coefficient is explicitly zeroed on complex forward transforms, and again in the random-coefficient generators.~~ *Both workarounds deleted in `core-plan.md` T3; the orders `m = ±lMax` are now resolved.* | — |
 | `FieldBase` (with the `CheckPointIndices` bug) is used only by superseded and dormant trees | `grep`; `GSHTrans/Field` |
 | C++23, gtest via FetchContent, Eigen already a dependency | `CMakeLists.txt` |
 
 Two rows carry consequences beyond their own line.
 
-*The `(lMax, lMax)` zeroing.* A round-trip through the complex forward transform
-at `lMax` will not reproduce that mode, because it is deliberately zeroed: with
-`nPhi = 2·lMax` the orders `m = ±lMax` are the same discrete mode, so the
-longitude quadrature cannot separate them. Until `core-plan.md` step D fixes
-`nPhi`, test family 4's round-trip must either stay below `lMax` or expect that
-mode to vanish, or the CLI will chase a phantom failure. After step D the
-caveat and both workarounds are gone, and the round-trip can be written at
-`lMax` as one would naively expect.
+*The `(lMax, lMax)` zeroing — gone.* This row used to carry a caveat: a
+round-trip through the complex forward transform at `lMax` would not reproduce
+that mode, because with `nPhi = 2·lMax` the orders `m = ±lMax` were the same
+discrete mode and the transform zeroed the coefficient rather than return a
+wrong one. `core-plan.md` T3 sized `nPhi` at the least fast FFT length
+`≥ 2·lMax + 1`, so both orders are now resolved and both workarounds are
+deleted. **Test family 4's round-trip can be written at `lMax` as one would
+naively expect**, which is what the caveat was there to prevent.
 
 *Real input at any `n`.* This was a working, tested path that Q5 deliberately
 removed (`core-plan.md` T2). Recorded here so that the deletion reads as a
@@ -589,9 +589,8 @@ Four families, each with named acceptance criteria for the CLI.
    order by round-tripping through the scalar transform at `N == 0`; a minimal
    non-owning view over external storage satisfies `SpinWeighted` and
    participates in expressions interchangeably with an owning field. The
-   `(lMax, lMax)` caveat of §4 disappears once `core-plan.md` step D has
-   landed; if this test is written before it, it must stay below `lMax` or
-   expect that mode to vanish.
+   `(lMax, lMax)` caveat of §4 no longer applies: `core-plan.md` T3 has landed,
+   so the round-trip is written at `lMax` with the `m = ±lMax` modes included.
 
 Sanitiser discipline as established: every family runs Debug and
 Release+ASan/UBSan, leak detection off in the ptraced environment, and the

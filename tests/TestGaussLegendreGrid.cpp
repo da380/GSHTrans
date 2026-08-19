@@ -156,6 +156,100 @@ TEST(GaussLegendreGrid, RejectsUnsupportedTransformRequests) {
                std::invalid_argument);
 }
 
+// nPhi must exceed 2 * lMax so that the orders m = +-lMax are separate
+// discrete modes, and should be a length FFTW transforms quickly
+// (core-plan.md F2, step D).
+static_assert(FastFFTSize(1) == 1);
+static_assert(FastFFTSize(2) == 2);
+static_assert(FastFFTSize(11) == 11);
+static_assert(!IsFastFFTSize(121));  // 11^2: eleven may appear only once
+static_assert(!IsFastFFTSize(143));  // 11 * 13: and not alongside thirteen
+static_assert(FastFFTSize(143) == 144);
+// The case that motivates the rule: 2 * 256 + 2 = 514 = 2 * 257, and 257 is
+// prime. The next fast length is 520 = 2^3 * 5 * 13.
+static_assert(!IsFastFFTSize(514));
+static_assert(FastFFTSize(513) == 520);
+
+TEST(GaussLegendreGrid, LongitudeCountResolvesTheHighestOrders) {
+  using Grid = GaussLegendreGrid<double, All, All>;
+
+  for (auto lMax : {0, 1, 2, 3, 5, 8, 16, 33}) {
+    auto grid = Grid(lMax, 0, FFTWpp::Estimate);
+    const auto nPhi = static_cast<std::ptrdiff_t>(grid.NumberOfLongitudes());
+    EXPECT_GE(nPhi, 2 * lMax + 1) << "lMax = " << lMax;
+    EXPECT_TRUE(IsFastFFTSize(nPhi)) << "lMax = " << lMax << ", nPhi = " << nPhi;
+    EXPECT_EQ(grid.FieldSize(), (lMax + 1) * nPhi) << "lMax = " << lMax;
+  }
+}
+
+// The round trip that the old sizing made impossible: a field carrying only
+// the order m = +lMax must come back with that coefficient intact and its
+// m = -lMax partner still zero. At nPhi = 2 * lMax the two were one mode, and
+// the forward transform zeroed the (lMax, lMax) coefficient outright.
+TEST(GaussLegendreGrid, HighestOrdersSurviveARoundTrip) {
+  using Real = double;
+  using Complex = std::complex<Real>;
+  using Grid = GaussLegendreGrid<Real, All, All>;
+  constexpr std::ptrdiff_t lMax = 6;
+  constexpr auto tolerance = 1.0e-12;
+
+  auto grid = Grid(lMax, 0, FFTWpp::Estimate);
+  const auto indices = GSHIndices<All>(lMax, lMax, 0);
+
+  for (auto m : {lMax, -lMax}) {
+    auto coefficients = FFTWpp::vector<Complex>(indices.Size());
+    std::ranges::fill(coefficients, Complex{});
+    const auto value = Complex{0.75, -0.25};
+    coefficients[indices.Index(lMax, m)] = value;
+
+    auto field = FFTWpp::vector<Complex>(grid.FieldSize());
+    auto recovered = FFTWpp::vector<Complex>(indices.Size());
+    std::ranges::fill(recovered, Complex{});
+    grid.InverseTransformation(lMax, 0, coefficients, field);
+    grid.ForwardTransformation(lMax, 0, field, recovered);
+
+    EXPECT_NEAR(recovered[indices.Index(lMax, m)].real(), value.real(),
+                tolerance)
+        << "m = " << m;
+    EXPECT_NEAR(recovered[indices.Index(lMax, m)].imag(), value.imag(),
+                tolerance)
+        << "m = " << m;
+    EXPECT_NEAR(std::abs(recovered[indices.Index(lMax, -m)]), 0.0, tolerance)
+        << "m = " << m << " leaked into its partner";
+  }
+}
+
+TEST(GaussLegendreGrid, ForBandGivesRequestedHeadroom) {
+  using Real = double;
+  using Complex = std::complex<Real>;
+  using Grid = GaussLegendreGrid<Real, All, All>;
+  constexpr std::ptrdiff_t band = 8;
+
+  auto exact = Grid::ForBand(band, 0, 1.0, FFTWpp::Estimate);
+  auto threeHalves = Grid::ForBand(band, 0, 1.5, FFTWpp::Estimate);
+  auto doubled = Grid::ForBand(band, 0, 2.0, FFTWpp::Estimate);
+
+  EXPECT_EQ(exact.MaxDegree(), band);
+  EXPECT_EQ(threeHalves.MaxDegree(), 12);
+  EXPECT_EQ(doubled.MaxDegree(), 2 * band);
+
+  // A non-integer product rounds up, never down: the point of the parameter is
+  // headroom, and rounding down would silently remove it.
+  EXPECT_EQ(Grid::ForBand(band, 0, 1.1, FFTWpp::Estimate).MaxDegree(), 9);
+
+  EXPECT_THROW(Grid::ForBand(band, 0, 0.5, FFTWpp::Estimate),
+               std::invalid_argument);
+  EXPECT_THROW(Grid::ForBand(-1, 0, 1.0, FFTWpp::Estimate),
+               std::invalid_argument);
+
+  // An oversampled grid still transforms at the band, which is the point:
+  // headroom in the quadrature, truncation in the transform.
+  auto field = FFTWpp::vector<Complex>(doubled.FieldSize());
+  auto coefficients =
+      FFTWpp::vector<Complex>(doubled.CoefficientSize(band, 0));
+  EXPECT_NO_THROW(doubled.ForwardTransformation(band, 0, field, coefficients));
+}
+
 // The round-trip tests draw their grid, degree, upper index and coefficients
 // from one seeded generator, and report the seed so that a failure can be
 // reproduced with GSHTRANS_TEST_SEED (core-plan.md F12).

@@ -18,6 +18,7 @@
 #include "Concepts.h"
 #include "GridBase.h"
 #include "Indexing.h"
+#include "Utility.h"
 #include "Wigner.h"
 
 namespace GSHTrans {
@@ -36,7 +37,7 @@ class GaussLegendreGrid
   // Constructors.
   GaussLegendreGrid() = default;
 
-  GaussLegendreGrid(int lMax, int nMax, FFTWpp::Flag flag = FFTWpp::Measure)
+  GaussLegendreGrid(Int lMax, Int nMax, FFTWpp::Flag flag = FFTWpp::Measure)
       : _lMax{lMax}, _nMax{nMax}, _flag{flag} {
     // Check the inputs.
     assert(MaxDegree() >= 0);
@@ -88,6 +89,31 @@ class GaussLegendreGrid
     }
   }
 
+  // A grid for working with fields of maximum degree lBand, with quadrature
+  // headroom for degree oversampling * lBand.
+  //
+  // The distinction this expresses is between the *band* of the fields being
+  // worked with and the *resolution* of the grid, which the library could not
+  // previously say: the transforms already take lMax per call, so an
+  // oversampled grid with truncated transforms works, but there was no way to
+  // ask for one. Headroom is wanted whenever a quantity of higher degree than
+  // the fields themselves is formed on the grid -- a product of two band-L
+  // fields has band 2L, and integrating |f|^2 for band-L f integrates a
+  // degree-2L quantity. The 3/2 rule is oversampling = 1.5; oversampling = 2
+  // is exact for a single product.
+  static auto ForBand(Int lBand, Int nMax, Real oversampling = 1,
+                      FFTWpp::Flag flag = FFTWpp::Measure) {
+    if (lBand < 0) {
+      throw std::invalid_argument("Band must be non-negative");
+    }
+    if (!(oversampling >= 1)) {
+      throw std::invalid_argument("Oversampling factor must be at least one");
+    }
+    const auto lGrid = static_cast<Int>(
+        std::ceil(oversampling * static_cast<Real>(lBand)));
+    return GaussLegendreGrid(lGrid, nMax, flag);
+  }
+
   GaussLegendreGrid(const GaussLegendreGrid&) = default;
 
   GaussLegendreGrid(GaussLegendreGrid&&) = default;
@@ -108,16 +134,14 @@ class GaussLegendreGrid
   }
 
   auto Longitudes() const {
-    const auto nPhi = std::max(Int{1}, 2 * _lMax);
-    const auto dPhi =
-        2 * std::numbers::pi_v<Real> / static_cast<Real>(nPhi);
+    const auto nPhi = NPhi();
+    const auto dPhi = 2 * std::numbers::pi_v<Real> / static_cast<Real>(nPhi);
     return std::ranges::views::iota(Int{0}, nPhi) |
            std::ranges::views::transform([dPhi](auto i) { return i * dPhi; });
   }
   auto LongitudeWeights() const {
-    const auto nPhi = std::max(Int{1}, 2 * _lMax);
-    const auto dPhi =
-        2 * std::numbers::pi_v<Real> / static_cast<Real>(nPhi);
+    const auto nPhi = NPhi();
+    const auto dPhi = 2 * std::numbers::pi_v<Real> / static_cast<Real>(nPhi);
     return std::ranges::views::repeat(dPhi, nPhi);
   }
 
@@ -225,13 +249,6 @@ class GaussLegendreGrid
         }
       }
 
-      if constexpr (ComplexFloatingPoint<Scalar>) {
-        // Zero the (_lMax,_lMax) coefficient.
-        if (lMax == _lMax) {
-          auto view = std::ranges::views::reverse(out);
-          view[0] = 0;
-        }
-      }
     }
   }
 
@@ -339,6 +356,16 @@ class GaussLegendreGrid
   }
 
  private:
+  // The longitude quadrature is the trapezoid rule on nPhi equally spaced
+  // points, which is exact for exp(i (m - m') phi) only when |m - m'| < nPhi.
+  // Resolving orders |m| <= lMax therefore needs nPhi >= 2 * lMax + 1, not
+  // 2 * lMax: at 2 * lMax the orders m = +lMax and m = -lMax are the same
+  // discrete mode and cannot be separated, which is why the transform used to
+  // zero the (lMax, lMax) coefficient rather than compute it (core-plan.md
+  // F2). The smallest fast FFT length at or above the bound is used, so that
+  // the fix does not land on a length with a large prime factor.
+  auto NPhi() const { return FastFFTSize(2 * _lMax + 1); }
+
   template <RealOrComplexFloatingPoint Scalar>
   void ValidateTransformRequest(Int lMax, Int n) const {
     if (lMax < 0 || lMax > MaxDegree()) {

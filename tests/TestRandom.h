@@ -71,16 +71,6 @@ void RandomComplexCoefficient(const Grid& grid, Int lMax, Int n, Range& range,
   auto dist = std::normal_distribution<Real>();
   std::ranges::generate(
       range, [&gen, &dist]() { return Complex{dist(gen), dist(gen)}; });
-
-  // The (lMax, lMax) coefficient is not resolvable on a grid whose nPhi is
-  // 2*lMax, so it is zeroed here rather than presented to a round trip that
-  // cannot reproduce it. This is a workaround for core-plan.md F2 and deletes
-  // with step D (task T3), along with its counterpart in the forward
-  // transform.
-  if (lMax == grid.MaxDegree()) {
-    auto i = GSHTrans::GSHIndices<GSHTrans::All>(lMax, lMax, n).Index(lMax, lMax);
-    range[i] = 0;
-  }
 }
 
 // Fill `range` with the reduced (m >= 0) coefficients of a random real-valued
@@ -105,12 +95,6 @@ void RandomRealCoefficient(const Grid& grid, Int lMax, Range& range,
   auto indices = GSHTrans::GSHIndices<GSHTrans::NonNegative>(lMax, lMax, 0);
   for (auto l : indices.Degrees()) {
     range[indices.Index(l, 0)].imag(0);
-  }
-
-  // As above: (lMax, lMax) is unresolvable at nPhi = 2*lMax. Deletes with
-  // core-plan.md step D (task T3).
-  if (lMax == grid.MaxDegree()) {
-    range[indices.Index(lMax, lMax)].imag(0);
   }
 }
 
