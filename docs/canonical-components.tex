@@ -1,0 +1,427 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\newcommand{\ebasis}[1]{\mathbf{e}_{#1}}
+\newcommand{\conj}[1]{\overline{#1}}
+\newcommand{\dOmega}{\,\mathrm{d}\Omega}
+% \eth is provided by amssymb
+
+\title{Canonical Components and Generalized Spherical Harmonics\\
+\large Conventions, symmetries and admissible operations}
+\author{Notes for the GSHTrans field algebra}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This note fixes the conventions used by the GSHTrans field algebra and
+derives the facts that the type system is intended to enforce: how the
+generalized spherical harmonic upper index is carried by a tensor
+component, which algebraic operations on components are covariant, and
+how reality and permutation symmetry reduce the set of components that
+must be stored.  Every convention-dependent statement is flagged; these
+are the points that need checking against Phinney \& Burridge before any
+code is written.
+\end{abstract}
+
+\tableofcontents
+
+\section{The canonical basis}
+\label{sec:basis}
+
+At each point of the sphere let $\hat{\mathbf{r}},
+\hat{\boldsymbol{\theta}}, \hat{\boldsymbol{\phi}}$ be the usual
+orthonormal spherical polar frame.  The canonical basis is
+\begin{equation}
+  \ebasis{\pm} = \mp \tfrac{1}{\sqrt{2}}
+    \left( \hat{\boldsymbol{\theta}} \pm i \hat{\boldsymbol{\phi}} \right),
+  \qquad
+  \ebasis{0} = \hat{\mathbf{r}} .
+  \label{eq:basis}
+\end{equation}
+The index $\alpha \in \{-1, 0, +1\}$, written $\{-,0,+\}$ where no
+confusion arises.
+
+\paragraph{Convention check.}  The sign $\mp$ in \eqref{eq:basis} is the
+first thing to verify.  Some authors use $\ebasis{\pm} = \pm(\hat{\boldsymbol{\theta}}
+\pm i\hat{\boldsymbol{\phi}})/\sqrt{2}$, which flips the sign of every
+odd-rank reality phase below.
+
+Two properties follow immediately and are used throughout.  First, complex
+conjugation of the basis:
+\begin{equation}
+  \conj{\ebasis{\alpha}} = (-1)^{\alpha}\, \ebasis{-\alpha},
+  \label{eq:basisconj}
+\end{equation}
+which reproduces $\conj{\ebasis{\pm}} = -\ebasis{\mp}$ and
+$\conj{\ebasis{0}} = \ebasis{0}$.  Second, the metric
+$g_{\alpha\beta} = \ebasis{\alpha} \cdot \ebasis{\beta}$:
+\begin{equation}
+  g_{\alpha\beta} = (-1)^{\alpha}\, \delta_{\alpha+\beta,\,0},
+  \qquad\text{that is}\qquad
+  g_{+-} = g_{-+} = -1, \quad g_{00} = 1,
+  \label{eq:metric}
+\end{equation}
+all other entries vanishing.  Note $g$ is its own inverse.  We work
+throughout with \emph{contravariant} components only; the metric
+\eqref{eq:metric} is applied explicitly wherever a contraction is taken,
+and index position is not tracked.
+
+\section{Canonical components of a tensor}
+\label{sec:components}
+
+A rank-$p$ tensor field on the sphere is expanded as
+\begin{equation}
+  \mathbf{T}(\theta,\phi) = \sum_{\alpha_1 \ldots \alpha_p}
+    T^{\alpha_1 \ldots \alpha_p}(\theta,\phi)\,
+    \ebasis{\alpha_1} \otimes \cdots \otimes \ebasis{\alpha_p} ,
+\end{equation}
+so a rank-$p$ tensor has $3^p$ scalar components, each labelled by a
+\emph{multi-index} $(\alpha_1 \ldots \alpha_p) \in \{-1,0,1\}^p$.
+
+Under a rotation of the tangent frame through an angle $\psi$ about
+$\hat{\mathbf{r}}$ the basis vectors transform as $\ebasis{\pm} \mapsto
+e^{\mp i\psi} \ebasis{\pm}$, $\ebasis{0} \mapsto \ebasis{0}$.  Hence the
+component $T^{\alpha_1 \ldots \alpha_p}$ acquires the phase
+$e^{-iN\psi}$ with
+\begin{equation}
+  \boxed{\;N = \sum_{i=1}^{p} \alpha_i \;}
+  \label{eq:N}
+\end{equation}
+and it is this $N$, not the multi-index itself, that is the upper index
+of the generalized spherical harmonic expansion of that component
+(Section~\ref{sec:gsh}).
+
+Two consequences matter for the design of the library.
+
+\begin{enumerate}
+  \item For a vector ($p=1$) the multi-index and the upper index
+    coincide, $N = \alpha$.  For $p \geq 2$ they do not: distinct
+    components share an upper index.  A rank-2 tensor has three
+    components with $N=0$, namely $(-+)$, $(00)$ and $(+-)$.  A
+    collection of components labelled only by $N$ therefore does
+    \emph{not} determine the tensor.
+  \item The number of components of a rank-$p$ tensor with a given upper
+    index $N$ is the trinomial coefficient
+    $\binom{p}{N}_{\!2}$; for $p=2$ these are $1,2,3,2,1$ for
+    $N=-2,\ldots,+2$.
+\end{enumerate}
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{ccc}
+    \toprule
+    $N$ & components & count \\
+    \midrule
+    $-2$ & $(--)$ & 1 \\
+    $-1$ & $(-0),\ (0-)$ & 2 \\
+    $ 0$ & $(-+),\ (00),\ (+-)$ & 3 \\
+    $+1$ & $(0+),\ (+0)$ & 2 \\
+    $+2$ & $(++)$ & 1 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Upper index of each component of a rank-2 tensor.}
+  \label{tab:rank2}
+\end{table}
+
+\paragraph{Tensor product.}  If $S$ has multi-index
+$(\alpha_1 \ldots \alpha_p)$ with upper index $N_S$ and $T$ has
+$(\beta_1 \ldots \beta_q)$ with $N_T$, then the component of
+$S \otimes T$ with the concatenated multi-index has upper index
+$N_S + N_T$ by \eqref{eq:N}.  The rule ``upper indices add under
+pointwise multiplication'' is exactly this statement.
+
+\section{Reality}
+\label{sec:reality}
+
+Suppose $\mathbf{T}$ is a real tensor field.  Writing
+$\mathbf{T} = \conj{\mathbf{T}}$ and using \eqref{eq:basisconj} on each
+factor,
+\begin{align}
+  \sum_{\alpha_1 \ldots \alpha_p} T^{\alpha_1 \ldots \alpha_p}\,
+    \ebasis{\alpha_1} \otimes \cdots
+  &= \sum_{\alpha_1 \ldots \alpha_p} \conj{T^{\alpha_1 \ldots \alpha_p}}\,
+     (-1)^{\alpha_1 + \cdots + \alpha_p}\,
+     \ebasis{-\alpha_1} \otimes \cdots ,
+\end{align}
+and relabelling $\alpha_i \to -\alpha_i$ on the right gives the
+\textbf{reality condition}
+\begin{equation}
+  \boxed{\;
+  T^{-\alpha_1 \ldots -\alpha_p}
+    = (-1)^{N}\, \conj{T^{\alpha_1 \ldots \alpha_p}},
+  \qquad N = \textstyle\sum_i \alpha_i .
+  \;}
+  \label{eq:reality}
+\end{equation}
+For a vector this reads $u^{0} = \conj{u^{0}}$ and
+$u^{-} = -\,\conj{u^{+}}$: the radial component is a real field, and the
+two transverse components are not independent.
+
+\subsection{Which components must be stored}
+\label{sec:orbits}
+
+Equation \eqref{eq:reality} pairs each multi-index with its
+\emph{negation} $(\alpha_i) \mapsto (-\alpha_i)$.  The components that
+must be stored are one representative of each orbit of this involution.
+
+\begin{itemize}
+  \item The only fixed point of the negation map is the all-zero
+    multi-index, which has $N = 0$ and, by \eqref{eq:reality}, satisfies
+    $T^{0\ldots 0} = \conj{T^{0 \ldots 0}}$: it is a \emph{real-valued}
+    field.
+  \item Every other multi-index lies in an orbit of size two; one member
+    is stored as a complex field and the other is recovered by
+    \eqref{eq:reality}.
+\end{itemize}
+
+The storage cost in real numbers is therefore
+$1 + 2 \cdot \tfrac{1}{2}(3^p - 1) = 3^p$, which is precisely the number
+of real degrees of freedom of a real rank-$p$ tensor in three
+dimensions.  The reduction loses nothing and saves a factor of two
+against storing all $3^p$ components as complex fields.
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{lrrrr}
+    \toprule
+    rank $p$ & components $3^p$ & stored fields & of which real & reals stored \\
+    \midrule
+    0 & 1  & 1  & 1 & 1 \\
+    1 & 3  & 2  & 1 & 3 \\
+    2 & 9  & 5  & 1 & 9 \\
+    4 & 81 & 41 & 1 & 81 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Storage for a real tensor field, per grid point, under the
+    orbit rule of Section~\ref{sec:orbits}.  Complex tensors of the same
+    rank require $2 \cdot 3^p$ reals.}
+  \label{tab:storage}
+\end{table}
+
+\paragraph{Why ``$N \geq 0$'' is not the rule.}  For a vector the orbits
+are $\{0\}$ and $\{+,-\}$, and selecting components with $N \geq 0$ picks
+exactly one from each.  This coincidence fails at rank 2: $(+-)$ and
+$(-+)$ both have $N = 0$ and form a negation pair, so the criterion
+$N \geq 0$ would retain both.  The selection rule must be stated on
+multi-indices, not on upper indices.
+
+\subsection{Interaction with permutation symmetry}
+\label{sec:symmetry}
+
+If the tensor is symmetric (or antisymmetric) under some subgroup $P$ of
+index permutations, the stored set is one representative per orbit of the
+group generated by $P$ together with the negation map.  A component whose
+$P$-orbit contains its own negation is constrained by \eqref{eq:reality}
+to be real, or purely imaginary if the permutation relating them carries
+a minus sign.
+
+Such self-paired components always have $N = 0$: permutation preserves
+the multiset sum while negation changes its sign, so a component fixed by
+the combined operation satisfies $N = -N$.  Since $(-1)^{0} = +1$, a
+self-paired component of a \emph{symmetric} tensor is always real; purely
+imaginary components arise only in the antisymmetric case.
+
+\paragraph{Worked check: symmetric real rank 2.}  The six independent
+symmetric components are $(--), (-0), (-+), (00), (0+), (++)$.  Under the
+combined group,
+\begin{center}
+  \begin{tabular}{lll}
+    \toprule
+    orbit & size & stored as \\
+    \midrule
+    $\{(00)\}$                    & 1 & real field \\
+    $\{(-+), (+-)\}$              & 2 & real field (self-paired, $N=0$) \\
+    $\{(--), (++)\}$              & 2 & complex field \\
+    $\{(-0), (0-), (+0), (0+)\}$  & 4 & complex field \\
+    \bottomrule
+  \end{tabular}
+\end{center}
+giving $1 + 1 + 2 + 2 = 6$ real numbers per point, which is the number of
+independent entries of a real symmetric $3\times3$ matrix.  That the
+orbit construction reproduces this without special-casing is a useful
+check that the abstraction is the right one.
+
+\section{Generalized spherical harmonics}
+\label{sec:gsh}
+
+A field $f$ of upper index $N$ is expanded as
+\begin{equation}
+  f(\theta,\phi) = \sum_{l \geq |N|} \sum_{m=-l}^{l}
+    f^{N}_{lm}\, Y^{N}_{lm}(\theta,\phi),
+  \qquad
+  f^{N}_{lm} = \int_{S^2} \conj{Y^{N}_{lm}}\, f \dOmega ,
+  \label{eq:expansion}
+\end{equation}
+with
+\begin{equation}
+  Y^{N}_{lm}(\theta,\phi)
+    = \sqrt{\frac{2l+1}{4\pi}}\; d^{l}_{mN}(\theta)\, e^{im\phi}
+  \label{eq:gsh}
+\end{equation}
+in the \texttt{Ortho} normalisation, where $d^{l}_{mN}$ is the real
+Wigner $d$-function.  These are orthonormal on the sphere,
+$\int \conj{Y^{N}_{lm}} Y^{N}_{l'm'} \dOmega = \delta_{ll'}\delta_{mm'}$.
+The sum over $l$ starts at $|N|$ because $d^{l}_{mN}$ vanishes
+identically for $l < |N|$.
+
+\paragraph{Convention check.}  The index order in $d^{l}_{mN}$, and
+whether the code's \texttt{Wigner} class stores $d^{l}_{mn}$ or
+$d^{l}_{nm}$, should be confirmed against \texttt{src/Wigner.h}.  The
+normalisation in \eqref{eq:gsh} is however pinned by the $l=0$ behaviour
+of the existing transform: taking $f$ constant, \eqref{eq:expansion}
+gives $f^{0}_{00} = 2\sqrt{\pi} f$ and $f = f^{0}_{00}/(2\sqrt{\pi})$,
+which is what \texttt{GaussLegendreGrid} implements on its one-point
+grid.
+
+\subsection{Reality in the spectral domain}
+\label{sec:spectralreality}
+
+Using $d^{l}_{-m,-N} = (-1)^{m-N} d^{l}_{mN}$ and the reality of
+$d^{l}_{mN}$, equation \eqref{eq:gsh} gives
+\begin{equation}
+  \conj{Y^{N}_{lm}} = (-1)^{m+N}\, Y^{-N}_{l,-m} .
+  \label{eq:Yconj}
+\end{equation}
+Two distinct consequences follow, and it is worth keeping them apart.
+
+\paragraph{Basis-level.}  For any field $f$ of upper index $N$, the
+coefficients of $\conj{f}$, which has upper index $-N$, are
+\begin{equation}
+  \left(\conj{f}\right)^{-N}_{l,-m} = (-1)^{m-N}\, \conj{f^{N}_{lm}} .
+  \label{eq:basiclevel}
+\end{equation}
+This is the relation exercised by \texttt{TestRealFieldSymmetry}.
+
+\paragraph{Component-level.}  For a component pair of a \emph{real}
+tensor, \eqref{eq:reality} supplies an extra factor $(-1)^{N}$, and the
+two combine to give
+\begin{equation}
+  \boxed{\;
+    T^{-N}_{l,-m} = (-1)^{m}\, \conj{T^{N}_{lm}}
+  \;}
+  \label{eq:complevel}
+\end{equation}
+for the coefficients of the negation-paired components.  At $N=0$ this
+reduces to the familiar condition $f_{l,-m} = (-1)^m \conj{f_{lm}}$ for a
+real scalar field, whose reduced $m \geq 0$ storage the library already
+implements.
+
+\section{Admissible algebraic operations}
+\label{sec:algebra}
+
+An operation on canonical components is admissible only if its result is
+again a component of definite upper index, that is, only if it commutes
+with the frame rotation $\ebasis{\pm} \mapsto e^{\mp i \psi}
+\ebasis{\pm}$.  Writing $[f] = N$ for the upper index of $f$:
+
+\begin{center}
+\begin{tabular}{lll}
+  \toprule
+  operation & upper index of result & restriction \\
+  \midrule
+  $f + g$, $f - g$      & $N$            & requires $[f] = [g] = N$ \\
+  $f g$                 & $[f] + [g]$    & --- \\
+  $f / g$               & $[f]$          & requires $[g] = 0$ \\
+  $s f$, $s \in \mathbb{C}$ & $[f]$      & --- \\
+  $\conj{f}$            & $-[f]$         & --- \\
+  $|f|$, $|f|^2$        & $0$            & --- \\
+  $\operatorname{Re} f$, $\operatorname{Im} f$ & $0$ & requires $[f] = 0$ \\
+  $F(f)$, $F$ nonlinear & $0$            & requires $[f] = 0$ \\
+  $\int_{S^2} f \dOmega$ & ---           & requires $[f] = 0$ \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+Three of these deserve comment, because the present implementation
+violates them.
+
+\begin{itemize}
+  \item \textbf{Conjugation reverses the upper index.}  A quantity
+    carrying $e^{-iN\psi}$ has a conjugate carrying $e^{+iN\psi}$.  This
+    is consistent with \eqref{eq:reality}: $u^{-}$, of upper index $-1$,
+    is $-\conj{u^{+}}$ and $u^{+}$ has upper index $+1$.
+
+  \item \textbf{Real and imaginary parts are defined only at $N = 0$.}
+    For $N \neq 0$ the split of $f$ into real and imaginary parts is not
+    preserved by a frame rotation, so neither part is a component of any
+    tensor.  What \emph{is} available at any $N$ is the modulus, which is
+    a genuine scalar.
+
+  \item \textbf{Nonlinear functions likewise require $N = 0$.}  Only for
+    $N=0$, where the component is invariant, is $F(f)$ again a
+    component.  Integration over the sphere is subject to the same
+    restriction, since $\int f \dOmega$ vanishes identically unless
+    $N = 0$.
+\end{itemize}
+
+\paragraph{Contraction.}  Contracting the $j$th and $k$th slots of a
+rank-$p$ tensor uses the metric \eqref{eq:metric}:
+\begin{equation}
+  \left(\operatorname{tr}_{jk} T\right)^{\ldots}
+   = \sum_{\alpha\beta} g_{\alpha\beta}\,
+      T^{\ldots\, \alpha \,\ldots\, \beta \,\ldots}
+   = \sum_{\alpha} (-1)^{\alpha}\,
+      T^{\ldots\, \alpha \,\ldots\, -\alpha \,\ldots} ,
+\end{equation}
+the contracted pair contributing $\alpha + (-\alpha) = 0$ to the upper
+index, so the result has the upper index of the surviving slots, as it
+must.
+
+\section{Raising and lowering operators}
+\label{sec:eth}
+
+These are not required for the first stage of the field algebra but are
+recorded here because they constrain its design: they are the operations
+that connect different upper indices, and they are diagonal in $(l,m)$
+rather than local in $(\theta,\phi)$.
+
+The operators $\eth$ and $\conj{\eth}$ raise and lower the upper index by
+one.  Acting on a basis function of upper index $N$,
+\begin{equation}
+  \eth\, Y^{N}_{lm} = -\sqrt{(l-N)(l+N+1)}\; Y^{N+1}_{lm},
+  \qquad
+  \conj{\eth}\, Y^{N}_{lm} = +\sqrt{(l+N)(l-N+1)}\; Y^{N-1}_{lm},
+  \label{eq:eth}
+\end{equation}
+so that in the spectral domain each is a multiplication of the
+coefficients by an $l$-dependent factor, with no coupling between
+different $(l,m)$.
+
+\paragraph{Convention check.}  The overall signs in \eqref{eq:eth}, and
+the relation between $Y^{N}_{lm}$ and the spin-weighted harmonics
+${}_{s}Y_{lm}$ (whether $s = N$ or $s = -N$), vary between sources and
+must be fixed against Phinney \& Burridge.  The magnitudes are not in
+doubt.
+
+The surface gradient of a scalar field $f$ has canonical components
+proportional to $\eth f$ and $\conj{\eth} f$, of upper index $+1$ and
+$-1$ respectively, with vanishing radial component; surface divergence
+and curl of a vector field are the corresponding contractions.  The
+practical consequence for the library is that an expression such as ``the
+gradient of a product'' is necessarily evaluated in two representations:
+the product is local in $(\theta,\phi)$, the gradient is local in
+$(l,m)$.
+
+\section{Summary of facts the type system should enforce}
+
+\begin{enumerate}
+  \item A component is labelled by a multi-index; its upper index is the
+    signed sum \eqref{eq:N} and is a compile-time quantity.
+  \item Addition requires equal upper indices; multiplication adds them;
+    division requires a denominator of upper index zero.
+  \item Conjugation maps $N \mapsto -N$.
+  \item Real part, imaginary part, nonlinear functions and integration
+    over the sphere require $N = 0$.
+  \item A real-valued component field can occur only at $N = 0$.
+  \item For a real tensor, the stored components are one per orbit of
+    index negation, combined with any permutation symmetry; the
+    all-zero component is real-valued and the remainder are complex.
+\end{enumerate}
+
+\end{document}
