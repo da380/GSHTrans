@@ -57,6 +57,7 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/SpinField/SpinField.h
   GSHTrans/src/SpinField/SpinFieldNodes.h
   GSHTrans/src/SpinField/SpinFieldOverloads.h
+  GSHTrans/src/SpinField/SpinFieldView.h
   GSHTrans/Core
   GSHTrans/All
 )

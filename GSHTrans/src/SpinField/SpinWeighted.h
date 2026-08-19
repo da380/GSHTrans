@@ -115,6 +115,11 @@ concept AngularGrid = requires(const G& grid) {
   grid.Points();
   grid.CoLatitudeIndices();
   grid.LongitudeIndices();
+
+  // Quadrature weights, kept as two factors rather than one product: the
+  // longitude weights are uniform, so the sphere integral factorises.
+  grid.CoLatitudeWeights();
+  grid.LongitudeWeights();
 };
 
 //--------------------------------------------------------------------------//

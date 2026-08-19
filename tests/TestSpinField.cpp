@@ -4,6 +4,7 @@
 #include <complex>
 #include <cstddef>
 #include <cmath>
+#include <numbers>
 #include <span>
 #include <string>
 #include <type_traits>
@@ -1093,6 +1094,227 @@ TEST(SpinField, MapOwnsACopyOfAnLvalueCallable) {
       const auto z = u[iTheta, iPhi];
       ExpectClose(escaped[iTheta, iPhi], z * z);
     }
+  }
+}
+
+//--------------------------------------------------------------------------//
+//              Family 3/4: integration, views, and the layout               //
+//--------------------------------------------------------------------------//
+
+namespace {
+
+template <typename A>
+concept Integrable = requires(A a) { Integrate(a); };
+
+// The integral vanishes identically away from upper index zero, so it is not
+// offered there.
+static_assert(Integrable<F0&>);
+static_assert(Integrable<F0R&>);
+static_assert(!Integrable<F2&>);
+static_assert(!Integrable<SpinField<-1, Grid>&>);
+
+// The showcase: conj(f) carries -N, so this type-checks at every N without
+// anything being named InnerProduct.
+static_assert(Integrable<Mul<decltype(conj(std::declval<F2&>())), F2&>>);
+static_assert(Integrable<decltype(abs2(std::declval<F2&>()))>);
+
+// A view is a node, and a terminal.
+using View = SpinFieldView<2, Grid>;
+using ConstView = ConstSpinFieldView<2, Grid>;
+static_assert(SpinWeighted<View>);
+static_assert(SpinWeighted<ConstView>);
+static_assert(IsTerminal<View>);
+static_assert(IsTerminal<ConstView>);
+static_assert(std::same_as<View::Scalar, Complex>);
+static_assert(std::same_as<ConstView::Scalar, Complex>);
+
+// Views mix with owning fields in expressions, in either position.
+static_assert(Addable<View&, F2&>);
+static_assert(Addable<F2&, ConstView&>);
+static_assert(Multipliable<ConstView&, F2&>);
+static_assert(Add<View&, F2&>::UpperIndex == 2);
+
+// Only a view over mutable storage offers mutable access. The test has to ask
+// for a reference: assigning to the prvalue that the const accessor returns
+// compiles perfectly well, since std::complex is a class type, so
+// "v[i, j] = x is well-formed" would be true of both.
+template <typename V>
+concept HasMutableElement = requires(V v) {
+  { v[Int{0}, Int{0}] } -> std::same_as<Complex&>;
+};
+static_assert(HasMutableElement<View>);
+static_assert(!HasMutableElement<ConstView>);
+static_assert(HasMutableElement<F2>);
+
+// And the const accessor returns by value on every node, terminal or not.
+static_assert(requires(const View v) {
+  { v[Int{0}, Int{0}] } -> std::same_as<Complex>;
+});
+static_assert(requires(const F2 f) {
+  { f[Int{0}, Int{0}] } -> std::same_as<Complex>;
+});
+
+}  // namespace
+
+TEST(SpinField, IntegrateGivesTheSphereArea) {
+  auto grid = TestGrid();
+  auto one = SpinField<0, Grid, RealValued>(
+      grid, [](auto, auto) { return 1.0; });
+
+  const auto area = 4.0 * std::numbers::pi_v<double>;
+  EXPECT_NEAR(Integrate(one), area, 1.0e-12);
+
+  // And it is linear in a constant.
+  auto three = SpinField<0, Grid>(grid, [](auto, auto) {
+    return Complex{3.0, -1.5};
+  });
+  const auto value = Integrate(three);
+  EXPECT_NEAR(value.real(), 3.0 * area, 1.0e-11);
+  EXPECT_NEAR(value.imag(), -1.5 * area, 1.0e-11);
+}
+
+TEST(SpinField, IntegrateAgreesWithTheUnfactoredQuadrature) {
+  auto grid = TestGrid();
+  auto u = MakeScalarField(grid, 1.25);
+
+  // The factored form must give what the full weight product gives.
+  auto reference = Complex{};
+  auto i = Int{0};
+  for (auto weight : grid.Weights()) {
+    reference += weight * u.Data()[i++];
+  }
+  ASSERT_EQ(i, grid.FieldSize());
+
+  const auto integral = Integrate(u);
+  EXPECT_NEAR(integral.real(), reference.real(), 1.0e-12);
+  EXPECT_NEAR(integral.imag(), reference.imag(), 1.0e-12);
+}
+
+// Integrate(conj(f) * g) against Parseval: with orthonormal harmonics the
+// integral is the sum of conj(f_lm) g_lm. The grid is oversampled through
+// ForBand because the integrand has twice the band of its factors -- which is
+// exactly what that constructor exists to say.
+TEST(SpinField, IntegrateOfConjugateProductMatchesTheSpectralSum) {
+  constexpr Int band = 4;
+  constexpr Int n = 2;
+  auto grid = Grid::ForBand(band, n, 2.0, FFTWpp::Estimate);
+  ASSERT_EQ(grid.MaxDegree(), 2 * band);
+
+  const auto indices = GSHIndices<All>(band, band, n);
+  auto flm = FFTWpp::vector<Complex>(indices.Size());
+  auto glm = FFTWpp::vector<Complex>(indices.Size());
+  auto k = 0;
+  for (auto [l, m] : indices.Indices()) {
+    flm[indices.Index(l, m)] = Complex{0.4 + 0.1 * k, -0.2 + 0.05 * k};
+    glm[indices.Index(l, m)] = Complex{-0.3 + 0.07 * k, 0.15 - 0.02 * k};
+    ++k;
+  }
+
+  auto f = SpinField<n, Grid>(grid);
+  auto g = SpinField<n, Grid>(grid);
+  auto fData = f.Data();
+  auto gData = g.Data();
+  grid.InverseTransformation(band, n, flm, fData);
+  grid.InverseTransformation(band, n, glm, gData);
+
+  auto spectral = Complex{};
+  for (auto j = std::size_t{0}; j < flm.size(); ++j) {
+    spectral += std::conj(flm[j]) * glm[j];
+  }
+
+  const auto spatial = Integrate(conj(f) * g);
+  EXPECT_NEAR(spatial.real(), spectral.real(), 1.0e-11);
+  EXPECT_NEAR(spatial.imag(), spectral.imag(), 1.0e-11);
+
+  // The same object written the other way: |f|^2 is real and non-negative.
+  const auto norm2 = Integrate(abs2(f));
+  static_assert(std::same_as<std::remove_const_t<decltype(norm2)>, double>);
+  EXPECT_GT(norm2, 0.0);
+  const auto viaProduct = Integrate(conj(f) * f);
+  EXPECT_NEAR(norm2, viaProduct.real(), 1.0e-11);
+  EXPECT_NEAR(viaProduct.imag(), 0.0, 1.0e-11);
+}
+
+TEST(SpinField, ViewsParticipateInExpressionsLikeOwningFields) {
+  auto grid = TestGrid();
+  auto u = MakeField(grid, 1.5);
+  auto storage = std::vector<Complex>(grid.FieldSize());
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+    storage[i] = Complex{0.5 * i, -0.25 * i};
+  }
+
+  auto view = SpinFieldView<2, Grid>(grid, std::span(storage));
+  auto constView = ConstSpinFieldView<2, Grid>(
+      grid, std::span<const Complex>(storage));
+
+  // Reads agree with the storage, in the canonical order.
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    for (auto iPhi : grid.LongitudeIndices()) {
+      const auto flat = iTheta * grid.NumberOfLongitudes() + iPhi;
+      EXPECT_EQ((view[iTheta, iPhi]), storage[flat]);
+      EXPECT_EQ((constView[iTheta, iPhi]), storage[flat]);
+    }
+  }
+
+  // Mixed expressions, view on either side, and evaluation agrees.
+  const auto mixed = Evaluated(u + view);
+  const auto mixedOther = Evaluated(constView * conj(u));
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+    ExpectClose(mixed[i], u.Data()[i] + storage[i]);
+    ExpectClose(mixedOther[i], storage[i] * std::conj(u.Data()[i]));
+  }
+
+  // A mutable view writes through to the storage it names.
+  view[0, 1] = Complex{9.0, -9.0};
+  EXPECT_EQ(storage[1], (Complex{9.0, -9.0}));
+
+  // Views check what they are given.
+  auto tooSmall = std::vector<Complex>(grid.FieldSize() - 1);
+  EXPECT_THROW((SpinFieldView<2, Grid>(grid, std::span(tooSmall))),
+               std::invalid_argument);
+}
+
+// Family 4: the field's storage order is the transform's. A round trip at
+// upper index zero through the scalar transform is what pins it, and it now
+// includes the orders m = +-lMax, which the grid could not resolve before the
+// core work.
+TEST(SpinField, StorageOrderMatchesTheTransform) {
+  constexpr Int band = 5;
+  auto grid = Grid(band, 0, FFTWpp::Estimate);
+  const auto indices = GSHIndices<All>(band, band, 0);
+
+  auto given = FFTWpp::vector<Complex>(indices.Size());
+  auto k = 0;
+  for (auto [l, m] : indices.Indices()) {
+    given[indices.Index(l, m)] = Complex{0.3 + 0.05 * k, -0.1 + 0.02 * k};
+    ++k;
+  }
+
+  auto u = SpinField<0, Grid>(grid);
+  auto data = u.Data();
+  grid.InverseTransformation(band, 0, given, data);
+
+  auto recovered = FFTWpp::vector<Complex>(indices.Size());
+  auto sameData = u.Data();
+  grid.ForwardTransformation(band, 0, sameData, recovered);
+
+  for (auto j = std::size_t{0}; j < given.size(); ++j) {
+    EXPECT_NEAR(recovered[j].real(), given[j].real(), 1.0e-12) << "j = " << j;
+    EXPECT_NEAR(recovered[j].imag(), given[j].imag(), 1.0e-12) << "j = " << j;
+  }
+
+  // Including the top orders, which is what the sizing fix bought.
+  EXPECT_GT(std::abs(given[indices.Index(band, band)]), 1.0e-12);
+  EXPECT_GT(std::abs(given[indices.Index(band, -band)]), 1.0e-12);
+
+  // An expression can be transformed by materialising it, which is the seam
+  // phase 5 replaces with a direct EvaluateInto.
+  auto doubled = Materialise(u * 2.0);
+  auto doubledData = doubled.Data();
+  auto doubledCoefficients = FFTWpp::vector<Complex>(indices.Size());
+  grid.ForwardTransformation(band, 0, doubledData, doubledCoefficients);
+  for (auto j = std::size_t{0}; j < given.size(); ++j) {
+    EXPECT_NEAR(doubledCoefficients[j].real(), 2.0 * given[j].real(), 1.0e-12);
   }
 }
 

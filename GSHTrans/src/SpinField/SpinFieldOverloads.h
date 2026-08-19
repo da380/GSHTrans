@@ -6,6 +6,7 @@
 #include <concepts>
 #include <cstddef>
 #include <functional>
+#include <ranges>
 #include <type_traits>
 #include <utility>
 
@@ -307,6 +308,53 @@ auto Map(A&& a, F&& f) {
   using Functor = std::decay_t<F>;
   return Unary<Functor, IndexRules::Zero, A>(std::forward<A>(a),
                                              Functor(std::forward<F>(f)));
+}
+
+//--------------------------------------------------------------------------//
+//                               Integration                                 //
+//--------------------------------------------------------------------------//
+
+// The integral over the sphere. The only reduction this layer ships.
+//
+// Restricted to upper index zero because the integral vanishes identically
+// otherwise (theory note section 5): there is nothing to compute, so offering
+// it would only invite the mistake.
+//
+// There is deliberately no InnerProduct and no Norm here. The pairing that
+// matters is the metric one of theory note eq:metric, which carries the
+// (-1)^alpha factors and is a duality product between a tensor and its dual
+// rather than an L2 inner product on one component; naming the level-0 L2 form
+// InnerProduct would claim a name the tensor layer wants. What survives is the
+// fact that made it attractive: Integrate(conj(f) * g) type-checks for any
+// common N, because conj(f) carries -N and the product lands at zero. That is
+// a test, not an API.
+//
+// The quadrature is taken factored. The longitude weights are uniform, so the
+// integral is dPhi * sum_theta w_theta (sum_phi f) -- nTheta multiplications
+// rather than nTheta * nPhi, and no cartesian_product view to iterate.
+template <SpinFieldExpr A>
+requires(Node<A>::UpperIndex == 0)
+auto Integrate(A&& a) {
+  using Scalar = typename Node<A>::Scalar;
+  const auto& grid = a.Grid();
+
+  // Named rather than used as temporaries: the longitude weights are a
+  // repeat_view, which is not a borrowed range, so ranges::begin on the
+  // prvalue is ill-formed.
+  auto longitudeWeights = grid.LongitudeWeights();
+  auto coLatitudeWeights = grid.CoLatitudeWeights();
+  const auto dPhi = *std::ranges::begin(longitudeWeights);
+
+  auto total = Scalar{};
+  auto weight = std::ranges::begin(coLatitudeWeights);
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    auto row = Scalar{};
+    for (auto iPhi : grid.LongitudeIndices()) {
+      row += a[iTheta, iPhi];
+    }
+    total += *weight++ * row;
+  }
+  return total * dPhi;
 }
 
 //--------------------------------------------------------------------------//

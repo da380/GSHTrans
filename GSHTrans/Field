@@ -7,6 +7,7 @@
 #include "src/SpinField/SpinField.h"
 #include "src/SpinField/SpinFieldNodes.h"
 #include "src/SpinField/SpinFieldOverloads.h"
+#include "src/SpinField/SpinFieldView.h"
 #include "src/SpinField/SpinWeighted.h"
 
 // Canonical component fields
