@@ -677,11 +677,17 @@ May retire most of step G.*
 
 A **second path**, not a replacement: the same recursion with the storage
 elided. For a given `(n, iTheta)` the two-term recursion is run up the degrees
-inside the transform, carrying three rows of length `2lMax+1` in per-thread
-scratch, and the table is never built. Selected at grid construction through a
-named constructor, so a streaming grid carries no table at all; per-call
-selection would forfeit the memory saving, and a template parameter would
-infect every downstream type ([C10]).
+inside the transform, into per-thread scratch, and the table is never built.
+Selected at grid construction by a policy value, so a streaming grid carries no
+table at all; per-call selection would forfeit the memory saving, and a
+template parameter would infect every downstream type ([C10]).
+
+*How much of the recursion is fused with the consumer is a separate question
+from whether the table exists*, and §8's T11 settles it by measurement rather
+than in advance: the first version generates a whole `(n, iTheta)` block into
+scratch, which reuses the recursion unchanged and is bit-comparable against the
+stored path, and the three-rows-in-L1 form is the second rung of a ladder whose
+steps are worth what the numbers say they are worth.
 
 **It is a bandwidth-for-arithmetic trade, and the measurements say the trade
 is now worth making.** Single-threaded, P1 says the stage is bound by
@@ -1055,14 +1061,23 @@ F′ follows as its own step. What F must nevertheless do *now* is write the
 inner loop against the supplier seam described in step F, because that is the
 only part of F′ that is expensive to retrofit.
 
-**It is selected at grid construction, through a named constructor.** Not a
-per-call argument: the grid would have to carry the table anyway for the calls
-that want it, which forfeits the entire memory saving. Not a template
-parameter: it would infect every downstream type for a choice that is about
-one object's storage. A named constructor alongside the ordinary one reads as a
-different kind of grid rather than as a tuning knob, which is what it is — the
-public transform signature of [C9] is untouched either way, and `Impl` stays
-immutable with an empty table.
+**It is selected at grid construction.** Not a per-call argument: the grid
+would have to carry the table anyway for the calls that want it, which forfeits
+the entire memory saving. Not a template parameter: it would infect every
+downstream type for a choice that is about one object's storage. The public
+transform signature of [C9] is untouched either way, and `Impl` stays immutable
+with an empty table.
+
+*The mechanism was named as a constructor here and is a **policy value**
+instead*, settled when T11 was planned. `Chunking` had meanwhile set the
+precedent — a value taken alongside the planner flag, because what it describes
+is a property of the machine or of the object rather than of the call — and
+`WignerValues::Stored()` / `::Generated()` reads the same way. The deciding
+argument is composition: `ForBand` is itself a named constructor, so the named
+form needs a second one to reach an oversampled generating grid, and a third
+for whatever named constructor comes next. The substance of the decision is
+unchanged, which is that the choice is made once, at construction, and is not
+visible in the type.
 
 **The reason to build it is not primarily speed at high `lMax`.** That was the
 expectation; the numbers point elsewhere. The memory saving is unambiguous and
@@ -1390,11 +1405,12 @@ layered layer adds a second level of threading; not worth doing repeatedly.
 **T11 — step F′, Wigner values on the fly.** *First commit done.* Two commits.
 First the boundary recursion replacing `lgamma`/`exp`, which stands on its own,
 applies to the stored path, removes the `signgam` race described in step F′, and
-lands with a tolerance test against the present values. Then the generating supplier
-behind step F's seam, θ-blocked, with the named constructor, validated against
-the stored path to round-trip tolerance and measured at
-`lMax ∈ {64, 128, 256}`, `k ∈ {1, 8}`, on one and eight threads. Those numbers
-decide what step G is still for.
+lands with a tolerance test against the present values. Then the generating
+supplier behind step F's seam, selected by a policy value, validated against
+the stored path and measured at `lMax ∈ {64, 128, 256}`, `k ∈ {1, 8}`, on one
+and eight threads. Those numbers decide what step G is still for.
+
+*The second commit is planned below, and it is two commits rather than one.*
 
 *Where the first commit lands, read off the code so it need not be found
 again.* `WignerDetails::WignerMinOrder` (`Wigner.h:56`) is the closed form,
@@ -1467,11 +1483,96 @@ disturb the interior: boundary values feed the two-term recursion at every
 higher degree, and it still holds `Σ_m d^l_{Nm} d^l_{N′m} = δ_{NN′}(2l+1)/4π`
 to `1000 ε` over all `|N|, |N′| ≤ 40`.
 
-*What the second commit substitutes into.* `ConstGSHView::operator[](l)` is
-already the row supplier, and both transform loops take their row from `d[l]`
-once per degree (T10). The two constraints that seam carries are stated in
-step F and are still satisfied: degrees ascending and contiguous from `|n|`,
-and each `(n, iTheta)` visited once per pass.
+*What the second commit substitutes into, read off the code.*
+`ConstGSHView::operator[](l)` is already the row supplier, and both transform
+loops take their row from `d[l]` once per degree (T10). The two constraints
+that seam carries are stated in step F and are still satisfied: degrees
+ascending and contiguous from `|n|`, and each `(n, iTheta)` visited once per
+pass.
+
+The substitution is smaller than that makes it sound, and the reason is worth
+stating because it decides the shape of everything below. **`ConstGSHView`
+carries no storage.** It is `(lMax, mMax, n, const Real*)` over the index
+arithmetic it inherits from `GSHIndices`, and `OffsetForDegree` depends on
+`mMax` and `n` but *not* on `lMax`. So a view over generated scratch has the
+same type as a view over the table, and the consumer loop — both directions,
+batched, threaded — does not change at all. Exactly two lines read the table,
+`GaussLegendreGrid.h:217` and `:442`, and nothing else in the library, the
+tests, the benchmarks or the examples does.
+
+*The depth is a ladder, and the numbers choose the rung.* This document asked
+for the deepest and should not have, because the first rung already delivers
+what the step is for.
+
+| | scratch per thread at `lMax = 256` | per value | restructure |
+|---|---|---|---|
+| **A — whole `(n, θ)` block** | 528 KB, L2-resident | ~11 flops, 6 L1 loads | none |
+| **B — fused, a row at a time** | 12 KB, L1-resident | the same | the recursion as a three-row state machine |
+| **C — fused and θ-blocked** | `B` × 12 KB | ~5 flops, 2 L1 loads | that, plus the colatitude loop and the FFT staging in blocks |
+
+**A is what T11 lands.** `Compute` already writes a whole `(n, iTheta)` block
+through a `GSHView`; pointing that view at per-thread scratch rather than at
+`_data` is the entire change, so the arithmetic, the order and the rounding are
+the same ones the stored path uses. That makes the acceptance test **bit-exact
+equality against a stored grid** rather than agreement to round-trip tolerance,
+which is a much stronger check and is available only at this rung.
+
+Both of the things F′ exists for are complete at A. **The memory win**: no
+table, so 648 MB becomes 4 MB of scratch at eight threads and `lMax = 256`, and
+43 GB becomes 1 GB at 128 threads and `lMax = 1024`; `ForBand` oversampling
+stops costing anything, where today 2× oversampling is about 4× the table.
+**The scaling win**: each thread generates the values for its own colatitudes,
+so there is no shared resource — no DRAM stream, no NUMA question, no
+first-touch to arrange. That is the whole of P8's argument, and B and C add
+nothing to it.
+
+What B and C buy is single-thread speed: B saves A's L2 round-trip, and C
+halves the flops by amortising `denom`, `f2` and the four `sqrtInt` loads
+across a block of colatitudes. Both are worth having if the stage is close;
+neither is worth its restructure if A is already ahead, and **if A on eight
+threads does not beat the stored path on eight threads, C's factor of two will
+not rescue it and the step should be reconsidered rather than deepened.** That
+is the measurement this task exists to take.
+
+*Why B is the risky one, so that it is not attempted casually.* The recursion's
+rows are not independently addressable. `Compute` relies on the relative
+alignment of rows `l`, `l-1` and `l-2` in the stored layout, writing the two
+boundary terms first so that the interior iterators line up at `m = -(l-2)`;
+re-deriving that as a rotating three-row state machine is where the numerically
+delicate part of this step actually lives.
+
+*The two commits.*
+
+**First, a pure refactor of `Wigner.h`,** verified by every existing value
+being bit-identical. `Compute`'s body lifts to
+`WignerDetails::ComputeBlock(GSHView<Real, MRange> d, Int n, Real theta,
+std::span<const Real> sqrtInt, std::span<const Real> sqrtIntInv)`, a pure
+function of its arguments, and `Wigner::Compute` becomes the two-line wrapper
+that builds the view over `_data`. `PreCompute` lifts to
+`WignerDetails::PreComputeTables(lMax, mMax, nMax)` so that the grid and
+`Wigner` share one definition of the `sqrt` tables rather than growing two.
+
+**Then the grid side.** `Impl` gains the policy, the two `sqrt` tables —
+`2·lMax + 1` entries each, the tiny tables that replace the 648 MB one — and
+holds `wigner` as a `std::optional`, empty when generating. The two seam lines
+branch outside the colatitude loop; `AccumulateRow` and `SynthesiseRow` take
+the supplier as a parameter, which costs a parameter and no duplication, since
+both are already generic over `work`. The scratch follows `Accumulator` and
+`CoefficientScratch` exactly: `thread_local`, grow-only, sized
+`GSHIndices<MRange>(lMax, lMax, n).Size()` for the **call's** `lMax` — so a
+truncated call generates only the degrees it uses, which the stored path cannot
+do.
+
+*Tests.* Bit-exact equality of both directions, batched and unbatched, stored
+against generated, at several `(lMax, n)`, including a truncated call and
+`MRange = NonNegative`; the existing round trips run on a generated grid; and
+construction cost and resident size, which is where the memory claim is either
+true or not.
+
+*Benchmark.* A `generated` section over `lMax ∈ {64, 128, 256}`, `k ∈ {1, 8}`,
+one and eight threads, with the two paths interleaved inside one process, per
+§8's noise-floor rule. The harness revision bumps, since the wrapper refuses a
+binary older than the script driving it.
 
 **T7 — the benchmark harness of §5.** *Done.* Then steps E–H, each gated on the
 measurement that justifies it. **The first run of the harness changed what
