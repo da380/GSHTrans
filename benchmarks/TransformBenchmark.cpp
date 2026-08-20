@@ -202,6 +202,13 @@ void PrintMachineFacts() {
                     : 0.0);
   }
   std::printf("  MemAvailable     %ld MB\n", MemAvailableMegabytes());
+  // A 5.4 GB table streamed by every thread is a lot of TLB pressure, and the
+  // table is a plain std::vector, so under `madvise` it gets no huge pages.
+  std::printf("  huge pages       %s\n",
+              FirstLine("/sys/kernel/mm/transparent_hugepage/enabled").c_str());
+  std::printf("  cpu governor     %s\n",
+              FirstLine("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
+                  .c_str());
   std::printf("  omp_get_max_threads %d\n", omp_get_max_threads());
   std::printf("  OMP_NUM_THREADS=%s  OMP_PROC_BIND=%s  OMP_PLACES=%s\n",
               Environment("OMP_NUM_THREADS"), Environment("OMP_PROC_BIND"),

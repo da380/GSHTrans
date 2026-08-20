@@ -74,8 +74,50 @@ echo
 echo "=============================================================================="
 echo "Build"
 echo "=============================================================================="
+#
+# Release is -O3 -DNDEBUG. NDEBUG only turns off the point-index asserts; the
+# transform's size checks have thrown in every build mode since T4, so nothing
+# that guards correctness is being compiled out.
+#
+# -march=native, because the decisions these numbers feed -- step F's chunk
+# size, [C11]'s decomposition -- are decisions about this machine, so it should
+# be compiled the way it will be deployed. The one machine where that is not
+# obviously right is a Skylake-SP or Cascade Lake Xeon, where heavy AVX-512
+# pulls the clock down and buys nothing for load/store-bound work; if lscpu
+# above shows one, run again with GSH_CXX_FLAGS="-g -fno-omit-frame-pointer"
+# and compare.
+#
+# -g -fno-omit-frame-pointer costs nothing at -O3 and means perf record gives
+# usable stacks if one of the curves below looks strange.
+#
+# Deliberately absent: -Ofast and -ffast-math. The Wigner recursions are the
+# numerically delicate part of this library and the round-trip tolerance is the
+# only oracle for them, so reassociation would change the thing being
+# validated, for no gain on a kernel that is not flop-bound.
+#
+: "${GSH_CXX_FLAGS:=-march=native -g -fno-omit-frame-pointer}"
+echo "flags: CMAKE_BUILD_TYPE=Release CMAKE_CXX_FLAGS=\"$GSH_CXX_FLAGS\""
+echo
 if [ ! -d "$build" ]; then
-  cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release || exit 1
+  if ! cmake -S "$root" -B "$build" \
+         -DCMAKE_BUILD_TYPE=Release \
+         -DCMAKE_CXX_FLAGS="$GSH_CXX_FLAGS" \
+         -DMY_PROJECT_BUILD_EXAMPLES=OFF; then
+    echo
+    echo "Configure failed. The usual cause on a fresh machine is that"
+    echo "CMakeLists.txt fetches GaussQuad over SSH (git@github.com:...), so it"
+    echo "needs a GitHub key this machine may not have. Check with:"
+    echo "    ssh -T git@github.com"
+    echo "OpenMP and double-precision FFTW3 must also be installed."
+    exit 1
+  fi
+else
+  # An existing build directory keeps whatever it was configured with, so
+  # report that rather than what was asked for above.
+  echo "reusing $build, configured as:"
+  grep -E '^(CMAKE_BUILD_TYPE|CMAKE_CXX_FLAGS):' "$build/CMakeCache.txt" 2>/dev/null |
+    sed 's/^/  /'
+  echo "  (delete it to reconfigure)"
 fi
 cmake --build "$build" --target TransformBenchmark -j "$(nproc)" || exit 1
 echo
