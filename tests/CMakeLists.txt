@@ -5,6 +5,9 @@ FetchContent_Declare(
   GIT_TAG main
 )
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+# Do not let a test dependency install itself alongside the library: without
+# this, "cmake --install" ships six hundred files of GoogleTest.
+set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 add_executable(TestConcepts

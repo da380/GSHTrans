@@ -484,9 +484,59 @@ operators coincide there and only there.
 This is a trap rather than a limitation: \code{Raise} and \code{Lower} are
 correct for what they claim --- a single spin-weighted function --- and are
 correct for the surface gradient of a scalar, which is the case most people
-reach for first.  They are simply not the tensor operator, and nothing in
-their types says so, because a tensor expansion's components are ordinary
-spin expansions.
+reach for first.  They are simply not the \emph{ambient} tensor operator, and
+nothing in their types says so, because a tensor expansion's components are
+ordinary spin expansions.
+
+\subsection{The intrinsic derivative, where \texorpdfstring{$\eth$}{eth} is
+exactly right}
+\label{sec:intrinsic}
+
+The paragraph above must not be read as forbidding component-wise $\eth$
+altogether, because there is a case in which it is precisely the correct
+operator.
+
+There are two derivatives on the sphere.  $\partial^\sigma$ is the
+\emph{ambient} one: it differentiates the tensor and its basis, and the basis
+leaves the tangent plane.  The \emph{intrinsic} covariant derivative --- the
+Levi-Civita connection of the induced metric, which is what surface
+differential geometry means by differentiation --- is closed on
+\emph{tangential} tensors, those whose every slot is $\pm1$ with no radial
+index.
+
+On such a tensor the connection terms vanish identically.  Every shift
+$\alpha_i + \sigma$ with $\alpha_i,\sigma \in \{\pm1\}$ lands on $-2$, $0$ or
+$+2$; the outer two leave the alphabet, and $0$ names a component with a
+radial slot, which a tangential tensor does not have.  What is left is pure
+$\Omega$ multiplication.  Splitting $\nabla_1 T$ by whether the inherited slot
+is radial,
+\begin{align}
+  (\nabla_1 T)^{\sigma \alpha_1\ldots\alpha_q}
+    &= \Omega^{\mp N}_{l}\, T^{\alpha_1\ldots\alpha_q},
+    &&\text{all } \alpha_i \text{ tangential},
+    \label{eq:intrinsicpart}\\
+  (\nabla_1 T)^{\sigma \alpha_1\ldots 0_j \ldots\alpha_q}
+    &= -\,T^{\alpha_1\ldots \sigma_j \ldots\alpha_q},
+    &&\text{one slot radial}.
+    \label{eq:curvature}
+\end{align}
+Both hold \emph{exactly}, and are checked as such against
+\code{SurfaceGradient} applied to a rank-1 tensor with its radial component
+set to zero.
+
+\eqref{eq:curvature} is the extrinsic curvature: on a unit sphere the normal
+part of $\nabla_a v_b$ is exactly $-v$.  \eqref{eq:intrinsicpart} says
+
+\begin{quote}
+  \textbf{On a tangential tensor the intrinsic covariant derivative is $\eth$
+  applied component by component, up to $\sqrt2$, and it is closed.}
+\end{quote}
+
+So the two operators differ by an algebraic term, not a differential one, and
+$\eth$ is not a poor relation of $\partial^\sigma$: it is the intrinsic
+derivative, exact on exactly the objects --- tangential, spin-weighted --- that
+it was invented for.  Which of the two a caller wants depends on whether the
+radial directions are part of the problem.
 
 \subsection{What is implemented}
 

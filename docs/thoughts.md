@@ -324,13 +324,21 @@ worth fixing on its own before anyone else tries to build this.
 | FFTWpp | ~12 names, incl. `Ranges::{Layout,Plan,View}` | load-bearing |
 | GaussQuad | 6 entry points | trivially replaceable |
 | NumericConcepts | 11 concepts | stable, low risk |
-| Eigen | **none** | fetched and linked, never included |
+| Eigen | none directly | **required transitively, by GaussQuad** |
 
-**Eigen is the easy decision.** Nothing in the library includes it; the only
-occurrence of the word is a comment about Eigen's operand-lifetime hazard. It
-is fetched on every fresh configure for nothing. Either phase 3's deferred
-"Eigen-backed pointwise linear algebra at ranks 2 and 4" gets built, or the
-dependency should go.
+**Eigen is not ours, and cannot simply be dropped.** No GSHTrans header
+includes it — the only occurrence of the word in the library is a comment about
+Eigen's operand-lifetime hazard — but *GaussQuad* includes
+`Eigen/Cholesky`, `Eigen/Core` and `Eigen/Eigenvalues`, and fetches Eigen
+itself. Removing `Eigen3::Eigen` from this project's link line is correct and
+harmless, since the dependency belongs to GaussQuad and propagates from there;
+removing Eigen from the build is not possible while GaussQuad needs it.
+
+Why it needs it is the interesting part, and it changes the GaussQuad plan
+below: `OrthogonalPolynomial.h` builds the Jacobi matrix and calls
+`Eigen::SelfAdjointEigenSolver`. That is **Golub–Welsch**, and it explains
+both measurements — the `O(n²)` cost and the accuracy that drifts with `n`,
+since the nodes are eigenvalues of a matrix of size `n`.
 
 ### GaussQuad
 
@@ -358,13 +366,27 @@ the sizes the library is being pointed at, and the O(n²) becomes the *dominant*
 construction cost for a generating grid, which builds no table at all.
 
 **The plan to hand over** would be: keep the `Quadrature1D` interface exactly,
-replace the root-finding with Bogaert's method (explicit asymptotic expansions
-for the nodes and weights, O(1) per node, accurate to near machine precision
-for any n and used by most modern libraries), and add an accuracy test at
+replace Golub–Welsch with Bogaert's method (explicit asymptotic expansions for
+the nodes and weights, O(1) per node, accurate to near machine precision for
+any n, and used by most modern libraries), and add an accuracy test at
 n = 10, 100, 1000, 10000 against `Σw = 2` and the orthogonality of the
 highest-degree polynomial. Alternatively adopt a public-domain implementation
-of the same method — it is a few hundred lines and header-only, which is
-exactly the "lightweight standard replacement" criterion.
+of the same method — a few hundred lines and header-only, which is exactly the
+"lightweight standard replacement" criterion.
+
+The case is stronger than "it could be better", because it is three things at
+once: `O(n²)` becomes `O(n)`, `4×10⁻¹²` becomes `10⁻¹⁶`, and **the Eigen
+dependency disappears** — Bogaert's method uses no linear algebra at all. That
+would leave the whole dependency set header-only and small.
+
+**And it would unblock installation.** Neither FFTWpp nor GaussQuad carries any
+`install()` or `export()` rules, so neither can be found by `find_package`, so
+GSHTrans cannot export a CMake package that references them: an `INTERFACE`
+target can only be exported if everything it links is exported or imported.
+GSHTrans therefore installs its headers and no package config, and consumption
+is by `add_subdirectory` or `FetchContent`. Adding install and export rules to
+those two is a small change in each and is the whole of what blocks a proper
+`find_package(GSHTrans)`.
 
 ### FFTWpp
 
@@ -515,7 +537,8 @@ idea — not hard, but not free either. That is an argument for deciding the
 
 1. **The SSH URL in `CMakeLists.txt`** (§4). One word, and until it is fixed
    nobody else can build the project.
-2. **Drop or use Eigen** (§5). One decision, and it removes a fetch.
+2. **Install rules on FFTWpp and GaussQuad** (§5), which is what blocks
+   `find_package(GSHTrans)`. Someone else's work, but small.
 3. **Tangential tensor fields** (§1). Self-contained, and the storage argument
    is strong at rank 4.
 4. **Specialisations** (§3), immediately after, so the tangential forms are

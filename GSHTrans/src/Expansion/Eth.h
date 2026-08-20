@@ -52,12 +52,31 @@ namespace GSHTrans {
 // shifted, once per slot, because the canonical basis vectors themselves vary
 // over the sphere and differentiating a tensor field differentiates its basis.
 //
-// So applying Raise or Lower to each component of a tensor expansion gives
-// the eth of each component as a spin-weighted function, which for rank >= 1
-// is not a component of grad T. Nothing in the types says so, because a
-// tensor's components are ordinary spin expansions. Use SurfaceGradient,
-// which is d^sigma; section 7 of docs/gshtrans-reference.tex gives it in
-// full.
+// So applying Raise or Lower to each component of a tensor expansion does not
+// give grad T. Nothing in the types says so, because a tensor's components are
+// ordinary spin expansions. Use SurfaceGradient, which is d^sigma; section 7
+// of docs/gshtrans-reference.tex gives it in full.
+//
+// **But there is a case where component-wise eth is exactly right**, and it
+// would be a mistake to read the paragraph above as forbidding it. There are
+// two derivatives on the sphere. d^sigma is the *ambient* one: it
+// differentiates the tensor and its basis, and the basis leaves the tangent
+// plane. The *intrinsic* covariant derivative -- the Levi-Civita connection of
+// the induced metric, which is what surface differential geometry means by
+// differentiation -- is closed on tangential tensors, those with no radial
+// slot. On such a tensor every slot shift in d^sigma either leaves the
+// alphabet or lands on a radial slot the tensor does not have, so the
+// connection terms all vanish and what is left is pure Omega multiplication:
+//
+//   on a tangential tensor, the intrinsic covariant derivative is Raise and
+//   Lower applied component by component, up to sqrt(2), and it is closed.
+//
+// The difference between the two is algebraic, not differential: for a
+// tangential T the radial-slot components of d^sigma T are -T with that slot
+// replaced, which is the extrinsic curvature of the sphere. So eth is not a
+// poor relation of the contravariant derivative; it is the intrinsic
+// derivative, exact on exactly the objects -- tangential, spin-weighted --
+// that it was invented for.
 
 namespace EthDetails {
 
