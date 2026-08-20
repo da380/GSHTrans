@@ -1435,6 +1435,14 @@ test.
 Added after phase 5, on the observation that `ð` is not the operator a
 geophysical user of tensor fields actually wants. `core-plan.md` is unaffected.
 
+**Done.** `SurfaceGradient`, with `TensorExpansion::Coefficient` built first as
+§16.2 says it had to be. The tests are the ones §16 does not name and that
+turned out to matter: the metric trace of the *second* gradient of a scalar is
+the surface Laplacian, which runs through the connection terms and so fails
+outright if the operator is `ð` component-wise; and the chain rule at rank one,
+checked in the spatial domain because it does not hold coefficient by
+coefficient. `docs/gshtrans-reference.tex` §7 is the reference account.
+
 ### 16.1 What is being built
 
 D&T (C.151)–(C.153), without the radial part. The surface gradient `∇₁` has no

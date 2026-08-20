@@ -1230,7 +1230,7 @@ enforced rather than documented. See step H for the measurements.
 **T8 — step E, the plan and buffer cache.** *Done.* See step E above for what
 it changed and what it measured.
 
-**T10 — step F, the batched transform primitive.** *In progress.* Tier 1 only:
+**T10 — step F, the batched transform primitive.** *Done.* Tier 1 only:
 the public `(count, stride, dist)` descriptor with its explicit threading
 policy ([C9]), the batched FFT stage landing data in `[θ][m][κ]` order (P6),
 the inner loop rewritten as an axpy of length `k` *against the supplier seam*
@@ -1402,7 +1402,7 @@ measurement, and the only way to get a real answer is a Clang build against a
 `libomp` compiled with `LIBOMP_TSAN_SUPPORT`. Worth doing once, before the
 layered layer adds a second level of threading; not worth doing repeatedly.
 
-**T11 — step F′, Wigner values on the fly.** *First commit done.* Two commits.
+**T11 — step F′, Wigner values on the fly.** *Done, both commits.* Two commits.
 First the boundary recursion replacing `lgamma`/`exp`, which stands on its own,
 applies to the stored path, removes the `signgam` race described in step F′, and
 lands with a tolerance test against the present values. Then the generating
