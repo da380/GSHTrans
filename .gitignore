@@ -10,3 +10,9 @@ docs/*.out
 docs/*.toc
 docs/*.fdb_latexmk
 docs/*.fls
+
+# Local reference material: open-access papers kept in docs/ while the
+# reference documentation is written. Not ours to redistribute, and not
+# wanted in the history. canonical-components.pdf is ours and is tracked.
+docs/*.pdf
+!docs/canonical-components.pdf
