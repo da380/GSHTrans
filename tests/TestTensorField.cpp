@@ -134,8 +134,8 @@ TEST(TensorField, WritingAComponentIsVisibleThroughTheBuffer) {
     }
   }
 
-  // The component at multi-index (+1) is the third stored one, since the flat
-  // order runs from all -1.
+  // At rank 1 the multi-index and the upper index coincide, so ordering the
+  // buffer by upper index puts (+1) last of the three.
   const auto data = t.Data();
   for (auto i = Int{0}; i < fieldSize; i++) {
     EXPECT_EQ(data[2 * fieldSize + i], Marker(1, i)) << "sample " << i;
@@ -293,4 +293,138 @@ TEST(TensorField, TheNamedRanksAreWhatTheySay) {
   static_assert(decltype(v.Component<0>())::UpperIndex == 0);
   static_assert(decltype(v.Component<1>())::UpperIndex == 1);
   SUCCEED();
+}
+
+//--------------------------------------------------------------------------//
+//                             The transform                                 //
+//--------------------------------------------------------------------------//
+
+// Components sharing an upper index have to be contiguous in the buffer, or
+// no (count, stride, dist) descriptor covers them and the batching step F
+// exists for is unreachable. This is the property the layout is chosen for.
+TEST(TensorField, ComponentsSharingAnUpperIndexAreContiguous) {
+  constexpr auto contiguousByUpperIndex = []<typename T>() {
+    auto seen = std::ptrdiff_t{0};
+    for (auto n = -T::Rank; n <= T::Rank; n++) {
+      const auto [first, count] = T::StoredAtUpperIndex(n);
+      if (count == 0) continue;
+      if (first != seen) return false;
+      for (auto slot = first; slot < first + count; slot++) {
+        if (T::ComponentLayout.upperIndexOfSlot[slot] != n) return false;
+      }
+      seen += count;
+    }
+    return seen == T::StoredComponents;
+  };
+
+  static_assert(contiguousByUpperIndex
+                    .template operator()<
+                        TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>>());
+  static_assert(contiguousByUpperIndex
+                    .template operator()<
+                        TensorField<2, Symmetric<2>, ComplexTensor, Grid>>());
+  static_assert(contiguousByUpperIndex
+                    .template operator()<
+                        TensorField<2, Antisymmetric<2>, ComplexTensor,
+                                    Grid>>());
+  static_assert(contiguousByUpperIndex
+                    .template operator()<
+                        TensorField<4, ElasticSymmetry, ComplexTensor, Grid>>());
+  SUCCEED();
+}
+
+// The round trip, which is the whole bridge in one assertion: fill every
+// stored component, transform the tensor, transform it back, and get the same
+// fields.
+TEST(TensorField, RoundTripsThroughTheSpectralDomain) {
+  using T = TensorField<2, Symmetric<2>, ComplexTensor, Grid>;
+  constexpr auto lMax = Int{6};
+
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto t = T(grid);
+
+  // Band-limited data, so that the round trip is exact up to rounding: a
+  // transform back and forth reproduces a field only if the field is in the
+  // span of the harmonics the grid resolves.
+  auto coefficients = std::vector<Complex>(t.CoefficientSize(lMax));
+  for (auto i = std::size_t{0}; i < coefficients.size(); i++) {
+    coefficients[i] = Complex{std::cos(0.37 * i), std::sin(0.21 * i)};
+  }
+  t.InverseTransformation(lMax, coefficients);
+
+  auto back = std::vector<Complex>(coefficients.size());
+  t.ForwardTransformation(lMax, back);
+
+  for (auto i = std::size_t{0}; i < coefficients.size(); i++) {
+    EXPECT_NEAR(back[i].real(), coefficients[i].real(), 1.0e-11) << "at " << i;
+    EXPECT_NEAR(back[i].imag(), coefficients[i].imag(), 1.0e-11) << "at " << i;
+  }
+}
+
+// The batched call has to give what the components would give one at a time,
+// exactly: batching widens the inner loop without reordering any sum.
+TEST(TensorField, BatchedComponentsMatchComponentByComponentTransforms) {
+  using T = TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>;
+  constexpr auto lMax = Int{5};
+
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto t = T(grid);
+  const auto fieldSize = t.FieldSize();
+
+  for (auto i = Int{0}; i < t.Size(); i++) {
+    t.Data()[i] = Complex{std::cos(0.11 * i), std::sin(0.29 * i)};
+  }
+
+  auto batched = std::vector<Complex>(t.CoefficientSize(lMax));
+  t.ForwardTransformation(lMax, batched);
+
+  // The same components, transformed one at a time through the unbatched
+  // entry point, in the buffer's order.
+  auto offset = std::size_t{0};
+  for (auto slot = Int{0}; slot < T::StoredComponents; slot++) {
+    const auto n = T::ComponentLayout.upperIndexOfSlot[slot];
+    const auto coefficientSize =
+        static_cast<Int>(grid.CoefficientSize(lMax, n));
+    auto one = std::vector<Complex>(fieldSize);
+    std::copy_n(t.Data().begin() + slot * fieldSize, fieldSize, one.begin());
+    auto expected = std::vector<Complex>(coefficientSize);
+    grid.ForwardTransformation(lMax, n, one, expected);
+    for (auto j = Int{0}; j < coefficientSize; j++) {
+      EXPECT_EQ(batched[offset + j], expected[j])
+          << "slot " << slot << ", coefficient " << j;
+    }
+    offset += static_cast<std::size_t>(coefficientSize);
+  }
+  EXPECT_EQ(offset, batched.size());
+}
+
+TEST(TensorField, CoefficientSizeAccountsForEachUpperIndex) {
+  using T = TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>;
+  constexpr auto lMax = Int{4};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto t = T(grid);
+
+  // One block per stored component, each sized by its own upper index -- the
+  // blocks are not all the same length, which is why this is computed.
+  auto expected = Int{0};
+  for (auto n = Int{-2}; n <= 2; n++) {
+    expected += ComponentsAtUpperIndex<2>(n) *
+                static_cast<Int>(grid.CoefficientSize(lMax, n));
+  }
+  EXPECT_EQ(t.CoefficientSize(lMax), expected);
+
+  auto tooSmall = std::vector<Complex>(t.CoefficientSize(lMax) - 1);
+  EXPECT_THROW(t.ForwardTransformation(lMax, tooSmall), std::invalid_argument);
+}
+
+TEST(TensorField, RejectsAGridThatCannotCarryItsUpperIndices) {
+  // A rank-2 tensor has components at N = +-2, so a grid built for one is not
+  // enough. Caught at construction rather than at the first component that
+  // asks.
+  auto narrow = Grid(6, 1, FFTWpp::Estimate);
+  EXPECT_THROW((TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>(narrow)),
+               std::invalid_argument);
+
+  auto wide = Grid(6, 2, FFTWpp::Estimate);
+  EXPECT_NO_THROW((TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>(wide)));
 }

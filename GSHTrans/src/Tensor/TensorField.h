@@ -60,6 +60,52 @@ class TensorField {
   static constexpr Int Components = MultiIndex<Rank>::Size;
   static constexpr Int StoredComponents = Orbits.storedCount;
 
+  // The buffer's component order, which is **by upper index** and not by flat
+  // multi-index.
+  //
+  // This is a storage decision and it is forced by the transform. A batch
+  // shares grid, degree and upper index, and is described by (count, stride,
+  // dist) -- a uniform spacing (core-plan.md [C9]). In flat order the stored
+  // components carrying one upper index are scattered at no fixed spacing
+  // once there is any symmetry, so no single descriptor covers them and the
+  // batching that step F exists for would be unreachable. Ordered by upper
+  // index they are contiguous, and one batch per upper index describes the
+  // whole tensor.
+  //
+  // Orbits.h stays in flat order, which is pure combinatorics. The layout
+  // belongs here.
+  struct Layout {
+    std::array<Int, StoredComponents> flatOfSlot{};
+    std::array<Int, StoredComponents> upperIndexOfSlot{};
+    std::array<Int, 2 * Rank + 1> firstSlotAt{};
+    std::array<Int, 2 * Rank + 1> countAt{};
+  };
+
+  static constexpr Layout ComponentLayout = [] {
+    auto layout = Layout{};
+    auto slot = Int{0};
+    for (auto n = -Rank; n <= Rank; n++) {
+      layout.firstSlotAt[n + Rank] = slot;
+      for (auto i = Int{0}; i < StoredComponents; i++) {
+        const auto flat = Orbits.stored[i];
+        if (MultiIndex<Rank>::FromFlat(flat).UpperIndex() != n) continue;
+        layout.flatOfSlot[slot] = flat;
+        layout.upperIndexOfSlot[slot] = n;
+        slot++;
+      }
+      layout.countAt[n + Rank] = slot - layout.firstSlotAt[n + Rank];
+    }
+    return layout;
+  }();
+
+  // Where a stored component sits in the buffer, by flat multi-index.
+  static constexpr Int SlotOfFlat(Int flat) {
+    for (auto slot = Int{0}; slot < StoredComponents; slot++) {
+      if (ComponentLayout.flatOfSlot[slot] == flat) return slot;
+    }
+    return -1;
+  }
+
   // The flat component index of a multi-index given as template arguments.
   template <Int... Alphas>
   static constexpr Int FlatOf =
@@ -128,7 +174,19 @@ class TensorField {
   explicit TensorField(GridType grid)
       : _grid{std::move(grid)},
         _data(static_cast<std::size_t>(StoredComponents) *
-              static_cast<std::size_t>(_grid.FieldSize())) {}
+              static_cast<std::size_t>(_grid.FieldSize())) {
+    // A rank-p tensor has components at every upper index from -p to p, so a
+    // grid that does not carry them cannot hold one. Checked here rather than
+    // left to the first component that asks, which would fail late and name
+    // the component instead of the grid.
+    if (_grid.MaxUpperIndex() < Rank) {
+      throw std::invalid_argument(
+          "A rank-" + std::to_string(Rank) +
+          " tensor has components at upper index " + std::to_string(Rank) +
+          ", but this grid carries only " +
+          std::to_string(_grid.MaxUpperIndex()));
+    }
+  }
 
   const GridType& Grid() const { return _grid; }
 
@@ -190,31 +248,111 @@ class TensorField {
   //                    What the transform layer will need                   //
   //------------------------------------------------------------------------//
 
-  // Which stored components carry a given upper index. A batch shares grid,
-  // degree and upper index (core-plan.md [C9]), so this is the set that can be
-  // transformed together, and its members are `FieldSize` apart in the buffer.
+  // Which stored components carry a given upper index: a contiguous run of
+  // slots, which is what makes them a batch. Returns (first slot, count).
   static constexpr auto StoredAtUpperIndex(Int n) {
-    auto slots = std::array<Int, StoredComponents>{};
-    auto count = Int{0};
-    for (auto i = Int{0}; i < StoredComponents; i++) {
-      const auto flat = Orbits.stored[i];
-      if (MultiIndex<Rank>::FromFlat(flat).UpperIndex() == n) {
-        slots[count++] = i;
-      }
+    if (n < -Rank || n > Rank) return std::pair(Int{0}, Int{0});
+    return std::pair(ComponentLayout.firstSlotAt[n + Rank],
+                     ComponentLayout.countAt[n + Rank]);
+  }
+
+  //------------------------------------------------------------------------//
+  //                             The transform                               //
+  //------------------------------------------------------------------------//
+
+  // How many coefficients a transform at this degree produces: one block per
+  // stored component, each sized by that component's upper index, in the same
+  // order as the components themselves.
+  //
+  // The blocks are not all the same length, since the coefficient count
+  // depends on the upper index. That is why this is computed rather than
+  // being StoredComponents times something.
+  Int CoefficientSize(Int lMax) const {
+    auto total = Int{0};
+    for (auto slot = Int{0}; slot < StoredComponents; slot++) {
+      total += static_cast<Int>(
+          _grid.CoefficientSize(lMax, ComponentLayout.upperIndexOfSlot[slot]));
     }
-    return std::pair(slots, count);
+    return total;
+  }
+
+  // Transform every stored component, batching those that share an upper
+  // index.
+  //
+  // This is the first consumer of the batched primitive step F was built for,
+  // and the reason the buffer is ordered by upper index: each group is a
+  // contiguous run on both sides, so one Batch::Contiguous describes it and
+  // the Wigner block for that upper index is streamed once for the whole
+  // group rather than once per component. A rank-2 tensor has three
+  // components at N = 0, so that is three fields for the price of one pass.
+  //
+  // Derived components are not transformed. They are determined by the stored
+  // ones, and transforming them would be doing the same work twice and
+  // storing the answer twice.
+  void ForwardTransformation(Int lMax, std::span<Complex> out,
+                             Execution policy = Execution::Sequential()) const {
+    CheckCoefficients(out.size(), lMax);
+    const auto fieldSize = FieldSize();
+    auto offset = std::size_t{0};
+    for (auto n = -Rank; n <= Rank; n++) {
+      const auto [first, count] = StoredAtUpperIndex(n);
+      if (count == 0) continue;
+      const auto coefficientSize =
+          static_cast<Int>(_grid.CoefficientSize(lMax, n));
+      auto fields = Data().subspan(static_cast<std::size_t>(first * fieldSize),
+                                   static_cast<std::size_t>(count * fieldSize));
+      auto block =
+          out.subspan(offset, static_cast<std::size_t>(count * coefficientSize));
+      _grid.ForwardTransformation(lMax, n, fields,
+                                  Batch::Contiguous(count, fieldSize), block,
+                                  Batch::Contiguous(count, coefficientSize),
+                                  policy);
+      offset += static_cast<std::size_t>(count * coefficientSize);
+    }
+  }
+
+  void InverseTransformation(Int lMax, std::span<const Complex> in,
+                             Execution policy = Execution::Sequential()) {
+    CheckCoefficients(in.size(), lMax);
+    const auto fieldSize = FieldSize();
+    auto offset = std::size_t{0};
+    for (auto n = -Rank; n <= Rank; n++) {
+      const auto [first, count] = StoredAtUpperIndex(n);
+      if (count == 0) continue;
+      const auto coefficientSize =
+          static_cast<Int>(_grid.CoefficientSize(lMax, n));
+      auto block =
+          in.subspan(offset, static_cast<std::size_t>(count * coefficientSize));
+      auto fields = Data().subspan(static_cast<std::size_t>(first * fieldSize),
+                                   static_cast<std::size_t>(count * fieldSize));
+      _grid.InverseTransformation(lMax, n, block,
+                                  Batch::Contiguous(count, coefficientSize),
+                                  fields, Batch::Contiguous(count, fieldSize),
+                                  policy);
+      offset += static_cast<std::size_t>(count * coefficientSize);
+    }
   }
 
  private:
   GridType _grid;
   FFTWpp::vector<Scalar> _data;
 
+  void CheckCoefficients(std::size_t given, Int lMax) const {
+    const auto needed = static_cast<std::size_t>(CoefficientSize(lMax));
+    if (given != needed) {
+      throw std::invalid_argument(
+          "Tensor coefficient range has size " + std::to_string(given) +
+          ", but this tensor needs " + std::to_string(needed) + " at degree " +
+          std::to_string(lMax));
+    }
+  }
+
   // The stored component's samples. The representative is looked up at
   // compile time; only the multiplication by the field size is left to run
   // time, and that because the grid is a runtime object.
   template <Int Flat>
   std::span<Scalar> StoredSpan() {
-    constexpr auto slot = Orbits.slot[Orbits.representative[Flat]];
+    constexpr auto slot = SlotOfFlat(Orbits.representative[Flat]);
     static_assert(slot >= 0);
     const auto size = static_cast<std::size_t>(_grid.FieldSize());
     return std::span<Scalar>(_data).subspan(
@@ -223,7 +361,7 @@ class TensorField {
 
   template <Int Flat>
   std::span<const Scalar> StoredSpan() const {
-    constexpr auto slot = Orbits.slot[Orbits.representative[Flat]];
+    constexpr auto slot = SlotOfFlat(Orbits.representative[Flat]);
     static_assert(slot >= 0);
     const auto size = static_cast<std::size_t>(_grid.FieldSize());
     return std::span<const Scalar>(_data).subspan(
