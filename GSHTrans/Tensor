@@ -6,5 +6,6 @@
 // GSHTrans/Field, which are what a single component is.
 #include "src/Tensor/MultiIndex.h"
 #include "src/Tensor/Orbits.h"
+#include "src/Tensor/TensorField.h"
 
 #endif

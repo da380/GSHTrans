@@ -19,6 +19,10 @@ add_executable(TestTensorIndices
                TestTensorIndices.cpp)
 target_link_libraries(TestTensorIndices PRIVATE GSHTrans gtest_main)
 
+add_executable(TestTensorField
+               TestTensorField.cpp)
+target_link_libraries(TestTensorField PRIVATE GSHTrans gtest_main)
+
 add_executable(TestWigner
   TestWigner.cpp)
 target_link_libraries(TestWigner PRIVATE GSHTrans gtest_main)
@@ -56,6 +60,7 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/SpinField/SpinFieldView.h
   GSHTrans/src/Tensor/MultiIndex.h
   GSHTrans/src/Tensor/Orbits.h
+  GSHTrans/src/Tensor/TensorField.h
   GSHTrans/Core
   GSHTrans/Field
   GSHTrans/Tensor
@@ -80,6 +85,7 @@ include(GoogleTest)
 gtest_discover_tests(TestConcepts)
 gtest_discover_tests(TestSpinField)
 gtest_discover_tests(TestTensorIndices)
+gtest_discover_tests(TestTensorField)
 gtest_discover_tests(TestWigner)
 gtest_discover_tests(TestGaussLegendreGrid)
 gtest_discover_tests(TestRealFieldSymmetry)
