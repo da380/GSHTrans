@@ -76,6 +76,7 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/Tensor/TensorExpr.h
   GSHTrans/src/Expansion/SpinExpansion.h
   GSHTrans/src/Expansion/Eth.h
+  GSHTrans/src/Expansion/TensorExpansion.h
   GSHTrans/Core
   GSHTrans/Field
   GSHTrans/Tensor

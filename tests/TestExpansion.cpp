@@ -273,3 +273,115 @@ TEST(Eth, LoweringAScalarReadsTheOrdersARealFieldDoesNotStore) {
     }
   }
 }
+
+//--------------------------------------------------------------------------//
+//                       A tensor in the spectral domain                     //
+//--------------------------------------------------------------------------//
+
+TEST(TensorExpansion, MirrorsTheFieldWithoutTheSecondBuffer) {
+  constexpr auto lMax = Int{5};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  using Field = TensorField<2, Symmetric<2>, RealTensor, Grid>;
+  using Expansion = TensorExpansion<2, Symmetric<2>, RealTensor, Grid>;
+
+  auto field = Field(grid);
+  auto e = Expansion(grid, lMax);
+
+  // The same stored set as the field -- reality reduces both sides.
+  static_assert(Expansion::StoredComponents == Field::StoredComponents);
+  static_assert(Expansion::RealComponents == 2);
+
+  // But one buffer, not two: a pinned component is a real *field*, and its
+  // coefficients are complex numbers in the reduced m >= 0 storage.
+  EXPECT_EQ(e.Size(), field.CoefficientSize(lMax));
+
+  // Its block is about half the length of a complex one at the same degree,
+  // which is the same saving in the spectral domain as in the spatial one.
+  auto pinned = e.Component<0, 0>();
+  static_assert(std::same_as<decltype(pinned)::Value, RealValued>);
+  EXPECT_EQ(pinned.Size(), static_cast<Int>(grid.RealCoefficientSize(lMax)));
+  EXPECT_LT(pinned.Size(), static_cast<Int>(grid.CoefficientSize(lMax, 0)));
+}
+
+TEST(TensorExpansion, ComponentsCarryTheirOwnUpperIndex) {
+  constexpr auto lMax = Int{4};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto e = TensorExpansion<2, NoSymmetry<2>, ComplexTensor, Grid>(grid, lMax);
+
+  static_assert(decltype(e.Component<1, 1>())::UpperIndex == 2);
+  static_assert(decltype(e.Component<0, 1>())::UpperIndex == 1);
+  static_assert(decltype(e.Component<-1, 1>())::UpperIndex == 0);
+
+  // The degrees of a block start at the component's own upper index.
+  EXPECT_EQ((e.Component<1, 1>().MinDegree()), 2);
+  EXPECT_EQ((e.Component<-1, 1>().MinDegree()), 0);
+
+  // Writing through a component reaches the buffer the transform uses.
+  e.Component<1, 1>()[3, -2] = Complex{1.0, -2.0};
+  const auto& expansion = e;
+  EXPECT_EQ((expansion.Component<1, 1>()[3, -2]), (Complex{1.0, -2.0}));
+}
+
+TEST(TensorExpansion, RoundTripsAgainstTheTensorField) {
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  using Field = TensorField<2, Symmetric<2>, RealTensor, Grid>;
+  auto field = Field(grid);
+
+  // Fill through the components, so that whatever the storage is, the values
+  // are ones the tensor can hold.
+  const auto write = [&](auto&& u, Real tag) {
+    for (auto iTheta : grid.CoLatitudeIndices()) {
+      for (auto iPhi : grid.LongitudeIndices()) {
+        using Node = std::remove_cvref_t<decltype(u)>;
+        if constexpr (std::same_as<typename Node::Value, RealValued>) {
+          u[iTheta, iPhi] = tag + iTheta + 0.25 * iPhi;
+        } else {
+          u[iTheta, iPhi] = Complex{tag + iTheta, 0.25 * iPhi - tag};
+        }
+      }
+    }
+  };
+  write(field.Component<-1, -1>(), 1.0);
+  write(field.Component<-1, 0>(), 2.0);
+  write(field.Component<-1, 1>(), 3.0);
+  write(field.Component<0, 0>(), 4.0);
+
+  auto e = Expand(field, lMax);
+  static_assert(std::same_as<decltype(e),
+                             TensorExpansion<2, Symmetric<2>, RealTensor,
+                                             Grid>>);
+
+  auto back = Evaluate(e);
+  static_assert(std::same_as<decltype(back), Field>);
+
+  // Once band-limited, the two representations agree.
+  auto again = Expand(back, lMax);
+  for (auto i = Int{0}; i < e.Size(); i++) {
+    EXPECT_NEAR(again.Data()[i].real(), e.Data()[i].real(), 1.0e-11)
+        << "at " << i;
+    EXPECT_NEAR(again.Data()[i].imag(), e.Data()[i].imag(), 1.0e-11)
+        << "at " << i;
+  }
+
+  // And the reality condition survives the round trip.
+  const auto& result = back;
+  const auto value = Complex{result.Component<-1, -1>()[2, 2]};
+  const auto derived = Complex{result.Component<1, 1>()[2, 2]};
+  EXPECT_NEAR(derived.real(), std::conj(value).real(), 1.0e-11);
+  EXPECT_NEAR(derived.imag(), std::conj(value).imag(), 1.0e-11);
+}
+
+TEST(TensorExpansion, DerivedComponentsAreNotOfferedInTheSpectralDomain) {
+  using E = TensorExpansion<2, NoSymmetry<2>, RealTensor, Grid>;
+
+  // A derived component has no block: deriving it here means applying
+  // eq:complevel, T^{-N}_{l,-m} = (-1)^m conj(T^N_{lm}), which reverses the
+  // order index rather than acting pointwise. That is not a view over
+  // anything, so the accessor is not offered.
+  static_assert(E::Writable<-1, -1>);
+  static_assert(!E::Writable<1, 1>);
+  SUCCEED();
+}

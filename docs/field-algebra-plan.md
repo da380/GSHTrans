@@ -1400,3 +1400,30 @@ Flipping the sign of *both* operators leaves both identities intact, so the
 overall sign remains a convention this document cannot settle from inside.
 It is recorded at the point of use, and it is the one thing in phase 5 that
 wants an answer from the literature rather than from a test.
+
+### 15.4 What phase 5 landed
+
+All three steps, with 170 tests. `SpinExpansion` and `TensorExpansion` on one
+side, `Expand`/`Evaluate` between the domains, and `Raise`/`Lower`.
+
+**The expansion side really is one buffer**, as §15.1 predicted: a pinned
+component is a real field but its coefficients are complex, so what varies is
+the block *length* and not the buffer's type. The reduction carries across —
+a real rank-2 tensor stores five blocks rather than nine here too, and a
+pinned block is about half the length of a complex one at the same degree.
+
+**A derived component is not offered in the spectral domain.** On the spatial
+side deriving one is pointwise, `T^{-α} = (-1)^N conj(T^α)`, so a view plus an
+expression node does it. On the spectral side it is `eq:complevel`,
+`T^{-N}_{l,-m} = (-1)^m conj(T^N_{lm})`, which *reverses the order index* —
+not a view over anything. So `TensorExpansion` exposes only stored components,
+and deriving is done in the spatial domain or by applying the relation to the
+representative. This asymmetry between the two domains was not foreseen and is
+the one place the mirror between `TensorField` and `TensorExpansion` breaks.
+
+**The `ð` sign convention is the one open item in this document.** §2 listed
+two unchecked conventions; the `e_±` sign remains untested because nothing yet
+observes it, and the `ð` signs are now implemented as the theory note states
+them, with `ð̄ð = ∇²` and `[ð, ð̄] = −2N` tested. Both survive flipping the pair,
+so the common sign wants an answer from Phinney & Burridge rather than from a
+test.
