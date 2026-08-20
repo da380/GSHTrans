@@ -4,5 +4,6 @@
 // Header files to include for use of GHSTrans library
 #include "Core"
 #include "Field"
+#include "Tensor"
 
 #endif
