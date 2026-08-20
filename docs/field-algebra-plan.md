@@ -1503,3 +1503,97 @@ would buy less than it complicates.
 the gradient (D&T C.6.2), and contraction is pointwise, so a caller evaluates
 the gradient and contracts in the spatial domain with the machinery phase 3
 already provides.
+
+---
+
+## 17. Layered fields, in detail
+
+§8 sketched this before phase 1 existed and settled the shape; §16 of
+`docs/thoughts.md` expanded it. This is the working plan, written with the
+target application in view.
+
+### 17.1 What the target actually does
+
+The gravity code of Myhill, Maitra & Al-Attar — and the planned DSpecM3D, whose
+outline is in the introduction to the DSpecM1D paper — discretise **radially
+with a 1-D spectral element basis and angularly with generalized spherical
+harmonics**, and apply the operator matrix-free. The linear system is never
+assembled; its action is computed, and the preconditioner is the spherically
+symmetric problem solved as a sequence of 1-D problems at each `(l, m)`.
+
+The existing code stores fields on the product mesh of radii with the
+Gauss–Legendre angular points, **radius outermost**, the angular indices in
+GSHTrans's own order. Taking the gradient of a scalar means: transform at every
+radius, scale in the spectral domain to get the angular components, use the
+radial element basis for the radial one, and transform back to get three vector
+components.
+
+Three things follow, and they are what this phase is for.
+
+- **The batch axis is the radial axis.** `core-plan.md` step F built a batched
+  transform described by `(count, stride, dist)` and it has never had a
+  consumer. This is the consumer: one call per component instead of a loop over
+  radii, and the Wigner block for that upper index streamed once for the whole
+  stack rather than once per radius.
+- **The repack between `[r][(l,m)]` and `[(l,m)][r]` is in the inner loop**, not
+  a layout nicety: the angular transform wants the first and the radial solves
+  want the second, and both run on every operator application.
+- **Everything is applied per iteration.** Whatever the transform costs is
+  multiplied by the iteration count, which is the argument `core-plan.md` §10
+  did not have when it deprioritised the GEMM.
+
+### 17.2 The design
+
+**Radius-major, matching both §8 and the existing code.** A layered field owns
+one contiguous buffer of `nR` angular fields laid end to end, each slice
+contiguous in the canonical angular order.
+
+**A slice is a view, not a field.** `Slice(r)` returns a `SpinFieldView` over
+the buffer — an ordinary phase-1 node, so the whole index algebra, the lazy
+evaluation and the aliasing theorem lift unchanged, and there is no second
+expression system. This is why phase 1 made views admissible everywhere an
+owning field is.
+
+**The radial mesh carries nodes, weights and identity, and nothing else.**
+Element connectivity, the SEM basis and the differentiation matrices stay in
+the application. What the library needs radii *for* is the quadrature over the
+ball and the `r^{-1}` in the gradient; what it needs the count for is the
+stack. `RadialGrid` is therefore a value-semantic handle over nodes and
+weights, deliberately thin.
+
+**The radial operator is supplied, not owned.** Differentiation, interpolation
+and any solve are the caller's: a finite-difference operator is banded, a
+spectral-element one is block-diagonal, and neither is this library's business.
+The library applies what it is given along the radial axis, at fixed angular
+index or fixed `(l, m)` as appropriate. The interface question — a callable
+over a strided range, or a matrix the library multiplies by — is settled in
+favour of a callable, because a caller who has factorised something wants to
+reuse the factorisation and a matrix interface forecloses that.
+
+**Bridges are explicit**, as §8 says: `Broadcast` lifts a 2-D expression to
+every radius at zero cost, `Slice` goes down, and there are no implicit
+conversions. A one-slice stack and an angular field stay distinct types.
+
+### 17.3 The steps
+
+1. **`RadialGrid` and `LayeredSpinField`.** Storage, slice views, `Broadcast`,
+   and the batched transform over radii — which is the whole point and the
+   first consumer of step F.
+2. **The radial seam**, and with it the full gradient: `∂^±` from
+   `SurfaceGradient` with the `r^{-1}` reinstated, `∂^0` from the supplied
+   operator. This is where the angular library stops being half a gradient.
+3. **Layered tensors.** These need a tensor *view* type, which does not exist —
+   `TensorField` owns its buffers. Either it gains a storage template parameter
+   as `SpinFieldView` already has, or the layered tensor exposes
+   `Component<α…>(r)` directly and never forms a tensor view at all. The second
+   is smaller and is the way to try first.
+4. **The spectral layouts**, `[r][(l,m)]` against `[(l,m)][r]`, with an
+   explicit repack and a measurement of what it costs.
+
+### 17.4 What is deliberately not here
+
+Radial derivatives are **not** pointwise, so they do not join the lazy layer —
+the same status as raising and lowering, and for the same reason: phase 1's
+aliasing theorem rests on every node reading its operands only at the point it
+is writing. A layered expression may be lazy in its *angular* structure and
+must be materialised before anything radial touches it.
