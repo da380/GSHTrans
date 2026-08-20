@@ -168,12 +168,13 @@ constexpr auto MakeOrbitTable() {
 // The stored-component table for a tensor: permutation symmetry always, the
 // reality condition only for a real tensor.
 //
-// Reality is a phase-4 facility, so IncludeNegation is false everywhere in
-// phase 2 and RealTensor stores what ComplexTensor stores. The parameter is
-// here rather than at the call site because turning it on is the whole of what
-// phase 4 changes.
+// This is the switch phase 2 left for phase 4, and turning it on was the whole
+// of the change to this file. A real tensor's components are related by
+// T^{-alpha} = (-1)^N conj(T^alpha), so the negation joins the generating set
+// and the orbits get larger and fewer; a complex tensor has no such relation
+// and keeps every component of every permutation orbit.
 struct RealTensor {
-  static constexpr bool ReducesOnReality = false;
+  static constexpr bool ReducesOnReality = true;
 };
 
 struct ComplexTensor {

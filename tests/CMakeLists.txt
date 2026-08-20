@@ -27,6 +27,10 @@ add_executable(TestTensorAlgebra
                TestTensorAlgebra.cpp)
 target_link_libraries(TestTensorAlgebra PRIVATE GSHTrans gtest_main)
 
+add_executable(TestTensorReality
+               TestTensorReality.cpp)
+target_link_libraries(TestTensorReality PRIVATE GSHTrans gtest_main)
+
 add_executable(TestWigner
   TestWigner.cpp)
 target_link_libraries(TestWigner PRIVATE GSHTrans gtest_main)
@@ -92,6 +96,7 @@ gtest_discover_tests(TestSpinField)
 gtest_discover_tests(TestTensorIndices)
 gtest_discover_tests(TestTensorField)
 gtest_discover_tests(TestTensorAlgebra)
+gtest_discover_tests(TestTensorReality)
 gtest_discover_tests(TestWigner)
 gtest_discover_tests(TestGaussLegendreGrid)
 gtest_discover_tests(TestRealFieldSymmetry)

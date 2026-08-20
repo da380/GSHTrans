@@ -755,6 +755,10 @@ on the fly, so generic code can traverse all `3^Rank` components without
 knowing which are stored. Halves storage for every real tensor: 81 reals rather
 than 162 at rank 4.
 
+*Done, and §14 records it.* The reduction is exact rather than approximate —
+`3^p` reals per point at every rank and symmetry — which took one thing the
+phase-2 plan did not anticipate: **the storage stops being uniform**.
+
 *Constraint on phase 1:* a derived component is a `Unary<Conj, Negate, View>`
 composed with a sign — that is, a phase-1 expression node over a phase-1 view,
 which the design already supports. Two consequences worth recording now:
@@ -1273,3 +1277,72 @@ product is derived if either factor's is; a component of a contraction is a sum
 whose terms may individually be stored, derived or vanishing. Nothing here
 needs to know: it asks the operand for a component and gets a node, and the
 `Vanishes` trait is what a traversal consults before asking at all.
+
+---
+
+## 14. Phase 4, and the thing phase 2 did not anticipate
+
+Turning the switch on in `Orbits.h` was, as §12.3 promised, a one-line change:
+`RealTensor::ReducesOnReality` becomes true, negation joins the generating set,
+and the orbits get larger and fewer. Everything else followed from what phase 2
+had already built — except one thing.
+
+### The storage stops being uniform
+
+An orbit that contains its own negation pins its component to a **single real
+number**: real, or purely imaginary when a permutation sign gets in the way.
+Phase 2's buffer is `Complex`, and storing a pinned component there would waste
+half of each *and*, worse, let a caller write an imaginary part into a
+component that cannot have one — which is exactly the class of thing this
+library's type system exists to prevent.
+
+So a real tensor has **two buffers**: complex components grouped by upper index
+as before, and pinned components in a buffer of `Real`. That is what makes the
+reduction exact rather than approximate:
+
+| | components | reals per point | naive complex |
+|---|---|---|---|
+| rank 1 | 1 complex + 1 real | 3 | 6 |
+| rank 2 | 4 complex + 1 real | 9 | 18 |
+| rank 2, symmetric | 2 complex + 2 real | 6 | 18 |
+| rank 2, antisymmetric | 1 complex + 1 imaginary | 3 | 18 |
+| rank 3, symmetric | 4 complex + 2 real | 10 | 54 |
+| rank 4 | 40 complex + 1 real | 81 | 162 |
+| rank 4, elastic | 8 complex + 5 real | 21 | 162 |
+
+Every one of those is the count of independent real degrees of freedom, and
+none of them is special-cased.
+
+**The pinned components are always at upper index zero**, which is what makes
+this work at all: permutation preserves the slot sum and negation reverses it,
+so a component fixed by the combination satisfies `N = −N`. Phase 1 forbids
+`RealValued` anywhere but `N = 0`, so the two constraints agree exactly — and
+the real buffer is therefore *one* transform group rather than several,
+running through the transform's real path and its reduced `m ≥ 0` coefficient
+storage. The saving in the spectral domain is the same saving as in the
+spatial one.
+
+### What phase 1 and phase 2 got right in advance
+
+- **`conj` reverses the upper index.** A derived component is
+  `sign · conj(view)` at `−N`, so getting this wrong — one of the three
+  structural defects in the layer phase 1 replaced — would have made phase 4
+  impossible rather than merely wrong.
+- **The grid's `N`-support check is on terminals and views only** (§3.7). The
+  derived partner of a stored component at `N` sits at `−N`, so on a grid
+  carrying only non-negative upper indices half of them could not be
+  terminals. They are expressions, and expressions are unchecked.
+- **A component accessor returning different types** was already true at phase
+  2 through antisymmetry, so phase 4 added a third and fourth case rather than
+  a new idea.
+
+### One decision taken here
+
+**`Materialise` takes the reality as well as the symmetry**, defaulting to
+`ComplexTensor`. Where the target component is pinned and the expression is
+complex, the surviving part is taken — the real part, or the imaginary part
+for an `Imaginary` orbit. That is the caller's assertion that the expression
+really is a real tensor, of exactly the same kind as asking for a symmetry and
+unprovable here for the same reason. Without it the algebra could not produce
+a real tensor at all, which would have made the reduction useful only for
+inputs.

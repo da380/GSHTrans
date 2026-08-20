@@ -263,14 +263,22 @@ TEST(Orbits, TheTableIsInternallyConsistent) {
   SUCCEED();
 }
 
-// Phase 2 reduces on permutation symmetry only. Reality is phase 4, and the
-// parameter that will turn it on is already in place.
-TEST(Orbits, RealityReductionIsNotYetTurnedOn) {
-  static_assert(!RealTensor::ReducesOnReality);
+// A real tensor reduces on both relations, a complex one on permutation
+// symmetry alone. This is the switch phase 2 left for phase 4.
+TEST(Orbits, RealityReducesOnlyARealTensor) {
+  static_assert(RealTensor::ReducesOnReality);
   static_assert(!ComplexTensor::ReducesOnReality);
-  static_assert((TensorOrbits<2, NoSymmetry<2>, RealTensor>.storedCount) == 9);
+
   static_assert((TensorOrbits<2, NoSymmetry<2>, ComplexTensor>.storedCount) ==
                 9);
-  static_assert((TensorOrbits<2, Symmetric<2>, RealTensor>.storedCount) == 6);
+  static_assert((TensorOrbits<2, NoSymmetry<2>, RealTensor>.storedCount) == 5);
+
+  static_assert((TensorOrbits<2, Symmetric<2>, ComplexTensor>.storedCount) ==
+                6);
+  static_assert((TensorOrbits<2, Symmetric<2>, RealTensor>.storedCount) == 4);
+
+  static_assert((TensorOrbits<4, NoSymmetry<4>, RealTensor>.storedCount) == 41);
+  static_assert((TensorOrbits<4, ElasticSymmetry, RealTensor>.storedCount) ==
+                13);
   SUCCEED();
 }

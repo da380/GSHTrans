@@ -5,6 +5,8 @@
 #include <concepts>
 #include <cstddef>
 #include <type_traits>
+#include <cmath>
+#include <complex>
 #include <utility>
 
 #include "../Concepts.h"
@@ -493,10 +495,32 @@ template <auto Indices, typename Field, typename Expr, std::size_t... I>
 void AssignComponent(Field& field, const Expr& expr, std::index_sequence<I...>) {
   auto target = field.template Component<Indices[I]...>();
   const auto source = expr.template Component<Indices[I]...>();
+  using Target = std::remove_cvref_t<decltype(target)>;
+  using Source = std::remove_cvref_t<decltype(source)>;
+
+  constexpr auto flat = MultiIndex<Field::Rank>(Indices).Flat();
+  constexpr auto constraint = Field::Orbits.constraint[flat];
+  constexpr bool narrowing =
+      std::same_as<typename Target::Value, RealValued> and
+      std::same_as<typename Source::Value, ComplexValued>;
+
   const auto& grid = field.Grid();
   for (auto iTheta : grid.CoLatitudeIndices()) {
     for (auto iPhi : grid.LongitudeIndices()) {
-      target[iTheta, iPhi] = source[iTheta, iPhi];
+      if constexpr (narrowing) {
+        // The target is a component the reality condition pins to a single
+        // real number and the expression does not know that. Taking the part
+        // that survives is the caller's assertion that the expression really
+        // is a real tensor -- the same kind of assertion asking for a
+        // symmetry is, and unprovable here for the same reason.
+        if constexpr (constraint == ComponentConstraint::Imaginary) {
+          target[iTheta, iPhi] = std::imag(source[iTheta, iPhi]);
+        } else {
+          target[iTheta, iPhi] = std::real(source[iTheta, iPhi]);
+        }
+      } else {
+        target[iTheta, iPhi] = source[iTheta, iPhi];
+      }
     }
   }
 }
@@ -516,20 +540,22 @@ void AssignSlot(Field& field, const Expr& expr) {
 // Evaluate a tensor expression into a field, which is where a lazy tensor
 // stops being lazy.
 //
-// The symmetry is the caller's to state and defaults to none. The product of
-// two symmetric tensors is not symmetric, and inferring a symmetry from an
-// expression tree is a research problem rather than a design -- so asking for
-// one here is an assertion about the value, honoured by storing only the
-// components that symmetry keeps.
-template <typename Symmetry = void, typename Expr>
+// The symmetry and the reality are the caller's to state, and default to none
+// and complex. The product of two symmetric tensors is not symmetric, and
+// inferring either property from an expression tree is a research problem
+// rather than a design -- so asking for one here is an assertion about the
+// value, honoured by storing only the components it keeps. Asking for
+// RealTensor stores half as much and derives the rest, and where a component
+// is pinned to one real number, that number is taken from the expression.
+template <typename Symmetry = void, TensorReality Reality = ComplexTensor,
+          typename Expr>
 requires TensorExpr<std::remove_cvref_t<Expr>>
 auto Materialise(const Expr& expr) {
   using E = std::remove_cvref_t<Expr>;
   using Chosen =
       std::conditional_t<std::same_as<Symmetry, void>, NoSymmetry<E::Rank>,
                          Symmetry>;
-  using Field =
-      TensorField<E::Rank, Chosen, ComplexTensor, typename E::GridType>;
+  using Field = TensorField<E::Rank, Chosen, Reality, typename E::GridType>;
 
   auto field = Field(expr.Grid());
   [&]<std::size_t... Slot>(std::index_sequence<Slot...>) {

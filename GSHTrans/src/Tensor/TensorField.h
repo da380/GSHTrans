@@ -99,29 +99,81 @@ class TensorField {
   //
   // Orbits.h stays in flat order, which is pure combinatorics. The layout
   // belongs here.
+  // Reality splits the storage in two, and that is the other thing the layout
+  // has to carry.
+  //
+  // Once the reality condition is one of the generators, an orbit that
+  // contains its own negation pins its component to a single real number --
+  // real, or purely imaginary if a permutation sign gets in the way. Storing
+  // those as complex fields would waste half of each and, worse, would let a
+  // caller write an imaginary part into a component that cannot have one. So
+  // they live in a buffer of their own.
+  //
+  // They are always at upper index zero: permutation preserves the slot sum
+  // and negation reverses it, so a component fixed by the combination
+  // satisfies N = -N. That is what makes a real-valued field admissible for
+  // them at all -- phase 1 forbids RealValued anywhere else -- and it means
+  // the real buffer is one transform group rather than several.
+  //
+  // The arithmetic comes out exactly right: two reals per complex component
+  // and one per constrained one is 3^p, the real degrees of freedom of a real
+  // rank-p tensor. Nine for rank 2, six symmetric, three antisymmetric, ten
+  // for symmetric rank 3.
   struct Layout {
     std::array<Int, StoredComponents> flatOfSlot{};
     std::array<Int, StoredComponents> upperIndexOfSlot{};
+    std::array<bool, StoredComponents> realOfSlot{};
     std::array<Int, 2 * Rank + 1> firstSlotAt{};
     std::array<Int, 2 * Rank + 1> countAt{};
+    Int complexCount{};
+    Int realCount{};
   };
 
   static constexpr Layout ComponentLayout = [] {
     auto layout = Layout{};
+    const auto constrained = [](Int flat) {
+      return Orbits.constraint[flat] != ComponentConstraint::None;
+    };
+
+    // The complex components first, grouped by upper index so that each group
+    // is a batch, then the constrained ones, which are all at zero.
     auto slot = Int{0};
     for (auto n = -Rank; n <= Rank; n++) {
       layout.firstSlotAt[n + Rank] = slot;
       for (auto i = Int{0}; i < StoredComponents; i++) {
         const auto flat = Orbits.stored[i];
+        if (constrained(flat)) continue;
         if (MultiIndex<Rank>::FromFlat(flat).UpperIndex() != n) continue;
         layout.flatOfSlot[slot] = flat;
         layout.upperIndexOfSlot[slot] = n;
+        layout.realOfSlot[slot] = false;
         slot++;
       }
       layout.countAt[n + Rank] = slot - layout.firstSlotAt[n + Rank];
     }
+    layout.complexCount = slot;
+
+    for (auto i = Int{0}; i < StoredComponents; i++) {
+      const auto flat = Orbits.stored[i];
+      if (!constrained(flat)) continue;
+      layout.flatOfSlot[slot] = flat;
+      layout.upperIndexOfSlot[slot] = 0;
+      layout.realOfSlot[slot] = true;
+      slot++;
+    }
+    layout.realCount = slot - layout.complexCount;
     return layout;
   }();
+
+  static constexpr Int ComplexComponents = ComponentLayout.complexCount;
+  static constexpr Int RealComponents = ComponentLayout.realCount;
+
+  // The real numbers one grid point of this tensor costs.
+  static constexpr Int RealsPerPoint = 2 * ComplexComponents + RealComponents;
+
+  static constexpr Int UpperIndexOfFlat(Int flat) {
+    return MultiIndex<Rank>::FromFlat(flat).UpperIndex();
+  }
 
   // Where a stored component sits in the buffer, by flat multi-index.
   static constexpr Int SlotOfFlat(Int flat) {
@@ -181,7 +233,9 @@ class TensorField {
     if constexpr (sizeof...(Alphas) != Rank) {
       return false;
     } else {
-      return RepresentsFn<Alphas...>() and Orbits.sign[FlatOf<Alphas...>] == 1;
+      return RepresentsFn<Alphas...>() and
+             Orbits.sign[FlatOf<Alphas...>] == 1 and
+             not Orbits.conjugate[FlatOf<Alphas...>];
     }
   }
 
@@ -198,7 +252,9 @@ class TensorField {
 
   explicit TensorField(GridType grid)
       : _grid{std::move(grid)},
-        _data(static_cast<std::size_t>(StoredComponents) *
+        _data(static_cast<std::size_t>(ComplexComponents) *
+              static_cast<std::size_t>(_grid.FieldSize())),
+        _real(static_cast<std::size_t>(RealComponents) *
               static_cast<std::size_t>(_grid.FieldSize())) {
     // A rank-p tensor has components at every upper index from -p to p, so a
     // grid that does not carry them cannot hold one. Checked here rather than
@@ -216,11 +272,17 @@ class TensorField {
   const GridType& Grid() const { return _grid; }
 
   auto FieldSize() const { return static_cast<Int>(_grid.FieldSize()); }
-  auto Size() const { return static_cast<Int>(_data.size()); }
 
-  // The whole buffer, in [component][iTheta][iPhi] order.
+  // The complex buffer, in [component][iTheta][iPhi] order, and the real one
+  // holding the components the reality condition pins to a single real number.
+  // The second is empty unless reality is being reduced on.
+  auto Size() const { return static_cast<Int>(_data.size()); }
+  auto RealSize() const { return static_cast<Int>(_real.size()); }
+
   auto Data() { return std::span<Scalar>(_data); }
   auto Data() const { return std::span<const Scalar>(_data); }
+  auto RealData() { return std::span<Real>(_real); }
+  auto RealData() const { return std::span<const Real>(_real); }
 
   //------------------------------------------------------------------------//
   //                            Component access                             //
@@ -228,45 +290,91 @@ class TensorField {
 
   // The component with this multi-index, as a phase-1 node.
   //
-  // Read-only, and available for every component the tensor can represent:
-  // stored ones as a view, sign-reversed ones as that view negated.
+  // Read-only, and available for every component the tensor can represent.
+  // What comes back depends on how the component is related to the one stored
+  // for it, and there are now four cases rather than two:
+  //
+  //   stored, sign +1        the view itself
+  //   sign -1               that view negated, an expression
+  //   related by reality    conj of the view, at the reversed upper index
+  //   pinned by its orbit   a real-valued view, or i times one
+  //
+  // The reality case is the one phase 1 was made to accommodate. The relation
+  // is T^{-alpha} = (-1)^N conj(T^{alpha}) (eq:reality), and conj reverses the
+  // upper index -- which is why getting that wrong was one of the three
+  // structural defects in the layer phase 1 replaced. The (-1)^N is already
+  // folded into the orbit table's sign.
+  //
+  // Note what this means for a grid: the derived partner of a stored
+  // component at N has upper index -N, so on a grid carrying only
+  // non-negative upper indices half of these could not be *terminals*. They
+  // are expressions, and the field-algebra plan's section 3.7 put the grid's
+  // N-support check on terminals and views alone for exactly this case.
   template <Int... Alphas>
   requires Represents<Alphas...>
   auto Component() const {
     constexpr auto flat = FlatOf<Alphas...>;
-    constexpr auto N = UpperIndexOf<Alphas...>;
     constexpr auto sign = Orbits.sign[flat];
+    constexpr auto conjugated = Orbits.conjugate[flat];
+    constexpr auto constraint = Orbits.constraint[flat];
+    constexpr auto scale = static_cast<Real>(sign);
 
-    auto view = ConstSpinFieldView<N, GridType, ComplexValued>(
-        _grid, StoredSpan<flat>(), ComponentStride);
+    if constexpr (constraint == ComponentConstraint::None) {
+      // The stored component's own upper index, which is this one's when the
+      // relation does not conjugate and its negative when it does.
+      constexpr auto stored = UpperIndexOfFlat(Orbits.representative[flat]);
+      auto view = ConstSpinFieldView<stored, GridType, ComplexValued>(
+          _grid, StoredSpan<flat>(), ComponentStride);
 
-    // Negated with std::move so that the expression node owns the view rather
-    // than referring to this local one. A phase-1 node holds an lvalue
-    // terminal by reference, which is exactly right at a call site and
-    // exactly wrong here.
-    if constexpr (sign == 1) {
-      return view;
+      // Moved in so that the expression node owns the view rather than
+      // referring to this local one. A phase-1 node holds an lvalue terminal
+      // by reference, which is right at a call site and wrong here.
+      if constexpr (conjugated) {
+        return scale * conj(std::move(view));
+      } else if constexpr (sign == 1) {
+        return view;
+      } else {
+        return -std::move(view);
+      }
     } else {
-      return -std::move(view);
+      // A pinned component: one real number per point. Real means the value
+      // is that number; Imaginary means it is i times it, which is what an
+      // antisymmetric real tensor's self-paired component is.
+      auto view = ConstSpinFieldView<0, GridType, RealValued>(
+          _grid, RealStoredSpan<flat>(), RealComponentStride);
+      constexpr auto turn = conjugated ? -scale : scale;
+      if constexpr (constraint == ComponentConstraint::Real) {
+        return turn * std::move(view);
+      } else {
+        return Complex{0, turn} * std::move(view);
+      }
     }
   }
 
   // The component as writable storage.
   //
-  // Only where the component *is* the stored one up to a symmetric
-  // permutation. Writing through a sign-reversed component would mean
-  // negating on the way in, and a view cannot express that -- so rather than
-  // returning a proxy that behaves unlike every other node in the library,
-  // this is a compile error naming the component to write instead. For a
-  // symmetric tensor every representable component is writable, which is the
-  // common case.
+  // Only where the component *is* the stored one: writing through a
+  // sign-reversed or conjugated component would mean negating or conjugating
+  // on the way in, and a view cannot express that -- so rather than returning
+  // a proxy that behaves unlike every other node in the library, this is a
+  // compile error naming the component to write instead.
+  //
+  // A pinned component is writable as the single real number it is. For an
+  // Imaginary one that number is the coefficient of i, which is the only
+  // sensible reading and is why the accessor's value kind says RealValued.
   template <Int... Alphas>
   requires Writable<Alphas...>
   auto Component() {
     constexpr auto flat = FlatOf<Alphas...>;
     constexpr auto N = UpperIndexOf<Alphas...>;
-    return SpinFieldView<N, GridType, ComplexValued>(_grid, StoredSpan<flat>(),
-                                                     ComponentStride);
+    constexpr auto constraint = Orbits.constraint[flat];
+    if constexpr (constraint == ComponentConstraint::None) {
+      return SpinFieldView<N, GridType, ComplexValued>(_grid, StoredSpan<flat>(),
+                                                       ComponentStride);
+    } else {
+      return SpinFieldView<0, GridType, RealValued>(
+          _grid, RealStoredSpan<flat>(), RealComponentStride);
+    }
   }
 
   //------------------------------------------------------------------------//
@@ -294,10 +402,14 @@ class TensorField {
   // being StoredComponents times something.
   Int CoefficientSize(Int lMax) const {
     auto total = Int{0};
-    for (auto slot = Int{0}; slot < StoredComponents; slot++) {
+    for (auto slot = Int{0}; slot < ComplexComponents; slot++) {
       total += static_cast<Int>(
           _grid.CoefficientSize(lMax, ComponentLayout.upperIndexOfSlot[slot]));
     }
+    // A pinned component is a real field, so it uses the reduced m >= 0
+    // storage -- which halves its coefficients too, and is the same saving in
+    // the spectral domain that the real buffer is in the spatial one.
+    total += RealComponents * static_cast<Int>(_grid.RealCoefficientSize(lMax));
     return total;
   }
 
@@ -332,6 +444,21 @@ class TensorField {
                                   policy);
       offset += static_cast<std::size_t>(count * coefficientSize);
     }
+
+    if constexpr (RealComponents > 0) {
+      // One more batch: the pinned components, all at upper index zero and
+      // all real-valued, so they go through the transform's real path and
+      // land in its reduced m >= 0 storage.
+      const auto coefficientSize =
+          static_cast<Int>(_grid.RealCoefficientSize(lMax));
+      auto fields = RealFieldGroup();
+      auto block = out.subspan(
+          offset, static_cast<std::size_t>(RealComponents * coefficientSize));
+      _grid.ForwardTransformation(lMax, 0, fields, RealFieldBatch(), block,
+                                  Batch::Contiguous(RealComponents,
+                                                    coefficientSize),
+                                  policy);
+    }
   }
 
   void InverseTransformation(Int lMax, std::span<const Complex> in,
@@ -352,11 +479,24 @@ class TensorField {
                                   fields, FieldBatch(count), policy);
       offset += static_cast<std::size_t>(count * coefficientSize);
     }
+
+    if constexpr (RealComponents > 0) {
+      const auto coefficientSize =
+          static_cast<Int>(_grid.RealCoefficientSize(lMax));
+      auto block = in.subspan(
+          offset, static_cast<std::size_t>(RealComponents * coefficientSize));
+      auto fields = RealFieldGroup();
+      _grid.InverseTransformation(lMax, 0, block,
+                                  Batch::Contiguous(RealComponents,
+                                                    coefficientSize),
+                                  fields, RealFieldBatch(), policy);
+    }
   }
 
  private:
   GridType _grid;
   FFTWpp::vector<Scalar> _data;
+  FFTWpp::vector<Real> _real;
 
   // The window of the buffer holding a run of `count` components starting at
   // `first`, and the descriptor that reads them.
@@ -376,7 +516,8 @@ class TensorField {
     } else {
       return Data().subspan(
           static_cast<std::size_t>(first),
-          static_cast<std::size_t>((fieldSize - 1) * StoredComponents + count));
+          static_cast<std::size_t>((fieldSize - 1) * ComplexComponents +
+                                   count));
     }
   }
 
@@ -388,7 +529,42 @@ class TensorField {
     } else {
       return Data().subspan(
           static_cast<std::size_t>(first),
-          static_cast<std::size_t>((fieldSize - 1) * StoredComponents + count));
+          static_cast<std::size_t>((fieldSize - 1) * ComplexComponents +
+                                   count));
+    }
+  }
+
+  // The pinned components' window and descriptor. They are one group, since
+  // they all sit at upper index zero.
+  auto RealFieldGroup() {
+    const auto fieldSize = FieldSize();
+    if constexpr (IsComponentMajor) {
+      return RealData().subspan(
+          0, static_cast<std::size_t>(RealComponents * fieldSize));
+    } else {
+      return RealData().subspan(
+          0, static_cast<std::size_t>((fieldSize - 1) * RealComponents +
+                                      RealComponents));
+    }
+  }
+
+  auto RealFieldGroup() const {
+    const auto fieldSize = FieldSize();
+    if constexpr (IsComponentMajor) {
+      return RealData().subspan(
+          0, static_cast<std::size_t>(RealComponents * fieldSize));
+    } else {
+      return RealData().subspan(
+          0, static_cast<std::size_t>((fieldSize - 1) * RealComponents +
+                                      RealComponents));
+    }
+  }
+
+  Batch RealFieldBatch() const {
+    if constexpr (IsComponentMajor) {
+      return Batch::Contiguous(RealComponents, FieldSize());
+    } else {
+      return Batch::Interleaved(RealComponents, RealComponents);
     }
   }
 
@@ -396,7 +572,7 @@ class TensorField {
     if constexpr (IsComponentMajor) {
       return Batch::Contiguous(count, FieldSize());
     } else {
-      return Batch::Interleaved(count, StoredComponents);
+      return Batch::Interleaved(count, ComplexComponents);
     }
   }
 
@@ -414,40 +590,61 @@ class TensorField {
   // compile time; only the multiplication by the field size is left to run
   // time, and that because the grid is a runtime object.
   // Where a stored component's samples live, and how far apart. Contiguous
-  // and one apart in ComponentMajor; starting at the component's slot and
-  // StoredComponents apart in PointMajor.
+  // and one apart in ComponentMajor; starting at the component's slot and one
+  // buffer-width apart in PointMajor.
+  //
+  // The two buffers interleave independently, since they hold different
+  // numbers of components.
   static constexpr Int ComponentStride =
-      IsComponentMajor ? Int{1} : StoredComponents;
+      IsComponentMajor ? Int{1} : ComplexComponents;
+  static constexpr Int RealComponentStride =
+      IsComponentMajor ? Int{1} : RealComponents;
 
   template <Int Flat>
   std::span<Scalar> StoredSpan() {
-    return std::span<Scalar>(_data).subspan(SpanOffset<Flat>(),
-                                            SpanExtent());
+    return std::span<Scalar>(_data).subspan(SpanOffset<Flat, false>(),
+                                            SpanExtent(ComponentStride));
   }
 
   template <Int Flat>
   std::span<const Scalar> StoredSpan() const {
-    return std::span<const Scalar>(_data).subspan(SpanOffset<Flat>(),
-                                                  SpanExtent());
+    return std::span<const Scalar>(_data).subspan(SpanOffset<Flat, false>(),
+                                                  SpanExtent(ComponentStride));
   }
 
   template <Int Flat>
+  std::span<Real> RealStoredSpan() {
+    return std::span<Real>(_real).subspan(SpanOffset<Flat, true>(),
+                                          SpanExtent(RealComponentStride));
+  }
+
+  template <Int Flat>
+  std::span<const Real> RealStoredSpan() const {
+    return std::span<const Real>(_real).subspan(SpanOffset<Flat, true>(),
+                                                SpanExtent(RealComponentStride));
+  }
+
+  // Slots are numbered across both buffers, complex first, so a real
+  // component's index within its own buffer is its slot less the complex
+  // count.
+  template <Int Flat, bool InRealBuffer>
   std::size_t SpanOffset() const {
     constexpr auto slot = SlotOfFlat(Orbits.representative[Flat]);
     static_assert(slot >= 0);
+    constexpr auto index = InRealBuffer ? slot - ComplexComponents : slot;
+    static_assert(index >= 0);
     if constexpr (IsComponentMajor) {
-      return static_cast<std::size_t>(slot) *
+      return static_cast<std::size_t>(index) *
              static_cast<std::size_t>(_grid.FieldSize());
     } else {
-      return static_cast<std::size_t>(slot);
+      return static_cast<std::size_t>(index);
     }
   }
 
   // The elements a strided component is spread over: the last sample's offset
   // plus one, which is less than the whole buffer by the slots that follow.
-  std::size_t SpanExtent() const {
-    return static_cast<std::size_t>((_grid.FieldSize() - 1) * ComponentStride +
-                                    1);
+  std::size_t SpanExtent(Int stride) const {
+    return static_cast<std::size_t>((_grid.FieldSize() - 1) * stride + 1);
   }
 };
 
