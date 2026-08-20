@@ -9,10 +9,10 @@
 #include <concepts>
 #include <cstddef>
 #include <limits>
-#include <memory>
 #include <numbers>
 #include <ranges>
-#include <tuple>
+#include <span>
+#include <utility>
 #include <vector>
 
 #include "Concepts.h"
@@ -202,6 +202,257 @@ class BoundaryValues {
   Real _atUpperIndex;
   Real _atMinusUpperIndex;
 };
+
+// The square-root tables the recursion indexes: sqrt(k) and its reciprocal,
+// for k up to lMax + max(mMax, |n|).
+//
+// Lifted out of Wigner::PreCompute for the same reason as ComputeBlock: a
+// generating grid needs them without needing a table, and two definitions of
+// the same tables would be one too many. They are the tiny tables that replace
+// the large one -- 2 lMax + 1 entries each.
+template <RealFloatingPoint Real>
+auto PreComputeTables(std::ptrdiff_t lMax, std::ptrdiff_t mMax,
+                      std::ptrdiff_t nMax) {
+  using Int = std::ptrdiff_t;
+  const auto size = lMax + std::max(mMax, nMax) + 1;
+  auto sqrtInt = std::vector<Real>();
+  auto sqrtIntInv = std::vector<Real>();
+  sqrtInt.reserve(size);
+  sqrtIntInv.reserve(size);
+  std::generate_n(std::back_inserter(sqrtInt), size, [m = Int{0}]() mutable {
+    return std::sqrt(static_cast<Real>(m++));
+  });
+  std::transform(sqrtInt.begin(), sqrtInt.end(),
+                 std::back_inserter(sqrtIntInv),
+                 [](auto x) { return x > 0 ? 1 / x : 0; });
+  return std::pair(std::move(sqrtInt), std::move(sqrtIntInv));
+}
+
+// The recursion itself, as a pure function of a destination view, an upper
+// index, a colatitude and the two square-root tables.
+//
+// Lifted out of Wigner::Compute unchanged, so that the values can be written
+// somewhere other than a stored table -- into per-thread scratch inside a
+// transform, which is what a generating grid does (core-plan.md step F', T11).
+// Wigner::Compute is now the wrapper that points the view at its own storage.
+// The destination's degree and order bounds come from the view, so a caller
+// wanting only the degrees up to some truncation asks for a view of that
+// extent and pays for no more.
+template <RealFloatingPoint Real, OrderIndexRange MRange>
+constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
+                            Real theta, std::span<const Real> sqrtInt,
+                            std::span<const Real> sqrtIntInv) {
+  using Int = std::ptrdiff_t;
+
+  // The extent to fill comes from the view rather than from any table, which
+  // is what lets a caller ask for the degrees up to a truncation and pay for
+  // no more.
+  const auto lMax = d.MaxDegree();
+  const auto mBound = d.MaxOrder();
+
+  auto arg = Arguments(theta);
+  const auto cos = std::cos(theta);
+  const auto nAbs = std::abs(n);
+
+  // Set the values for l == |n|
+  //
+  // This is the seed row, and at l = |n| the closed form reduces to
+  //
+  //   WignerMinOrder(l, -m) = sqrt(C(2l, l+m)) s^{l-m} c^{l+m},
+  //
+  // whose binomial row is generated exactly by the standard step
+  // C(2l, k) = C(2l, k-1) (2l - k + 1) / k. The row is at most 2|n| + 1
+  // long -- five entries for a rank-2 application -- so unlike the boundary
+  // recursion this is not about cost.
+  //
+  // It is about lgamma. glibc's writes the global signgam, and ComputeAll
+  // calls Compute from every thread, so the closed form is a data race here
+  // -- benign, since nothing reads signgam, but the only genuine one
+  // ThreadSanitizer finds in this library (core-plan.md step F'). Leaving
+  // this row on the closed form while the degree loop moved off it would
+  // have left the race exactly where it was. The values are also exact this
+  // way, where the closed form was merely accurate.
+  {
+    const auto l = nAbs;
+    const auto s = arg.SinHalf();
+    const auto c = arg.CosHalf();
+    auto m = d[l].MinOrder();
+    auto iter = d[l].begin();
+    auto finish = d[l].end();
+
+    // C(2l, l+m) at the first order stored, formed by the same step.
+    auto binomial = static_cast<Real>(1);
+    for (auto k = Int{1}; k <= l + m; k++) {
+      binomial *= static_cast<Real>(2 * l - k + 1) / static_cast<Real>(k);
+    }
+
+    while (iter != finish) {
+      const auto root = std::sqrt(binomial);
+      *iter++ = n >= 0 ? root * IntegerPower(s, l - m) *
+                             IntegerPower(c, l + m)
+                       : MinusOneToPower<Real>(l - m) * root *
+                             IntegerPower(s, l + m) *
+                             IntegerPower(c, l - m);
+      binomial *= static_cast<Real>(l - m) / static_cast<Real>(l + m + 1);
+      m++;
+    }
+  }
+
+  // The boundary terms of every higher degree, on the one-term recursion
+  // that replaces the closed form at m = +-l.
+  auto boundary = BoundaryValues<Real>(n, arg);
+
+  // Set the values for l == n+1 if needed.
+  if (nAbs < lMax) {
+    const auto l = nAbs + 1;
+    const auto mMin = d[l].MinOrder();
+    const auto mMax = d[l].MaxOrder();
+    auto m = mMin;
+
+    // The boundary values are read only while the degree is still growing:
+    // every use below is guarded by l <= mMax, and that degree's mMax is
+    // min(l, mBound). Once l passes mBound they are never wanted again, so
+    // the recursion stops rather than being advanced unused.
+    if (l <= mBound) boundary.Advance();
+
+    // Set iterators
+    auto iterMinusOne = d[l - 1].begin();
+    auto finishMinusOne = d[l - 1].end();
+    auto iter = d[l].begin();
+
+    // Add in value at m == -l if needed.
+    if constexpr (std::same_as<MRange, All>) {
+      if (l <= mMax) {
+        *iter++ = boundary.MinOrder();
+        m++;
+      }
+    }
+
+    // Add in interior orders using one-term recursion.
+    {
+      const auto alpha = (2 * l - 1) * l * cos * sqrtIntInv[l + nAbs];
+      const auto beta = (n < 0 ? -1 : 1) * (2 * l - 1) * sqrtIntInv[l + nAbs];
+
+      while (iterMinusOne != finishMinusOne) {
+        const auto f1 =
+            (alpha - beta * m) * sqrtIntInv[l - m] * sqrtIntInv[l + m];
+        *iter++ = f1 * *iterMinusOne++;
+        m++;
+      }
+    }
+
+    // Add in value at m == l if needed
+    if (l <= mMax) {
+      *iter++ = boundary.MaxOrder();
+    }
+  }
+
+  // Do the remaining degrees
+  for (auto l = nAbs + 2; l <= lMax; l++) {
+    const auto mMin = d[l].MinOrder();
+    const auto mMax = d[l].MaxOrder();
+    auto m = mMin;
+
+    if (l <= mBound) boundary.Advance();
+
+    // Set iterators.
+    auto iterMinusTwo = d[l - 2].begin();
+    auto finishMinusTwo = d[l - 2].end();
+    auto iterMinusOne = d[l - 1].begin();
+    auto iter = d[l].begin();
+
+    // Add in lower boundary terms if still growing.
+    if constexpr (std::same_as<MRange, All>) {
+      if (l <= mMax) {
+        {
+          // Add in the m == -l term.
+          *iter++ = boundary.MinOrder();
+          m++;
+        }
+        {
+          // Now do the m == -l+1 term using one-point recursion.
+          const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
+                          sqrtIntInv[l - n] * sqrtIntInv[l + n] *
+                          sqrtIntInv[l - m] * sqrtIntInv[l + m] /
+                          static_cast<Real>(l - 1);
+          *iter++ = f1 * (*iterMinusOne++);
+          m++;
+        }
+      }
+
+      // Add in the lower boundary term at the critical degree.
+      if (l == mMax + 1) {
+        const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
+                        sqrtIntInv[l - n] * sqrtIntInv[l + n] *
+                        sqrtIntInv[l - m] * sqrtIntInv[l + m] /
+                        static_cast<Real>(l - 1);
+        *iter++ = f1 * (*iterMinusOne++);
+        m++;
+      }
+    }
+
+    // Apply two-term recusion for the interior orders.
+    {
+      const auto alpha =
+          (2 * l - 1) * l * cos * sqrtIntInv[l - n] * sqrtIntInv[l + n];
+      const auto beta = (2 * l - 1) * n * sqrtIntInv[l - n] *
+                        sqrtIntInv[l + n] / static_cast<Real>(l - 1);
+      const auto gamma = l * sqrtInt[l - 1 - n] * sqrtInt[l - 1 + n] *
+                         sqrtIntInv[l - n] * sqrtIntInv[l + n] /
+                         static_cast<Real>(l - 1);
+
+      while (iterMinusTwo != finishMinusTwo) {
+        const auto denom = sqrtIntInv[l - m] * sqrtIntInv[l + m];
+        const auto f1 = (alpha - beta * m) * denom;
+        const auto f2 =
+            gamma * sqrtInt[l - 1 - m] * sqrtInt[l - 1 + m] * denom;
+        *iter++ = f1 * *iterMinusOne++ - f2 * *iterMinusTwo++;
+        m++;
+      }
+    }
+
+    // Add in the upper boundary terms if still growing.
+    if (l <= mMax) {
+      // Add in m == l - 1 term using one-point recursion.
+      {
+        const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
+                        sqrtIntInv[l - n] * sqrtIntInv[l + n] *
+                        sqrtIntInv[l - m] * sqrtIntInv[l + m] /
+                        static_cast<Real>(l - 1);
+        *iter++ = f1 * (*iterMinusOne++);
+        m++;
+      }
+      // Now do m == l.
+      *iter++ = boundary.MaxOrder();
+    }
+
+    // Add in the upper boundary term at the critical degree.
+    if (l == mMax + 1) {
+      // Update the iterators.
+
+      const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
+                      sqrtIntInv[l - n] * sqrtIntInv[l + n] *
+                      sqrtIntInv[l - m] * sqrtIntInv[l + m] /
+                      static_cast<Real>(l - 1);
+      *iter++ = f1 * (*iterMinusOne++);
+    }
+  }
+
+  // Orthonormalise: the stored value at (l, m) becomes
+  // sqrt((2l+1)/(4 pi)) d^l_{nm}. This is the only normalisation the
+  // library offers (core-plan step A2).
+  {
+    const auto factor =
+        std::numbers::inv_sqrtpi_v<Real> / static_cast<Real>(2);
+    for (auto l : d.Degrees()) {
+      auto start = d[l].begin();
+      auto finish = d[l].end();
+      std::transform(start, finish, start, [l, factor](auto p) {
+        return factor * std::sqrt(static_cast<Real>(2 * l + 1)) * p;
+      });
+    }
+  }
+}
 
 }  // namespace WignerDetails
 
@@ -393,27 +644,13 @@ class Wigner {
     }
   }
 
-  // Pre-compute some numerical values that are repeatedly used.
-  auto PreCompute() const {
-    using Vector = std::vector<Real>;
-    auto size = MaxDegree() + std::max(MaxOrder(), MaxUpperIndex()) + 1;
-    Vector sqrtInt, sqrtIntInv;
-    sqrtInt.reserve(size);
-    sqrtIntInv.reserve(size);
-    std::generate_n(std::back_inserter(sqrtInt), size, [m = Int{0}]() mutable {
-      return std::sqrt(static_cast<Real>(m++));
-    });
-    std::transform(sqrtInt.begin(), sqrtInt.end(),
-                   std::back_inserter(sqrtIntInv),
-                   [](auto x) { return x > 0 ? 1 / x : 0; });
-    return std::tuple(std::make_shared<Vector>(sqrtInt),
-                      std::make_shared<Vector>(sqrtIntInv));
-  }
-
   template <std::ranges::range Range>
   requires RealFloatingPoint<std::ranges::range_value_t<Range>>
   void ComputeAll(Range &&thetaRange) {
-    auto preComputed = PreCompute();
+    const auto [sqrtInt, sqrtIntInv] = WignerDetails::PreComputeTables<Real>(
+        MaxDegree(), MaxOrder(), MaxUpperIndex());
+    const auto sqrtIntView = std::span<const Real>(sqrtInt);
+    const auto sqrtIntInvView = std::span<const Real>(sqrtIntInv);
 
     // Flattened to an integer loop and decoded inside. OpenMP's canonical loop
     // form wants an integer induction variable or, from 5.0, a random-access
@@ -432,222 +669,20 @@ class Wigner {
     for (Int index = 0; index < count; index++) {
       const auto n = minUpperIndex + index / nAngles;
       const auto iTheta = index % nAngles;
-      Compute(n, iTheta, thetaRange[iTheta], preComputed);
+      Compute(n, iTheta, thetaRange[iTheta], sqrtIntView, sqrtIntInvView);
     }
   }
 
-  // Compute values for given (m,iTheta).
+  // Point the recursion at this table's storage for one (n, iTheta).
   constexpr void Compute(Int n, Int iTheta, Real theta,
-                         const auto preComputed) {
-    // Set some values.
-    auto &sqrtInt = *std::get<0>(preComputed);
-    auto &sqrtIntInv = *std::get<1>(preComputed);
-    auto arg = WignerDetails::Arguments(theta);
-    const auto cos = std::cos(theta);
-    const auto nAbs = std::abs(n);
-
-    // Set view to the data for (n,iTheta).
-    auto d = GSHView<Real, MRange>(_lMax, _mMax, n, &_data[Offset(n, iTheta)]);
-
-    // Set the values for l == |n|
-    //
-    // This is the seed row, and at l = |n| the closed form reduces to
-    //
-    //   WignerMinOrder(l, -m) = sqrt(C(2l, l+m)) s^{l-m} c^{l+m},
-    //
-    // whose binomial row is generated exactly by the standard step
-    // C(2l, k) = C(2l, k-1) (2l - k + 1) / k. The row is at most 2|n| + 1
-    // long -- five entries for a rank-2 application -- so unlike the boundary
-    // recursion this is not about cost.
-    //
-    // It is about lgamma. glibc's writes the global signgam, and ComputeAll
-    // calls Compute from every thread, so the closed form is a data race here
-    // -- benign, since nothing reads signgam, but the only genuine one
-    // ThreadSanitizer finds in this library (core-plan.md step F'). Leaving
-    // this row on the closed form while the degree loop moved off it would
-    // have left the race exactly where it was. The values are also exact this
-    // way, where the closed form was merely accurate.
-    {
-      const auto l = nAbs;
-      const auto s = arg.SinHalf();
-      const auto c = arg.CosHalf();
-      auto m = d[l].MinOrder();
-      auto iter = d[l].begin();
-      auto finish = d[l].end();
-
-      // C(2l, l+m) at the first order stored, formed by the same step.
-      auto binomial = static_cast<Real>(1);
-      for (auto k = Int{1}; k <= l + m; k++) {
-        binomial *= static_cast<Real>(2 * l - k + 1) / static_cast<Real>(k);
-      }
-
-      while (iter != finish) {
-        const auto root = std::sqrt(binomial);
-        *iter++ = n >= 0 ? root * WignerDetails::IntegerPower(s, l - m) *
-                               WignerDetails::IntegerPower(c, l + m)
-                         : MinusOneToPower<Real>(l - m) * root *
-                               WignerDetails::IntegerPower(s, l + m) *
-                               WignerDetails::IntegerPower(c, l - m);
-        binomial *= static_cast<Real>(l - m) / static_cast<Real>(l + m + 1);
-        m++;
-      }
-    }
-
-    // The boundary terms of every higher degree, on the one-term recursion
-    // that replaces the closed form at m = +-l.
-    auto boundary = WignerDetails::BoundaryValues<Real>(n, arg);
-
-    // Set the values for l == n+1 if needed.
-    if (nAbs < _lMax) {
-      const auto l = nAbs + 1;
-      const auto mMin = d[l].MinOrder();
-      const auto mMax = d[l].MaxOrder();
-      auto m = mMin;
-
-      // The boundary values are read only while the degree is still growing,
-      // since every use below is under l <= mMax and mMax is min(l, _mMax).
-      // Once l passes _mMax they are never wanted again, so the recursion
-      // stops rather than being advanced unused.
-      if (l <= _mMax) boundary.Advance();
-
-      // Set iterators
-      auto iterMinusOne = d[l - 1].begin();
-      auto finishMinusOne = d[l - 1].end();
-      auto iter = d[l].begin();
-
-      // Add in value at m == -l if needed.
-      if constexpr (std::same_as<_MRange, All>) {
-        if (l <= mMax) {
-          *iter++ = boundary.MinOrder();
-          m++;
-        }
-      }
-
-      // Add in interior orders using one-term recursion.
-      {
-        const auto alpha = (2 * l - 1) * l * cos * sqrtIntInv[l + nAbs];
-        const auto beta = (n < 0 ? -1 : 1) * (2 * l - 1) * sqrtIntInv[l + nAbs];
-
-        while (iterMinusOne != finishMinusOne) {
-          const auto f1 =
-              (alpha - beta * m) * sqrtIntInv[l - m] * sqrtIntInv[l + m];
-          *iter++ = f1 * *iterMinusOne++;
-          m++;
-        }
-      }
-
-      // Add in value at m == l if needed
-      if (l <= mMax) {
-        *iter++ = boundary.MaxOrder();
-      }
-    }
-
-    // Do the remaining degrees
-    for (auto l = nAbs + 2; l <= _lMax; l++) {
-      const auto mMin = d[l].MinOrder();
-      const auto mMax = d[l].MaxOrder();
-      auto m = mMin;
-
-      if (l <= _mMax) boundary.Advance();
-
-      // Set iterators.
-      auto iterMinusTwo = d[l - 2].begin();
-      auto finishMinusTwo = d[l - 2].end();
-      auto iterMinusOne = d[l - 1].begin();
-      auto iter = d[l].begin();
-
-      // Add in lower boundary terms if still growing.
-      if constexpr (std::same_as<_MRange, All>) {
-        if (l <= mMax) {
-          {
-            // Add in the m == -l term.
-            *iter++ = boundary.MinOrder();
-            m++;
-          }
-          {
-            // Now do the m == -l+1 term using one-point recursion.
-            const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
-                            sqrtIntInv[l - n] * sqrtIntInv[l + n] *
-                            sqrtIntInv[l - m] * sqrtIntInv[l + m] /
-                            static_cast<Real>(l - 1);
-            *iter++ = f1 * (*iterMinusOne++);
-            m++;
-          }
-        }
-
-        // Add in the lower boundary term at the critical degree.
-        if (l == mMax + 1) {
-          const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
-                          sqrtIntInv[l - n] * sqrtIntInv[l + n] *
-                          sqrtIntInv[l - m] * sqrtIntInv[l + m] /
-                          static_cast<Real>(l - 1);
-          *iter++ = f1 * (*iterMinusOne++);
-          m++;
-        }
-      }
-
-      // Apply two-term recusion for the interior orders.
-      {
-        const auto alpha =
-            (2 * l - 1) * l * cos * sqrtIntInv[l - n] * sqrtIntInv[l + n];
-        const auto beta = (2 * l - 1) * n * sqrtIntInv[l - n] *
-                          sqrtIntInv[l + n] / static_cast<Real>(l - 1);
-        const auto gamma = l * sqrtInt[l - 1 - n] * sqrtInt[l - 1 + n] *
-                           sqrtIntInv[l - n] * sqrtIntInv[l + n] /
-                           static_cast<Real>(l - 1);
-
-        while (iterMinusTwo != finishMinusTwo) {
-          const auto denom = sqrtIntInv[l - m] * sqrtIntInv[l + m];
-          const auto f1 = (alpha - beta * m) * denom;
-          const auto f2 =
-              gamma * sqrtInt[l - 1 - m] * sqrtInt[l - 1 + m] * denom;
-          *iter++ = f1 * *iterMinusOne++ - f2 * *iterMinusTwo++;
-          m++;
-        }
-      }
-
-      // Add in the upper boundary terms if still growing.
-      if (l <= mMax) {
-        // Add in m == l - 1 term using one-point recursion.
-        {
-          const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
-                          sqrtIntInv[l - n] * sqrtIntInv[l + n] *
-                          sqrtIntInv[l - m] * sqrtIntInv[l + m] /
-                          static_cast<Real>(l - 1);
-          *iter++ = f1 * (*iterMinusOne++);
-          m++;
-        }
-        // Now do m == l.
-        *iter++ = boundary.MaxOrder();
-      }
-
-      // Add in the upper boundary term at the critical degree.
-      if (l == mMax + 1) {
-        // Update the iterators.
-
-        const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
-                        sqrtIntInv[l - n] * sqrtIntInv[l + n] *
-                        sqrtIntInv[l - m] * sqrtIntInv[l + m] /
-                        static_cast<Real>(l - 1);
-        *iter++ = f1 * (*iterMinusOne++);
-      }
-    }
-
-    // Orthonormalise: the stored value at (l, m) becomes
-    // sqrt((2l+1)/(4 pi)) d^l_{nm}. This is the only normalisation the
-    // library offers (core-plan step A2).
-    {
-      const auto factor =
-          std::numbers::inv_sqrtpi_v<Real> / static_cast<Real>(2);
-      for (auto l : d.Degrees()) {
-        auto start = d[l].begin();
-        auto finish = d[l].end();
-        std::transform(start, finish, start, [l, factor](auto p) {
-          return factor * std::sqrt(static_cast<Real>(2 * l + 1)) * p;
-        });
-      }
-    }
+                         std::span<const Real> sqrtInt,
+                         std::span<const Real> sqrtIntInv) {
+    WignerDetails::ComputeBlock(
+        GSHView<Real, MRange>(_lMax, _mMax, n, &_data[Offset(n, iTheta)]), n,
+        theta, sqrtInt, sqrtIntInv);
   }
+
+
 };
 }  // namespace GSHTrans
 
