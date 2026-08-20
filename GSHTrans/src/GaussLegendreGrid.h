@@ -294,7 +294,7 @@ class GaussLegendreGrid
       }
     };
 
-    const auto chunk = ChunkSize(coefficientSize, policy);
+    const auto chunk = ForwardChunkSize(coefficientSize, policy);
     for (auto first = Int{0}; first < count; first += chunk) {
       const auto c = std::min(chunk, count - first);
       const auto scratchSize = static_cast<std::size_t>(coefficientSize * c);
@@ -498,7 +498,7 @@ class GaussLegendreGrid
       }
     };
 
-    const auto chunk = ChunkSize(coefficientSize, policy);
+    const auto chunk = InverseChunkSize(coefficientSize);
     for (auto first = Int{0}; first < count; first += chunk) {
       const auto c = std::min(chunk, count - first);
       const auto scratchSize = static_cast<std::size_t>(coefficientSize * c);
@@ -742,13 +742,37 @@ class GaussLegendreGrid
   }
 
   // How many fields the inner loop takes at once: the grid's chunking policy,
-  // asked about this particular call. The thread count is what the call will
-  // actually run on, which is one whenever the policy is sequential or a
-  // parallel region is already open.
-  Int ChunkSize(Int coefficientSize, Execution policy) const {
+  // asked about this particular call.
+  //
+  // The two directions ask different questions, which is why there are two
+  // entry points rather than one. What the policy needs to know is how many
+  // copies of the coefficient block will be live at once, and that is a
+  // property of the decomposition, not of the call:
+  //
+  //   forward -- every thread accumulates into a private buffer of
+  //              chunk * coefficientSize, so the copies are the threads;
+  //   inverse -- one block is gathered, shared and read-only, so there is one
+  //              copy however many threads read it.
+  //
+  // Serving both with the thread count is what the policy used to do, and it
+  // starved the inverse: at lMax = 256 and k = 8 on eight threads it returned
+  // a chunk of one where the whole batch fits, and taking the whole batch
+  // measured 2.2x faster (core-plan.md section 10). The forward's rule is
+  // unchanged, and the same measurement is the evidence for that too -- the
+  // whole batch there is 2x *slower*, because eight private accumulators of
+  // 8.4 MB ask for 68 MB of a 16 MB cache.
+  //
+  // The thread count is one whenever the policy is sequential or a parallel
+  // region is already open, since that is what the call will really run on.
+  Int ForwardChunkSize(Int coefficientSize, Execution policy) const {
     const auto threads = RunInParallel(policy) ? ThreadCount(policy) : 1;
     return _impl->chunking.Count(
         coefficientSize * static_cast<Int>(sizeof(Complex)), threads);
+  }
+
+  Int InverseChunkSize(Int coefficientSize) const {
+    return _impl->chunking.Count(
+        coefficientSize * static_cast<Int>(sizeof(Complex)), 1);
   }
 
   // The Wigner values for one (n, iTheta), over the degrees |n| .. lMax.

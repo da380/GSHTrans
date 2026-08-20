@@ -230,8 +230,9 @@ class Chunking {
 
   static Chunking Automatic() { return Chunking(DefaultCacheBytes, 0); }
 
-  // The total last-level cache of the machine, in bytes. Divided by the
-  // threads actually running, since that is what each of them gets.
+  // The total last-level cache of the machine, in bytes. Divided by the number
+  // of copies of the block that will be live at once, since that is what each
+  // of them gets.
   static Chunking ForCache(Int bytes) {
     if (bytes < 1) {
       throw std::invalid_argument("Cache size must be positive");
@@ -247,21 +248,34 @@ class Chunking {
   }
 
   // The chunk to use for a call whose coefficient block is `bytesPerField`
-  // bytes and which will run on `threads` threads.
+  // bytes and which will hold `copies` of that block at once.
   //
   // The divisor of two is headroom: the coefficient block is not alone in the
   // cache, the streamed Wigner row and the FFT output are there too.
   //
-  // Dividing by the running thread count rather than by the core count is the
-  // form that reproduces both of P8's anchors, which a fixed "per core" figure
-  // does not. P2's optimum of eight was measured *sequentially*, so that one
-  // thread had the whole of a 16 MiB cache: 16 MiB / 1 gives eight, while the
-  // 2 MiB per-core share of the same machine would give one. On a 256 MiB,
-  // 64-core machine at full width it gives two, which is what P8 predicted.
-  Int Count(Int bytesPerField, int threads) const {
+  // `copies` is the count that matters, and it is **not** the thread count in
+  // both directions. The forward transform gives every thread a private
+  // accumulator of chunk * coefficientSize, so its copies are its threads; the
+  // inverse gathers one block, shared and read-only, so it has one copy
+  // however many threads read it. Serving both with the thread count starves
+  // the inverse: at lMax = 256, k = 8 on eight threads it returns a chunk of
+  // one where the whole batch fits, which measured 2.2x slower (section 10).
+  //
+  // Both of P8's anchors still land, since both were forward-shaped. P2's
+  // optimum of eight was measured *sequentially*, so one copy had the whole of
+  // a 16 MiB cache: 16 MiB / 1 gives eight, while the 2 MiB per-core share of
+  // the same machine would give one. On a 256 MiB, 64-core machine at full
+  // width, sixty-four copies give two, which is what P8 predicted.
+  //
+  // One thing this cannot see, and the target-machine run should. On a
+  // multi-CCD or multi-socket machine a *shared* block is pulled into each
+  // cache domain that touches it, so the inverse's single copy is really one
+  // per domain -- eight CCDs on the deployment target. The rule below is
+  // therefore optimistic there in a way it is not on a single shared L3.
+  Int Count(Int bytesPerField, int copies) const {
     if (_fixed > 0) return _fixed;
     if (bytesPerField < 1) return MaximumCount;
-    const auto share = _cacheBytes / static_cast<Int>(threads > 0 ? threads : 1);
+    const auto share = _cacheBytes / static_cast<Int>(copies > 0 ? copies : 1);
     // Rounded to nearest, not truncated. Both of P8's anchors land just under
     // an integer -- 7.94 on a 16 MiB cache at lMax = 256, and 1.98 on a
     // 256 MiB cache at 64 threads -- so truncation would give seven and *one*,

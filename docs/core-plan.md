@@ -1757,13 +1757,29 @@ missed it.
 
 ### The order to work in
 
-1. **Direction-aware chunking.** `Chunking::Count` divides the cache by the
-   thread count, which is the *forward* transform's rule: that direction gives
-   every thread a private accumulator of `chunk × coefficientSize`. The inverse
-   has no accumulator — its one gathered block is shared and read-only — so the
-   same rule starves it, and T11 measured the cost at **2.2×** on the batched
-   inverse. Contained, no numerical risk, and it is a defect rather than an
-   optimisation.
+1. **Direction-aware chunking.** *Done.* `Chunking::Count` divided the cache by
+   the thread count, which is the *forward* transform's rule: that direction
+   gives every thread a private accumulator of `chunk × coefficientSize`. The
+   inverse has no accumulator — its one gathered block is shared and read-only —
+   so the same rule starved it, and T11 measured the cost at **2.2×** on the
+   batched inverse.
+
+   The parameter is now the number of **copies** of the block that will be live
+   at once: the threads for the forward direction, one for the inverse. Both of
+   P8's anchors survive unchanged, since both were forward-shaped.
+
+   *Measured, same session, same machine, eight bound threads.* At
+   `lMax = 256, k = 8` the inverse goes from **4.23 ms to 2.12 ms per field**,
+   a **2.0×**, landing within 10% of what the whole batch as one chunk
+   achieves; at `lMax = 128` it goes from 0.31 to 0.25 ms. The forward is
+   unchanged at 4.29 ms, which is the point — the same measurement says the
+   whole batch there is 2× *slower*, because eight private accumulators of
+   8.4 MB ask for 68 MB of a 16 MB cache.
+
+   One thing the rule still cannot see, and the target-machine run should: on a
+   multi-CCD or multi-socket machine a *shared* block is pulled into each cache
+   domain that touches it, so the inverse's single copy is really one per
+   domain — eight CCDs on the deployment target.
 2. **The target-machine run.** It settles [C11], and it is the only thing that
    can say whether F′'s memory-and-NUMA case survives. One correction to P8
    while waiting: an EPYC 9334 has *more* memory bandwidth per core than the

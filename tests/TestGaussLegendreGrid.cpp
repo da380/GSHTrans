@@ -1337,3 +1337,33 @@ TEST(GeneratingGrid, BuildsNoTableAndForBandCarriesThePolicy) {
     EXPECT_EQ(a[j], b[j]) << "coefficient " << j;
   }
 }
+
+// The two directions decompose differently, so they must not share a chunk
+// rule. What the policy needs is the number of *copies* of the coefficient
+// block that will be live at once: the forward transform gives every thread a
+// private accumulator, the inverse gathers one shared read-only block.
+//
+// Serving both with the thread count starved the inverse -- a chunk of one at
+// lMax = 256 and k = 8 on eight threads, where the whole batch fits, which
+// measured 2.2x slower (core-plan.md section 10).
+TEST(BatchedTransform, ChunkRuleCountsCopiesNotThreads) {
+  // One field's coefficients at lMax = 256, n = 2.
+  constexpr auto bytesPerField = std::ptrdiff_t{66045} * 16;
+
+  const auto laptop = Chunking::ForCache(std::ptrdiff_t{16} << 20);
+  EXPECT_GT(laptop.Count(bytesPerField, 1), laptop.Count(bytesPerField, 8))
+      << "a shared block should be allowed a wider chunk than a private one";
+
+  // Both of the anchors the formula was built on, and both are
+  // forward-shaped: P2's optimum of eight was measured sequentially, so one
+  // copy had the whole cache, and P8's prediction of two is sixty-four private
+  // accumulators sharing 256 MiB.
+  EXPECT_EQ(laptop.Count(bytesPerField, 1), 8);
+  EXPECT_EQ((Chunking::ForCache(std::ptrdiff_t{256} << 20)
+                 .Count(bytesPerField, 64)),
+            2);
+
+  // Fixed still defeats the heuristic from either side.
+  EXPECT_EQ(Chunking::Fixed(5).Count(bytesPerField, 1), 5);
+  EXPECT_EQ(Chunking::Fixed(5).Count(bytesPerField, 64), 5);
+}
