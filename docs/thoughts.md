@@ -37,6 +37,56 @@ spin-2 fields of CMB and geodesy.
 
 The saving grows as `(3/2)^p`, so a factor of five at rank 4.
 
+### Two derivatives, not one
+
+The thing that makes the type worth having is not the storage. It is that
+**tangential tensors carry their own covariant derivative, and it is closed.**
+
+There are two operators here and they must be kept apart.
+
+- **The ambient surface gradient `∇₁`**, which is what D&T write and what
+  `SurfaceGradient` computes: the angular part of the three-dimensional
+  gradient. It differentiates the tensor *and its basis*, and the basis leaves
+  the tangent plane.
+- **The intrinsic covariant derivative `D`**, the Levi-Civita connection of the
+  induced metric on the sphere. This is what surface differential geometry
+  means by differentiation, and it is closed on tangential tensors by
+  construction.
+
+They are related by the Gauss formula: `∇₁` equals `D` plus a term in the
+second fundamental form, which for the unit sphere is algebraic — no
+derivatives at all. Concretely, for a tangential `T`, splitting `∇₁T` by
+whether the inherited slot is radial:
+
+```
+(∇₁T)^{σ α₁…α_q}       = Ω^{∓N} T^{α₁…α_q}          all αᵢ tangential
+(∇₁T)^{σ α₁…0ⱼ…α_q}    = −T^{α₁…σⱼ…α_q}             one slot radial
+```
+
+The first line says the tangential part of `∇₁T` has **no connection terms at
+all**: every shift `αᵢ + σ` either leaves `{-1,0,1}` or lands on a radial slot,
+which a tangential tensor does not have. So it is pure `Ω` multiplication —
+which is `ð` up to `√2`. The second line is the extrinsic curvature: for a
+unit sphere the normal part of `∇ₐv_b` is exactly `−v`, and that is what it
+says.
+
+Both were checked against the existing `SurfaceGradient`, applied to a rank-1
+tensor with its radial component set to zero. Both hold **exactly**, to
+`0.000e+00`.
+
+So:
+
+> **On tangential tensors the intrinsic covariant derivative is `ð` applied
+> component by component, up to `√2`, and it is closed.**
+
+That is worth stating plainly because it reconciles the two formalisms this
+library carries. `ð` is not a poor relation of the contravariant derivative;
+it is the *intrinsic* derivative, exact on exactly the objects — tangential,
+spin-weighted — that it was invented for. The contravariant derivative is the
+ambient one, and it is the right tool for general tensors with radial slots.
+Neither subsumes the other, and the difference between them is one algebraic
+term.
+
 ### What it needs
 
 `MultiIndex` hard-codes the alphabet `{-1, 0, +1}`. Generalising it to a
@@ -46,7 +96,15 @@ over *whatever indices exist*: the orbit enumeration walks the group it is
 given, the symmetry policies permute slots without caring what they hold, and
 the storage layout groups by upper index.
 
-Three consequences fall out and are worth knowing before starting.
+On top of that, three small operators: the intrinsic derivative (which is
+`ð` and therefore nearly free), the projection from a general tensor to its
+tangential part, and the injection back. `SurfaceGradient` of a tangential
+tensor then has an honest signature — it returns a general tensor — and a
+caller who wants the intrinsic derivative asks for that instead of projecting
+by hand.
+
+Three consequences of the alphabet change fall out and are worth knowing
+before starting.
 
 **The upper index is constrained.** `N = Σαᵢ` still, but now `N ≡ p (mod 2)`
 and `|N| ≤ p`. A tangential rank-2 tensor has `N ∈ {-2, 0, +2}` only, and its
@@ -63,21 +121,8 @@ real. The count then is one complex plus one real, three reals a point, which
 is a real symmetric 2×2 matrix. That the machinery gets there unaided is the
 check to write first.
 
-**It is closed under the algebra but not under the gradient**, and this is the
-important one. Products of tangential tensors are tangential; contraction of
-two tangential slots against the metric stays tangential, since `g_{00}` needs
-radial slots. But
-
-```
-(∇₁v)^{σ,0} = Ω v^0 − v^{0+σ} = −v^{σ}
-```
-
-for a tangential `v`, because the connection term reaches a component with a
-radial slot. That term is the extrinsic curvature of the sphere — for a unit
-sphere the normal part of `∇ₐv_b` is exactly `−v`, which is what this says —
-so it is not an artefact to be designed away. **`SurfaceGradient` maps
-tangential rank `p` to *general* rank `p+1`.** A type that claimed otherwise
-would be wrong.
+**The ambient gradient still leaves the type**, as above. That is not a defect
+to design around; it is the curvature, and a type that hid it would be lying.
 
 ### What it does not express
 
@@ -93,8 +138,9 @@ This reopens a decision. §16.3 of the field-algebra plan rejected a
 "tangential tensor" type, on the grounds that it would complicate more than it
 saved. That judgement was about one narrow question — whether to avoid storing
 `SurfaceGradient`'s zero `σ = 0` block — and it is not an argument against the
-type in general. The general case is stronger than the case I was answering,
-and the storage table above is the reason.
+type in general. The general case is much stronger than the case I was
+answering: the storage table above, and above all the closed intrinsic
+derivative, which the narrow question never raised.
 
 ---
 
@@ -246,12 +292,13 @@ Surface level, but there is one genuine bug in here and one genuine gap.
 - **Detail namespaces are inconsistent**: `WignerDetails`, `TensorDetails`,
   `EthDetails`, `ContravariantDetails`, `SymmetryDetails`, and a leftover
   `Internal`. One convention, applied everywhere.
-- **`3j.h` is library code that nothing uses and nothing tests.** It is
-  included in `GSHTrans/Core`, so it is public API, and it has no coverage at
-  all. Either it earns a test or it should not be shipped. Note that
-  `examples/wigner3j.hpp` and `wigner3j_tests.cpp` are a *different*,
-  standalone implementation that does not use the library — two Wigner 3-j
-  codes in one repository, neither exercised by the suite.
+- **`3j.h` has no test coverage at all**, although it is included in
+  `GSHTrans/Core` and is therefore public API. It is not stray code — it is a
+  documented facility and intended to stay — but it is untested, and §6 below
+  says what testing it turns up. `examples/wigner3j.hpp` and
+  `wigner3j_tests.cpp` are a *second*, standalone implementation that does not
+  use the library, so there are two Wigner 3-j codes in the repository and
+  neither is exercised by the suite.
 
 ### Effort
 
@@ -352,6 +399,118 @@ nothing to do.
 
 ---
 
+## 6. Wigner 3-j symbols
+
+> *As raised:* The 3J stuff is intended to be built in at some point. The codes
+> there were me messing about with a C++ translation of one of Woodhouse's old
+> F77 routines. None will be ideal. From testing, the algorithm is pretty good
+> for most practical cases, but not without edge issues, and it could be
+> bettered using alternative approaches. But having some 3j functionality would
+> be nice. 6j etc I don't personally care about but, if easy, why not.
+
+### What is there
+
+`GSHTrans/src/3j.h` is more than scaffolding: a documented C++20 port of
+Woodhouse's `wig2.f`, offering `Wigner3jMatrix` (the full table over the
+`(m₁, m₃)` plane at fixed degrees), `Wigner3jStack` (over `l₂` at fixed
+`l₁, l₃`), a single-symbol convenience, and in-place kernels that fill
+caller storage. Its stability argument is stated in the file: the corner value
+is closed-form, two-term recursions run the edges, a three-term recursion
+sweeps diagonals of constant `m₂` *from the classically forbidden corner
+inward* — the direction in which the symbols grow — and the remaining half of
+the plane comes from the reflection symmetry rather than from continuing into
+an unstable regime. No factorials are formed.
+
+### Where it stands up, and where it does not
+
+I measured it, against exact values from `sympy` for small degrees and against
+the orthogonality identity `Σ_{m₁m₃} (3j)² = 1` — which needs no reference at
+all — for large ones.
+
+**It is absolutely accurate over a wide range.** For triangles that are not
+close to stretched, the error is at the noise floor: `10⁻¹⁶` to `10⁻¹⁴`
+absolute, and the orthogonality sum holds to `10⁻¹⁵` for `(l,l,l)` up to
+`l = 128`.
+
+**The relative error on the smallest symbols is larger, and benignly so.** The
+worst relative errors sit on the exponentially small symbols in the forbidden
+corner — `2×10⁻⁸` relative on a symbol of size `3.5×10⁻⁶`, against a largest
+symbol of order `0.1`. That is the same `10⁻¹⁴` absolute error seen from a
+different angle. For anything that sums 3-j symbols, which is what coupling
+coefficients do, it does not matter.
+
+**It fails outright for stretched triangles**, and this is the real finding.
+Taking `l₃ = l₁ + l₂`, the orthogonality sum departs from 1 by:
+
+| `l` | `(l, l, 2l)`, double | long double | `(l, l, 3l/2)`, double | `(l, l, l)`, double |
+|---|---|---|---|---|
+| 20 | `4×10⁻¹⁴` | `10⁻¹⁸` | `2×10⁻¹⁶` | `10⁻¹⁶` |
+| 30 | `4×10⁻³` | `8×10⁻⁹` | — | `4×10⁻¹⁵` |
+| 40 | `2×10⁹` | `8×10²` | `8×10⁻¹⁵` | `6×10⁻¹⁵` |
+| 60 | `2×10³²` | `5×10²⁵` | `3×10⁻⁴` | `2×10⁻¹⁵` |
+| 100 | — | — | `5×10¹⁸` | `10⁻¹⁴` |
+| 128 | `2×10¹¹²` | — | — | `2×10⁻¹⁰` |
+
+The error grows **exponentially in the degree**, at roughly a decade per
+degree, and long double buys about ten degrees before failing the same way.
+That is the signature of a recursion being run in its unstable direction, not
+of dynamic range: extra precision delays it and does not cure it. So the
+stability argument in the file's header holds for fat triangles and breaks
+down as the triangle approaches stretched, where the forbidden region is large
+and the sweep must cross it.
+
+**Why this is the regime that matters.** Coupling coefficients and Gaunt
+integrals need `l₃` running all the way to `l₁ + l₂` — the stretched
+configuration is not an exotic corner but the top of every coupling sum. For
+band-limited fields at `lMax = 256` that means degrees to 512. The current
+implementation is trustworthy to `l ≈ 30` there.
+
+### What to do about it
+
+Three routes, and they are not equally good.
+
+**Fix the direction.** This is Schulten & Gordon's scheme: recurse inward from
+*both* classically forbidden ends, match in the allowed region, and fix the
+normalisation from the orthogonality sum rather than from a closed-form seed.
+It keeps the existing interface and the no-factorials property, and it is what
+the standard library routines do. Luscombe & Luban refined it.
+
+**Compute exactly.** Prime-factorisation methods (Johansson & Forssén's
+`wigxjpf` is the reference implementation) give full double precision at
+arbitrary degree by doing the combinatorics in exact integer arithmetic, and
+they cover 3-j, 6-j and 9-j together. The cost is a real dependency: C rather
+than C++, a few thousand lines, and not header-only — which cuts against the
+preference stated in §5, though the licence is permissive.
+
+**Or hybridise, because the two classical methods fail in complementary
+regimes.** Racah's closed form is a single alternating sum whose length is
+roughly `min(l₁+l₂−l₃, …)`. At `l₃ = l₁ + l₂` that sum has exactly **one
+term** and is therefore exact; near-stretched it has a handful. It is the fat
+triangles, where the sum is long and alternating, that destroy it in floating
+point — and those are precisely where the present recursion is at its best.
+A dispatch on how close the triangle is to stretched would cover the whole
+space with two simple methods and no new dependency. This is worth an
+afternoon's investigation before committing to either of the others.
+
+### Testing, whichever route
+
+The orthogonality identity is the thing to build on: it needs no reference
+implementation, it is cheap, and it caught this in one line. A test that
+sweeps the triangle space — fat, intermediate and stretched, at several
+degrees — plus exact comparison against rational arithmetic for small degrees
+and the known closed forms (`(j j 0; m −m 0)`, and `l₃ = l₁ + l₂`) would have
+made the boundary above visible from the start.
+
+### 6-j
+
+The answer depends entirely on the route. If the exact method is adopted, 6-j
+and 9-j come with it and the question does not arise. If the recursion is
+fixed by hand, 6-j is a separate implementation of the same Schulten–Gordon
+idea — not hard, but not free either. That is an argument for deciding the
+3-j route with 6-j in view, even though nothing needs 6-j today.
+
+---
+
 ## Suggested order
 
 1. **The SSH URL in `CMakeLists.txt`** (§4). One word, and until it is fixed
@@ -367,3 +526,9 @@ nothing to do.
 7. **Three-dimensional fields** (§2), which is the largest and the one that
    completes the gradient, and which should start from `field-algebra-plan.md`
    §8 rather than from scratch.
+
+Sitting outside that order, because it is independent of everything else and
+its priority depends on when coupling coefficients are actually wanted:
+**the 3-j work** (§6). If it is wanted at all, the orthogonality test should
+go in first — it is a few lines, it needs no reference, and it turns an
+unknown boundary into a known one.
