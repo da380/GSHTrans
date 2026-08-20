@@ -6,5 +6,6 @@
 #include "src/Expansion/SpinExpansion.h"
 #include "src/Expansion/Eth.h"
 #include "src/Expansion/TensorExpansion.h"
+#include "src/Expansion/ContravariantDerivative.h"
 
 #endif

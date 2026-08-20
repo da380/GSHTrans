@@ -3,7 +3,9 @@
 
 #include <FFTWpp/Core>
 
+#include <cmath>
 #include <complex>
+#include <type_traits>
 #include <cstddef>
 #include <span>
 #include <stdexcept>
@@ -11,6 +13,7 @@
 #include <utility>
 
 #include "../Concepts.h"
+#include "../Utility.h"
 #include "../Tensor/MultiIndex.h"
 #include "../Tensor/Orbits.h"
 #include "../Tensor/TensorField.h"
@@ -110,6 +113,88 @@ class TensorExpansion {
     using Value = std::conditional_t<real, RealValued, ComplexValued>;
     return ConstSpinExpansionView<n, GridType, Value>(_grid, _lMax,
                                                       BlockOf(slot));
+  }
+
+  // The coefficient of *any* representable component at (l, m).
+  //
+  // The block accessors above reach only stored components, because a block
+  // is what a view can be taken over. A derived component has no block: on the
+  // spectral side deriving one is eq:complevel,
+  //
+  //   T^{-N}_{l,-m} = (-1)^m conj(T^{N}_{lm}),
+  //
+  // which reverses the order index rather than acting at fixed (l, m), so it
+  // is a computation and not a view. This is that computation, and with it
+  // every component of the tensor is readable in either domain.
+  //
+  // Four things have to be resolved, and the orbit table says which applies:
+  //
+  //   stored                  read it
+  //   permutation relative    the representative's, with a sign
+  //   reality relative        the representative's at -m, conjugated
+  //   vanishing orbit         zero
+  //
+  // and two more come from how the block itself is stored: a pinned component
+  // is a real field, so its block holds only m >= 0 and the negative orders
+  // follow from f_{l,-m} = (-1)^m conj(f_{lm}); and one pinned as imaginary
+  // holds the real field whose i-multiple the component is.
+  //
+  // Degrees below the component's own |N| return zero rather than reading off
+  // the end: a component at upper index N has no content there, which is not
+  // a missing value but an absent one. So does a component whose orbit
+  // vanishes -- unlike the spatial accessor, which refuses those because a
+  // node must have a type and there is nothing to give it. Here the answer is
+  // a value, and zero is the right one; the surface gradient reads shifted
+  // components that may vanish and would otherwise have to special-case them.
+  template <Int... Alphas>
+  requires(sizeof...(Alphas) == Rank)
+  Complex Coefficient(Int l, Int m) const {
+    constexpr auto flat = FieldType::template FlatOf<Alphas...>;
+    constexpr auto n = FieldType::template UpperIndexOf<Alphas...>;
+    constexpr auto constraint = Orbits.constraint[flat];
+
+    if constexpr (constraint == ComponentConstraint::Zero) {
+      return Complex{};
+    } else {
+      if (l < (n < 0 ? -n : n) || l > _lMax || m < -l || m > l) {
+        return Complex{};
+      }
+
+      constexpr auto rep = Orbits.representative[flat];
+      constexpr auto slot = FieldType::SlotOfFlat(rep);
+      constexpr auto repN = ComponentLayout.upperIndexOfSlot[slot];
+      constexpr auto sign = static_cast<Real>(Orbits.sign[flat]);
+      constexpr auto conjugated = Orbits.conjugate[flat];
+      constexpr auto real = ComponentLayout.realOfSlot[slot];
+
+      // The representative's own coefficient, at whichever order this term
+      // needs, allowing for a real block's reduced storage.
+      const auto stored = [&](Int order) {
+        auto block = ConstSpinExpansionView<repN, GridType,
+                                            std::conditional_t<real, RealValued,
+                                                               ComplexValued>>(
+            _grid, _lMax, BlockOf(slot));
+        if constexpr (real) {
+          if (order < 0) {
+            return static_cast<Real>(MinusOneToPower(order)) *
+                   std::conj(block[l, -order]);
+          }
+        }
+        return Complex{block[l, order]};
+      };
+
+      // A pinned-imaginary component is i times the real field stored for it.
+      constexpr auto turn =
+          constraint == ComponentConstraint::Imaginary ? Complex{0, 1}
+                                                       : Complex{1, 0};
+
+      if constexpr (conjugated) {
+        return sign * turn * static_cast<Real>(MinusOneToPower(m + repN)) *
+               std::conj(stored(-m));
+      } else {
+        return sign * turn * stored(m);
+      }
+    }
   }
 
   // The block a stored component occupies, by slot.

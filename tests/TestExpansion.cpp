@@ -385,3 +385,336 @@ TEST(TensorExpansion, DerivedComponentsAreNotOfferedInTheSpectralDomain) {
   static_assert(!E::Writable<1, 1>);
   SUCCEED();
 }
+
+// Every component is readable in the spectral domain, stored or not. The
+// oracle is the same tensor widened to a complex one, where every component
+// *is* stored -- so the reduced expansion's derived components are checked
+// against directly stored ones rather than against the relation they were
+// computed from.
+TEST(TensorExpansion, EveryComponentIsReadable) {
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  using RealField = TensorField<2, NoSymmetry<2>, RealTensor, Grid>;
+  auto t = RealField(grid);
+
+  const auto write = [&](auto&& u, Real tag) {
+    using Node = std::remove_cvref_t<decltype(u)>;
+    for (auto iTheta : grid.CoLatitudeIndices()) {
+      for (auto iPhi : grid.LongitudeIndices()) {
+        if constexpr (std::same_as<typename Node::Value, RealValued>) {
+          u[iTheta, iPhi] = tag + std::cos(0.3 * iTheta) * std::sin(0.2 * iPhi);
+        } else {
+          u[iTheta, iPhi] = Complex{tag + std::cos(0.3 * iTheta),
+                                    std::sin(0.2 * iPhi) - tag};
+        }
+      }
+    }
+  };
+  write(t.Component<-1, -1>(), 1.0);
+  write(t.Component<-1, 0>(), 2.0);
+  write(t.Component<-1, 1>(), 3.0);
+  write(t.Component<0, -1>(), 4.0);
+  write(t.Component<0, 0>(), 5.0);
+
+  const auto& tensor = t;
+  auto reduced = Expand(tensor, lMax);
+
+  // The same field as a complex tensor: nine stored components, nothing
+  // derived.
+  auto widened = Materialise<NoSymmetry<2>, ComplexTensor>(tensor);
+  auto full = Expand(widened, lMax);
+
+  const auto compare = [&]<Int A, Int B>() {
+    for (auto l = Int{0}; l <= lMax; l++) {
+      for (auto m = -l; m <= l; m++) {
+        const auto got = reduced.Coefficient<A, B>(l, m);
+        const auto expected = full.Coefficient<A, B>(l, m);
+        EXPECT_NEAR(got.real(), expected.real(), 1.0e-11)
+            << "component (" << A << "," << B << ") at l = " << l
+            << ", m = " << m;
+        EXPECT_NEAR(got.imag(), expected.imag(), 1.0e-11)
+            << "component (" << A << "," << B << ") at l = " << l
+            << ", m = " << m;
+      }
+    }
+  };
+
+  compare.template operator()<-1, -1>();
+  compare.template operator()<-1, 0>();
+  compare.template operator()<-1, 1>();
+  compare.template operator()<0, -1>();
+  compare.template operator()<0, 0>();
+  compare.template operator()<0, 1>();   // derived by reality
+  compare.template operator()<1, -1>();  // derived
+  compare.template operator()<1, 0>();   // derived
+  compare.template operator()<1, 1>();   // derived
+}
+
+TEST(TensorExpansion, CoefficientsVanishBelowTheirOwnDegree) {
+  constexpr auto lMax = Int{5};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto e = TensorExpansion<2, NoSymmetry<2>, ComplexTensor, Grid>(grid, lMax);
+
+  // A component at upper index 2 has no content below degree 2: not a
+  // missing value but an absent one.
+  EXPECT_EQ((e.Coefficient<1, 1>(0, 0)), Complex{});
+  EXPECT_EQ((e.Coefficient<1, 1>(1, 0)), Complex{});
+  EXPECT_EQ((e.Coefficient<1, 1>(6, 0)), Complex{});  // above lMax
+  EXPECT_EQ((e.Coefficient<0, 0>(2, 3)), Complex{});  // |m| > l
+}
+
+TEST(TensorExpansion, SymmetryRelativesAgreeWithTheirRepresentative) {
+  constexpr auto lMax = Int{5};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  auto skew = TensorExpansion<2, Antisymmetric<2>, ComplexTensor, Grid>(grid,
+                                                                       lMax);
+  skew.Component<-1, 0>()[3, 1] = Complex{2.0, -1.0};
+
+  const auto& e = skew;
+  EXPECT_EQ((e.Coefficient<-1, 0>(3, 1)), (Complex{2.0, -1.0}));
+  EXPECT_EQ((e.Coefficient<0, -1>(3, 1)), (Complex{-2.0, 1.0}));
+  EXPECT_EQ((e.Coefficient<0, 0>(3, 1)), Complex{});  // vanishing orbit
+}
+
+//--------------------------------------------------------------------------//
+//                       The contravariant derivative                        //
+//--------------------------------------------------------------------------//
+
+// A scalar has no slots and therefore no connection terms, so there the
+// operator *is* eth, up to the sqrt(2) that is the normalisation of e_{+-}.
+// This checks the Omega factors and the plumbing; it says nothing about the
+// connection terms, which is what the tests after it are for.
+TEST(ContravariantDerivative, OnAScalarItIsEthUpToRootTwo) {
+  constexpr auto lMax = Int{8};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  auto scalar = TensorExpansion<0, NoSymmetry<0>, ComplexTensor, Grid>(grid,
+                                                                       lMax);
+  auto asSpin = SpinExpansion<0, Grid>(grid, lMax);
+  for (auto l : asSpin.Degrees()) {
+    for (auto m : asSpin.Orders(l)) {
+      const auto value = Complex{std::cos(0.3 * l + m), std::sin(0.2 * l - m)};
+      asSpin[l, m] = value;
+      scalar.Component<>()[l, m] = value;
+    }
+  }
+
+  auto gradient = SurfaceGradient(scalar);
+  static_assert(decltype(gradient)::Rank == 1);
+
+  auto raised = Raise(asSpin);
+  auto lowered = Lower(asSpin);
+  const auto rootTwo = std::numbers::sqrt2_v<Real>;
+
+  for (auto l = Int{1}; l <= lMax; l++) {
+    for (auto m = -l; m <= l; m++) {
+      // d^+ = -eth / sqrt(2), d^- = +eth-bar / sqrt(2).
+      const auto plus = gradient.Coefficient<1>(l, m);
+      const auto minus = gradient.Coefficient<-1>(l, m);
+      EXPECT_NEAR(plus.real(), (-Complex{raised[l, m]} / rootTwo).real(),
+                  1.0e-12) << "l = " << l << ", m = " << m;
+      EXPECT_NEAR(minus.real(), (Complex{lowered[l, m]} / rootTwo).real(),
+                  1.0e-12) << "l = " << l << ", m = " << m;
+      EXPECT_NEAR(plus.imag(), (-Complex{raised[l, m]} / rootTwo).imag(),
+                  1.0e-12);
+      EXPECT_NEAR(minus.imag(), (Complex{lowered[l, m]} / rootTwo).imag(),
+                  1.0e-12);
+
+      // The surface gradient has no radial component at all.
+      EXPECT_EQ((gradient.Coefficient<0>(l, m)), Complex{});
+    }
+  }
+}
+
+// The check that the connection terms are right, and it is not circular: the
+// metric trace of the second surface gradient of a scalar is the surface
+// Laplacian, whose eigenvalue on Y_{lm} is -l(l+1).
+//
+// The connection term enters through the -v^0 subtraction in d^- v^+ and
+// d^+ v^-, so this would fail if the operator were eth applied component by
+// component.
+TEST(ContravariantDerivative, TheTraceOfTheSecondGradientIsTheLaplacian) {
+  constexpr auto lMax = Int{8};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  auto scalar = TensorExpansion<0, NoSymmetry<0>, ComplexTensor, Grid>(grid,
+                                                                       lMax);
+  for (auto l = Int{0}; l <= lMax; l++) {
+    for (auto m = -l; m <= l; m++) {
+      scalar.Component<>()[l, m] =
+          Complex{std::sin(0.4 * l + m), std::cos(0.15 * l - m)};
+    }
+  }
+
+  auto second = SurfaceGradient(SurfaceGradient(scalar));
+  static_assert(decltype(second)::Rank == 2);
+
+  // The metric contraction g_{ab} = (-1)^a delta_{a+b,0}, so the trace is
+  // -T^{-+} + T^{00} - T^{+-}; the middle term vanishes because the surface
+  // gradient has no radial component.
+  for (auto l = Int{0}; l <= lMax; l++) {
+    for (auto m = -l; m <= l; m++) {
+      const auto trace = -second.Coefficient<-1, 1>(l, m) +
+                         second.Coefficient<0, 0>(l, m) -
+                         second.Coefficient<1, -1>(l, m);
+      const auto expected = -static_cast<Real>(l * (l + 1)) *
+                            scalar.Coefficient<>(l, m);
+      EXPECT_NEAR(trace.real(), expected.real(), 1.0e-11)
+          << "l = " << l << ", m = " << m;
+      EXPECT_NEAR(trace.imag(), expected.imag(), 1.0e-11)
+          << "l = " << l << ", m = " << m;
+    }
+  }
+}
+
+// The chain rule, D&T (C.155), which is the check of the connection terms at
+// rank one and above.
+//
+// It has to be done in the *spatial* domain. The relation holds for the
+// operator on fields and does not hold coefficient by coefficient, because a
+// product of fields is not a product of coefficients -- which is the same
+// fact that makes "the gradient of a product" an operation in two
+// representations.
+TEST(ContravariantDerivative, ObeysTheChainRuleOnFields) {
+  constexpr auto lMax = Int{8};
+  constexpr auto band = Int{3};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  using Scalar = TensorExpansion<0, NoSymmetry<0>, ComplexTensor, Grid>;
+  using Vector = TensorExpansion<1, NoSymmetry<1>, ComplexTensor, Grid>;
+
+  // Band-limited inputs, so that the products below stay inside the grid and
+  // every transform in this test is exact.
+  auto f = Scalar(grid, lMax);
+  auto u = Vector(grid, lMax);
+  for (auto l = Int{0}; l <= band; l++) {
+    for (auto m = -l; m <= l; m++) {
+      f.Component<>()[l, m] = Complex{std::cos(0.7 * l + m), 0.3 * m};
+    }
+  }
+  for (auto alpha : {Int{-1}, Int{0}, Int{1}}) {
+    for (auto l = std::abs(alpha); l <= band; l++) {
+      for (auto m = -l; m <= l; m++) {
+        const auto value = Complex{0.5 * l - m, std::sin(0.4 * l + alpha)};
+        if (alpha == -1) u.Component<-1>()[l, m] = value;
+        if (alpha == 0) u.Component<0>()[l, m] = value;
+        if (alpha == 1) u.Component<1>()[l, m] = value;
+      }
+    }
+  }
+
+  auto fField = Evaluate(f);
+  auto uField = Evaluate(u);
+
+  // S = f u, formed pointwise.
+  auto s = TensorField<1, NoSymmetry<1>, ComplexTensor, Grid>(grid);
+  const auto& scalarField = fField;
+  const auto& vectorField = uField;
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    for (auto iPhi : grid.LongitudeIndices()) {
+      const auto scale = scalarField.Component<>()[iTheta, iPhi];
+      s.Component<-1>()[iTheta, iPhi] =
+          scale * vectorField.Component<-1>()[iTheta, iPhi];
+      s.Component<0>()[iTheta, iPhi] =
+          scale * vectorField.Component<0>()[iTheta, iPhi];
+      s.Component<1>()[iTheta, iPhi] =
+          scale * vectorField.Component<1>()[iTheta, iPhi];
+    }
+  }
+
+  // The gradient of the product, and the two gradients it should decompose
+  // into, all brought back to the sphere.
+  auto gradS = Evaluate(SurfaceGradient(Expand(s, lMax)));
+  auto gradF = Evaluate(SurfaceGradient(f));
+  auto gradU = Evaluate(SurfaceGradient(u));
+
+  const auto& product = gradS;
+  const auto& scalarGradient = gradF;
+  const auto& vectorGradient = gradU;
+
+  const auto check = [&]<Int Sigma, Int Alpha>() {
+    for (auto iTheta : grid.CoLatitudeIndices()) {
+      for (auto iPhi : grid.LongitudeIndices()) {
+        const auto got = product.template Component<Sigma, Alpha>()[iTheta, iPhi];
+        const auto expected =
+            scalarGradient.template Component<Sigma>()[iTheta, iPhi] *
+                vectorField.template Component<Alpha>()[iTheta, iPhi] +
+            scalarField.template Component<>()[iTheta, iPhi] *
+                vectorGradient.template Component<Sigma, Alpha>()[iTheta, iPhi];
+        ASSERT_NEAR(got.real(), expected.real(), 1.0e-10)
+            << "sigma = " << Sigma << ", alpha = " << Alpha;
+        ASSERT_NEAR(got.imag(), expected.imag(), 1.0e-10)
+            << "sigma = " << Sigma << ", alpha = " << Alpha;
+      }
+    }
+  };
+
+  check.template operator()<-1, -1>();
+  check.template operator()<-1, 0>();
+  check.template operator()<-1, 1>();
+  check.template operator()<1, -1>();
+  check.template operator()<1, 0>();
+  check.template operator()<1, 1>();
+}
+
+// The gradient of a real tensor is real, so only the reduced set is computed
+// and the rest follows. The oracle is the same field widened to a complex
+// tensor, where nothing is derived on either side.
+TEST(ContravariantDerivative, AgreesOnARealTensorAndItsWidening) {
+  constexpr auto lMax = Int{7};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  using RealVector = TensorField<1, NoSymmetry<1>, RealTensor, Grid>;
+  auto v = RealVector(grid);
+
+  const auto write = [&](auto&& u, Real tag) {
+    using Node = std::remove_cvref_t<decltype(u)>;
+    for (auto iTheta : grid.CoLatitudeIndices()) {
+      for (auto iPhi : grid.LongitudeIndices()) {
+        if constexpr (std::same_as<typename Node::Value, RealValued>) {
+          u[iTheta, iPhi] = tag + std::cos(0.3 * iTheta) * std::sin(0.2 * iPhi);
+        } else {
+          u[iTheta, iPhi] = Complex{tag + std::cos(0.3 * iTheta),
+                                    std::sin(0.2 * iPhi) - tag};
+        }
+      }
+    }
+  };
+  write(v.Component<-1>(), 1.0);
+  write(v.Component<0>(), 2.0);
+
+  const auto& vector = v;
+  auto reduced = SurfaceGradient(Expand(vector, lMax));
+  static_assert(std::same_as<decltype(reduced)::Reality, RealTensor>);
+
+  auto widened = Materialise<NoSymmetry<1>, ComplexTensor>(vector);
+  auto full = SurfaceGradient(Expand(widened, lMax));
+
+  const auto compare = [&]<Int A, Int B>() {
+    for (auto l = Int{0}; l <= lMax; l++) {
+      for (auto m = -l; m <= l; m++) {
+        const auto got = reduced.Coefficient<A, B>(l, m);
+        const auto expected = full.Coefficient<A, B>(l, m);
+        ASSERT_NEAR(got.real(), expected.real(), 1.0e-11)
+            << "(" << A << "," << B << ") at l = " << l << ", m = " << m;
+        ASSERT_NEAR(got.imag(), expected.imag(), 1.0e-11)
+            << "(" << A << "," << B << ") at l = " << l << ", m = " << m;
+      }
+    }
+  };
+
+  compare.template operator()<-1, -1>();
+  compare.template operator()<-1, 0>();
+  compare.template operator()<-1, 1>();
+  compare.template operator()<0, -1>();
+  compare.template operator()<0, 0>();
+  compare.template operator()<0, 1>();
+  compare.template operator()<1, -1>();
+  compare.template operator()<1, 0>();
+  compare.template operator()<1, 1>();
+
+  // Half the storage, as the reduction promises.
+  EXPECT_LT(reduced.Size(), full.Size());
+}
