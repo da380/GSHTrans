@@ -16,6 +16,7 @@ set(GSHTRANS_EXAMPLES
   13-raising-and-lowering
   14-wigner-functions
   15-surface-gradient
+  16-layered-fields
 )
 
 foreach(example IN LISTS GSHTRANS_EXAMPLES)
