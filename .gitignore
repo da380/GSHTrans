@@ -14,5 +14,8 @@ docs/*.fls
 # Local reference material: open-access papers kept in docs/ while the
 # reference documentation is written. Not ours to redistribute, and not
 # wanted in the history. canonical-components.pdf is ours and is tracked.
+# Papers are ignored by default and our own documents are opted in, so a
+# paper dropped into docs/ later is caught without anyone remembering to.
 docs/*.pdf
 !docs/canonical-components.pdf
+!docs/gshtrans-reference.pdf

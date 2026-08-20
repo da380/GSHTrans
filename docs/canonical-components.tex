@@ -261,19 +261,26 @@ A field $f$ of upper index $N$ is expanded as
 with
 \begin{equation}
   Y^{N}_{lm}(\theta,\phi)
-    = \sqrt{\frac{2l+1}{4\pi}}\; d^{l}_{mN}(\theta)\, e^{im\phi}
+    = \sqrt{\frac{2l+1}{4\pi}}\; d^{l}_{Nm}(\theta)\, e^{im\phi}
   \label{eq:gsh}
 \end{equation}
-in the \texttt{Ortho} normalisation, where $d^{l}_{mN}$ is the real
+in the \texttt{Ortho} normalisation, where $d^{l}_{Nm}$ is the real
 Wigner $d$-function.  These are orthonormal on the sphere,
 $\int \conj{Y^{N}_{lm}} Y^{N}_{l'm'} \dOmega = \delta_{ll'}\delta_{mm'}$.
-The sum over $l$ starts at $|N|$ because $d^{l}_{mN}$ vanishes
+The sum over $l$ starts at $|N|$ because $d^{l}_{Nm}$ vanishes
 identically for $l < |N|$.
 
-\paragraph{Convention check.}  The index order in $d^{l}_{mN}$, and
-whether the code's \texttt{Wigner} class stores $d^{l}_{mn}$ or
-$d^{l}_{nm}$, should be confirmed against \texttt{src/Wigner.h}.  The
-normalisation in \eqref{eq:gsh} is however pinned by the $l=0$ behaviour
+\paragraph{Convention check --- now settled.}  This equation carried
+$d^{l}_{mN}$, with the indices the other way round, and a note that the
+order should be confirmed against \texttt{src/Wigner.h}.  It has been, and
+the order above is the corrected one: the stored value is
+$\sqrt{(2l+1)/4\pi}\,d^{l}_{Nm}$, which is exactly the scalar harmonic
+$X^{N}_{lm}$ of Dahlen \& Tromp (C.117), built on their generalized
+Legendre function $P^{N}_{lm}$ with the \emph{upper index first}.  The
+check discriminates, because $d^{l}_{mN} = (-1)^{m-N} d^{l}_{Nm}$ differ
+by a sign whenever $m-N$ is odd.  Woodhouse \& Deuss [41] use the same
+index order without the normalising factor.  The
+normalisation in \eqref{eq:gsh} was already pinned by the $l=0$ behaviour
 of the existing transform: taking $f$ constant, \eqref{eq:expansion}
 gives $f^{0}_{00} = 2\sqrt{\pi} f$ and $f = f^{0}_{00}/(2\sqrt{\pi})$,
 which is what \texttt{GaussLegendreGrid} implements on its one-point
@@ -282,8 +289,8 @@ grid.
 \subsection{Reality in the spectral domain}
 \label{sec:spectralreality}
 
-Using $d^{l}_{-m,-N} = (-1)^{m-N} d^{l}_{mN}$ and the reality of
-$d^{l}_{mN}$, equation \eqref{eq:gsh} gives
+Using $d^{l}_{-N,-m} = (-1)^{m-N} d^{l}_{Nm}$, which is Dahlen \& Tromp
+(C.118), and the reality of $d^{l}_{Nm}$, equation \eqref{eq:gsh} gives
 \begin{equation}
   \conj{Y^{N}_{lm}} = (-1)^{m+N}\, Y^{-N}_{l,-m} .
   \label{eq:Yconj}
