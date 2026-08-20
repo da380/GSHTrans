@@ -584,9 +584,21 @@ auto Evaluated(const NodeType& node) {
 
 constexpr double tolerance = 1.0e-14;
 
+// Relative to the magnitude being compared, with a floor at one.
+//
+// A fixed absolute tolerance was wrong here and was failing on other machines.
+// These tests compare values built from the point index -- storage[i] runs to
+// {45, -22.5} on the default test grid -- so a product of two of them reaches
+// a magnitude near 110, where one ulp is 1.4e-14. Against an absolute 1e-14
+// the test was demanding that the expression template and the scalar reference
+// agree to *better than one ulp*, which is to say bit-exactly, and whether
+// they do is a fact about the compiler's contraction and vectorisation rather
+// than about this library. It held on a machine without AVX-512 and failed on
+// one with it.
 void ExpectClose(Complex a, Complex b) {
-  EXPECT_NEAR(a.real(), b.real(), tolerance);
-  EXPECT_NEAR(a.imag(), b.imag(), tolerance);
+  const auto scale = [](double x) { return std::max(1.0, std::abs(x)); };
+  EXPECT_NEAR(a.real(), b.real(), tolerance * scale(b.real()));
+  EXPECT_NEAR(a.imag(), b.imag(), tolerance * scale(b.imag()));
 }
 
 }  // namespace
