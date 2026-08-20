@@ -115,19 +115,38 @@ void PrintHeader(const char* title) {
   std::putchar('\n');
 }
 
+// Which sections to run. Named on the command line, all of them if none is
+// named. A single section takes a fraction of the whole, which is what makes
+// an A/B of two builds affordable -- and an A/B run back to back on an idle
+// machine is the only kind worth having here: the same binary measured 1.75 ms
+// and 2.23 ms on this laptop in different power states, so figures from
+// different sessions cannot be compared at all.
+std::vector<std::string> sectionsWanted;
+
+bool Want(const std::string& name) {
+  return sectionsWanted.empty() ||
+         std::find(sectionsWanted.begin(), sectionsWanted.end(), name) !=
+             sectionsWanted.end();
+}
+
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
+  for (auto i = 1; i < argc; ++i) sectionsWanted.push_back(argv[i]);
+
   std::printf("GSHTrans transform benchmark (core-plan.md section 5)\n");
   std::printf("double precision, single field per call (k = 1)\n");
 
-  const auto triad = TriadBandwidthGBs();
-  std::printf("\nSTREAM-style triad bandwidth: %.1f GB/s\n", triad);
+  if (Want("stream")) {
+    const auto triad = TriadBandwidthGBs();
+    std::printf("\nSTREAM-style triad bandwidth: %.1f GB/s\n", triad);
+  }
 
   //------------------------------------------------------------------------//
   //                       Grid construction and size                        //
   //------------------------------------------------------------------------//
 
+  if (Want("grid")) {
   PrintHeader("Grid construction: time and resident size");
   std::printf("%6s %6s %12s %12s %12s\n", "lMax", "nMax", "build (s)",
               "RSS (MB)", "table (MB)");
@@ -152,6 +171,9 @@ int main() {
   //                        Transforms, and the split                        //
   //------------------------------------------------------------------------//
 
+  }
+
+  if (Want("transforms")) {
   PrintHeader("Transforms: total, stage split, and Legendre bandwidth");
   std::printf("%6s %4s %8s %9s %10s %10s %9s %9s\n", "lMax", "n", "scalar",
               "direction", "total(ms)", "FFT(ms)", "Leg(ms)", "GB/s");
@@ -231,6 +253,9 @@ int main() {
   //                              Threading                                  //
   //------------------------------------------------------------------------//
 
+  }
+
+  if (Want("threading")) {
   PrintHeader("Threading (core-plan.md step H)");
   std::printf("%6s %4s %9s %8s %10s %9s %9s\n", "lMax", "n", "direction",
               "threads", "time(ms)", "speedup", "GB/s");
@@ -262,6 +287,8 @@ int main() {
                     bytes / seconds / 1e9);
       }
     }
+  }
+
   }
 
   std::printf(
