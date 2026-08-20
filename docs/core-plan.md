@@ -713,7 +713,12 @@ step rather than optimisations on top:
    degree loop with a square root and three multiplies. This is independent of
    everything else here, speeds up construction on the *stored* path too, and
    is more robust than the closed form rather than less, since it never forms
-   `lgamma(2l+1)`.
+   `lgamma(2l+1)`. It also removes a real data race: glibc's `lgamma` writes
+   the global `signgam`, and `ComputeAll` calls it from every thread, so grid
+   construction is concurrent-undefined by the letter of the standard today.
+   Nothing reads `signgam`, so the effect is benign and no result is wrong —
+   but it is the only genuine race ThreadSanitizer finds in this library, and
+   the boundary recursion is what deletes it.
 2. **The colatitudes are blocked.** Of the recursion's coefficients only
    `alpha` carries `cos θ`; `beta`, `gamma`, `sqrtIntInv[l ± m]` and
    `sqrtInt[l-1 ± m]` are θ-independent. Over a block of `B` colatitudes the
@@ -1284,21 +1289,42 @@ and every test is green at each of the commits below.
   over per-thread scratch.
 - The benchmark's section filter.
 
-*Not started, in the order to do it.*
+*Items 1 to 3 are now done, and item 4 remains.*
 
-1. `Batch{count, stride, dist}` as a public vocabulary type, next to
-   `Execution` in `Concepts.h`, with `Contiguous(count, size)` and
-   `Interleaved(count, stride)` helpers and an `Offset(j, k)` accessor.
-2. The batched FFT stage. `Workspace` is currently keyed on `(nPhi, flag)` with
-   `howMany = 1`; it gains the chunk width, and the plan is built from an
-   `FFTWpp::Layout(1, {nPhi}, c, {embed}, stride, dist)` on each side — input
-   packed contiguous per row, output with `stride = c, dist = 1` so the data
-   lands in `[m][κ]`. **Confirmed at the code level**: `FFTWpp::Ranges::Plan`
-   passes rank, `howMany`, embed, stride and dist straight through to
-   `plan_many_*`, so P6's "for free" needs nothing built.
-3. The Legendre stage as an axpy of length `c` per `(l, m)`, accumulating into
-   a `[j][κ]` scratch buffer, then scattered to the caller's `(stride, dist)`.
-4. Chunking, the `k = 1` wrapper ([C3]), and the batched rows in the harness.
+1. **Done.** `Batch{count, stride, dist}` next to `Execution` in `Concepts.h`,
+   with `Contiguous`, `Interleaved`, `Strided` and `One`, and `Offset(j, k)`.
+   Two additions the plan did not name. `Span(size)` exists because the
+   batched entry's size check is an inequality where the unbatched one is an
+   equality, and both contracts are now pinned by test. `Disjoint(size)` exists
+   because an overlapping descriptor would otherwise produce a wrong answer in
+   silence: the transform writes every element of every field it is given.
+   Both named layouts satisfy it by construction.
+2. **Done, with item 3.** A batched FFT stage that nothing consumes cannot be
+   tested — `Workspace` is private — so the two landed together. `Workspace`
+   is keyed on `(nPhi, count, flag)` and the plan is built from an
+   `FFTWpp::Ranges::Layout` on each side. P6's "for free" is confirmed by
+   running code, not just by reading `plan_many_*`.
+3. **Done.** The Legendre stage is an axpy of length `c` per `(l, m)` into a
+   `[j][κ]` scratch, scattered to the caller's `(stride, dist)`.
+
+   Two things the sketch above got wrong, both in the library's favour.
+   Zeroing the output does not become batch-aware — it *goes away*, because
+   the scatter assigns rather than accumulates, which is F1's guarantee
+   obtained without touching an element the call does not own. And the inverse
+   needs a **gather**, not just a scatter: it reads coefficients through the
+   caller's stride, and doing that per colatitude would put the stride in the
+   hot loop, so a chunk's coefficients are gathered into `[j][κ]` once. That is
+   the same trade T4 measured as invisible in the other direction.
+
+   The tests compare a batch against separate unbatched calls and demand
+   **exact** equality. Tier 1 widens the inner loop without reordering any
+   sum, so a difference would mean it had been restructured rather than
+   widened. 89 tests pass in Debug, in Release, and under ASan and UBSan.
+4. **Not started.** Chunking, the `k = 1` wrapper ([C3]), and the batched rows
+   in the harness. `ChunkSize` currently returns the whole batch, so a caller
+   batching far above the optimum gets a correct answer slowly. The wrapper is
+   in — both single-field entry points are the batched primitive at `count = 1`
+   — so what is left is P8's cache formula and the measurement.
 
 *Two things not to rediscover.* Zeroing the output must respect the batch
 descriptor rather than filling the whole range — a `PointMajor` batch is
@@ -1313,9 +1339,23 @@ under about 10% is nothing, cross-session figures are worth less than that, and
 benchmarks must run with nothing else on the machine — a first attempt at the
 A/B above was thrown away because a build and a test run overlapped it.
 
+**On ThreadSanitizer, so that it is not attempted again from scratch.** It
+cannot validate this library as things stand. GCC's `libgomp` carries no TSan
+annotations, so the tool cannot see OpenMP's barriers and reports every
+parallel region as racing with whatever ran before it: on one run it flagged
+`Wigner::ComputeAll`'s loop, which writes provably disjoint slices, and
+`shared_ptr`'s *atomic* reference count. Those are false positives and there
+are hundreds of them. TSan also needs `vm.mmap_rnd_bits=28` on recent kernels
+or it aborts before `main`. Two things follow: the thread-safety of step H's
+decomposition and of T10's batching rests on argument rather than on
+measurement, and the only way to get a real answer is a Clang build against a
+`libomp` compiled with `LIBOMP_TSAN_SUPPORT`. Worth doing once, before the
+layered layer adds a second level of threading; not worth doing repeatedly.
+
 **T11 — step F′, Wigner values on the fly.** Two commits. First the boundary
 recursion replacing `lgamma`/`exp`, which stands on its own, applies to the
-stored path, and lands with a tolerance test against the present values.
+stored path, removes the `signgam` race described in step F′, and lands with a
+tolerance test against the present values.
 Then the generating supplier behind step F's seam, θ-blocked, with the named
 constructor, validated against the stored path to round-trip tolerance and
 measured at `lMax ∈ {64, 128, 256}`, `k ∈ {1, 8}`, on one and eight threads.
