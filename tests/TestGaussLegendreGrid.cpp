@@ -1,6 +1,10 @@
 #include <gtest/gtest.h>
 #include <omp.h>
 
+#include <algorithm>
+#include <cmath>
+#include <complex>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -781,4 +785,264 @@ TEST(GaussLegendreGrid, Coeff2CoeffLongDoubleC2C) {
   auto gen = GSHTransTest::MakeGenerator(seed);
   EXPECT_FALSE((Coeff2Coeff<std::complex<long double>, All, All>(gen)))
       << "seed = " << seed;
+}
+
+//--------------------------------------------------------------------------//
+//                        The batched transform                              //
+//--------------------------------------------------------------------------//
+//
+// The oracle throughout is the unbatched call: a batch of k fields must give
+// exactly what k separate transforms give, in every layout the descriptor can
+// express. Exactly, not approximately -- batching changes the order in which
+// the Wigner values are fetched but not the order in which anything is summed,
+// so any difference at all would mean the loop had been restructured rather
+// than widened (core-plan.md step F, tier 1).
+
+namespace {
+
+using BatchReal = double;
+using BatchComplex = std::complex<BatchReal>;
+using BatchGrid = GaussLegendreGrid<BatchReal, All, All>;
+
+// Distinct, reproducible data for field k.
+auto BatchField(std::ptrdiff_t size, std::ptrdiff_t k) {
+  auto field = std::vector<BatchComplex>(size);
+  for (auto i = std::ptrdiff_t{0}; i < size; i++) {
+    field[i] = BatchComplex{std::cos(0.3 * i + k), std::sin(0.7 * i - 2 * k)};
+  }
+  return field;
+}
+
+}  // namespace
+
+TEST(BatchedTransform, ContiguousBatchMatchesSeparateCalls) {
+  constexpr auto lMax = std::ptrdiff_t{6};
+  constexpr auto n = std::ptrdiff_t{2};
+  constexpr auto count = std::ptrdiff_t{4};
+
+  auto grid = BatchGrid(lMax, n, FFTWpp::Estimate);
+  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto coefficientSize =
+      static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
+
+  auto fields = FFTWpp::vector<BatchComplex>(count * fieldSize);
+  for (auto k = std::ptrdiff_t{0}; k < count; k++) {
+    const auto one = BatchField(fieldSize, k);
+    std::copy(one.begin(), one.end(), fields.begin() + k * fieldSize);
+  }
+
+  auto batched = FFTWpp::vector<BatchComplex>(count * coefficientSize);
+  grid.ForwardTransformation(lMax, n, fields,
+                             Batch::Contiguous(count, fieldSize), batched,
+                             Batch::Contiguous(count, coefficientSize));
+
+  for (auto k = std::ptrdiff_t{0}; k < count; k++) {
+    auto one = BatchField(fieldSize, k);
+    auto expected = FFTWpp::vector<BatchComplex>(coefficientSize);
+    grid.ForwardTransformation(lMax, n, one, expected);
+    for (auto j = std::ptrdiff_t{0}; j < coefficientSize; j++) {
+      EXPECT_EQ(batched[k * coefficientSize + j], expected[j])
+          << "field " << k << ", coefficient " << j;
+    }
+  }
+}
+
+TEST(BatchedTransform, InterleavedBatchMatchesSeparateCalls) {
+  constexpr auto lMax = std::ptrdiff_t{5};
+  constexpr auto n = std::ptrdiff_t{1};
+  constexpr auto count = std::ptrdiff_t{3};
+
+  auto grid = BatchGrid(lMax, n, FFTWpp::Estimate);
+  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto coefficientSize =
+      static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
+
+  // Point-major storage five components wide, of which the call touches
+  // three: this is the layout the field plan would otherwise have had to
+  // repack before transforming ([C9]).
+  constexpr auto width = std::ptrdiff_t{5};
+  auto fields = FFTWpp::vector<BatchComplex>(width * fieldSize);
+  const auto sentinel = BatchComplex{-7.0, 11.0};
+  std::ranges::fill(fields, sentinel);
+  for (auto k = std::ptrdiff_t{0}; k < count; k++) {
+    const auto one = BatchField(fieldSize, k);
+    for (auto i = std::ptrdiff_t{0}; i < fieldSize; i++) {
+      fields[i * width + k] = one[i];
+    }
+  }
+
+  auto batched = FFTWpp::vector<BatchComplex>(width * coefficientSize);
+  std::ranges::fill(batched, sentinel);
+  grid.ForwardTransformation(lMax, n, fields, Batch::Interleaved(count, width),
+                             batched, Batch::Interleaved(count, width));
+
+  for (auto k = std::ptrdiff_t{0}; k < count; k++) {
+    auto one = BatchField(fieldSize, k);
+    auto expected = FFTWpp::vector<BatchComplex>(coefficientSize);
+    grid.ForwardTransformation(lMax, n, one, expected);
+    for (auto j = std::ptrdiff_t{0}; j < coefficientSize; j++) {
+      EXPECT_EQ(batched[j * width + k], expected[j])
+          << "field " << k << ", coefficient " << j;
+    }
+  }
+
+  // The columns outside the batch belong to components this call knows
+  // nothing about, and must be exactly as they were left.
+  for (auto j = std::ptrdiff_t{0}; j < coefficientSize; j++) {
+    for (auto k = count; k < width; k++) {
+      EXPECT_EQ(batched[j * width + k], sentinel)
+          << "column " << k << " is not part of the call";
+    }
+  }
+}
+
+TEST(BatchedTransform, InverseBatchMatchesSeparateCalls) {
+  constexpr auto lMax = std::ptrdiff_t{6};
+  constexpr auto n = std::ptrdiff_t{2};
+  constexpr auto count = std::ptrdiff_t{3};
+
+  auto grid = BatchGrid(lMax, n, FFTWpp::Estimate);
+  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto coefficientSize =
+      static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
+
+  // Coefficients that came from real fields, so the inverse is asked for
+  // something a transform could actually have produced.
+  auto coefficients = FFTWpp::vector<BatchComplex>(count * coefficientSize);
+  for (auto k = std::ptrdiff_t{0}; k < count; k++) {
+    auto one = BatchField(fieldSize, k);
+    auto block = FFTWpp::vector<BatchComplex>(coefficientSize);
+    grid.ForwardTransformation(lMax, n, one, block);
+    std::copy(block.begin(), block.end(),
+              coefficients.begin() + k * coefficientSize);
+  }
+
+  auto batched = FFTWpp::vector<BatchComplex>(count * fieldSize);
+  grid.InverseTransformation(lMax, n, coefficients,
+                             Batch::Contiguous(count, coefficientSize), batched,
+                             Batch::Contiguous(count, fieldSize));
+
+  for (auto k = std::ptrdiff_t{0}; k < count; k++) {
+    auto block = FFTWpp::vector<BatchComplex>(coefficientSize);
+    std::copy_n(coefficients.begin() + k * coefficientSize, coefficientSize,
+                block.begin());
+    auto expected = FFTWpp::vector<BatchComplex>(fieldSize);
+    grid.InverseTransformation(lMax, n, block, expected);
+    for (auto i = std::ptrdiff_t{0}; i < fieldSize; i++) {
+      EXPECT_EQ(batched[k * fieldSize + i], expected[i])
+          << "field " << k << ", point " << i;
+    }
+  }
+}
+
+TEST(BatchedTransform, MixedLayoutsAndParallelAgreeToo) {
+  constexpr auto lMax = std::ptrdiff_t{8};
+  constexpr auto n = std::ptrdiff_t{0};
+  constexpr auto count = std::ptrdiff_t{4};
+  constexpr auto width = std::ptrdiff_t{6};
+
+  auto grid = BatchGrid(lMax, n, FFTWpp::Estimate);
+  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto coefficientSize =
+      static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
+
+  // Point-major in, component-major out: the two sides are described
+  // independently, which is why the call takes two descriptors.
+  auto fields = FFTWpp::vector<BatchComplex>(width * fieldSize);
+  for (auto k = std::ptrdiff_t{0}; k < count; k++) {
+    const auto one = BatchField(fieldSize, k);
+    for (auto i = std::ptrdiff_t{0}; i < fieldSize; i++) {
+      fields[i * width + k] = one[i];
+    }
+  }
+
+  auto sequential = FFTWpp::vector<BatchComplex>(count * coefficientSize);
+  auto parallel = FFTWpp::vector<BatchComplex>(count * coefficientSize);
+  const auto inBatch = Batch::Interleaved(count, width);
+  const auto outBatch = Batch::Contiguous(count, coefficientSize);
+
+  grid.ForwardTransformation(lMax, n, fields, inBatch, sequential, outBatch);
+  grid.ForwardTransformation(lMax, n, fields, inBatch, parallel, outBatch,
+                             Execution::Parallel(4));
+
+  for (auto k = std::ptrdiff_t{0}; k < count; k++) {
+    auto one = BatchField(fieldSize, k);
+    auto expected = FFTWpp::vector<BatchComplex>(coefficientSize);
+    grid.ForwardTransformation(lMax, n, one, expected);
+    for (auto j = std::ptrdiff_t{0}; j < coefficientSize; j++) {
+      EXPECT_EQ(sequential[k * coefficientSize + j], expected[j]);
+    }
+  }
+
+  // The partitioned reduction reassociates the colatitude sum, so the
+  // parallel path is close rather than equal -- the same relation the
+  // unbatched ParallelAgreesWithSequential test pins.
+  for (auto i = std::ptrdiff_t{0}; i < count * coefficientSize; i++) {
+    EXPECT_NEAR(parallel[i].real(), sequential[i].real(), 1.0e-12);
+    EXPECT_NEAR(parallel[i].imag(), sequential[i].imag(), 1.0e-12);
+  }
+}
+
+TEST(BatchedTransform, RejectsDescriptorsItCannotHonour) {
+  constexpr auto lMax = std::ptrdiff_t{4};
+  constexpr auto n = std::ptrdiff_t{0};
+
+  auto grid = BatchGrid(lMax, n, FFTWpp::Estimate);
+  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto coefficientSize =
+      static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
+
+  auto fields = FFTWpp::vector<BatchComplex>(4 * fieldSize);
+  auto coefficients = FFTWpp::vector<BatchComplex>(4 * coefficientSize);
+
+  // Counts must agree between the two sides.
+  EXPECT_THROW(grid.ForwardTransformation(
+                   lMax, n, fields, Batch::Contiguous(3, fieldSize),
+                   coefficients, Batch::Contiguous(2, coefficientSize)),
+               std::invalid_argument);
+
+  // A range too short for the span the batch describes.
+  auto tooSmall = FFTWpp::vector<BatchComplex>(2 * coefficientSize);
+  EXPECT_THROW(grid.ForwardTransformation(
+                   lMax, n, fields, Batch::Contiguous(4, fieldSize), tooSmall,
+                   Batch::Contiguous(4, coefficientSize)),
+               std::invalid_argument);
+
+  // Members that overlap: the transform writes every element of every field,
+  // so this would silently give a wrong answer.
+  EXPECT_THROW(grid.ForwardTransformation(
+                   lMax, n, fields, Batch::Strided(4, 1, 2), coefficients,
+                   Batch::Contiguous(4, coefficientSize)),
+               std::invalid_argument);
+}
+
+TEST(BatchedTransform, SingleFieldIsTheBatchAtCountOne) {
+  constexpr auto lMax = std::ptrdiff_t{6};
+  constexpr auto n = std::ptrdiff_t{1};
+
+  auto grid = BatchGrid(lMax, n, FFTWpp::Estimate);
+  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto coefficientSize =
+      static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
+
+  auto field = BatchField(fieldSize, 0);
+  auto viaWrapper = FFTWpp::vector<BatchComplex>(coefficientSize);
+  auto viaBatch = FFTWpp::vector<BatchComplex>(coefficientSize);
+
+  grid.ForwardTransformation(lMax, n, field, viaWrapper);
+  grid.ForwardTransformation(lMax, n, field, Batch::One(fieldSize), viaBatch,
+                             Batch::One(coefficientSize));
+
+  for (auto j = std::ptrdiff_t{0}; j < coefficientSize; j++) {
+    EXPECT_EQ(viaWrapper[j], viaBatch[j]);
+  }
+
+  // The wrapper keeps the equality check its contract promises, where the
+  // batched entry would accept a longer range.
+  auto tooLong = FFTWpp::vector<BatchComplex>(coefficientSize + 1);
+  EXPECT_THROW(grid.ForwardTransformation(lMax, n, field, tooLong),
+               std::invalid_argument);
+  EXPECT_NO_THROW(grid.ForwardTransformation(
+      lMax, n, field, Batch::One(fieldSize), tooLong,
+      Batch::One(coefficientSize)));
 }
