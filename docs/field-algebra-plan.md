@@ -1427,3 +1427,71 @@ observes it, and the `ð` signs are now implemented as the theory note states
 them, with `ð̄ð = ∇²` and `[ð, ð̄] = −2N` tested. Both survive flipping the pair,
 so the common sign wants an answer from Phinney & Burridge rather than from a
 test.
+
+---
+
+## 16. The contravariant derivative
+
+Added after phase 5, on the observation that `ð` is not the operator a
+geophysical user of tensor fields actually wants. `core-plan.md` is unaffected.
+
+### 16.1 What is being built
+
+D&T (C.151)–(C.153), without the radial part. The surface gradient `∇₁` has no
+`e₀` component at all (D&T C.145), so an angular library can implement it
+completely; the `σ = 0` component is `∂/∂r`, which a user supplies externally
+and which folds into 3D fields later. That is a scope decision, not a gap.
+
+For a rank-`q` tensor expansion, `SurfaceGradient` produces a rank-`(q+1)` one
+with
+
+```
+(∇₁T)^{σ α₁…α_q}_{lm} = Ω^{∓N}_l T^{α₁…α_q}_{lm} − Σ_i T^{α₁…(α_i+σ)…α_q}_{lm}
+```
+
+for `σ = ±1`, and zero for `σ = 0`, where `Ω^{±N}_l = √(½(l±N)(l∓N+1))` and
+the upper sign goes with `σ = −1`. Coefficients whose shifted index leaves
+`{−1,0,1}` are zero, as are those at `l` below the component's own `|N|`.
+
+### 16.2 The one thing that needs building first
+
+Every term above is a coefficient of some component at fixed `(l, m)` — but
+the shifted components need not be *stored*. Phase 5 exposed only stored
+components in the spectral domain, precisely because deriving one there is
+`eq:complevel`, which reverses the order index rather than acting pointwise.
+The gradient needs them, so that gap closes first:
+
+**`expansion.Coefficient<α…>(l, m)`**, defined for every representable
+component, resolving in turn:
+
+| the component is | the coefficient is |
+|---|---|
+| stored | read directly |
+| a permutation relative | `± ` the representative's |
+| a reality relative | `sign · (−1)^{m+N_rep} conj(T^{rep}_{l,−m})` |
+| in a real block, `m < 0` | `(−1)^m conj(stored_{l,|m|})`, the reduced storage |
+| pinned as imaginary | `i` times the stored real field's |
+| a vanishing orbit | zero |
+
+This is worth having on its own: it is the spectral counterpart of phase 4's
+component accessor, and it closes the asymmetry §15.4 recorded.
+
+### 16.3 Decisions
+
+**The result has no symmetry.** `∇₁` of a symmetric tensor is not symmetric in
+the new slot against the old ones, and inferring a symmetry from an operator is
+the same problem `Materialise` declined to solve.
+
+**The result keeps the operand's reality.** `∇₁` of a real tensor is real, so
+only the reduced set is computed and the rest follows.
+
+**The `σ = 0` block is stored and zero.** A rank-`(q+1)` tensor whose `e₀` slot
+vanishes is an ordinary tensor, and storing it as one keeps the result
+composable with contraction, further gradients and the transform at a cost of
+a third of the storage. Introducing a "tangential tensor" type to avoid that
+would buy less than it complicates.
+
+**Divergence and curl are not separate operators.** They are contractions of
+the gradient (D&T C.6.2), and contraction is pointwise, so a caller evaluates
+the gradient and contracts in the spatial domain with the machinery phase 3
+already provides.
