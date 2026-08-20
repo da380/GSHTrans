@@ -42,6 +42,21 @@ namespace GSHTrans {
 // coefficient that has nowhere to go was going to be zero anyway. Lowering
 // gives a field starting at a *lower* degree, whose extra coefficient has no
 // source; it is zero, which is what a field with no content there means.
+//
+// **These are not the tensor gradient.** Phinney & Burridge, and Dahlen &
+// Tromp after them, work with a contravariant derivative d^sigma taking the
+// coefficients of a rank-q tensor to those of the rank-(q+1) tensor grad T.
+// For a *scalar* it agrees with these operators up to a factor of sqrt(2) --
+// the normalisation of e_{+-} -- but for rank one and above it is not a
+// multiplication at all: it also subtracts the components with one slot index
+// shifted, once per slot, because the canonical basis vectors themselves vary
+// over the sphere and differentiating a tensor field differentiates its basis.
+//
+// So applying Raise or Lower to each component of a tensor expansion gives
+// the eth of each component as a spin-weighted function, which for rank >= 1
+// is not a component of grad T. Nothing in the types says so, because a
+// tensor's components are ordinary spin expansions. See section 7 of
+// docs/gshtrans-reference.tex, which gives d^sigma in full.
 
 namespace EthDetails {
 

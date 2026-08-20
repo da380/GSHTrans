@@ -19,6 +19,7 @@ the point rather than only asserting it.
 | `11-elasticity` | an elastic tensor applied to a strain, the rank-4 case end to end |
 | `12-expansions` | the spectral side, indexed by degree and order |
 | `13-raising-and-lowering` | `ð` and `ð̄`, and the surface Laplacian |
+| `14-wigner-functions` | the `d`-functions themselves: access, the value convention, the relations that pin it, and a plot |
 
 `wig` and `wigner3j_tests` are standalone Wigner 3-j experiments and are not
 part of the series.

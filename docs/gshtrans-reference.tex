@@ -397,6 +397,120 @@ Lowering produces a field starting at a lower degree, whose extra
 coefficient has no source and is zero, which is what having no content
 there means.
 
+\section{The contravariant derivative, and how it differs}
+\label{sec:contravariant}
+
+Phinney \& Burridge, and Dahlen \& Tromp following them, work not with
+$\eth$ but with a \emph{contravariant derivative} $\partial^\sigma$,
+$\sigma\in\{-,0,+\}$, which takes the expansion coefficients of a rank-$q$
+tensor to those of the rank-$(q+1)$ tensor $\nabla\mathbf{T}$.  It is
+closely related to $\eth$ and it is not the same operator, and the
+difference matters for anyone using this library on tensors.
+
+\subsection{The definition}
+
+With D\&T (C.146),
+\begin{equation}
+  \Omega^{\pm N}_{l} = \sqrt{\tfrac{1}{2}(l \pm N)(l \mp N + 1)},
+  \label{eq:omega}
+\end{equation}
+their (C.151)--(C.153) read
+\begin{align}
+  \partial^{-} T^{\alpha_1\ldots\alpha_q}_{lm}
+    &= r^{-1}\Big[\Omega^{+N}_{l}\, T^{\alpha_1\alpha_2\ldots\alpha_q}_{lm}
+      - T^{(\alpha_1-1)\alpha_2\ldots\alpha_q}_{lm}
+      - \cdots
+      - T^{\alpha_1\alpha_2\ldots(\alpha_q-1)}_{lm}\Big],
+    \label{eq:dminus}\\
+  \partial^{0} T^{\alpha_1\ldots\alpha_q}_{lm}
+    &= \frac{d\,T^{\alpha_1\ldots\alpha_q}_{lm}}{dr},
+    \label{eq:dzero}\\
+  \partial^{+} T^{\alpha_1\ldots\alpha_q}_{lm}
+    &= r^{-1}\Big[\Omega^{-N}_{l}\, T^{\alpha_1\alpha_2\ldots\alpha_q}_{lm}
+      - T^{(\alpha_1+1)\alpha_2\ldots\alpha_q}_{lm}
+      - \cdots
+      - T^{\alpha_1\alpha_2\ldots(\alpha_q+1)}_{lm}\Big],
+    \label{eq:dplus}
+\end{align}
+with the stipulation that any coefficient whose shifted index leaves
+$\{-1,0,1\}$ is zero.  The components of the gradient are
+$(\nabla\mathbf{T})^{\sigma\alpha_1\ldots\alpha_q} = \partial^{\sigma}
+T^{\alpha_1\ldots\alpha_q}$: the operator \emph{prepends a slot}, and the
+result carries upper index $\sigma + N$, which is \eqref{eq:N} applied to
+the lengthened multi-index.
+
+\subsection{Two differences, one benign and one not}
+
+\paragraph{A factor of $\sqrt2$, which is only the basis normalisation.}
+Comparing \eqref{eq:omega} with \eqref{eq:eth},
+\begin{equation}
+  \left|\text{raising factor}\right| = \sqrt{(l-N)(l+N+1)}
+    = \sqrt{2}\,\Omega^{-N}_{l},
+  \qquad
+  \left|\text{lowering factor}\right| = \sqrt{2}\,\Omega^{+N}_{l}.
+  \label{eq:ethomega}
+\end{equation}
+The $\sqrt2$ is exactly the $1/\sqrt2$ in $\ebasis{\pm} = \mp(
+\hat{\boldsymbol{\theta}} \pm i\hat{\boldsymbol{\phi}})/\sqrt2$, which
+appears explicitly in D\&T's surface gradient (C.144).  So on the unit
+sphere, up to that factor and to the sign convention of
+\S\ref{sec:eth}, $\partial^{+}$ is $\eth$ and $\partial^{-}$ is
+$\conj{\eth}$ --- \emph{for a scalar}.
+
+\paragraph{Connection terms, which are not benign.}  For $q\geq 1$ the
+bracket in \eqref{eq:dminus} and \eqref{eq:dplus} is not a multiplication.
+It subtracts the components with one slot index shifted, once per slot.
+Those terms are the connection: the canonical basis vectors themselves
+vary over the sphere,
+\begin{equation}
+  \left[\pm\partial_\theta + i(\sin\theta)^{-1}\partial_\phi\right]
+    \ebasis{\alpha}
+    = \alpha\cot\theta\,\ebasis{\alpha} - \sqrt{2}\,\ebasis{\alpha\pm1},
+  \label{eq:basisderiv}
+\end{equation}
+so differentiating a tensor field differentiates its basis too.  A scalar
+has no slots and therefore no connection terms, which is why the two
+operators coincide there and only there.
+
+\subsection{The consequence for this library}
+
+\begin{quote}
+  \textbf{Applying $\eth$ to each component of a tensor does not give the
+  gradient of the tensor.}  It gives the $\eth$ of each component as a
+  spin-weighted function, which for $q\geq 1$ is not a component of
+  $\nabla\mathbf{T}$ and in general is not a component of anything.
+\end{quote}
+
+This is a trap rather than a limitation: \code{Raise} and \code{Lower} are
+correct for what they claim --- a single spin-weighted function --- and are
+correct for the surface gradient of a scalar, which is the case most people
+reach for first.  They are simply not the tensor operator, and nothing in
+their types says so, because a tensor expansion's components are ordinary
+spin expansions.
+
+$\partial^{\sigma}$ is not currently implemented.  Implementing it is
+well-defined and fits the existing machinery: the slot shifts couple
+different components \emph{at the same $(l,m)$}, which is exactly what a
+tensor expansion holds, and prepending a slot is what \code{MultiIndex}
+already does.  Two things would need deciding.  The $\sigma=0$ component is
+the radial derivative, which an angular library cannot supply --- though
+the \emph{surface} gradient $\nabla_1$ has no $\ebasis{0}$ component at all
+(D\&T C.145), so a surface-gradient operator is complete without it.  And
+on a reality-reduced tensor a shifted slot may name a derived component,
+whose spectral form reverses the order index by \eqref{eq:complevel} rather
+than acting at fixed $(l,m)$.
+
+\paragraph{One further property worth knowing.}  $\partial^{\sigma}$
+preserves the chain rule as an operator on fields, D\&T (C.154)--(C.155):
+$\nabla(\mathbf{T}\mathbf{P}) = (\nabla\mathbf{T})\mathbf{P} +
+\mathbf{T}(\nabla\mathbf{P})$ gives
+$\partial^\sigma(T^{\alpha\ldots}P^{\beta\ldots}) =
+(\partial^\sigma T^{\alpha\ldots})P^{\beta\ldots} +
+T^{\alpha\ldots}(\partial^\sigma P^{\beta\ldots})$.  It does \emph{not}
+hold coefficient by coefficient, because a product of fields is not a
+product of coefficients --- which is the same fact that makes ``the
+gradient of a product'' an operation in two representations.
+
 \section{Quadrature}
 \label{sec:quadrature}
 

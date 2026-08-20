@@ -14,6 +14,7 @@ set(GSHTRANS_EXAMPLES
   11-elasticity
   12-expansions
   13-raising-and-lowering
+  14-wigner-functions
 )
 
 foreach(example IN LISTS GSHTRANS_EXAMPLES)
