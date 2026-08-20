@@ -120,6 +120,32 @@ else
   echo "  (delete it to reconfigure)"
 fi
 cmake --build "$build" --target TransformBenchmark -j "$(nproc)" || exit 1
+
+# Refuse to measure with a binary older than this script.
+#
+# Two server runs were lost this way. The source reached the machine carrying
+# an older timestamp than the object file already in the build directory, make
+# reported "Built target" without compiling anything, and the log that came
+# back looked entirely plausible while having been produced by the previous
+# harness. Nothing in the output said so, which is the part worth fixing.
+expected=3
+got="$("$binary" --check 2>/dev/null | awk '/harness revision/ {print $3}')"
+if [ "${got:-0}" -lt "$expected" ]; then
+  echo
+  echo "STALE BINARY: this script needs harness revision $expected, the built"
+  echo "binary reports ${got:-none}. Nothing below would mean anything, so stopping."
+  echo
+  echo "The source did not reach the build. Usually its timestamp is older than"
+  echo "the object file, so make sees nothing to do. Either:"
+  echo "    touch $root/benchmarks/TransformBenchmark.cpp && $0 $outdir"
+  echo "or, to be certain:"
+  echo "    rm -rf $build && $0 $outdir"
+  echo
+  echo "Check the source is actually there first:"
+  echo "    grep -c PrintMachineFacts $root/benchmarks/TransformBenchmark.cpp"
+  exit 1
+fi
+echo "harness revision $got"
 echo
 
 echo "=============================================================================="
@@ -155,7 +181,18 @@ if command -v numactl >/dev/null && [ "$(ls -d /sys/devices/system/node/node* 2>
     numactl --interleave=all "$binary" stream server
 else
   echo
-  echo "Run 3 skipped: one NUMA node, or numactl absent. Nothing to control for."
+  nodes="$(ls -d /sys/devices/system/node/node* 2>/dev/null | wc -l)"
+  if [ "$nodes" -le 1 ]; then
+    echo "Run 3 skipped: one NUMA node, so there is nothing to control for."
+  else
+    echo "Run 3 NOT RUN, and it is the one that matters most on this machine."
+    echo "This host has $nodes NUMA nodes and numactl is not installed. The"
+    echo "Wigner table is zero-filled by the single constructing thread, so"
+    echo "every page of it lands on one node and all threads then stream one"
+    echo "node's memory. Whether that is what limits the scaling below cannot"
+    echo "be told apart from the accumulators without this run."
+    echo "    apt install numactl   (or dnf install numactl), then run again."
+  fi
 fi
 
 echo

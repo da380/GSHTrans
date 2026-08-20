@@ -439,6 +439,28 @@ void RunScaling(Int lMax, Int nMax, int windows) {
   }
 }
 
+// The degrees the `server` section walks, chosen against the machine rather
+// than hard-coded. 128 to 512 everywhere; 1024 whenever there is room for its
+// 43 GB table, because that is the first point far enough past any last-level
+// cache to speak to step F'. lMax = 2048 is the `huge` section instead, named
+// explicitly: a 344 GB table takes half a minute just to zero, and its
+// single-threaded rows are minutes each.
+std::vector<Int> ScalingDegrees() {
+  auto degrees = std::vector<Int>{128, 256, 512};
+  const auto available = MemAvailableMegabytes();
+  if (available > 0 && TableMegabytes(1024, 2) * 2 < available) {
+    degrees.push_back(1024);
+  }
+  return degrees;
+}
+
+// Fewer repetitions where one call is already long enough to measure.
+int Windows(Int lMax) {
+  if (lMax >= 1024) return 2;
+  if (lMax >= 512) return 3;
+  return 5;
+}
+
 // Skip rather than swap: at lMax = 512 the table is 5.4 GB and at 1024 it is
 // 43 GB, and a run that starts swapping measures the disk.
 bool AffordableAt(Int lMax, Int nMax) {
@@ -456,9 +478,22 @@ bool AffordableAt(Int lMax, Int nMax) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  // Bumped whenever a section is added or its output changes, so that the
+  // wrapper can refuse to run a binary older than the script driving it. Two
+  // server runs were lost to exactly that: the source reached the machine with
+  // an old timestamp, make saw nothing to do, and the log looked plausible
+  // while being produced by the previous harness.
+  constexpr auto revision = 3;
+
+  if (argc == 2 && std::string(argv[1]) == "--check") {
+    std::printf("harness revision %d\n", revision);
+    return 0;
+  }
+
   for (auto i = 1; i < argc; ++i) sectionsWanted.push_back(argv[i]);
 
-  std::printf("GSHTrans transform benchmark (core-plan.md section 5)\n");
+  std::printf("GSHTrans transform benchmark (core-plan.md section 5), "
+              "harness revision %d\n", revision);
   std::printf("double precision, single field per call (k = 1)\n");
   std::printf(
       "sections: stream grid transforms threading server huge "
@@ -656,18 +691,20 @@ int main(int argc, char** argv) {
         "is predicted not to survive 64-128: the accumulators become the\n"
         "dominant traffic and the colatitude axis is only lMax + 1 long. These\n"
         "rows are what decides that, and nothing on a laptop can.\n");
-    for (auto lMax : {Int{128}, Int{256}, Int{512}}) {
+    for (auto lMax : ScalingDegrees()) {
       if (!AffordableAt(lMax, 2)) continue;
-      RunScaling(lMax, 2, lMax >= 512 ? 3 : 5);
+      RunScaling(lMax, 2, Windows(lMax));
     }
   }
 
-  // Named explicitly or not run: the table is 43 GB and the grid takes a
-  // while to build. Worth one run, because step F' argues its crossover from
-  // the table outgrowing last-level cache and this is far past that point.
+  // Named explicitly or not run. A 344 GB table needs a machine that has it
+  // spare and nothing else running, and the single-threaded rows are minutes
+  // each. Worth one run on a large server: it is far enough past last-level
+  // cache that the stored path has no cache left to lose, which is the regime
+  // step F' argues from.
   if (WantNamed("huge")) {
-    PrintHeader("Thread scaling at lMax = 1024");
-    if (AffordableAt(1024, 2)) RunScaling(1024, 2, 3);
+    PrintHeader("Thread scaling at lMax = 2048");
+    if (AffordableAt(2048, 2)) RunScaling(2048, 2, Windows(2048));
   }
 
   if (Want("transforms")) {
