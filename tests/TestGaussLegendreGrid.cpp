@@ -1107,3 +1107,233 @@ TEST(BatchedTransform, ChunkingPolicyIsCarriedByTheGrid) {
                                    Chunking::Fixed(3));
   EXPECT_EQ(banded.MaxDegree(), 6);
 }
+
+//--------------------------------------------------------------------------//
+//                          The generating grid                              //
+//--------------------------------------------------------------------------//
+//
+// A grid asked for WignerValues::Generated() builds no table and runs the
+// recursion inside each transform instead (core-plan.md step F', T11).
+//
+// The oracle throughout is the stored grid, and the comparison is **exact**.
+// This is the same recursion, seeded the same way, evaluated in the same order
+// and with the same rounding; only where the values are put differs. So a
+// difference of one bit would mean the two paths had diverged arithmetically,
+// which is precisely what must not happen -- and it is a far sharper
+// instrument than agreeing to a round-trip tolerance, which would pass on
+// almost any plausible mistake in the seeding or the truncation.
+
+namespace {
+
+using GenReal = double;
+using GenComplex = std::complex<GenReal>;
+using GenGrid = GaussLegendreGrid<GenReal, All, All>;
+
+auto GenField(std::ptrdiff_t size, std::ptrdiff_t k = 0) {
+  auto field = std::vector<GenComplex>(size);
+  for (auto i = std::ptrdiff_t{0}; i < size; i++) {
+    field[i] = GenComplex{std::cos(0.31 * i + k), std::sin(0.53 * i - k)};
+  }
+  return field;
+}
+
+auto GenCoefficients(std::ptrdiff_t size, std::ptrdiff_t k = 0) {
+  auto c = std::vector<GenComplex>(size);
+  for (auto j = std::ptrdiff_t{0}; j < size; j++) {
+    c[j] = GenComplex{std::sin(0.17 * j - k), std::cos(0.41 * j + 2 * k)};
+  }
+  return c;
+}
+
+}  // namespace
+
+TEST(GeneratingGrid, ForwardAgreesWithTheStoredTableExactly) {
+  for (auto [lMax, n] : std::vector<std::pair<std::ptrdiff_t, std::ptrdiff_t>>{
+           {7, 2}, {12, 0}, {9, -3}, {5, 5}}) {
+    auto stored = GenGrid(lMax, std::abs(n), FFTWpp::Estimate);
+    auto generated =
+        GenGrid(lMax, std::abs(n), FFTWpp::Estimate, Chunking::Automatic(),
+                WignerValues::Generated());
+
+    const auto fieldSize = static_cast<std::ptrdiff_t>(stored.FieldSize());
+    const auto coefficientSize =
+        static_cast<std::ptrdiff_t>(stored.CoefficientSize(lMax, n));
+    ASSERT_EQ(fieldSize, static_cast<std::ptrdiff_t>(generated.FieldSize()));
+
+    const auto field = GenField(fieldSize);
+    auto a = std::vector<GenComplex>(coefficientSize);
+    auto b = std::vector<GenComplex>(coefficientSize);
+    stored.ForwardTransformation(lMax, n, field, a);
+    generated.ForwardTransformation(lMax, n, field, b);
+
+    for (auto j = std::ptrdiff_t{0}; j < coefficientSize; j++) {
+      EXPECT_EQ(a[j], b[j])
+          << "lMax = " << lMax << ", n = " << n << ", coefficient " << j;
+    }
+  }
+}
+
+TEST(GeneratingGrid, InverseAgreesWithTheStoredTableExactly) {
+  constexpr auto lMax = std::ptrdiff_t{8};
+  constexpr auto n = std::ptrdiff_t{2};
+
+  auto stored = GenGrid(lMax, n, FFTWpp::Estimate);
+  auto generated = GenGrid(lMax, n, FFTWpp::Estimate, Chunking::Automatic(),
+                           WignerValues::Generated());
+
+  const auto fieldSize = static_cast<std::ptrdiff_t>(stored.FieldSize());
+  const auto coefficientSize =
+      static_cast<std::ptrdiff_t>(stored.CoefficientSize(lMax, n));
+
+  const auto coefficients = GenCoefficients(coefficientSize);
+  auto a = std::vector<GenComplex>(fieldSize);
+  auto b = std::vector<GenComplex>(fieldSize);
+  stored.InverseTransformation(lMax, n, coefficients, a);
+  generated.InverseTransformation(lMax, n, coefficients, b);
+
+  for (auto i = std::ptrdiff_t{0}; i < fieldSize; i++) {
+    EXPECT_EQ(a[i], b[i]) << "sample " << i;
+  }
+}
+
+// A truncated call is where the two paths could most easily diverge: the
+// stored grid reads a prefix of rows laid out for its own maximum degree,
+// while the generating one builds a block sized for the call. They must lay
+// out the same values in the same places.
+TEST(GeneratingGrid, TruncatedCallsGenerateOnlyTheDegreesTheyUse) {
+  constexpr auto gridDegree = std::ptrdiff_t{11};
+  constexpr auto n = std::ptrdiff_t{1};
+
+  auto stored = GenGrid(gridDegree, n, FFTWpp::Estimate);
+  auto generated =
+      GenGrid(gridDegree, n, FFTWpp::Estimate, Chunking::Automatic(),
+              WignerValues::Generated());
+
+  const auto field = GenField(static_cast<std::ptrdiff_t>(stored.FieldSize()));
+
+  for (auto lMax = std::abs(n); lMax <= gridDegree; lMax++) {
+    const auto coefficientSize =
+        static_cast<std::ptrdiff_t>(stored.CoefficientSize(lMax, n));
+    auto a = std::vector<GenComplex>(coefficientSize);
+    auto b = std::vector<GenComplex>(coefficientSize);
+    stored.ForwardTransformation(lMax, n, field, a);
+    generated.ForwardTransformation(lMax, n, field, b);
+    for (auto j = std::ptrdiff_t{0}; j < coefficientSize; j++) {
+      EXPECT_EQ(a[j], b[j]) << "lMax = " << lMax << ", coefficient " << j;
+    }
+  }
+}
+
+// The reduced m >= 0 path of a real scalar grid, which indexes the generated
+// block differently from the complex one.
+TEST(GeneratingGrid, RealScalarGridAgreesExactlyToo) {
+  constexpr auto lMax = std::ptrdiff_t{9};
+  using RealGrid = GaussLegendreGrid<GenReal, NonNegative, All>;
+
+  auto stored = RealGrid(lMax, 0, FFTWpp::Estimate);
+  auto generated = RealGrid(lMax, 0, FFTWpp::Estimate, Chunking::Automatic(),
+                            WignerValues::Generated());
+
+  const auto fieldSize = static_cast<std::ptrdiff_t>(stored.FieldSize());
+
+  // The reduced m >= 0 storage, which is the whole point of a real transform
+  // and is not what CoefficientSize reports.
+  const auto coefficientSize =
+      static_cast<std::ptrdiff_t>(stored.RealCoefficientSize(lMax));
+
+  auto field = std::vector<GenReal>(fieldSize);
+  for (auto i = std::ptrdiff_t{0}; i < fieldSize; i++) {
+    field[i] = std::cos(0.23 * i) + 0.5 * std::sin(0.11 * i);
+  }
+
+  auto a = std::vector<GenComplex>(coefficientSize);
+  auto b = std::vector<GenComplex>(coefficientSize);
+  stored.ForwardTransformation(lMax, 0, field, a);
+  generated.ForwardTransformation(lMax, 0, field, b);
+  for (auto j = std::ptrdiff_t{0}; j < coefficientSize; j++) {
+    EXPECT_EQ(a[j], b[j]) << "coefficient " << j;
+  }
+
+  auto back = std::vector<GenReal>(fieldSize);
+  auto backGenerated = std::vector<GenReal>(fieldSize);
+  stored.InverseTransformation(lMax, 0, a, back);
+  generated.InverseTransformation(lMax, 0, b, backGenerated);
+  for (auto i = std::ptrdiff_t{0}; i < fieldSize; i++) {
+    EXPECT_EQ(back[i], backGenerated[i]) << "sample " << i;
+  }
+}
+
+// Batching and threading are where the per-thread scratch is actually
+// exercised: every thread must generate its own block and no two may share
+// one.
+TEST(GeneratingGrid, BatchedAndParallelCallsAgreeExactly) {
+  constexpr auto lMax = std::ptrdiff_t{10};
+  constexpr auto n = std::ptrdiff_t{2};
+  constexpr auto count = std::ptrdiff_t{5};
+
+  auto stored = GenGrid(lMax, n, FFTWpp::Estimate, Chunking::Fixed(2));
+  auto generated = GenGrid(lMax, n, FFTWpp::Estimate, Chunking::Fixed(2),
+                           WignerValues::Generated());
+
+  const auto fieldSize = static_cast<std::ptrdiff_t>(stored.FieldSize());
+  const auto coefficientSize =
+      static_cast<std::ptrdiff_t>(stored.CoefficientSize(lMax, n));
+
+  auto fields = std::vector<GenComplex>(count * fieldSize);
+  for (auto k = std::ptrdiff_t{0}; k < count; k++) {
+    const auto one = GenField(fieldSize, k);
+    std::copy(one.begin(), one.end(), fields.begin() + k * fieldSize);
+  }
+
+  // Like for like in both runs. The forward transform's parallel reduction
+  // sums each thread's partials at the end rather than accumulating the
+  // colatitudes in order, so a sequential run and a parallel one differ in
+  // the last bits by design; comparing across that would be testing the
+  // reduction, not the supplier.
+  const auto Run = [&](auto& grid, Execution policy) {
+    auto out = std::vector<GenComplex>(count * coefficientSize);
+    grid.ForwardTransformation(lMax, n, fields,
+                               Batch::Contiguous(count, fieldSize), out,
+                               Batch::Contiguous(count, coefficientSize),
+                               policy);
+    return out;
+  };
+
+  for (auto policy : {Execution::Sequential(), Execution::Parallel(4)}) {
+    const auto a = Run(stored, policy);
+    const auto b = Run(generated, policy);
+    for (auto j = std::ptrdiff_t{0}; j < count * coefficientSize; j++) {
+      EXPECT_EQ(a[j], b[j])
+          << "entry " << j << (policy.IsParallel() ? ", parallel" : "");
+    }
+  }
+}
+
+TEST(GeneratingGrid, BuildsNoTableAndForBandCarriesThePolicy) {
+  constexpr auto lMax = std::ptrdiff_t{64};
+
+  // Construction is where the difference shows: the stored grid pays for the
+  // whole table and the generating one pays for two vectors of 2 lMax + 1.
+  auto generated = GenGrid(lMax, 2, FFTWpp::Estimate, Chunking::Automatic(),
+                           WignerValues::Generated());
+  EXPECT_EQ(generated.MaxDegree(), lMax);
+
+  // ForBand forwards the policy rather than silently resetting it to Stored.
+  auto banded = GenGrid::ForBand(8, 2, 1.5, FFTWpp::Estimate,
+                                 Chunking::Automatic(),
+                                 WignerValues::Generated());
+  EXPECT_EQ(banded.MaxDegree(), 12);
+
+  auto stored = GenGrid(12, 2, FFTWpp::Estimate);
+  const auto fieldSize = static_cast<std::ptrdiff_t>(stored.FieldSize());
+  const auto coefficientSize =
+      static_cast<std::ptrdiff_t>(stored.CoefficientSize(12, 2));
+  const auto field = GenField(fieldSize);
+  auto a = std::vector<GenComplex>(coefficientSize);
+  auto b = std::vector<GenComplex>(coefficientSize);
+  stored.ForwardTransformation(12, 2, field, a);
+  banded.ForwardTransformation(12, 2, field, b);
+  for (auto j = std::ptrdiff_t{0}; j < coefficientSize; j++) {
+    EXPECT_EQ(a[j], b[j]) << "coefficient " << j;
+  }
+}

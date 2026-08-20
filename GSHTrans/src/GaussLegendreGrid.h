@@ -12,6 +12,8 @@
 #include <concepts>
 #include <memory>
 #include <numbers>
+#include <optional>
+#include <span>
 #include <numeric>
 #include <array>
 #include <map>
@@ -68,8 +70,10 @@ class GaussLegendreGrid
   // machine passes `Chunking::ForCache(bytes)`, and one who has measured
   // their own optimum passes `Chunking::Fixed(count)`.
   GaussLegendreGrid(Int lMax, Int nMax, FFTWpp::Flag flag = FFTWpp::Measure,
-                    Chunking chunking = Chunking::Automatic())
-      : _impl{std::make_shared<const Impl>(lMax, nMax, flag, chunking)} {}
+                    Chunking chunking = Chunking::Automatic(),
+                    WignerValues values = WignerValues::Stored())
+      : _impl{std::make_shared<const Impl>(lMax, nMax, flag, chunking,
+                                           values)} {}
 
   // A grid for working with fields of maximum degree lBand, with quadrature
   // headroom for degree oversampling * lBand.
@@ -85,7 +89,8 @@ class GaussLegendreGrid
   // is exact for a single product.
   static auto ForBand(Int lBand, Int nMax, Real oversampling = 1,
                       FFTWpp::Flag flag = FFTWpp::Measure,
-                      Chunking chunking = Chunking::Automatic()) {
+                      Chunking chunking = Chunking::Automatic(),
+                      WignerValues values = WignerValues::Stored()) {
     if (lBand < 0) {
       throw std::invalid_argument("Band must be non-negative");
     }
@@ -94,7 +99,7 @@ class GaussLegendreGrid
     }
     const auto lGrid = static_cast<Int>(
         std::ceil(oversampling * static_cast<Real>(lBand)));
-    return GaussLegendreGrid(lGrid, nMax, flag, chunking);
+    return GaussLegendreGrid(lGrid, nMax, flag, chunking, values);
   }
 
   GaussLegendreGrid(const GaussLegendreGrid&) = default;
@@ -214,7 +219,7 @@ class GaussLegendreGrid
       work.plan.Execute();
 
       // Get the Wigner values and quadrature weight.
-      auto d = _impl->wigner[n, iTheta];
+      auto d = WignerBlock(n, iTheta, lMax);
       const auto w = _impl->quad.W(iTheta) * scaleFactor;
       const auto orders = static_cast<Int>(work.out.size()) / c;
 
@@ -439,7 +444,7 @@ class GaussLegendreGrid
       std::ranges::for_each(work.in, [](auto& x) { return x = 0; });
 
       // Get the Wigner values.
-      auto d = _impl->wigner[n, iTheta];
+      auto d = WignerBlock(n, iTheta, lMax);
       const auto orders = static_cast<Int>(work.in.size()) / c;
 
       // Loop over the coefficients, one degree at a time. As in the forward
@@ -746,6 +751,55 @@ class GaussLegendreGrid
         coefficientSize * static_cast<Int>(sizeof(Complex)), threads);
   }
 
+  // The Wigner values for one (n, iTheta), over the degrees |n| .. lMax.
+  //
+  // This is the seam of core-plan.md [C10], and it returns the same type on
+  // both paths: ConstGSHView carries no storage, being (lMax, mMax, n,
+  // const Real*) over the index arithmetic it inherits from GSHIndices, so a
+  // view of generated scratch and a view into the table are indistinguishable
+  // to the loops that consume them. Neither transform changes by a line.
+  //
+  // On a stored grid this hands back a pointer into the table. On a generating
+  // one it runs the recursion into this thread's scratch and returns a view of
+  // that -- the same recursion, the same order, the same values, so the two
+  // paths agree bit for bit rather than to a tolerance.
+  //
+  // The generated block is built to the *call's* degree, not the grid's, so a
+  // truncated transform generates only the degrees it uses. The stored path
+  // cannot do that: its rows are laid out for the grid's maximum degree
+  // whatever a call asks for. The orders are asked for to the same bound,
+  // which makes every degree's row full-width -- min(l, lMax) is l -- and so
+  // lays the block out exactly as the table lays out its own prefix.
+  //
+  // The view points into thread_local scratch and is valid until this thread
+  // asks for another block. Both consumers use it within one colatitude and
+  // then let it go.
+  auto WignerBlock(Int n, Int iTheta, Int lMax) const {
+    if (_impl->wigner) return (*_impl->wigner)[n, iTheta];
+
+    const auto size =
+        static_cast<std::size_t>(GSHIndices<_MRange>(lMax, lMax, n).Size());
+    auto& scratch = WignerScratch(size);
+    WignerDetails::ComputeBlock(
+        GSHView<Real, _MRange>(lMax, lMax, n, scratch.data()), n,
+        _impl->quad.X(static_cast<int>(iTheta)),
+        std::span<const Real>(_impl->sqrtInt),
+        std::span<const Real>(_impl->sqrtIntInv));
+    return ConstGSHView<Real, _MRange>(lMax, lMax, n, scratch.data());
+  }
+
+  // Where a generating grid puts the block it has just computed.
+  //
+  // Per thread and grow-only, like the accumulator and the coefficient
+  // scratch, and for the same reason: allocating it per colatitude would put
+  // back the per-call allocation step E removed. It is 528 KB at lMax = 256
+  // against a table of 648 MB, and 8.4 MB at lMax = 1024 against 43 GB.
+  static std::vector<Real>& WignerScratch(std::size_t size) {
+    thread_local auto buffer = std::vector<Real>{};
+    if (buffer.size() < size) buffer.resize(size);
+    return buffer;
+  }
+
   // Scratch for one chunk's coefficients in [coefficient][field] order.
   //
   // Kept per thread and only grown, for the same reason the work buffers and
@@ -854,8 +908,13 @@ class GaussLegendreGrid
   // no synchronisation. Step E's plan cache belongs here, and will be the one
   // mutable member, with its own lock.
   struct Impl {
-    Impl(Int lMaxIn, Int nMaxIn, FFTWpp::Flag flagIn, Chunking chunkingIn)
-        : lMax{lMaxIn}, nMax{nMaxIn}, flag{flagIn}, chunking{chunkingIn} {
+    Impl(Int lMaxIn, Int nMaxIn, FFTWpp::Flag flagIn, Chunking chunkingIn,
+         WignerValues valuesIn)
+        : lMax{lMaxIn},
+          nMax{nMaxIn},
+          flag{flagIn},
+          chunking{chunkingIn},
+          values{valuesIn} {
       assert(lMax >= 0);
       assert(std::abs(nMax) <= lMax);
       assert(flag != FFTWpp::WisdomOnly);
@@ -879,8 +938,16 @@ class GaussLegendreGrid
       quad.Transform([](auto x) { return std::acos(-x); },
                      [](auto x) -> Real { return 1; });
 
-      wigner = Wigner<Real, _MRange, _NRange, Multiple, ColumnMajor>(
-          lMax, lMax, nMax, quad.Points());
+      // A generating grid builds no table. What it needs instead is the two
+      // square-root tables the recursion indexes, which are 2 lMax + 1
+      // entries each against the table's 648 MB at lMax = 256.
+      if (values.AreStored()) {
+        wigner = Wigner<Real, _MRange, _NRange, Multiple, ColumnMajor>(
+            lMax, lMax, nMax, quad.Points());
+      } else {
+        std::tie(sqrtInt, sqrtIntInv) =
+            WignerDetails::PreComputeTables<Real>(lMax, lMax, nMax);
+      }
 
       // The planner flag is kept as the caller gave it. It used to be used to
       // pre-generate wisdom for exactly two shapes and then replaced by
@@ -894,8 +961,15 @@ class GaussLegendreGrid
     Int nMax;
     FFTWpp::Flag flag;
     Chunking chunking;
+    WignerValues values;
     GaussQuad::Quadrature1D<Real> quad;
-    Wigner<Real, _MRange, _NRange, Multiple, ColumnMajor> wigner;
+
+    // Empty on a generating grid, which is the whole of what that grid saves.
+    std::optional<Wigner<Real, _MRange, _NRange, Multiple, ColumnMajor>> wigner;
+
+    // Empty on a stored grid, whose table already carries what these are for.
+    std::vector<Real> sqrtInt;
+    std::vector<Real> sqrtIntInv;
   };
 
   std::shared_ptr<const Impl> _impl;

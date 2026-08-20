@@ -1574,6 +1574,77 @@ one and eight threads, with the two paths interleaved inside one process, per
 §8's noise-floor rule. The harness revision bumps, since the wrapper refuses a
 binary older than the script driving it.
 
+### What rung A measured, and it is not what the step hoped for
+
+*Laptop, eight cores, `n = 2`, complex, time per field, two runs agreeing to
+better than the noise floor.*
+
+**The memory case is won outright.** At `lMax = 256, nMax = 2` construction
+goes from **0.248 s and 648 MB** to **0.015 s and 0 MB**. Nothing here is in
+doubt and nothing later can take it away.
+
+**The speed case fails, in every configuration measured.**
+
+| `lMax` | `k` | threads | direction | stored | generated | ratio |
+|---|---|---|---|---|---|---|
+| 64 | 1 | 1 | forward | 0.145 ms | 0.459 ms | 3.16× |
+| 128 | 1 | 8 | forward | 0.428 ms | 1.084 ms | 2.53× |
+| 256 | 1 | 1 | forward | 12.50 ms | 27.17 ms | 2.17× |
+| 256 | 1 | 8 | forward | 4.26 ms | 8.08 ms | 1.89× |
+| 256 | 8 | 1 | forward | 6.29 ms | 10.47 ms | 1.67× |
+| 256 | 8 | 8 | inverse | 4.24 ms | 8.59 ms | 2.03× |
+
+Two things the shape of that table says. **Batching narrows the gap** — 3.2× at
+`k = 1` down to 1.4× at `k = 8` — because generation amortises over a chunk
+exactly as a table stream does. And **threads do not narrow it**: the ratio at
+eight threads is what it is at one. The premise that the stored path is pinned
+at the DRAM roof while the generated one scales with cores is *not visible on
+eight cores*, which is the only machine this has run on.
+
+Against the falsification test §8 set — *if A on eight threads does not beat
+the stored path on eight threads, C's factor of two will not rescue it* — the
+answer is that it does not, and the arithmetic agrees: at `lMax = 256, k = 1`
+on eight threads the generated path spends 3.8 ms more than the stored one, so
+halving the recursion's flops cannot close it unless the consumer's own work is
+under half a millisecond, which it is not. **B and C should not be built on
+these numbers.** What is left of F′ is the memory, which is large, and the
+many-core and NUMA argument of P8, which no laptop can test.
+
+### The measurement's other finding, which is worth more than its first
+
+*The chunk width matters more than the path does, and it wants to differ by
+direction.* At `lMax = 256, k = 8` on eight threads, taking the whole batch as
+one chunk rather than the heuristic's:
+
+| direction | path | heuristic chunk | whole batch |
+|---|---|---|---|
+| inverse | stored | 4.24 ms | **1.93 ms** |
+| inverse | generated | 8.59 ms | **2.47 ms** |
+| forward | stored | 4.27 ms | **8.44 ms** |
+| forward | generated | 8.08 ms | **8.59 ms** |
+
+The inverse direction is **2.2× faster** with the whole batch, and the forward
+is **2× slower** — on *both* paths, which is what makes it a fact about the
+chunk rather than about generating anything. The control was run for exactly
+that reason.
+
+The cause is step H's decomposition. The forward transform gives each thread a
+private accumulator of `chunk × coefficientSize`, which at `lMax = 256` and
+`k = 8` is **8.4 MB per thread**, so eight threads ask for 68 MB of a 16 MB L3;
+the inverse has no accumulator and spends a wider chunk on nothing but
+amortising the Legendre stage. `Chunking::Count` is handed the same
+`bytesPerField` in both directions and knows nothing of this.
+
+**This is [C11] arriving early, and on the wrong machine.** §7 says the
+forward's thread-private accumulators are the wrong shape above about sixteen
+threads and that the laptop cannot show it. It can: the accumulators are
+already the dominant term at eight threads once the chunk is wide, and the
+directions have visibly different optima. That is a defect in the chunking
+policy — one heuristic serving two decompositions — and it is worth its own
+task ahead of anything further in F′, because **it is worth more than F′ was**:
+a 2.2× on the inverse direction of the stored path, which is the path
+everything actually uses.
+
 **T7 — the benchmark harness of §5.** *Done.* Then steps E–H, each gated on the
 measurement that justifies it. **The first run of the harness changed what
 those steps should be**; see §9.

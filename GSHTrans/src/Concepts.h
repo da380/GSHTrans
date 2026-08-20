@@ -283,6 +283,45 @@ class Chunking {
   Int _fixed;  // zero means "use the heuristic"
 };
 
+// Whether a grid stores its Wigner values or generates them when it needs
+// them.
+//
+// Stored is what the library has always done: the whole d^l_{nm}(theta) table
+// is built at construction and streamed by every transform. It is 648 MB at
+// lMax = 256 with nMax = 2, and 43 GB at lMax = 1024, which is the first
+// reason for the alternative. The second is that streaming it is a shared
+// cost -- every thread pulls from the same DRAM, and step H measured that
+// ceiling being reached at eight threads -- whereas a thread that generates
+// the values it needs contends with nobody, which is the shape the deployment
+// target wants (core-plan.md step F', P8).
+//
+// Generated pays for that in arithmetic: the same recursion, the same
+// evaluation order and the same values, run inside the transform into
+// per-thread scratch instead of read from a table. Only the storage differs,
+// which is what makes the two paths comparable value by value rather than
+// only to a tolerance.
+//
+// This is a property of the grid and not of the call. A per-call choice would
+// mean carrying the table anyway for the calls that wanted it, which forfeits
+// the whole memory saving, and a template parameter would infect every
+// downstream type for a decision about one object's storage ([C10]). It is a
+// value rather than a named constructor for the reason Chunking is: ForBand
+// is itself a named constructor, so the named form needs a second one to
+// reach an oversampled generating grid.
+class WignerValues {
+ public:
+  static WignerValues Stored() { return WignerValues(true); }
+  static WignerValues Generated() { return WignerValues(false); }
+
+  auto AreStored() const { return _stored; }
+
+  bool operator==(const WignerValues&) const = default;
+
+ private:
+  explicit WignerValues(bool stored) : _stored{stored} {}
+  bool _stored;
+};
+
 //-------------------------------------------------------------------------//
 //                      Numeric concepts, from elsewhere                    //
 //--------------------------------------------------------------------------//

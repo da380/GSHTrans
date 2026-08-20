@@ -483,7 +483,7 @@ int main(int argc, char** argv) {
   // server runs were lost to exactly that: the source reached the machine with
   // an old timestamp, make saw nothing to do, and the log looked plausible
   // while being produced by the previous harness.
-  constexpr auto revision = 4;
+  constexpr auto revision = 5;
 
   if (argc == 2 && std::string(argv[1]) == "--check") {
     std::printf("harness revision %d\n", revision);
@@ -496,8 +496,8 @@ int main(int argc, char** argv) {
               "harness revision %d\n", revision);
   std::printf("double precision, single field per call (k = 1)\n");
   std::printf(
-      "sections: stream grid transforms threading batching server "
-      "huge (all, if none named)\n");
+      "sections: stream grid transforms threading batching generated "
+      "server huge (all, if none named)\n");
 
   PrintMachineFacts();
 
@@ -680,6 +680,132 @@ int main(int argc, char** argv) {
   }
 
   //------------------------------------------------------------------------//
+  //          Generated Wigner values against the stored table (F')          //
+  //------------------------------------------------------------------------//
+
+  if (Want("generated")) {
+    PrintHeader("Generated Wigner values against the stored table (step F')");
+    std::printf(
+        "The same recursion, the same order, the same values -- run inside the\n"
+        "transform into per-thread scratch instead of read from a table. The\n"
+        "two paths agree bit for bit, so the only questions are what it costs\n"
+        "and what it saves. Both grids are built in this process and the two\n"
+        "are timed alternately, which is the only way a comparison on a\n"
+        "clock-scaling machine means anything (core-plan.md section 8).\n\n");
+
+    std::printf("Construction, and what it leaves resident.\n");
+    std::printf("%6s %5s %11s %11s %10s %10s\n", "lMax", "nMax", "stored(s)",
+                "gen(s)", "storedMB", "genMB");
+    for (auto lMax : {Int{64}, Int{128}, Int{256}}) {
+      const auto nMax = Int{2};
+      if (!AffordableAt(lMax, nMax)) continue;
+
+      // The generating grid first, so that the table's pages are not still
+      // resident when its own footprint is measured.
+      auto genBefore = ResidentMegabytes();
+      auto start = Clock::now();
+      {
+        auto grid = GaussLegendreGrid<Real, All, All>(
+            lMax, nMax, FFTWpp::Estimate, Chunking::Automatic(),
+            WignerValues::Generated());
+        const auto genSeconds =
+            std::chrono::duration<double>(Clock::now() - start).count();
+        const auto genMB = ResidentMegabytes() - genBefore;
+
+        auto storedBefore = ResidentMegabytes();
+        start = Clock::now();
+        auto stored = GaussLegendreGrid<Real, All, All>(lMax, nMax,
+                                                        FFTWpp::Estimate);
+        const auto storedSeconds =
+            std::chrono::duration<double>(Clock::now() - start).count();
+        const auto storedMB = ResidentMegabytes() - storedBefore;
+
+        std::printf("%6zd %5zd %11.3f %11.3f %10ld %10ld\n", lMax, nMax,
+                    storedSeconds, genSeconds, storedMB, genMB);
+      }
+    }
+
+    std::printf(
+        "\nTransforms, per field. The generated column carries no table\n"
+        "traffic at all, so what it competes against is DRAM bandwidth\n"
+        "shared between threads rather than arithmetic.\n");
+    std::printf(
+        "The last column takes the whole batch as one chunk. Generation\n"
+        "amortises over a chunk exactly as a table stream does, but the\n"
+        "cache-fitting rule that sets the stored optimum is about the\n"
+        "coefficient array and says nothing about a table that is not there,\n"
+        "so the two paths need not want the same chunk (P2, [C9]).\n");
+    std::printf("%6s %4s %4s %8s %10s %11s %11s %9s %11s\n", "lMax", "n", "k",
+                "threads", "direction", "stored(ms)", "gen(ms)", "gen/stored",
+                "genWhole  storedWhole");
+    for (auto lMax : {Int{64}, Int{128}, Int{256}}) {
+      const auto n = Int{2};
+      if (!AffordableAt(lMax, n)) continue;
+
+      auto stored =
+          GaussLegendreGrid<Real, All, All>(lMax, n, FFTWpp::Measure);
+      auto generated = GaussLegendreGrid<Real, All, All>(
+          lMax, n, FFTWpp::Measure, Chunking::Automatic(),
+          WignerValues::Generated());
+
+      const auto fieldSize = static_cast<Int>(stored.FieldSize());
+      const auto coefficientSize =
+          static_cast<Int>(stored.CoefficientSize(lMax, n));
+
+      for (auto k : {Int{1}, Int{8}}) {
+        auto fields = FFTWpp::vector<Complex>(k * fieldSize);
+        auto coefficients = FFTWpp::vector<Complex>(k * coefficientSize);
+        for (auto i = Int{0}; i < k * fieldSize; ++i) {
+          fields[i] = Complex{0.5 + 0.001 * i, -0.25 + 0.002 * i};
+        }
+        const auto inBatch = Batch::Contiguous(k, fieldSize);
+        const auto outBatch = Batch::Contiguous(k, coefficientSize);
+
+        auto wholeChunk = GaussLegendreGrid<Real, All, All>(
+            lMax, n, FFTWpp::Measure, Chunking::Fixed(k),
+            WignerValues::Generated());
+
+        // The control for it. If taking the whole batch as one chunk costs
+        // the forward direction on the stored path too, the cost belongs to
+        // the chunk -- each thread's private accumulator is chunk times the
+        // coefficient array, which is 8.4 MB per thread at lMax = 256 and
+        // k = 8 -- and not to generating anything.
+        auto storedWhole = GaussLegendreGrid<Real, All, All>(
+            lMax, n, FFTWpp::Measure, Chunking::Fixed(k));
+
+        for (auto threads : {1, 8}) {
+          const auto policy = threads == 1 ? Execution::Sequential()
+                                           : Execution::Parallel(threads);
+          for (const char* direction : {"forward", "inverse"}) {
+            auto Time = [&](auto& grid) {
+              return TimePerCall([&] {
+                if (direction[0] == 'f') {
+                  grid.ForwardTransformation(lMax, n, fields, inBatch,
+                                             coefficients, outBatch, policy);
+                } else {
+                  grid.InverseTransformation(lMax, n, coefficients, outBatch,
+                                             fields, inBatch, policy);
+                }
+              });
+            };
+            const auto a = Time(stored) / static_cast<double>(k);
+            const auto b = Time(generated) / static_cast<double>(k);
+            const auto c = k > 1 ? Time(wholeChunk) / static_cast<double>(k)
+                                 : 0.0;
+            std::printf("%6zd %4zd %4zd %8d %10s %11.3f %11.3f %9.2fx", lMax, n,
+                        k, threads, direction, a * 1e3, b * 1e3, b / a);
+            if (k > 1) {
+              const auto e = Time(storedWhole) / static_cast<double>(k);
+              std::printf(" %9.3f %11.3f", c * 1e3, e * 1e3);
+            }
+            std::printf("\n");
+          }
+        }
+      }
+    }
+  }
+
+  //------------------------------------------------------------------------//
   //             Thread scaling to the full machine ([C11])                  //
   //------------------------------------------------------------------------//
 
@@ -737,6 +863,18 @@ int main(int argc, char** argv) {
             lMax, n, FFTWpp::Measure, Chunking::Fixed(k));
         const auto inBatch = Batch::Contiguous(k, fieldSize);
         const auto outBatch = Batch::Contiguous(k, coefficientSize);
+
+        auto wholeChunk = GaussLegendreGrid<Real, All, All>(
+            lMax, n, FFTWpp::Measure, Chunking::Fixed(k),
+            WignerValues::Generated());
+
+        // The control for it. If taking the whole batch as one chunk costs
+        // the forward direction on the stored path too, the cost belongs to
+        // the chunk -- each thread's private accumulator is chunk times the
+        // coefficient array, which is 8.4 MB per thread at lMax = 256 and
+        // k = 8 -- and not to generating anything.
+        auto storedWhole = GaussLegendreGrid<Real, All, All>(
+            lMax, n, FFTWpp::Measure, Chunking::Fixed(k));
 
         const auto seconds = TimePerCall([&] {
           pinned.ForwardTransformation(lMax, n, fields, inBatch, coefficients,
