@@ -7,5 +7,6 @@
 #include "src/Tensor/MultiIndex.h"
 #include "src/Tensor/Orbits.h"
 #include "src/Tensor/TensorField.h"
+#include "src/Tensor/TensorExpr.h"
 
 #endif

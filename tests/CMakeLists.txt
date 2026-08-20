@@ -23,6 +23,10 @@ add_executable(TestTensorField
                TestTensorField.cpp)
 target_link_libraries(TestTensorField PRIVATE GSHTrans gtest_main)
 
+add_executable(TestTensorAlgebra
+               TestTensorAlgebra.cpp)
+target_link_libraries(TestTensorAlgebra PRIVATE GSHTrans gtest_main)
+
 add_executable(TestWigner
   TestWigner.cpp)
 target_link_libraries(TestWigner PRIVATE GSHTrans gtest_main)
@@ -61,6 +65,7 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/Tensor/MultiIndex.h
   GSHTrans/src/Tensor/Orbits.h
   GSHTrans/src/Tensor/TensorField.h
+  GSHTrans/src/Tensor/TensorExpr.h
   GSHTrans/Core
   GSHTrans/Field
   GSHTrans/Tensor
@@ -86,6 +91,7 @@ gtest_discover_tests(TestConcepts)
 gtest_discover_tests(TestSpinField)
 gtest_discover_tests(TestTensorIndices)
 gtest_discover_tests(TestTensorField)
+gtest_discover_tests(TestTensorAlgebra)
 gtest_discover_tests(TestWigner)
 gtest_discover_tests(TestGaussLegendreGrid)
 gtest_discover_tests(TestRealFieldSymmetry)
