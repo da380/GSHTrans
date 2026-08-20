@@ -5,10 +5,10 @@ and to `canonical-components.tex`, which is the authority on the mathematics.
 This document covers the part of the library that was previously declared out of
 scope: `GaussLegendreGrid`, `GridBase`, `Wigner`, `Indexing`, `Views`.
 
-Nothing here is implemented yet. All decisions are taken: §6 records them, §7
-records the three that are deliberately deferred to measurement, and §8 gives
-the task order to work through. Where a decision went against the earlier
-recommendation, §6 says so.
+Steps A–E and H are implemented; F, F′ and G remain, and §8 records what each
+task did. All decisions are taken: §6 records them, §7 records the three that
+are deliberately deferred to measurement, and §8 gives the task order to work
+through. Where a decision went against the earlier recommendation, §6 says so.
 
 ---
 
@@ -335,6 +335,48 @@ wants, for free.** FFTW's advanced interface (`fftw_plan_many_dft_r2c` /
 `howmany = nTheta·k` rows can write its output directly in `[θ][m][κ]` order.
 The transpose that a batched or GEMM Legendre stage needs then costs nothing.
 
+**P8 — the deployment target is 64–128 cores and 256+ GB, and three of the
+above are laptop-shaped.** Development and every measurement so far are on an
+8-core Zen 5 laptop with a 16 MB shared L3; time-critical runs are on servers
+of 64–128 cores and 256 GB or more, which are dual-socket or multi-CCD or both.
+Three consequences, none of which the earlier findings account for:
+
+- **Cache is per-core, not per-machine.** EPYC gives 32 MB of L3 per CCD of
+  eight cores, so a 64-core part has 256 MB aggregate and each core sees 32 MB;
+  Intel's server parts reach a similar place die-wide at about 2 MB per core.
+  Across the laptop and the target the **per-core L3 share is roughly constant
+  at 2–4 MB** rather than shrinking with core count. Any cache-fitting formula
+  must be written per core; written as `L3 / threads` it is right on the
+  laptop by coincidence and wrong on the target.
+- **Colatitude parallelism runs out.** Step H threads over colatitudes, of
+  which there are `lMax + 1` — 129 at `lMax = 128`, 257 at 256. At 64–128 cores
+  that is one to four per thread. The forward reduction, a `#pragma omp
+  critical` in which each thread adds a full coefficient array into `out`, is
+  serialised: 128 MB of serialised adds per transform at 128 threads and
+  `lMax = 256`. Partitioning the reduction (step H names it) removes the
+  serialisation but not the traffic — `threads × chunk × coeffSize` is 512 MB
+  at 128 threads and a chunk of 4, against the table's 136 MB. Thread-private
+  accumulators are the wrong shape above roughly sixteen threads, and which
+  decomposition replaces them is [C11].
+- **NUMA is unaccounted for.** The table is 648 MB at `lMax = 256, nMax = 2`
+  and 5.4 GB at 512, and first touch decides which socket holds each page.
+  `ComputeAll` does fill it in parallel, but it flattens `(n, iTheta)` and
+  schedules statically over the whole range while a transform threads over
+  `iTheta` at fixed `n`; the chunk boundaries do not line up, so locality is
+  accidental and partial and a good fraction of the stream crosses the
+  interconnect.
+
+*This is why step F′ matters more than the laptop numbers suggest.* A streaming
+grid has no table, hence no NUMA question at all; its ceiling is cores rather
+than the shared DRAM roof that step H already reached at eight threads; and it
+makes the **batch axis a usable parallel axis**, which is the decomposition
+that answers the second bullet. Threading over fields needs no reduction and no
+accumulator — but on the stored path each thread would stream the whole table
+independently, multiplying table traffic by the thread count, whereas when each
+thread generates its own values that cost is zero. Against that, the *memory*
+argument for F′ weakens on a 256 GB machine: 5.4 GB is nothing there, unless
+many jobs share a node.
+
 **P7 — plans and work buffers are created per call.** Two `FFTWpp::vector`
 allocations and one plan per `ForwardTransformation`
 (`GaussLegendreGrid.h:152–164`), and the same in the inverse. FFTW's planner is
@@ -606,11 +648,94 @@ original sketch:
   the intensity argument was never the point. That makes step G's layout change
   a prerequisite for the real gain rather than an optimisation on top of it.
 
+**The `d` values reach the inner loop through a supplier, not through the
+table** ([C10]). The consumer only ever needs *a contiguous run of `d` values
+in `(l, m)` order for one `(n, iTheta)`* — that is the whole of what
+`_impl->wigner[n, iTheta]` is used for today. Step F therefore writes the
+batched inner loop against a supplier that hands back, per degree, a
+contiguous row pointer. The stored supplier returns a pointer into the table
+and costs nothing over today's code; step F′ adds a second supplier that
+generates the row instead. Writing the loop this way now is what stops step F′
+rewriting it.
+
+Two constraints the seam carries, both satisfied by the present loop and
+recorded so they are not broken later: degrees are visited in **ascending
+contiguous order from `|n|`**, and each `(n, iTheta)` is visited once per pass.
+The first forecloses any future "evaluate selected degrees only" optimisation
+on the generated path, which is a price worth paying.
+
 Measure before committing to tier 2. The single-field
 signature survives as a thin `k = 1` wrapper over the batched primitive
 (§6, [C3]).
 
 *Risk:* medium. *Effort:* medium (tier 1), large (tier 2).
+
+### Step F′ — Wigner values on the fly
+
+*Gates: nothing. Prerequisite: step F's supplier seam. Implements: [C10].
+May retire most of step G.*
+
+A **second path**, not a replacement: the same recursion with the storage
+elided. For a given `(n, iTheta)` the two-term recursion is run up the degrees
+inside the transform, carrying three rows of length `2lMax+1` in per-thread
+scratch, and the table is never built. Selected at grid construction through a
+named constructor, so a streaming grid carries no table at all; per-call
+selection would forfeit the memory saving, and a template parameter would
+infect every downstream type ([C10]).
+
+**It is a bandwidth-for-arithmetic trade, and the measurements say the trade
+is now worth making.** Single-threaded, P1 says the stage is bound by
+load/store throughput, and generating a value costs more memory operations than
+loading one — so on those numbers alone this would lose. What changed is step
+H: at `lMax = 128` on eight threads the stage reaches 39–40 GB/s against a
+machine roof near 42, so the stored path is *at* its ceiling and further cores
+buy nothing. A generated path's ceiling is set by cores, which scale. The
+crossover is therefore not "very high `lMax`" but roughly *the table for one
+`n` no longer fitting in last-level cache* — 17 MB per transform at
+`lMax = 128` against a 16 MB L3, so it is crossed inside the range that
+matters in practice.
+
+**Memory is the unambiguous win.** 648 MB at `lMax = 256, nMax = 2`, and
+5.4 GB at `lMax = 512`, against roughly 12 KB of scratch per thread. The
+scratch is the same per-thread workspace step E introduced and step H's
+accumulator extended.
+
+Two things must be true for it to be competitive, and both are part of the
+step rather than optimisations on top:
+
+1. **The boundary terms stop calling `lgamma`/`exp`.** `Compute` evaluates
+   `WignerMinOrder`/`WignerMaxOrder` at `m = ±l` for every `(l, θ)` — three
+   `lgamma` and an `exp` apiece. Paid once inside construction that is part of
+   the 0.23 s; paid per call it is of order 130k transcendental evaluations per
+   transform at `lMax = 256`, comparable to the whole transform. The boundary
+   value obeys a one-term recursion in `l` — the ratio to `l-1` is
+   `sqrt(2l(2l-1)/((l-n)(l+n))) · sin(θ/2) cos(θ/2)` — so it rides up the
+   degree loop with a square root and three multiplies. This is independent of
+   everything else here, speeds up construction on the *stored* path too, and
+   is more robust than the closed form rather than less, since it never forms
+   `lgamma(2l+1)`.
+2. **The colatitudes are blocked.** Of the recursion's coefficients only
+   `alpha` carries `cos θ`; `beta`, `gamma`, `sqrtIntInv[l ± m]` and
+   `sqrtInt[l-1 ± m]` are θ-independent. Over a block of `B` colatitudes the
+   four table loads and the `denom` and `f2` products amortise, leaving about
+   five flops and two L1 loads per value — comparable to the stored path's
+   per-value cost with no DRAM traffic at all. Unblocked, the path is roughly a
+   wash. Blocking needs the FFT run for `B` rows before the Legendre stage,
+   which is the batched-FFT machinery step F builds anyway.
+
+**The numerics are not a new question.** This is the same recursion, the same
+seeds, the same evaluation order and the same underflow behaviour; only the
+storage differs. That is the substantive difference from step G, which
+re-derives values under symmetry.
+
+*A prediction the benchmark can settle.* Step H left the `lMax = 256` forward
+shortfall — 2.7× against 4.2× at `lMax = 128` — with two unseparated
+candidates: the critical-section reduction, and eight 1 MB private accumulators
+competing for a 16 MB L3 *with the streaming table*. A streaming grid deletes
+the table stream and leaves the accumulators owning L3. If the cache candidate
+is the real one, this path fixes it and says so.
+
+*Risk:* medium. *Effort:* medium.
 
 ### Step G — Wigner storage
 
@@ -632,6 +757,17 @@ Three independent options, to be decided by measurement, not by inspection
 These interact: symmetry reduction and a transform-major layout both change the
 same indexing code, and both change what the batched inner loop looks like. Do
 them together or not at all.
+
+**Step F′ changes what this step is for, and may retire most of it.** All three
+options above are about the *table*. On a streaming grid there is no table to
+re-lay-out and none to store in reduced precision, so two of the three become
+irrelevant on that path. The third inverts in F′'s favour: P4's reflection,
+composed with P3, makes the row at `π−θ` the order-reversed row at `θ` up to a
+sign, so on the stored path it trades bandwidth for a less regular access
+pattern — which is why P4 says it must be measured — while on the generated
+path it **halves the recursion**, which is that path's dominant cost. The same
+irregularity buys much more there. Hence the ordering: F′ before G, and let
+F′'s numbers say what G is still for.
 
 *Risk:* medium–high (this is the only step that touches numerically delicate
 code). *Effort:* large.
@@ -725,10 +861,16 @@ D  grid sizing        ─┼─→  field-algebra phase 1  ─→ phases 2–4
 C  transform I/O      ─┤
 B  grid handle        ─┘
 
-E  plan cache  ─→  F  batching  ─→  G  Wigner storage  ─→  H  threading
+E  plan cache  ─→  H  threading  ─→  F  batching  ─→  F′ on the fly  ─→  G  Wigner storage
 
            F must land before field-algebra phase 2 ([C9], step F)
+           F′ needs F's supplier seam, and may retire most of G ([C10])
 ```
+
+*The diagram above is the revised order.* The document originally ran
+E → F → G → H; the first benchmark run said E → H → F → G, and that is what was
+done (§9). F′ was added after F was planned and before it was built, on the
+strength of the step-H measurements — see [C10].
 
 A–D are independent of each other in the sense that none needs another's result.
 The order above is nevertheless the one to work in, for two reasons: **A** first
@@ -767,8 +909,9 @@ what §1 predicts.
 
 ## 6. Decisions taken
 
-Seven questions were put here; all are answered, and an eighth ([C8]) arrived
-from the field plan and is answered too. Six accepted the recommendation — of
+Seven questions were put here; all are answered, an eighth ([C8]) arrived from
+the field plan and is answered too, and a ninth ([C10]) was raised by the author
+after step H and is answered below. Six accepted the recommendation — of
 those, [C4], [C5] and [C6] accepted a recommendation to *defer to measurement*,
 which is a decision in its own right and is recorded separately in §7. One,
 [C7], went against the recommendation in both halves.
@@ -889,11 +1032,43 @@ unblocked. The one-line action is to turn the check into a permanent test
 (task T1, §8), because the fact is now load-bearing for phase 4's stored
 components.
 
+### [C10] Wigner values may be generated on the fly, as a second path
+
+Raised by the author while planning step F: the library computes the Wigner
+values up front and reads them as needed, and computing them inside the
+transform is the other option. **A second path, not a replacement**, and the
+decisions it forces are three.
+
+**It goes in step F′, after F1 and before G.** The alternative was to fold it
+into step F. Against that: step F carries the deadline that field-algebra
+phase 2 is blocked on it, and widening the step that has the deadline is the
+wrong trade. So step F lands the batched primitive alone and unblocks phase 2;
+F′ follows as its own step. What F must nevertheless do *now* is write the
+inner loop against the supplier seam described in step F, because that is the
+only part of F′ that is expensive to retrofit.
+
+**It is selected at grid construction, through a named constructor.** Not a
+per-call argument: the grid would have to carry the table anyway for the calls
+that want it, which forfeits the entire memory saving. Not a template
+parameter: it would infect every downstream type for a choice that is about
+one object's storage. A named constructor alongside the ordinary one reads as a
+different kind of grid rather than as a tuning knob, which is what it is — the
+public transform signature of [C9] is untouched either way, and `Impl` stays
+immutable with an empty table.
+
+**The reason to build it is not primarily speed at high `lMax`.** That was the
+expectation; the numbers point elsewhere. The memory saving is unambiguous and
+large at every size, and the speed argument is strongest not at extreme `lMax`
+but wherever the stored path has hit the DRAM roof — which step H shows it has
+already done, at `lMax = 128` on eight threads, inside the range the library is
+actually used in. The full argument, and the two preconditions that decide
+whether the trade is worth making at all, are in step F′.
+
 ---
 
 ## 7. Deferred to measurement
 
-These three are not unanswered; they are answered by "the benchmark decides",
+These four are not unanswered; they are answered by "the benchmark decides",
 and none of them can be argued honestly before the §5 harness exists. Recorded
 here so that steps E and F do not accidentally foreclose them — in particular,
 step F must reach the Wigner data through an accessor rather than through raw
@@ -915,6 +1090,20 @@ offsets.
   `CheckCoeff2Coeff.h` uses `50000 · ε`, which is loose enough to hide a
   regression. So this one carries a prerequisite of its own: a round-trip test
   with a defensible tolerance, before the experiment is worth running.
+
+- **[C11] The forward transform's parallel decomposition above ~16 threads.**
+  Raised by P8. Step H's thread-private accumulators over colatitudes are
+  correct at eight threads and do not survive 64–128: the accumulators become
+  the dominant memory traffic and the colatitude axis is only `lMax + 1` long.
+  The candidates are m-block threading (no accumulator and no reduction, but at
+  128 threads each thread's contiguous run within a degree is about four
+  doubles, so it fetches half-used cache lines), threading over the batch axis
+  (free on a streaming grid, ruinous on a stored one — P8), and a
+  two-dimensional split over both. **This cannot be settled on the laptop**, and
+  choosing on laptop numbers would repeat exactly the error §9 records the first
+  benchmark run correcting. Deferred until the harness has been run on a target
+  machine; T10 therefore keeps step H's decomposition and fixes only the
+  serialisation.
 
 Also deferred to step G, from [C7]: whether `RowMajor` survives.
 
@@ -1017,6 +1206,120 @@ enforced rather than documented. See step H for the measurements.
 
 **T8 — step E, the plan and buffer cache.** *Done.* See step E above for what
 it changed and what it measured.
+
+**T10 — step F, the batched transform primitive.** *In progress.* Tier 1 only:
+the public `(count, stride, dist)` descriptor with its explicit threading
+policy ([C9]), the batched FFT stage landing data in `[θ][m][κ]` order (P6),
+the inner loop rewritten as an axpy of length `k` *against the supplier seam*
+([C10]), and internal chunking of the caller's `k` rather than handing it
+straight to the inner loop. The single-field signature becomes a `k = 1`
+wrapper ([C3]). **Field-algebra phase 2 unblocks here.** Tier 2 (GEMM) is not
+in this task and waits on step G.
+
+Four details settled while planning it:
+
+- **The call takes two batch descriptors, not one** — one for the field range
+  and one for the coefficient range. Even when the layout *kind* is the same on
+  both sides, `dist` differs, being `FieldSize` on one and `CoefficientSize` on
+  the other. Equal `count` is a checked throw.
+- **Caller strides enter only at the pack and unpack seam.** [C9] already
+  states that the Legendre stage works on our own buffers, whose layout we
+  choose. So the batched FFT writes `work.out` in `[m][κ]` order (out-stride
+  `k`, out-dist `1`, free per P6) and the Legendre stage accumulates in `[j][κ]`
+  order. Both are batch-innermost and unit-stride, which is the layout P2's
+  2.3× was measured on, and it is obtained regardless of what the caller hands
+  in — which is what `PackRow`'s comment already promised.
+- **The chunk size is computed per core**, as
+  `perCoreL3 / (2 · 16 · nCoefficients)`, the factor of two being headroom for
+  the table stream and the FFT output. That reproduces P2's measured optimum of
+  8 at `lMax = 256` on the laptop and gives 2–4 per core on the target rather
+  than collapsing to 1, which is what a `L3 / threads` formula would do (P8).
+  The cache figure is a settable value with a documented default, since P2 says
+  the optimum is not a constant to hard-code.
+- **The forward reduction becomes partitioned rather than critical.** After the
+  colatitude loop each thread sums every thread's partials for its own block of
+  coefficients, in parallel, with no critical section. This is step H's own
+  suggested fix; it is folded in here because T10 rewrites that loop anyway, and
+  because without it every batched forward measurement above a few threads
+  measures the critical section instead of the transform. The decomposition
+  itself is *not* changed — that is [C11], and it needs a target machine.
+
+*Measured, and it is not measurable.* The partitioned reduction was A/B'd
+against the critical section back to back on an idle laptop, three runs each,
+from sources identical but for that one block. At the rows where it should
+matter most — `lMax = 256`, forward, eight threads — the difference is 0.5%.
+**The noise floor is larger than the effect**: the *inverse* rows and the
+*single-threaded* rows, neither of which touches the reduction at all, differ by
+6–13% between the two builds, which is drift and nothing else. That is what the
+arithmetic predicts — at eight threads and `lMax = 256` the critical section is
+eight passes over a 1 MB array against a colatitude loop streaming 136 MB, about
+6% of the traffic and comfortably hidden. The change is therefore justified by
+P8's 128-thread argument and by no laptop number, and it is recorded that way.
+
+Two things follow. The measurement's value is the **noise floor**: about 10% on
+this machine between back-to-back runs of identical code, so no laptop figure
+below that threshold means anything, and figures from different sessions mean
+less still — the same binary measured 1.75 ms and 2.23 ms at `lMax = 128` in
+different power states. And it **fails to separate step H's two candidates** for
+the `lMax = 256` shortfall, since the reduction's contribution is below noise.
+That question stays open and needs the target machine, which is [C11]'s point.
+
+*The harness grew a section filter* (`TransformBenchmark threading`) so that an
+A/B costs one section rather than the whole run. Without it the comparison is
+expensive enough to be skipped, which is how unmeasured changes get made.
+
+**State at the pause, and what picking it up means.** Two of T10's four parts
+are in, the suite passes at 76/76, and nothing is half-written: the tree builds
+and every test is green at each of the commits below.
+
+*Done.*
+
+- The partitioned reduction, as described above.
+- The supplier seam: both transform loops now take the Wigner row from `d[l]`
+  once per degree instead of walking a single iterator across the whole block.
+  This is a pure refactor with no behaviour change, and it is the substitution
+  point step F′ needs. No new class was required — `ConstGSHView::operator[](l)`
+  already *is* the row supplier, and `OffsetForDegree` is closed form, so the
+  seam costs a few integer operations per degree. F′ implements the same shape
+  over per-thread scratch.
+- The benchmark's section filter.
+
+*Not started, in the order to do it.*
+
+1. `Batch{count, stride, dist}` as a public vocabulary type, next to
+   `Execution` in `Concepts.h`, with `Contiguous(count, size)` and
+   `Interleaved(count, stride)` helpers and an `Offset(j, k)` accessor.
+2. The batched FFT stage. `Workspace` is currently keyed on `(nPhi, flag)` with
+   `howMany = 1`; it gains the chunk width, and the plan is built from an
+   `FFTWpp::Layout(1, {nPhi}, c, {embed}, stride, dist)` on each side — input
+   packed contiguous per row, output with `stride = c, dist = 1` so the data
+   lands in `[m][κ]`. **Confirmed at the code level**: `FFTWpp::Ranges::Plan`
+   passes rank, `howMany`, embed, stride and dist straight through to
+   `plan_many_*`, so P6's "for free" needs nothing built.
+3. The Legendre stage as an axpy of length `c` per `(l, m)`, accumulating into
+   a `[j][κ]` scratch buffer, then scattered to the caller's `(stride, dist)`.
+4. Chunking, the `k = 1` wrapper ([C3]), and the batched rows in the harness.
+
+*Two things not to rediscover.* Zeroing the output must respect the batch
+descriptor rather than filling the whole range — a `PointMajor` batch is
+interleaved with components that are not part of the call, and
+`std::ranges::fill(out, ...)` would destroy them. And the batched entry's size
+check is a *span* check, `size >= (n-1)·stride + (count-1)·dist + 1`, not the
+equality `CheckSize` makes today; the `k = 1` wrapper keeps the equality, since
+its contract is that the range *is* the field.
+
+*And one caution about measuring.* See the noise floor above. Any laptop figure
+under about 10% is nothing, cross-session figures are worth less than that, and
+benchmarks must run with nothing else on the machine — a first attempt at the
+A/B above was thrown away because a build and a test run overlapped it.
+
+**T11 — step F′, Wigner values on the fly.** Two commits. First the boundary
+recursion replacing `lgamma`/`exp`, which stands on its own, applies to the
+stored path, and lands with a tolerance test against the present values.
+Then the generating supplier behind step F's seam, θ-blocked, with the named
+constructor, validated against the stored path to round-trip tolerance and
+measured at `lMax ∈ {64, 128, 256}`, `k ∈ {1, 8}`, on one and eight threads.
+Those numbers decide what step G is still for.
 
 **T7 — the benchmark harness of §5.** *Done.* Then steps E–H, each gated on the
 measurement that justifies it. **The first run of the harness changed what
