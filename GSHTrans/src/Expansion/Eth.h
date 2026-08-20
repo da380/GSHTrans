@@ -1,0 +1,126 @@
+#ifndef GSH_TRANS_ETH_GUARD_H
+#define GSH_TRANS_ETH_GUARD_H
+
+#include <cmath>
+#include <complex>
+#include <cstddef>
+
+#include "../Concepts.h"
+#include "../Utility.h"
+#include "SpinExpansion.h"
+
+namespace GSHTrans {
+
+//--------------------------------------------------------------------------//
+//                        Raising and lowering the index                     //
+//--------------------------------------------------------------------------//
+
+// The operators that connect different upper indices (theory note section 6).
+//
+// They are the reason the library has two representations rather than one.
+// Everything in the field algebra is local in (theta, phi); these are local in
+// (l, m) and not in position, so "the gradient of a product" is necessarily
+// evaluated in both -- the product in one, the gradient in the other. Nothing
+// here can be a phase-1 node.
+//
+// In the spectral domain each is a multiplication of the coefficients by an
+// l-dependent factor with no coupling between different (l, m):
+//
+//   eth      Y^N_{lm} = -sqrt((l - N)(l + N + 1)) Y^{N+1}_{lm}
+//   eth-bar  Y^N_{lm} = +sqrt((l + N)(l - N + 1)) Y^{N-1}_{lm}
+//
+// **The overall signs are a convention this library cannot settle from the
+// inside.** The theory note flags them as needing to be fixed against Phinney
+// & Burridge and says the magnitudes are not in doubt; the two are
+// implemented as the note states them. What *is* checked, and pins everything
+// but the common sign, is that eth-bar eth is the surface Laplacian on a
+// scalar -- the factors multiply to -l(l+1) -- and that the commutator is
+// -2N. Flipping the sign of both operators leaves both identities intact.
+//
+// The degree ranges look after themselves. Raising a field at N >= 0 gives a
+// field starting at l = N + 1, and the factor at l = N is sqrt(0) = 0, so the
+// coefficient that has nowhere to go was going to be zero anyway. Lowering
+// gives a field starting at a *lower* degree, whose extra coefficient has no
+// source; it is zero, which is what a field with no content there means.
+
+namespace EthDetails {
+
+using Int = std::ptrdiff_t;
+
+template <RealFloatingPoint Real>
+constexpr Real RaisingFactor(Int l, Int n) {
+  const auto a = static_cast<Real>(l - n);
+  const auto b = static_cast<Real>(l + n + 1);
+  return -std::sqrt(a * b);
+}
+
+template <RealFloatingPoint Real>
+constexpr Real LoweringFactor(Int l, Int n) {
+  const auto a = static_cast<Real>(l + n);
+  const auto b = static_cast<Real>(l - n + 1);
+  return std::sqrt(a * b);
+}
+
+}  // namespace EthDetails
+
+// A coefficient of an expansion, or zero where it has none.
+//
+// Lowering reaches degrees below the source's minimum, where the source has
+// no coefficient because the harmonic does not exist. That is not a missing
+// value to be looked up but a zero: a field of upper index N has no content
+// below degree |N|.
+//
+// It also fills in the negative orders a real field does not store, by
+// f_{l,-m} = (-1)^m conj(f_{lm}), so that raising or lowering a real scalar
+// gives the right thing rather than reading off the end.
+template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
+auto Coefficient(const SpinExpansion<N, Grid, Value>& expansion,
+                 std::ptrdiff_t l, std::ptrdiff_t m) {
+  using Complex = std::complex<typename Grid::Real>;
+  if (l < expansion.MinDegree() || l > expansion.MaxDegree()) return Complex{};
+  if (m < -l || m > l) return Complex{};
+  if constexpr (std::same_as<Value, RealValued>) {
+    if (m < 0) {
+      return static_cast<typename Grid::Real>(MinusOneToPower(m)) *
+             std::conj(expansion[l, -m]);
+    }
+  }
+  return expansion[l, m];
+}
+
+// Raise the upper index by one. The result is an expansion at N + 1 over the
+// same degrees, less the one the raised field cannot carry.
+template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
+auto Raise(const SpinExpansion<N, Grid, Value>& expansion) {
+  using Real = typename Grid::Real;
+  auto raised =
+      SpinExpansion<N + 1, Grid, ComplexValued>(expansion.Grid(),
+                                                expansion.MaxDegree());
+  for (auto l : raised.Degrees()) {
+    for (auto m : raised.Orders(l)) {
+      raised[l, m] = EthDetails::RaisingFactor<Real>(l, N) *
+                     Coefficient(expansion, l, m);
+    }
+  }
+  return raised;
+}
+
+// Lower it by one.
+template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
+auto Lower(const SpinExpansion<N, Grid, Value>& expansion) {
+  using Real = typename Grid::Real;
+  auto lowered =
+      SpinExpansion<N - 1, Grid, ComplexValued>(expansion.Grid(),
+                                                expansion.MaxDegree());
+  for (auto l : lowered.Degrees()) {
+    for (auto m : lowered.Orders(l)) {
+      lowered[l, m] = EthDetails::LoweringFactor<Real>(l, N) *
+                      Coefficient(expansion, l, m);
+    }
+  }
+  return lowered;
+}
+
+}  // namespace GSHTrans
+
+#endif  // GSH_TRANS_ETH_GUARD_H

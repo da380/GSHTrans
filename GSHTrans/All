@@ -5,5 +5,6 @@
 #include "Core"
 #include "Field"
 #include "Tensor"
+#include "Expansion"
 
 #endif

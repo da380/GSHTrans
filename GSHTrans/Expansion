@@ -1,0 +1,9 @@
+#ifndef GSH_TRANS_EXPANSION_MODULE_H
+#define GSH_TRANS_EXPANSION_MODULE_H
+
+// The spectral side: a field's coefficients as an object rather than a raw
+// buffer, and the operators that connect different upper indices.
+#include "src/Expansion/SpinExpansion.h"
+#include "src/Expansion/Eth.h"
+
+#endif

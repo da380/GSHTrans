@@ -31,6 +31,10 @@ add_executable(TestTensorReality
                TestTensorReality.cpp)
 target_link_libraries(TestTensorReality PRIVATE GSHTrans gtest_main)
 
+add_executable(TestExpansion
+               TestExpansion.cpp)
+target_link_libraries(TestExpansion PRIVATE GSHTrans gtest_main)
+
 add_executable(TestWigner
   TestWigner.cpp)
 target_link_libraries(TestWigner PRIVATE GSHTrans gtest_main)
@@ -70,9 +74,12 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/Tensor/Orbits.h
   GSHTrans/src/Tensor/TensorField.h
   GSHTrans/src/Tensor/TensorExpr.h
+  GSHTrans/src/Expansion/SpinExpansion.h
+  GSHTrans/src/Expansion/Eth.h
   GSHTrans/Core
   GSHTrans/Field
   GSHTrans/Tensor
+  GSHTrans/Expansion
   GSHTrans/All
 )
 
@@ -97,6 +104,7 @@ gtest_discover_tests(TestTensorIndices)
 gtest_discover_tests(TestTensorField)
 gtest_discover_tests(TestTensorAlgebra)
 gtest_discover_tests(TestTensorReality)
+gtest_discover_tests(TestExpansion)
 gtest_discover_tests(TestWigner)
 gtest_discover_tests(TestGaussLegendreGrid)
 gtest_discover_tests(TestRealFieldSymmetry)
