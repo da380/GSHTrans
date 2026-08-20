@@ -55,8 +55,9 @@ namespace GSHTrans {
 // So applying Raise or Lower to each component of a tensor expansion gives
 // the eth of each component as a spin-weighted function, which for rank >= 1
 // is not a component of grad T. Nothing in the types says so, because a
-// tensor's components are ordinary spin expansions. See section 7 of
-// docs/gshtrans-reference.tex, which gives d^sigma in full.
+// tensor's components are ordinary spin expansions. Use SurfaceGradient,
+// which is d^sigma; section 7 of docs/gshtrans-reference.tex gives it in
+// full.
 
 namespace EthDetails {
 

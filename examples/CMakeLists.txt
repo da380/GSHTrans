@@ -15,6 +15,7 @@ set(GSHTRANS_EXAMPLES
   12-expansions
   13-raising-and-lowering
   14-wigner-functions
+  15-surface-gradient
 )
 
 foreach(example IN LISTS GSHTRANS_EXAMPLES)

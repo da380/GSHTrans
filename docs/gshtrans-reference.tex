@@ -476,7 +476,7 @@ operators coincide there and only there.
 
 \begin{quote}
   \textbf{Applying $\eth$ to each component of a tensor does not give the
-  gradient of the tensor.}  It gives the $\eth$ of each component as a
+  gradient of the tensor.}  Use \code{SurfaceGradient}.  It gives the $\eth$ of each component as a
   spin-weighted function, which for $q\geq 1$ is not a component of
   $\nabla\mathbf{T}$ and in general is not a component of anything.
 \end{quote}
@@ -488,25 +488,63 @@ reach for first.  They are simply not the tensor operator, and nothing in
 their types says so, because a tensor expansion's components are ordinary
 spin expansions.
 
-$\partial^{\sigma}$ is not currently implemented.  Implementing it is
-well-defined and fits the existing machinery: the slot shifts couple
-different components \emph{at the same $(l,m)$}, which is exactly what a
-tensor expansion holds, and prepending a slot is what \code{MultiIndex}
-already does.  Two things would need deciding.  The $\sigma=0$ component is
-the radial derivative, which an angular library cannot supply --- though
-the \emph{surface} gradient $\nabla_1$ has no $\ebasis{0}$ component at all
-(D\&T C.145), so a surface-gradient operator is complete without it.  And
-on a reality-reduced tensor a shifted slot may name a derived component,
-whose spectral form reverses the order index by \eqref{eq:complevel} rather
-than acting at fixed $(l,m)$.
+\subsection{What is implemented}
+
+\code{SurfaceGradient} is $\nabla_1$: \eqref{eq:dminus} and
+\eqref{eq:dplus} without the $r^{-1}$, taking a rank-$q$ tensor expansion
+to a rank-$(q+1)$ one.
+
+\paragraph{No radial part.}  $\partial^0$ is $\partial/\partial r$, which
+an angular library cannot supply; but the \emph{surface} gradient has no
+$\ebasis{0}$ component at all (D\&T C.145), so the operator is complete
+without it and the radial derivative is the user's to provide.  What that
+means for the result is that its $\sigma=0$ block is stored and zero: a
+rank-$(q+1)$ tensor whose $\ebasis{0}$ slot vanishes is an ordinary
+tensor, and keeping it as one leaves the result composable with
+contraction, further gradients and the transform, for a third of the
+storage.
+
+\paragraph{The result has no symmetry and keeps the operand's reality.}
+$\nabla_1$ of a symmetric tensor is not symmetric in the new slot against
+the old ones, and inferring a symmetry from an operator is the problem
+\code{Materialise} declined to solve.  $\nabla_1$ of a real tensor is
+real, so only the reduced set is computed.
+
+\paragraph{It needed one thing phase 5 had left out.}  Every term is a
+coefficient of some component at fixed $(l,m)$, and the shifted components
+need not be stored.  \code{TensorExpansion::Coefficient} now answers for
+\emph{any} representable component, resolving the stored case, a
+permutation relative, a reality relative by \eqref{eq:complevel}, a real
+block's reduced $m\geq 0$ storage, a pinning as imaginary, and a vanishing
+orbit.  It is the spectral counterpart of phase~4's component accessor and
+closes the asymmetry noted above.
+
+\paragraph{What the tests pin.}  On a scalar the operator is $\eth$ up to
+$\sqrt2$, which checks the $\Omega$ factors and nothing else.  The metric
+trace of the \emph{second} gradient of a scalar is the surface Laplacian,
+$-l(l+1)$ --- and that runs through the connection terms, since
+$\partial^-$ of the $+1$ component subtracts the $0$ component, so the
+identity fails outright if the operator is $\eth$ applied component-wise.
+The chain rule \eqref{eq:leibniz} is checked at rank one, in the spatial
+domain.  And the gradient of a real tensor is checked against the same
+field widened to a complex one, which exercises reading derived components
+and writing pinned ones.
+
+\paragraph{Divergence and curl} are contractions of the gradient (D\&T
+C.6.2).  Contraction is pointwise, so a caller evaluates the gradient and
+contracts with the machinery of \S\ref{sec:types}; there is no separate
+operator.
 
 \paragraph{One further property worth knowing.}  $\partial^{\sigma}$
 preserves the chain rule as an operator on fields, D\&T (C.154)--(C.155):
 $\nabla(\mathbf{T}\mathbf{P}) = (\nabla\mathbf{T})\mathbf{P} +
 \mathbf{T}(\nabla\mathbf{P})$ gives
-$\partial^\sigma(T^{\alpha\ldots}P^{\beta\ldots}) =
-(\partial^\sigma T^{\alpha\ldots})P^{\beta\ldots} +
-T^{\alpha\ldots}(\partial^\sigma P^{\beta\ldots})$.  It does \emph{not}
+\begin{equation}
+  \partial^\sigma(T^{\alpha\ldots}P^{\beta\ldots}) =
+  (\partial^\sigma T^{\alpha\ldots})P^{\beta\ldots} +
+  T^{\alpha\ldots}(\partial^\sigma P^{\beta\ldots}).
+  \label{eq:leibniz}
+\end{equation}  It does \emph{not}
 hold coefficient by coefficient, because a product of fields is not a
 product of coefficients --- which is the same fact that makes ``the
 gradient of a product'' an operation in two representations.

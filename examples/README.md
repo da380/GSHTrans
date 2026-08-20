@@ -20,6 +20,7 @@ the point rather than only asserting it.
 | `12-expansions` | the spectral side, indexed by degree and order |
 | `13-raising-and-lowering` | `ð` and `ð̄`, and the surface Laplacian |
 | `14-wigner-functions` | the `d`-functions themselves: access, the value convention, the relations that pin it, and a plot |
+| `15-surface-gradient` | the contravariant derivative of P&B: what it is, and why it is not `ð` |
 
 `wig` and `wigner3j_tests` are standalone Wigner 3-j experiments and are not
 part of the series.
