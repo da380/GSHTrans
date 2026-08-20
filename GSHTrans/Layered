@@ -1,0 +1,10 @@
+#ifndef GSH_TRANS_LAYERED_MODULE_H
+#define GSH_TRANS_LAYERED_MODULE_H
+
+// Three-dimensional fields: a radial grid crossed with an angular one, held as
+// a stack of angular slices. Two-dimensional is the primitive; a slice is an
+// ordinary spin field.
+#include "src/Layered/LayeredSpinField.h"
+#include "src/Layered/RadialGrid.h"
+
+#endif

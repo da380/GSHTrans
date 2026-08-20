@@ -38,6 +38,10 @@ add_executable(TestExpansion
                TestExpansion.cpp)
 target_link_libraries(TestExpansion PRIVATE GSHTrans gtest_main)
 
+add_executable(TestLayered
+               TestLayered.cpp)
+target_link_libraries(TestLayered PRIVATE GSHTrans gtest_main)
+
 add_executable(TestWigner
   TestWigner.cpp)
 target_link_libraries(TestWigner PRIVATE GSHTrans gtest_main)
@@ -81,10 +85,13 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/Expansion/Eth.h
   GSHTrans/src/Expansion/TensorExpansion.h
   GSHTrans/src/Expansion/ContravariantDerivative.h
+  GSHTrans/src/Layered/RadialGrid.h
+  GSHTrans/src/Layered/LayeredSpinField.h
   GSHTrans/Core
   GSHTrans/Field
   GSHTrans/Tensor
   GSHTrans/Expansion
+  GSHTrans/Layered
   GSHTrans/All
 )
 
@@ -110,6 +117,7 @@ gtest_discover_tests(TestTensorField)
 gtest_discover_tests(TestTensorAlgebra)
 gtest_discover_tests(TestTensorReality)
 gtest_discover_tests(TestExpansion)
+gtest_discover_tests(TestLayered)
 gtest_discover_tests(TestWigner)
 gtest_discover_tests(TestGaussLegendreGrid)
 gtest_discover_tests(TestRealFieldSymmetry)

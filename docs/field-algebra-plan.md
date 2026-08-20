@@ -1597,3 +1597,63 @@ the same status as raising and lowering, and for the same reason: phase 1's
 aliasing theorem rests on every node reading its operands only at the point it
 is writing. A layered expression may be lazy in its *angular* structure and
 must be materialised before anything radial touches it.
+
+### 17.5 Step 1 as built, and what it measures
+
+`GSHTrans/src/Layered/RadialGrid.h` and `GSHTrans/src/Layered/LayeredSpinField.h`,
+with `tests/TestLayered.cpp`. `RadialGrid` is the thin handle §17.2 describes,
+validating only what it can — non-empty, sorted, non-negative, weights matching
+in length — and carrying an identity so two grids can be compared without
+comparing every node. `LayeredSpinField` is the radius-major buffer, `Slice(r)`
+returns a `SpinFieldView`, `Broadcast` lifts an angular expression, and `Expand`
+/ `Evaluate` go through **one batched call** rather than a loop over radii.
+
+The batched result agrees with the per-radius loop *exactly*, bit for bit, which
+is the property worth having: batching is a scheduling change and must not be a
+numerical one.
+
+**The measurement.** Per-radius loop against one batched call, `n = 2`, this
+laptop (8 cores):
+
+| lMax | nR | threads | per-radius | batched | speedup |
+|-----:|---:|--------:|-----------:|--------:|--------:|
+|   64 |  32 |      1 |     6.0 ms |   3.0 ms |  2.00× |
+|   64 | 100 |      8 |     8.0 ms |   4.2 ms |  1.89× |
+|  128 |  32 |      1 |    57.9 ms |  24.0 ms |  2.42× |
+|  128 | 100 |      8 |    59.4 ms |  30.4 ms |  1.96× |
+|  256 |  32 |      1 |   436.3 ms | 191.0 ms |  2.28× |
+|  256 |  32 |      8 |   147.3 ms | 135.7 ms |  **1.09×** |
+|  256 | 100 |      1 |  1398.0 ms | 609.8 ms |  2.29× |
+|  256 | 100 |      8 |   484.5 ms | 433.8 ms |  **1.12×** |
+
+Sequentially the gain is ~2.3× at every size, which is step F doing what it was
+built for. But at `lMax = 256` on 8 threads it **collapses to 1.12×**, while
+holding 1.96× at `lMax = 128`. This is not bandwidth, as first supposed. It is
+the chunk rule, and it is exact:
+
+    lMax = 256, n = 2:  coefficient block = 66045 complex doubles = 1.06 MB
+    forward chunk at 1 thread = 8      forward chunk at 8 threads = 1
+
+The forward transform's thread-private accumulator is `chunk × coefficientSize`,
+so the direction-aware rule of `core-plan.md` §10 divides the cache budget by the
+thread count and finds room for exactly **one** field. The batched forward at
+that size *is* the loop; the residual 1.12× is shared setup and nothing more.
+The inverse, which carries no accumulator and so keeps `copies = 1`, still gains
+**1.63×** under the same conditions.
+
+Two consequences, both for the target application rather than for this step:
+
+- **The forward accumulator is the binding constraint at operator sizes**, and it
+  binds at 8 threads, not at the 128 that §10 imagined. DSpecM3D at `lMax = 256`
+  over many radii, threaded, gets no batching benefit forward. This is the
+  strongest argument yet for the §12 GEMM restructure, which removes the
+  per-thread accumulator by making the reduction a matrix product: the case for
+  it is no longer a factor of two in the abstract but a factor of two that is
+  currently being lost outright.
+- **The two directions want different chunk rules and now demonstrably do.**
+  The direction-aware split was measured earlier at 2.0× on the batched inverse;
+  here it is what keeps the inverse at 1.63× where the forward falls to 1.12×.
+
+Neither changes step 1, which is correct and committed. Both are recorded so
+that step 4's repack measurement and the GEMM work start from numbers rather
+than from expectations.

@@ -88,7 +88,8 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/GSHTrans
           PATTERN "Core"
           PATTERN "Field"
           PATTERN "Tensor"
-          PATTERN "Expansion")
+          PATTERN "Expansion"
+          PATTERN "Layered")
 
 # Developer targets, only when this is the top-level project.
 if(PROJECT_IS_TOP_LEVEL)

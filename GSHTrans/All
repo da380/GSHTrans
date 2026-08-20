@@ -6,5 +6,6 @@
 #include "Field"
 #include "Tensor"
 #include "Expansion"
+#include "Layered"
 
 #endif
