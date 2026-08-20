@@ -1696,3 +1696,102 @@ Against that, F is the one with a deadline — field-algebra phase 2 is blocked
 on it ([C9]) — and threading a single transform interacts with the layered
 layer's parallel-over-slices, which is the nesting rule step H has to settle
 anyway. Not reordered unilaterally.
+
+---
+
+## 10. Where the efficiency work stands, and what is left worth doing
+
+Written after T11, when the options had multiplied and the path had stopped
+being obvious. It supersedes the ordering advice of §9, which was written in a
+regime this section shows we have left.
+
+### The decisive fact: there are two regimes, and they bind differently
+
+**Unbatched, `k = 1`, which is what every measurement before T11 used.** At
+`lMax = 256` on eight threads the forward transform moves 136 MB of Wigner
+values in 4.26 ms — **32 GB/s against a machine roof near 42**, so 76% of it.
+At `lMax = 128` step H already reached 39–40 GB/s, which is 95%. In this
+regime, better scheduling, better decomposition and better loops are worth at
+most about **1.3×** between them. Everything beyond that has to reduce the
+traffic.
+
+**Batched, `k = 8` with a chunk that fits, which is what phases 2–5 will always
+do.** The inverse at `lMax = 256` runs at **1.93 ms per field**. The table is
+read once per chunk, so that is about 17 MB per field — **8.8 GB/s, a fifth of
+the roof**. The arithmetic is of order 68 Mflop per field, so roughly
+35 Gflop/s across eight cores, **under a tenth of what they can do**.
+
+So in the regime that production will actually run in, **neither bandwidth nor
+arithmetic is saturated**. What binds is the loop structure itself: P1's
+corrected finding of about four memory operations per Wigner value, only one of
+which reaches DRAM.
+
+### What that does to the options
+
+| lever | at `k = 1` | at `k = 8` | cost | confidence |
+|---|---|---|---|---|
+| direction-aware chunking | — | **2.2× on the inverse** | small | measured, T11 |
+| reduced precision [C6] | ~2× | small | medium | high on traffic; needs a tighter oracle first |
+| symmetry reduction [P3, P4] | ~2× | small | large | high on traffic; irregular access |
+| transform-major layout + GEMM [P5] | ~1.3× | **potentially large** | large | the only lever aimed at what binds |
+| generation, F′ rungs B and C | — | — | large | measured to lose (T11) |
+| polar truncation | ~1.5–2× | ~1.5–2× | medium | **not previously in this document** |
+
+Two entries need saying out loud.
+
+**The traffic-reduction levers are worth much less than this document assumed**,
+because its arithmetic was done in the `k = 1` regime. Halving the bytes per
+stored value helps a stage at 76% of the roof; it does very little to one at
+20% of it. Batching has already bought most of what precision and symmetry
+would buy again, and they do not compose — they are two ways of spending the
+same headroom.
+
+**Polar truncation was never in the option set and should be.** `d^l_{nm}(θ)`
+falls off like `sin^{|m|}(θ)`, so at high `|m|` the values near the poles are
+negligible to any chosen tolerance and those `(m, θ)` pairs can be skipped
+outright. It is the only option here that makes the problem *smaller* rather
+than making the machine work better: it reduces storage and arithmetic
+together, in both regimes, and it is independent of the layout question. It is
+a standard lever in production spherical-harmonic libraries and this plan
+missed it.
+
+### The order to work in
+
+1. **Direction-aware chunking.** `Chunking::Count` divides the cache by the
+   thread count, which is the *forward* transform's rule: that direction gives
+   every thread a private accumulator of `chunk × coefficientSize`. The inverse
+   has no accumulator — its one gathered block is shared and read-only — so the
+   same rule starves it, and T11 measured the cost at **2.2×** on the batched
+   inverse. Contained, no numerical risk, and it is a defect rather than an
+   optimisation.
+2. **The target-machine run.** It settles [C11], and it is the only thing that
+   can say whether F′'s memory-and-NUMA case survives. One correction to P8
+   while waiting: an EPYC 9334 has *more* memory bandwidth per core than the
+   development laptop, not less, so "the stored path is at the DRAM roof while
+   a generated one scales with cores" may not hold there either. What survives
+   for F′ is NUMA on a 648 MB table, and the 5.4 GB one at `lMax = 512`.
+3. **Then the transform-major restructure** — step G's layout together with
+   step F's tier 2. It is the only lever pointed at what actually binds in the
+   batched regime, and **it subsumes [C11]**: a per-`m` decomposition has
+   disjoint outputs, so it needs no accumulator and no reduction, which is
+   exactly the forward transform's weak point. This document has carried the
+   layout, the GEMM and the decomposition as three separate items; they are one
+   piece of work.
+4. **Evaluate polar truncation** before [C4]'s symmetry-versus-precision
+   question, since it dominates both and is independent of them.
+
+F′'s rungs B and C are not to be built, and [C4] drops below all of the above.
+
+### The strategic caveat, which matters more than the ordering
+
+The core is at 76% of the memory roof unbatched and has one clear structural
+lever batched. **Phases 2 to 5 of the field algebra have not been started**,
+and phase 2 has been unblocked since T10. A further 2× on the transform is
+worth less to what this library is *for* than having tensor fields at all, and
+the efficiency work has reached the point where each further step costs more
+and returns less than the one before it.
+
+So: take item 1 because it is nearly free, take the server numbers because
+they are being waited on anyway, and then build phase 2 — leaving the
+transform-major restructure as a well-specified piece of work to pick up when
+the field layer's real problems ask for it.
