@@ -1190,3 +1190,75 @@ parameter of the returned node, so it cannot be otherwise.
 **No lazy tensor expressions in phase 2.** That is phase 3. Phase 2 hands out
 phase-1 nodes and nothing more, so every operation on a tensor in phase 2 is
 written by the caller as operations on components.
+
+---
+
+## 13. Phase 3 in detail
+
+The tensor algebra: product, contraction, trace, permutation, symmetrisation,
+and rank-4 on rank-2. Written when phase 3 was started, on the same footing as
+§12.
+
+### 13.1 The shape of it
+
+Phase 2 gave a tensor a component accessor returning a phase-1 node. Phase 3's
+whole content is that **an operation on tensors is an operation on that
+accessor**. A tensor expression is any object with a rank, a grid and a
+`Component<Alphas...>()`; the operations build new ones whose accessors compose
+their operands', and no arithmetic happens until a component is evaluated.
+
+So the layer is lazy for free, and it needs no second expression system:
+every node it returns is a phase-1 node, and the index algebra that governs
+them is already enforced. The tensor layer's own correctness is entirely about
+*which* components it asks for.
+
+| operation | rank | component |
+|---|---|---|
+| `Permute<π>(T)` | `p` | `T^{π(α)}` — a relabelling, no arithmetic |
+| `S ⊗ T` | `p + q` | `S^α T^β`, a phase-1 product; upper indices add by `eq:N` |
+| `Contract<j,k>(T)` | `p − 2` | `Σ_α (−1)^α T^{…α…−α…}`, a phase-1 sum of three terms |
+| `Trace(T)` | `p − 2` | `Contract<0,1>` |
+| `Symmetrise(T)` | `p` | `(1/\|G\|) Σ_π sign(π) T^{π(α)}` |
+
+Two things fall out rather than being arranged. **Contraction lands at the
+right upper index by construction**: the contracted pair contributes
+`α + (−α) = 0`, so all three terms share an upper index and phase 1's `Equal`
+rule admits their sum — a contraction that paired the slots wrongly would fail
+to compile. And **permutation cannot break phase 1's aliasing theorem**,
+because it permutes tensor slots and not grid points; §8 records this and it is
+what keeps the lazy layer sound.
+
+### 13.2 The steps
+
+1. **The concept, and `Permute`.** `TensorExpr`; `IsTerminalTrait` for
+   `TensorField` so that operand storage follows phase 1's rules exactly;
+   permutation as pure relabelling, with `Transpose` for rank 2. No arithmetic,
+   so it is the step that pins the machinery for expanding a compile-time
+   index array back into a template pack.
+2. **The tensor product.** Splitting a component's multi-index between two
+   operands.
+3. **Contraction and trace**, against the metric `g_{αβ} = (−1)^α δ_{α+β,0}`.
+4. **(Anti)symmetrisation**, as a sum over the symmetry group's elements.
+5. **Materialisation** into a `TensorField`, which is where a lazy tensor stops
+   being lazy.
+
+### 13.3 Decisions taken here
+
+**Operand storage follows phase 1 exactly** — `OperandStorage`, `IsTerminal`,
+and the rule that an lvalue terminal is held by reference and everything else
+by value. The hazard that leaves is the same one Eigen has and phase 1
+documented; a second, different rule at the tensor level would be worse than
+the hazard.
+
+**A materialised expression has no symmetry unless it is asked for.** The
+product of two symmetric tensors is not symmetric, and inferring symmetry from
+an expression tree is a research problem rather than a design. `Materialise`
+therefore produces `NoSymmetry` by default and takes the symmetry as an
+explicit template argument when the caller knows better — at which point it is
+the caller's assertion, checked by construction rather than by inspection.
+
+**Vanishing and derived components propagate as they must.** A component of a
+product is derived if either factor's is; a component of a contraction is a sum
+whose terms may individually be stored, derived or vanishing. Nothing here
+needs to know: it asks the operand for a component and gets a node, and the
+`Vanishes` trait is what a traversal consults before asking at all.
