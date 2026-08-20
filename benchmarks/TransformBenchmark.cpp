@@ -14,6 +14,7 @@
 // rather than on a replica of it.
 
 #include <GSHTrans/All>
+#include <omp.h>
 
 #include <algorithm>
 #include <chrono>
@@ -21,10 +22,15 @@
 #include <complex>
 #include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <limits>
+#include <memory>
 #include <numeric>
+#include <set>
 #include <string>
+#include <thread>
+#include <utility>
 #include <vector>
 
 using namespace GSHTrans;
@@ -48,6 +54,171 @@ long ResidentMegabytes() {
     file.ignore(1 << 20, '\n');
   }
   return -1;
+}
+
+//--------------------------------------------------------------------------//
+//                             Machine facts                                //
+//--------------------------------------------------------------------------//
+//
+// Printed at the top of every run. The numbers below are unreadable without
+// them -- step H already found that cores and hardware threads are different
+// answers, and on a multi-socket machine the node count is a third. All of
+// this is Linux sysfs; elsewhere the fields come back unknown and the
+// benchmark still runs.
+
+std::string FirstLine(const std::string& path) {
+  auto file = std::ifstream(path);
+  auto line = std::string{};
+  std::getline(file, line);
+  return line;
+}
+
+// "0-7,64-71" -> 16.
+int CountCpuList(const std::string& text) {
+  auto count = 0;
+  auto i = std::size_t{0};
+  while (i < text.size()) {
+    const auto comma = text.find(',', i);
+    const auto part =
+        text.substr(i, comma == std::string::npos ? comma : comma - i);
+    const auto dash = part.find('-');
+    if (dash == std::string::npos) {
+      count += 1;
+    } else {
+      count += std::atoi(part.c_str() + dash + 1) - std::atoi(part.c_str()) + 1;
+    }
+    if (comma == std::string::npos) break;
+    i = comma + 1;
+  }
+  return count;
+}
+
+// Distinct (socket, core) pairs in /proc/cpuinfo. Zero if it does not carry
+// them, in which case the caller must say so rather than quietly reporting
+// hardware threads as cores.
+int PhysicalCores() {
+  auto file = std::ifstream("/proc/cpuinfo");
+  auto line = std::string{};
+  auto seen = std::set<std::pair<int, int>>{};
+  auto socket = 0;
+  while (std::getline(file, line)) {
+    const auto colon = line.find(':');
+    if (colon == std::string::npos) continue;
+    auto key = line.substr(0, colon);
+    while (!key.empty() && (key.back() == ' ' || key.back() == '\t')) {
+      key.pop_back();
+    }
+    const auto value = std::atoi(line.c_str() + colon + 1);
+    if (key == "physical id") {
+      socket = value;
+    } else if (key == "core id") {
+      seen.insert({socket, value});
+    }
+  }
+  return static_cast<int>(seen.size());
+}
+
+// Size in kilobytes of the cache at this level on cpu0, and how many hardware
+// threads share it. The second is what step F's chunk formula needs: P8 sizes
+// a chunk against per-core last-level cache, not against the whole of it.
+long CacheKilobytes(int level, int& sharedBy) {
+  sharedBy = 0;
+  for (auto index = 0; index < 10; ++index) {
+    const auto dir = "/sys/devices/system/cpu/cpu0/cache/index" +
+                     std::to_string(index) + "/";
+    const auto levelText = FirstLine(dir + "level");
+    if (levelText.empty() || std::atoi(levelText.c_str()) != level) continue;
+    if (FirstLine(dir + "type") == "Instruction") continue;
+    const auto sizeText = FirstLine(dir + "size");
+    if (sizeText.empty()) continue;
+    auto kilobytes = std::atol(sizeText.c_str());
+    if (sizeText.find('M') != std::string::npos) kilobytes *= 1024;
+    sharedBy = CountCpuList(FirstLine(dir + "shared_cpu_list"));
+    return kilobytes;
+  }
+  return 0;
+}
+
+int NumaNodes() {
+  auto count = 0;
+  for (auto node = 0; node < 512; ++node) {
+    const auto path = "/sys/devices/system/node/node" + std::to_string(node) +
+                      "/cpulist";
+    if (!FirstLine(path).empty()) ++count;
+  }
+  return count;
+}
+
+long MemAvailableMegabytes() {
+  auto file = std::ifstream("/proc/meminfo");
+  auto key = std::string{};
+  while (file >> key) {
+    if (key == "MemAvailable:") {
+      long value = 0;
+      file >> value;
+      return value / 1024;
+    }
+    file.ignore(1 << 20, '\n');
+  }
+  return -1;
+}
+
+const char* Environment(const char* name) {
+  const auto* value = std::getenv(name);
+  return value != nullptr ? value : "(unset)";
+}
+
+int HardwareThreads() {
+  const auto reported = static_cast<int>(std::thread::hardware_concurrency());
+  return reported > 0 ? reported : omp_get_max_threads();
+}
+
+void PrintMachineFacts() {
+  const auto threads = HardwareThreads();
+  const auto cores = PhysicalCores();
+  auto l3Shared = 0;
+  auto l2Shared = 0;
+  const auto l3 = CacheKilobytes(3, l3Shared);
+  const auto l2 = CacheKilobytes(2, l2Shared);
+
+  std::printf("\nMachine\n");
+  for (auto i = 0; i < 78; ++i) std::putchar('-');
+  std::putchar('\n');
+  std::printf("  model            %s\n",
+              FirstLine("/sys/devices/virtual/dmi/id/product_name").c_str());
+  std::printf("  hardware threads %d\n", threads);
+  if (cores > 0) {
+    std::printf("  physical cores   %d (%.0f threads per core)\n", cores,
+                static_cast<double>(threads) / cores);
+  } else {
+    std::printf("  physical cores   unknown (/proc/cpuinfo carries no core id)\n");
+  }
+  std::printf("  NUMA nodes       %d\n", NumaNodes());
+  if (l2 > 0) std::printf("  L2               %ld KB, shared by %d threads\n", l2, l2Shared);
+  if (l3 > 0) {
+    std::printf("  L3               %ld KB, shared by %d threads (%.1f MB per core)\n",
+                l3, l3Shared, l3Shared > 0 && cores > 0
+                    ? l3 / 1024.0 / (l3Shared / (static_cast<double>(threads) / cores))
+                    : 0.0);
+  }
+  std::printf("  MemAvailable     %ld MB\n", MemAvailableMegabytes());
+  std::printf("  omp_get_max_threads %d\n", omp_get_max_threads());
+  std::printf("  OMP_NUM_THREADS=%s  OMP_PROC_BIND=%s  OMP_PLACES=%s\n",
+              Environment("OMP_NUM_THREADS"), Environment("OMP_PROC_BIND"),
+              Environment("OMP_PLACES"));
+}
+
+// Powers of two up to the hardware thread count, with the physical core count
+// inserted -- step H found that the last doubling, from cores to threads, goes
+// the wrong way, so the ladder has to contain both to show it.
+std::vector<int> ThreadLadder() {
+  const auto threads = HardwareThreads();
+  const auto cores = PhysicalCores();
+  auto ladder = std::set<int>{1};
+  for (auto t = 2; t <= threads; t *= 2) ladder.insert(t);
+  if (cores > 1 && cores <= threads) ladder.insert(cores);
+  ladder.insert(threads);
+  return std::vector<int>(ladder.begin(), ladder.end());
 }
 
 // Run `action` enough times to measure it, and return seconds per call.
@@ -78,17 +249,72 @@ double TimePerCall(Action&& action, double target = 0.15, int windows = 5) {
   return best;
 }
 
-// A STREAM-style triad, to put the transform's achieved bandwidth on a scale.
-double TriadBandwidthGBs() {
-  constexpr std::size_t n = 40'000'000;  // ~960 MB touched, far beyond L3
-  auto a = std::vector<double>(n, 1.0);
-  auto b = std::vector<double>(n, 2.0);
-  auto c = std::vector<double>(n, 3.0);
-  const auto seconds = TimePerCall([&] {
-    for (std::size_t i = 0; i < n; ++i) a[i] = b[i] + 3.0 * c[i];
-  });
-  const auto bytes = 3.0 * n * sizeof(double);  // two read, one written
-  return bytes / seconds / 1e9;
+//--------------------------------------------------------------------------//
+//                          Bandwidth roofs                                 //
+//--------------------------------------------------------------------------//
+//
+// Two of them, because the transform's GB/s column needs a ceiling and the
+// ceiling is not one number on a multi-socket machine.
+//
+// The `touch` argument is the point. Pages are placed on the NUMA node of the
+// thread that first writes them, and `Wigner::_data` is a std::vector<Real>
+// built by its size constructor (Wigner.h:131), so the whole table is
+// zero-filled by the single constructing thread and lives on one node however
+// many nodes the machine has. Touching with one thread reproduces that;
+// touching with the full team is the roof the transform could reach if the
+// table were placed deliberately. On a one-node machine the two agree, and
+// that agreement is itself the finding.
+
+// Uninitialised, then written by `touch` threads: `new double[n]` does not
+// touch, so first touch really is the parallel loop.
+std::unique_ptr<double[]> MakeTouched(std::size_t n, int touch, double value) {
+  auto data = std::unique_ptr<double[]>(new double[n]);
+  auto* raw = data.get();
+  const auto count = static_cast<std::ptrdiff_t>(n);
+#pragma omp parallel for schedule(static) num_threads(touch)
+  for (std::ptrdiff_t i = 0; i < count; ++i) raw[i] = value;
+  return data;
+}
+
+// STREAM triad: two streams read, one written.
+double TriadBandwidthGBs(int threads, int touch, int windows = 5) {
+  constexpr std::size_t n = 40'000'000;  // ~960 MB touched, far beyond any L3
+  auto a = MakeTouched(n, touch, 1.0);
+  auto b = MakeTouched(n, touch, 2.0);
+  auto c = MakeTouched(n, touch, 3.0);
+  auto* ap = a.get();
+  auto* bp = b.get();
+  auto* cp = c.get();
+  const auto count = static_cast<std::ptrdiff_t>(n);
+  const auto seconds = TimePerCall(
+      [&] {
+#pragma omp parallel for schedule(static) num_threads(threads)
+        for (std::ptrdiff_t i = 0; i < count; ++i) ap[i] = bp[i] + 3.0 * cp[i];
+      },
+      0.15, windows);
+  return 3.0 * n * sizeof(double) / seconds / 1e9;
+}
+
+// A read-only scan over an array of the given size. This is the closer
+// analogue of the Legendre stage, which reads the Wigner table and writes
+// something much smaller, so it is the roof the GB/s column should be read
+// against.
+double ScanBandwidthGBs(double bytes, int threads, int touch, int windows = 5) {
+  const auto n = static_cast<std::size_t>(bytes / sizeof(double));
+  auto a = MakeTouched(n, touch, 1.0);
+  auto* ap = a.get();
+  const auto count = static_cast<std::ptrdiff_t>(n);
+  static volatile double sink = 0.0;  // keeps the sum from being optimised out
+  const auto seconds = TimePerCall(
+      [&] {
+        auto sum = 0.0;
+#pragma omp parallel for schedule(static) reduction(+ : sum) \
+    num_threads(threads)
+        for (std::ptrdiff_t i = 0; i < count; ++i) sum += ap[i];
+        sink = sum;
+      },
+      0.15, windows);
+  return static_cast<double>(n) * sizeof(double) / seconds / 1e9;
 }
 
 // Bytes of Wigner values one transform at this degree and upper index streams:
@@ -129,6 +355,97 @@ bool Want(const std::string& name) {
              sectionsWanted.end();
 }
 
+// For sections that cost too much to run by accident: named or not run.
+bool WantNamed(const std::string& name) {
+  return !sectionsWanted.empty() && Want(name);
+}
+
+double TableMegabytes(Int lMax, Int nMax) {
+  auto bytes = 0.0;
+  for (auto n = -nMax; n <= nMax; ++n) bytes += WignerBytes(lMax, n);
+  return bytes / 1e6;
+}
+
+// The thread-scaling table [C11] needs, with both directions side by side.
+//
+// Side by side is the design, not the presentation. Step H left the lMax = 256
+// shortfall with two unseparated candidates -- thread-private accumulators
+// competing for last-level cache, and a serialised reduction -- and T10
+// removed the second without being able to measure the first. The inverse
+// transform's colatitudes write disjoint rows of the field and share only
+// read-only input, so it carries no accumulator and does no reduction; the
+// forward transform's colatitudes all contribute to every coefficient, so each
+// thread accumulates privately and the partials are summed at the end.
+// Everything else about the two is the same stream over the same table. The
+// fwd/inv column is therefore the accumulator's cost with the rest divided
+// out, and its growth with thread count is the answer [C11] is waiting for.
+void RunScaling(Int lMax, Int nMax, int windows) {
+  const auto n = nMax;
+  const auto started = Clock::now();
+  auto grid = GaussLegendreGrid<Real, All, All>(lMax, nMax, FFTWpp::Measure);
+  const auto buildSeconds =
+      std::chrono::duration<double>(Clock::now() - started).count();
+
+  auto field = FFTWpp::vector<Complex>(grid.FieldSize());
+  auto coefficients = FFTWpp::vector<Complex>(grid.CoefficientSize(lMax, n));
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+    field[i] = Complex{0.5 + 0.001 * i, -0.25 + 0.002 * i};
+  }
+  const auto bytes = WignerBytes(lMax, n);
+  const auto accumulator =
+      static_cast<double>(grid.CoefficientSize(lMax, n)) * sizeof(Complex) / 1e6;
+
+  std::printf(
+      "\nlMax = %zd, nMax = %zd, complex.  Table %.0f MB built in %.2f s; one\n"
+      "transform streams %.0f MB; each thread's forward accumulator is "
+      "%.2f MB.\n\n",
+      lMax, nMax, TableMegabytes(lMax, nMax), buildSeconds, bytes / 1e6,
+      accumulator);
+  std::printf("%8s %10s %8s %10s %8s %8s %10s %9s %9s\n", "threads", "fwd(ms)",
+              "speedup", "inv(ms)", "speedup", "fwd/inv", "accum(MB)",
+              "fwd GB/s", "inv GB/s");
+
+  auto forwardBase = 0.0;
+  auto inverseBase = 0.0;
+  for (auto threads : ThreadLadder()) {
+    const auto policy = threads == 1 ? Execution::Sequential()
+                                     : Execution::Parallel(threads);
+    const auto forward = TimePerCall(
+        [&] {
+          grid.ForwardTransformation(lMax, n, field, coefficients, policy);
+        },
+        0.15, windows);
+    const auto inverse = TimePerCall(
+        [&] {
+          grid.InverseTransformation(lMax, n, coefficients, field, policy);
+        },
+        0.15, windows);
+    if (threads == 1) {
+      forwardBase = forward;
+      inverseBase = inverse;
+    }
+    std::printf("%8d %10.3f %7.2fx %10.3f %7.2fx %8.2f %10.1f %9.1f %9.1f\n",
+                threads, forward * 1e3, forwardBase / forward, inverse * 1e3,
+                inverseBase / inverse, forward / inverse,
+                accumulator * threads, bytes / forward / 1e9,
+                bytes / inverse / 1e9);
+  }
+}
+
+// Skip rather than swap: at lMax = 512 the table is 5.4 GB and at 1024 it is
+// 43 GB, and a run that starts swapping measures the disk.
+bool AffordableAt(Int lMax, Int nMax) {
+  const auto needed = TableMegabytes(lMax, nMax) * 1.4;
+  const auto available = MemAvailableMegabytes();
+  if (available > 0 && needed > available) {
+    std::printf(
+        "\nlMax = %zd skipped: needs about %.0f MB, MemAvailable is %ld MB.\n",
+        lMax, needed, available);
+    return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -136,10 +453,39 @@ int main(int argc, char** argv) {
 
   std::printf("GSHTrans transform benchmark (core-plan.md section 5)\n");
   std::printf("double precision, single field per call (k = 1)\n");
+  std::printf(
+      "sections: stream grid transforms threading server huge "
+      "(all, if none named)\n");
 
-  if (Want("stream")) {
-    const auto triad = TriadBandwidthGBs();
-    std::printf("\nSTREAM-style triad bandwidth: %.1f GB/s\n", triad);
+  PrintMachineFacts();
+
+  //------------------------------------------------------------------------//
+  //                          Bandwidth roofs                                //
+  //------------------------------------------------------------------------//
+
+  if (Want("stream") || Want("roof")) {
+    PrintHeader("Bandwidth roofs: triad, and a read scan of one transform's table");
+    const auto tableBytes = WignerBytes(256, 2);
+    std::printf("scan array is %.0f MB, the Wigner bytes one lMax = 256, "
+                "n = 2 transform streams\n\n",
+                tableBytes / 1e6);
+    std::printf("%8s %14s %14s %14s %10s\n", "threads", "triad GB/s",
+                "scan GB/s", "scan GB/s", "penalty");
+    std::printf("%8s %14s %14s %14s %10s\n", "", "(team touch)", "(team touch)",
+                "(1 thread touch)", "");
+    for (auto threads : ThreadLadder()) {
+      const auto triad = TriadBandwidthGBs(threads, threads, 3);
+      const auto scanTeam = ScanBandwidthGBs(tableBytes, threads, threads, 3);
+      const auto scanOne = ScanBandwidthGBs(tableBytes, threads, 1, 3);
+      std::printf("%8d %14.1f %14.1f %14.1f %9.2fx\n", threads, triad, scanTeam,
+                  scanOne, scanOne > 0 ? scanTeam / scanOne : 0.0);
+    }
+    std::printf(
+        "\nThe last two columns differ only in which threads first wrote the\n"
+        "pages. The Wigner table is zero-filled by one thread in the grid\n"
+        "constructor, so the transform gets the third column, not the second.\n"
+        "A penalty well above 1 means the table wants deliberate placement\n"
+        "and is not a fact about the transform at all.\n");
   }
 
   //------------------------------------------------------------------------//
@@ -291,10 +637,39 @@ int main(int argc, char** argv) {
 
   }
 
-  std::printf(
-      "\nFFT column is a call truncated to the smallest legal degree: full FFT\n"
-      "work, negligible Legendre work. Leg is the difference. GB/s is the\n"
-      "Wigner bytes that call streams divided by the Legendre time.\n");
+  //------------------------------------------------------------------------//
+  //             Thread scaling to the full machine ([C11])                  //
+  //------------------------------------------------------------------------//
+
+  if (Want("server")) {
+    PrintHeader("Thread scaling to the full machine (core-plan.md [C11])");
+    std::printf(
+        "Step H's decomposition -- colatitudes, with a private accumulator per\n"
+        "thread for the forward direction -- was measured to eight threads and\n"
+        "is predicted not to survive 64-128: the accumulators become the\n"
+        "dominant traffic and the colatitude axis is only lMax + 1 long. These\n"
+        "rows are what decides that, and nothing on a laptop can.\n");
+    for (auto lMax : {Int{128}, Int{256}, Int{512}}) {
+      if (!AffordableAt(lMax, 2)) continue;
+      RunScaling(lMax, 2, lMax >= 512 ? 3 : 5);
+    }
+  }
+
+  // Named explicitly or not run: the table is 43 GB and the grid takes a
+  // while to build. Worth one run, because step F' argues its crossover from
+  // the table outgrowing last-level cache and this is far past that point.
+  if (WantNamed("huge")) {
+    PrintHeader("Thread scaling at lMax = 1024");
+    if (AffordableAt(1024, 2)) RunScaling(1024, 2, 3);
+  }
+
+  if (Want("transforms")) {
+    std::printf(
+        "\nFFT column is a call truncated to the smallest legal degree: full "
+        "FFT\n"
+        "work, negligible Legendre work. Leg is the difference. GB/s is the\n"
+        "Wigner bytes that call streams divided by the Legendre time.\n");
+  }
 
   FFTWpp::CleanUp();
 }
