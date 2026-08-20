@@ -226,25 +226,48 @@ class GaussLegendreGrid
     // Every colatitude contributes to every coefficient, so the colatitudes
     // cannot simply be divided between threads writing into `out`. Each thread
     // accumulates into a private buffer and the partial sums are added at the
-    // end. The reduction is one pass over the coefficients per thread, against
-    // a colatitude loop that streams the whole Wigner block, so it does not
-    // show up.
+    // end.
+    //
+    // That addition is *partitioned*, not serialised. Each thread owns one
+    // block of the coefficient array and sums every thread's partial sums for
+    // that block alone, so the reduction runs in parallel and no thread waits
+    // on another. It used to be a critical section in which each thread added
+    // a whole coefficient array in turn, which costs one serialised pass per
+    // thread: invisible against the colatitude loop at eight threads, and
+    // 128 MB of serialised adds per transform at 128 (core-plan.md P8, and
+    // step H's own suggested fix). The decomposition itself is unchanged --
+    // thread-private accumulators over colatitudes are the wrong shape well
+    // before 128 threads, but choosing what replaces them needs a machine this
+    // was not measured on ([C11]).
     const auto size = static_cast<std::size_t>(std::ranges::size(out));
-#pragma omp parallel num_threads(ThreadCount(policy))
+    const auto threadCount = ThreadCount(policy);
+
+    // The reduction reads every thread's accumulator, so the thread-local
+    // buffers have to be published to the team. Written before the implicit
+    // barrier at the end of the colatitude loop and read after it.
+    auto partials = std::vector<Complex*>(threadCount, nullptr);
+
+#pragma omp parallel num_threads(threadCount)
     {
+      const auto thread = static_cast<std::size_t>(omp_get_thread_num());
+      const auto threads = static_cast<std::size_t>(omp_get_num_threads());
       auto& work = GetWorkspace<Scalar, true>(nPhi, _impl->flag);
       auto& partial = Accumulator(size);
       std::fill_n(partial.begin(), size, Complex{});
+      partials[thread] = partial.data();
 
-#pragma omp for schedule(static) nowait
+#pragma omp for schedule(static)
       for (Int iTheta = 0; iTheta < nTheta; iTheta++) {
         AccumulateRow(iTheta, partial.begin(), work);
       }
 
-#pragma omp critical
-      {
-        auto outIter = out.begin();
-        for (auto i = std::size_t{0}; i < size; i++) *outIter++ += partial[i];
+      const auto first = size * thread / threads;
+      const auto last = size * (thread + 1) / threads;
+      const auto outFirst = std::next(std::ranges::begin(out), first);
+      for (auto t = std::size_t{0}; t < threads; t++) {
+        const auto* p = partials[t];
+        auto outIter = outFirst;
+        for (auto i = first; i < last; i++) *outIter++ += p[i];
       }
     }
   }
