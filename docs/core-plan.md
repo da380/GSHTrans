@@ -1793,6 +1793,12 @@ missed it.
    exactly the forward transform's weak point. This document has carried the
    layout, the GEMM and the decomposition as three separate items; they are one
    piece of work.
+
+   *Written up in full in `gshtrans-reference.tex` §12* — the matrix form, the
+   arithmetic-per-memory-operation argument, the layout change, the free
+   transpose at the FFT, the real-GEMM-on-complex-data trick, what it does to
+   threading and NUMA, what it costs in test strength, and an honest estimate
+   (two or three, not an order of magnitude, because the shape is skinny).
 4. **Evaluate polar truncation** before [C4]'s symmetry-versus-precision
    question, since it dominates both and is independent of them.
 

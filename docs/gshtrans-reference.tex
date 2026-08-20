@@ -1109,6 +1109,189 @@ versions in one process; figures from different sessions are worth less
 still.  Within-run ratios --- the stage split, the batching curve --- are
 unaffected, because their terms are measured moments apart.
 
+\section{The GEMM restructure}
+\label{sec:gemm}
+
+This is the one substantial piece of performance work the library has not
+done, and \code{core-plan.md} \S10 names it as the lever aimed at what
+actually binds.  What follows is how it would work and why it should help,
+in enough detail to be argued with.
+
+\subsection{The Legendre stage is a matrix product}
+
+Written as it is implemented, the forward Legendre stage loops over
+colatitudes and accumulates:
+\begin{equation}
+  f^{n}_{lm} \mathrel{+}= w_i\, X^{n}_{lm}(\theta_i)\, F_m(\theta_i)
+  \qquad\text{for each } i, l, m .
+  \label{eq:currentloop}
+\end{equation}
+Reordered so that the sum over $\theta$ is innermost, and at fixed upper
+index $n$, it is one matrix product \emph{per order}:
+\begin{equation}
+  f^{n}_{lm} = \sum_{i} D^{(n,m)}_{l i}\, b^{(m)}_{i},
+  \qquad
+  D^{(n,m)}_{l i} = X^{n}_{lm}(\theta_i),
+  \qquad
+  b^{(m)}_{i} = w_i F_m(\theta_i).
+  \label{eq:gemv}
+\end{equation}
+Over a batch of $k$ fields the right-hand side becomes a matrix and this is
+a GEMM,
+\begin{equation}
+  \underbrace{(n_L(m) \times n_\theta)}_{D^{(n,m)}}
+  \times
+  \underbrace{(n_\theta \times k)}_{\text{weighted FFT output}}
+  \;\longrightarrow\;
+  \underbrace{(n_L(m) \times k)}_{\text{coefficients}},
+  \label{eq:gemmshape}
+\end{equation}
+with $n_L(m) = l_{\max} - \max(|n|,|m|) + 1$ degrees surviving at that
+order.  The inverse transform is the same matrix applied the other way
+round, $(n_\theta \times n_L) \times (n_L \times k)$, so \emph{one stored
+matrix serves both directions} through a transpose flag.
+
+At $l_{\max}=256$ there are $2l_{\max}+1 = 513$ such products per upper
+index, of heights $n_L$ from 257 down to 1, all with $n_\theta = 257$
+columns.
+
+\subsection{Why it should be faster}
+
+Not for the reason P2 originally gave.  The stage is not short of
+arithmetic intensity against DRAM; it is short of \emph{arithmetic per
+memory operation} (\S\ref{sec:transform}).  Count them.
+
+In \eqref{eq:currentloop}, one stored value $X$ is real and one FFT bin and
+one accumulator are complex, so each visit costs, in doubles, one load of
+$X$, two of the bin, and a load and a store of the accumulator --- seven
+accesses --- for two fused multiply-adds, or four flops.  That is about
+$0.6$ flops per double touched, and no amount of rewriting the loop moves
+it, which is what the three hand-optimised variants of P1 found.
+
+A GEMM microkernel holds a tile of the output in registers and streams the
+two operands past it.  With a tile of $m_r$ rows by $n_r$ columns, each
+step of the $K$ loop loads $m_r + n_r$ doubles and performs $m_r n_r$
+fused multiply-adds:
+\begin{equation}
+  \frac{\text{flops}}{\text{double touched}}
+    = \frac{2 m_r n_r}{m_r + n_r}
+    \;\approx\; 5.3 \quad\text{at } m_r=4,\; n_r=8,
+  \label{eq:microkernel}
+\end{equation}
+and the accumulator never leaves the registers, so its traffic vanishes
+entirely rather than being counted.  That is an order of magnitude better
+than the loop it replaces, on precisely the metric that binds.
+
+\paragraph{The DRAM traffic is unchanged.}  The table is still read once
+per batch; nothing about the restructure reduces it.  So the GEMM buys
+nothing at all in the regime where the stage is bandwidth-bound --- which
+it is, unbatched, on eight threads at $l_{\max}=128$, where it already
+reaches 39--40\,GB/s against a roof near 42.  It buys everything in the
+batched regime, where the same stage runs at about a fifth of the roof and
+under a tenth of compute peak.  Since phases 2 to 5 always batch, that is
+the regime that matters, but the distinction should be kept in view: a
+benchmark run unbatched will show the restructure doing nothing, and be
+right.
+
+\subsection{What has to change}
+
+\paragraph{The Wigner layout, which is the whole of step G's first option.}
+\eqref{eq:gemmshape} needs $D^{(n,m)}$ contiguous in $(l,\theta)$ for fixed
+$(n,m)$.  The table is currently contiguous in $(l,m)$ for fixed
+$(n,\theta)$, which is the transpose of what is wanted.  Storing it as
+$[n][m][l][\theta]$ makes each matrix a contiguous row-major block with
+leading dimension $n_\theta$, and the total size is unchanged --- summing
+$n_L(m)\, n_\theta$ over $m$ gives the same $66\,045 \times 257$ doubles
+per upper index.  \code{Wigner}'s existing \code{Storage} tag orders the
+$(n,\theta)$ axes only; this is a finer and different axis order, and it is
+what \code{RowMajor}'s deferred fate ([C7]) was waiting for.
+
+\paragraph{The FFT output has to land in $m$-major order}, since
+\eqref{eq:gemmshape} wants, for one $m$, a contiguous $(\theta,\kappa)$
+block.  That means all the FFTs run \emph{before} any of the Legendre
+stage, rather than interleaved per colatitude as now --- the intermediate
+is $n_\phi \times n_\theta \times k$ complex, which is just the field, 2.1\,MB
+at $l_{\max}=256$ and $k=1$.
+
+The transpose itself is free, for the same reason it was free in tier 1
+(P6).  A single \code{plan\_many} over $n_\theta k$ rows with output stride
+$n_\theta k$ and output distance 1 writes the result directly in
+$[m][\theta][\kappa]$ order.
+
+\paragraph{The GEMM is real, and that is a gift.}  $D$ is real while the
+data are complex, so there is no standard complex-times-real BLAS call ---
+but there does not need to be.  A complex $(n_\theta \times k)$ block with
+$\kappa$ fastest \emph{is} a real $(n_\theta \times 2k)$ block, since
+\code{std::complex} stores its parts adjacently.  So the whole stage is
+\code{dgemm} with $N = 2k$, and the doubling helps most exactly where $k$
+is small.
+
+\subsection{What it does to threading}
+
+The products at different $m$ write disjoint outputs.  So the natural
+decomposition is over orders, and it needs \textbf{no accumulator and no
+reduction in either direction} --- which is why \S10 says this restructure
+subsumes [C11].  The forward transform's thread-private accumulators, which
+are correct at eight threads and are predicted not to survive 64--128,
+simply stop existing.
+
+Two cautions.  The work per order is not constant: $n_L(m)$ falls linearly
+in $|m|$, so a static split over orders is roughly twice as unbalanced as
+it looks, and the schedule should divide work rather than count.  And a
+thread's share of the table is a set of whole $(n,m)$ blocks, which is a
+better NUMA story than the current colatitude split --- first touch during
+the table build can be made to match the split exactly, which it currently
+cannot.
+
+\subsection{What to expect, honestly}
+
+The shape is unfavourable.  A GEMM reaches a large fraction of peak when
+all three dimensions are large; here $M = n_L$ is large only for small
+$|m|$, $K = n_\theta$ is a few hundred, and $N = 2k$ is between 2 and 16.
+Skinny-$N$ GEMMs are the case general BLAS kernels handle worst, and the
+513 products per upper index are individually small enough that call
+overhead is not negligible.  A batched BLAS interface, where one call takes
+the whole set, is the right shape and not universally available.
+
+So the honest expectation is a factor of two or three in the batched
+regime, not the order of magnitude that \eqref{eq:microkernel} suggests in
+isolation --- and the measurement is the point of doing it.
+
+\subsection{What it composes with, and what it fights}
+
+\paragraph{The reflection composes, and helps more here than it would
+now.}  D\&T (C.118) gives $P^{N}_{lm}(-\mu) = (-1)^{l+N} P^{N}_{l,-m}(\mu)$,
+so the matrices at $+m$ and $-m$ are related by reversing the colatitude
+and a sign that alternates with $l$.  Splitting the input into its
+even and odd parts about $\theta = \pi/2$ turns the pair of products at
+$\pm m$ into two products of half the height, halving both the stored
+table and the arithmetic.  This is the standard trick in production
+spherical-harmonic libraries.  It is also exactly the reduction that P4
+warned would trade bandwidth for an irregular access pattern in the
+\emph{current} loop; inside a GEMM the same reduction is a clean halving of
+$K$, so the objection does not carry over.
+
+\paragraph{It fights on-the-fly generation.}  The recursion runs up degrees
+at fixed $(n,\theta)$, which produces values in exactly the order the
+\emph{present} layout stores them and exactly the wrong order for
+$[n][m][l][\theta]$.  A generating supplier feeding a GEMM would have to
+transpose, which is the traffic it exists to avoid.  Since the generated
+path measured slower anyway (\S\ref{sec:storage}), that is not a conflict
+to resolve so much as a reason the two were never going to be combined.
+
+\paragraph{It costs the exact-equality tests.}  A GEMM sums in whatever
+order its kernel chooses, so a GEMM path cannot be bit-compared against the
+current one; the batched-against-unbatched tests, which presently demand
+exact equality precisely because tier 1 does \emph{not} reorder any sum,
+would have to become tolerance comparisons for that path.  That is a real
+loss of test strength and should be a deliberate trade rather than a
+discovery.
+
+\paragraph{Which BLAS.}  Eigen is already a dependency and has a competent
+GEMM; an external OpenBLAS or MKL would likely beat it on this shape, at
+the cost of a hard dependency.  Starting with Eigen and measuring against
+a linked BLAS is the cheap order.
+
 \section{What has not been done, and why}
 \label{sec:whatnext}
 
@@ -1129,9 +1312,8 @@ the experiment would mean anything.
 \paragraph{A transform-major layout with a GEMM} is the one restructure
 aimed at what actually binds --- the per-element load/store count --- and
 it subsumes the question of how the forward transform should decompose
-above about sixteen threads, since a per-$m$ decomposition has disjoint
-outputs and needs neither accumulator nor reduction.  It is the natural
-next piece of performance work.
+above about sixteen threads.  It is the natural next piece of performance
+work, and \S\ref{sec:gemm} sets it out in full.
 
 \paragraph{Polar truncation}, skipping the $(m,\theta)$ pairs where
 $d^l_{Nm}$ is negligible --- it falls off like $\sin^{|m|}\theta$ --- is
