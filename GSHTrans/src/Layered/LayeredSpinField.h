@@ -75,6 +75,13 @@ class LayeredSpinField {
   auto FieldSize() const { return static_cast<Int>(_grid.FieldSize()); }
   auto Size() const { return static_cast<Int>(_data.size()); }
 
+  // The uniform names a radial operator sees. A field's slice is a set of
+  // angular points and an expansion's is a set of coefficients, but the radial
+  // axis does not care which: it runs over `NumberOfRadii()` values `SliceSize()`
+  // apart, and that is all `ApplyRadially` needs to know about either.
+  auto SliceSize() const { return FieldSize(); }
+  auto SameShape() const { return LayeredSpinField(_radialGrid, _grid); }
+
   auto Data() { return std::span<Scalar>(_data); }
   auto Data() const { return std::span<const Scalar>(_data); }
 
@@ -162,6 +169,11 @@ class LayeredSpinExpansion {
   }
   auto CoefficientSize() const { return static_cast<Int>(_indices.Size()); }
   auto Size() const { return static_cast<Int>(_data.size()); }
+
+  auto SliceSize() const { return CoefficientSize(); }
+  auto SameShape() const {
+    return LayeredSpinExpansion(_radialGrid, _grid, MaxDegree());
+  }
 
   auto Data() { return std::span<Complex>(_data); }
   auto Data() const { return std::span<const Complex>(_data); }

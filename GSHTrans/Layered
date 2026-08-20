@@ -6,5 +6,6 @@
 // ordinary spin field.
 #include "src/Layered/LayeredSpinField.h"
 #include "src/Layered/RadialGrid.h"
+#include "src/Layered/RadialOperator.h"
 
 #endif

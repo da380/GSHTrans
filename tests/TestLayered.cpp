@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <numeric>
 #include <span>
+#include <stdexcept>
 #include <vector>
 
 namespace {
@@ -24,6 +25,39 @@ auto Radii(Int nR, Real inner = 0.5, Real outer = 1.0) {
   }
   return RadialGrid<Real>(r);
 }
+
+// A radial grid with the trapezium rule's weights, so that the quadrature
+// tests have something exact to check against.
+auto WeightedRadii(Int nR, Real inner = 0.5, Real outer = 1.0) {
+  auto r = std::vector<Real>(nR);
+  auto w = std::vector<Real>(nR);
+  const auto h = (outer - inner) / static_cast<Real>(nR - 1);
+  for (Int i = 0; i < nR; i++) {
+    r[i] = inner + h * i;
+    w[i] = (i == 0 || i == nR - 1) ? h / 2 : h;
+  }
+  return RadialGrid<Real>(r, w);
+}
+
+// A three-point centred difference on a uniform mesh, one-sided at the ends.
+// Stands in here for whatever the application actually supplies.
+template <typename Scalar>
+struct CentredDifference {
+  Real h;
+
+  void operator()(std::span<const Scalar> in, std::span<Scalar> out) const {
+    const auto n = static_cast<Int>(in.size());
+    for (Int i = 0; i < n; i++) {
+      if (i == 0) {
+        out[i] = (in[1] - in[0]) / h;
+      } else if (i == n - 1) {
+        out[i] = (in[n - 1] - in[n - 2]) / h;
+      } else {
+        out[i] = (in[i + 1] - in[i - 1]) / (2 * h);
+      }
+    }
+  }
+};
 
 }  // namespace
 
@@ -236,4 +270,147 @@ TEST(LayeredSpinField, ThreadingIsTheCallersChoiceAndChangesNothing) {
   for (auto j = Int{0}; j < sequential.Size(); j++) {
     EXPECT_EQ(sequential.Data()[j], parallel.Data()[j]) << "at " << j;
   }
+}
+
+//--------------------------------------------------------------------------//
+//                              The radial seam                              //
+//--------------------------------------------------------------------------//
+
+TEST(RadialOperator, AppliesAlongTheRadialAxisAndNowhereElse) {
+  constexpr auto lMax = Int{6};
+  constexpr auto nR = Int{33};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  const auto h = 0.5 / (nR - 1);
+  auto radial = Radii(nR);
+
+  // f(r, theta, phi) = r^2 * g(theta, phi), so d/dr is 2r * g and the answer
+  // is known at every angular point independently.
+  auto stack = LayeredSpinField<0, Grid>(radial, grid);
+  auto reference = std::vector<Complex>(static_cast<std::size_t>(stack.Size()));
+  for (auto i : stack.RadiusIndices()) {
+    const auto r = radial.Radius(i);
+    auto slice = stack.Slice(i);
+    for (Int j = 0; j < slice.Size(); j++) {
+      const auto g = Complex{std::sin(0.3 * j), 0.25 * j};
+      slice.Data()[j] = r * r * g;
+      reference[static_cast<std::size_t>(i * stack.FieldSize() + j)] = 2 * r * g;
+    }
+  }
+
+  auto derivative = ApplyRadially(stack, CentredDifference<Complex>{h});
+
+  // A centred difference is exact on a quadratic in the interior; the
+  // one-sided ends are not, so they are checked to their own order.
+  for (auto i : stack.RadiusIndices()) {
+    const auto interior = i > 0 && i < nR - 1;
+    for (Int j = 0; j < stack.FieldSize(); j++) {
+      const auto k = static_cast<std::size_t>(i * stack.FieldSize() + j);
+      EXPECT_NEAR(derivative.Data()[k].real(), reference[k].real(),
+                  interior ? 1.0e-12 : 2.0e-2)
+          << "at radius " << i << ", point " << j;
+      EXPECT_NEAR(derivative.Data()[k].imag(), reference[k].imag(),
+                  interior ? 1.0e-11 : 1.0);
+    }
+  }
+}
+
+TEST(RadialOperator, ActsTheSameOnEitherSideOfTheTransform) {
+  // A radial operator touches only r, and the angular transform touches only
+  // (theta, phi), so the two commute. That is the property that lets the model
+  // workflow do its radial work in the spectral domain, and it is worth
+  // pinning down rather than assuming.
+  constexpr auto lMax = Int{8};
+  constexpr auto nR = Int{17};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  const auto h = 0.5 / (nR - 1);
+  auto radial = Radii(nR);
+
+  auto e = LayeredSpinExpansion<0, Grid>(radial, grid, lMax);
+  for (auto i : e.RadiusIndices()) {
+    const auto r = radial.Radius(i);
+    for (auto l : e.Degrees()) {
+      for (auto m : e.Orders(l)) {
+        e[i, l, m] = r * r * r * Complex{std::sin(0.4 * l + m), 0.2 * m - 0.1};
+      }
+    }
+  }
+
+  const auto op = CentredDifference<Complex>{h};
+
+  auto spectralFirst = Evaluate(ApplyRadially(e, op));
+  auto spatialFirst = ApplyRadially(Evaluate(e), op);
+
+  for (Int j = 0; j < spectralFirst.Size(); j++) {
+    EXPECT_NEAR(spectralFirst.Data()[j].real(), spatialFirst.Data()[j].real(),
+                1.0e-12);
+    EXPECT_NEAR(spectralFirst.Data()[j].imag(), spatialFirst.Data()[j].imag(),
+                1.0e-12);
+  }
+}
+
+TEST(RadialOperator, ThreadingChangesNothing) {
+  constexpr auto lMax = Int{8};
+  constexpr auto nR = Int{21};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = Radii(nR);
+
+  auto stack = LayeredSpinField<0, Grid>(radial, grid);
+  for (Int j = 0; j < stack.Size(); j++) {
+    stack.Data()[j] = Complex{std::cos(0.017 * j), std::sin(0.023 * j)};
+  }
+
+  const auto op = CentredDifference<Complex>{0.5 / (nR - 1)};
+  auto sequential = ApplyRadially(stack, op);
+  auto parallel = ApplyRadially(stack, op, Execution::Parallel(4));
+
+  // Each line is independent, so this is a partition of the work and not a
+  // reordering of any sum: bit-identical, not merely close.
+  for (Int j = 0; j < sequential.Size(); j++) {
+    EXPECT_EQ(sequential.Data()[j], parallel.Data()[j]) << "at " << j;
+  }
+}
+
+TEST(RadialOperator, RefusesWhatItCannotDo) {
+  constexpr auto lMax = Int{4};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  const auto op = CentredDifference<Complex>{0.1};
+
+  auto stack = LayeredSpinField<0, Grid>(Radii(6), grid);
+
+  // In place would silently read a half-written line.
+  EXPECT_THROW(ApplyRadially(stack, stack, op), std::invalid_argument);
+
+  // A different radial grid is a different radial axis, whatever its length.
+  auto other = LayeredSpinField<0, Grid>(Radii(6), grid);
+  EXPECT_THROW(ApplyRadially(stack, other, op), std::invalid_argument);
+}
+
+TEST(RadialOperator, IntegratesWithTheGridsOwnWeights) {
+  constexpr auto lMax = Int{4};
+  constexpr auto nR = Int{201};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = WeightedRadii(nR);
+
+  // f(r, x) = r * g(x); the exact integral over [0.5, 1] is 0.375 * g(x).
+  auto stack = LayeredSpinField<0, Grid>(radial, grid);
+  for (auto i : stack.RadiusIndices()) {
+    auto slice = stack.Slice(i);
+    for (Int j = 0; j < slice.Size(); j++) {
+      slice.Data()[j] = radial.Radius(i) * Complex{1.0 + j, 0.5};
+    }
+  }
+
+  auto integral = IntegrateRadially(stack);
+  ASSERT_EQ(static_cast<Int>(integral.size()), stack.FieldSize());
+  for (Int j = 0; j < stack.FieldSize(); j++) {
+    EXPECT_NEAR(integral[static_cast<std::size_t>(j)].real(),
+                0.375 * (1.0 + j), 1.0e-10);
+    EXPECT_NEAR(integral[static_cast<std::size_t>(j)].imag(), 0.375 * 0.5,
+                1.0e-12);
+  }
+
+  // Weights are optional, and a grid without them says so rather than
+  // inventing a rule.
+  auto unweighted = LayeredSpinField<0, Grid>(Radii(nR), grid);
+  EXPECT_THROW(IntegrateRadially(unweighted), std::invalid_argument);
 }
