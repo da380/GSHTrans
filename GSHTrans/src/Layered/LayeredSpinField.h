@@ -171,6 +171,14 @@ class LayeredSpinExpansion {
   auto Size() const { return static_cast<Int>(_data.size()); }
 
   auto SliceSize() const { return CoefficientSize(); }
+
+  // Where a degree and order sit within one radius's block. The radial-major
+  // repack needs this: once the layout is [(l, m)][r] a line is addressed by
+  // its position in the block and no longer by (l, m) directly.
+  auto CoefficientIndex(Int l, Int m) const {
+    return static_cast<Int>(_indices.Index(l, m));
+  }
+
   auto SameShape() const {
     return LayeredSpinExpansion(_radialGrid, _grid, MaxDegree());
   }

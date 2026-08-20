@@ -8,6 +8,7 @@
 #include "src/Layered/LayeredGradient.h"
 #include "src/Layered/LayeredTensorField.h"
 #include "src/Layered/RadialGrid.h"
+#include "src/Layered/RadialMajor.h"
 #include "src/Layered/RadialOperator.h"
 
 #endif

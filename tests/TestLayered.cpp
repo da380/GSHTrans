@@ -630,3 +630,136 @@ TEST(LayeredGradient, RefusesTheOrigin) {
   // origin and saying so beats returning an infinity.
   EXPECT_THROW(Gradient(f, PowerDerivative{1, radii}), std::invalid_argument);
 }
+
+//--------------------------------------------------------------------------//
+//                            The other layout                               //
+//--------------------------------------------------------------------------//
+
+TEST(RadialMajor, IsTheSameDataWithTheAxesExchanged) {
+  constexpr auto lMax = Int{10};
+  constexpr auto nR = Int{37};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = Radii(nR);
+
+  auto e = LayeredSpinExpansion<0, Grid>(radial, grid, lMax);
+  for (auto i : e.RadiusIndices()) {
+    for (auto l : e.Degrees()) {
+      for (auto m : e.Orders(l)) {
+        e[i, l, m] = Complex{0.3 * i + l, 0.1 * m - 0.7 * i};
+      }
+    }
+  }
+
+  auto major = RadialMajor(e);
+  EXPECT_EQ(major.NumberOfRadii(), nR);
+  EXPECT_EQ(major.NumberOfLines(), e.CoefficientSize());
+
+  // The line at a degree and order is that coefficient over every radius, and
+  // it is contiguous, which is the whole reason the layout exists.
+  for (auto l : e.Degrees()) {
+    for (auto m : e.Orders(l)) {
+      const auto line = major.Line(e.CoefficientIndex(l, m));
+      ASSERT_EQ(static_cast<Int>(line.size()), nR);
+      for (auto i : e.RadiusIndices()) {
+        EXPECT_EQ(line[static_cast<std::size_t>(i)], (e[i, l, m]))
+            << "at l = " << l << ", m = " << m << ", radius " << i;
+      }
+    }
+  }
+
+  // Round trip, exactly: a repack moves values and does not compute with them.
+  auto back = e.SameShape();
+  major.CopyInto(back);
+  for (Int j = 0; j < e.Size(); j++) {
+    EXPECT_EQ(back.Data()[j], e.Data()[j]) << "at " << j;
+  }
+}
+
+TEST(RadialMajor, TransposesTheSameWhetherThreadedOrNot) {
+  constexpr auto lMax = Int{12};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto e = LayeredSpinExpansion<0, Grid>(Radii(29), grid, lMax);
+  for (Int j = 0; j < e.Size(); j++) {
+    e.Data()[j] = Complex{std::cos(0.013 * j), std::sin(0.019 * j)};
+  }
+
+  auto sequential = RadialMajor(e);
+  auto parallel = RadialMajor(e, Execution::Parallel(4));
+  for (Int j = 0; j < sequential.Size(); j++) {
+    EXPECT_EQ(sequential.Data()[j], parallel.Data()[j]) << "at " << j;
+  }
+}
+
+TEST(RadialMajor, GivesTheSameAnswerAsApplyingThroughTheGather) {
+  // The two routes to a radial operator: gather each line out of the
+  // radius-major stack, or transpose once and work on contiguous lines. They
+  // must agree exactly, since neither changes the arithmetic -- only when the
+  // copying happens.
+  constexpr auto lMax = Int{10};
+  constexpr auto nR = Int{33};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = Radii(nR);
+  const auto op = CentredDifference<Complex>{0.5 / (nR - 1)};
+
+  auto e = LayeredSpinExpansion<0, Grid>(radial, grid, lMax);
+  for (Int j = 0; j < e.Size(); j++) {
+    e.Data()[j] = Complex{std::sin(0.007 * j), 0.4 - 0.011 * j};
+  }
+
+  auto throughGather = ApplyRadially(e, op);
+
+  auto major = RadialMajor(e);
+  auto applied = RadialMajor(e);
+  ApplyToLines(major, applied, op, Execution::Parallel(4));
+  auto throughTranspose = e.SameShape();
+  applied.CopyInto(throughTranspose);
+
+  for (Int j = 0; j < e.Size(); j++) {
+    EXPECT_EQ(throughGather.Data()[j], throughTranspose.Data()[j])
+        << "at " << j;
+  }
+}
+
+TEST(RadialMajor, RefusesAShapeItDidNotComeFrom) {
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto e = LayeredSpinExpansion<0, Grid>(Radii(11), grid, lMax);
+  auto major = RadialMajor(e);
+
+  auto shorter = LayeredSpinExpansion<0, Grid>(Radii(9), grid, lMax);
+  EXPECT_THROW(major.CopyInto(shorter), std::invalid_argument);
+}
+
+TEST(RadialMajor, RefillsWithoutAllocating) {
+  constexpr auto lMax = Int{8};
+  constexpr auto nR = Int{19};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = Radii(nR);
+
+  auto first = LayeredSpinExpansion<0, Grid>(radial, grid, lMax);
+  auto second = LayeredSpinExpansion<0, Grid>(radial, grid, lMax);
+  for (Int j = 0; j < first.Size(); j++) {
+    first.Data()[j] = Complex{0.5 * j, 1.0};
+    second.Data()[j] = Complex{-0.25 * j, 2.0};
+  }
+
+  auto major = RadialMajor(first);
+  const auto* before = major.Data().data();
+
+  major.CopyFrom(second);
+  EXPECT_EQ(major.Data().data(), before) << "refilling must not reallocate";
+
+  auto back = second.SameShape();
+  major.CopyInto(back);
+  for (Int j = 0; j < second.Size(); j++) {
+    EXPECT_EQ(back.Data()[j], second.Data()[j]) << "at " << j;
+  }
+
+  // A scratch buffer of the same shape, transposed from nothing.
+  auto scratch = major.SameShape();
+  EXPECT_EQ(scratch.NumberOfRadii(), major.NumberOfRadii());
+  EXPECT_EQ(scratch.NumberOfLines(), major.NumberOfLines());
+
+  auto other = LayeredSpinExpansion<0, Grid>(Radii(nR + 2), grid, lMax);
+  EXPECT_THROW(major.CopyFrom(other), std::invalid_argument);
+}

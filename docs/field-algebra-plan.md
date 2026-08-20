@@ -1744,3 +1744,69 @@ is still not built and is still not needed. Step 4, the `[r][(l,m)]` against
 that the preconditioner needs are at fixed `(l, m)`, and `ApplyRadially`'s
 gather is precisely the repack done one line at a time. Measuring it against a
 bulk transpose is what step 4 is for.
+
+### 17.7 Step 4: the two spectral layouts, measured
+
+`GSHTrans/src/Layered/RadialMajor.h`. The same data with the axes exchanged,
+`[(l,m)][r]` instead of `[r][(l,m)]`, so that a radial line is contiguous and a
+band solver can be handed it directly. `RadialMajor` is a buffer and a shape,
+not a field type: it has no grid, no upper index and no algebra, because nothing
+angular is meaningful once the angular axis has been shredded into lines.
+
+The question step 4 asked was what the repack costs. It has a sharper form now
+that §17.6 exists, because `ApplyRadially` already *is* the repack — done one
+line at a time, fused with the work, and thrown away. So the real question is
+when paying for a bulk transpose beats paying for a gather on every pass.
+
+**The measurement.** A cheap three-point sweep along each line — light enough
+that the layout can dominate, which is the interesting case — applied `K` times.
+Buffers allocated once, as the loop this serves would.
+
+| lMax | nR | threads | K = 1 | K = 4 | K = 8 | K = 16 | K = 32 |
+|-----:|---:|--------:|------:|------:|------:|-------:|-------:|
+|   64 | 256 |      1 | 0.43× | 1.02× | 1.49× | 2.00× | 2.42× |
+|   64 | 256 |      8 | 0.34× | 0.81× | 1.18× | 1.32× | 1.84× |
+|  128 | 256 |      1 | 0.61× | 1.72× | 2.46× | 2.93× | 3.45× |
+|  128 | 256 |      8 | 0.37× | 0.84× | 1.08× | 1.23× | 1.32× |
+|  256 | 256 |      1 | 0.50× | 1.24× | 1.81× | 2.28× | 2.56× |
+|  256 | 256 |      8 | 0.37× | 0.88× | 1.05× | 1.28× | 1.37× |
+
+(Speedup of transpose-once over gather-per-pass; above 1 the transpose wins.)
+
+**The rule.** Sequentially the crossover is at about **4 passes**, and beyond it
+the transpose is worth 2–3.5×. Threaded it moves out to about **8 passes** and
+the ceiling drops to ~1.4×. For a single pass the transpose loses by 2–3× at
+every size and thread count.
+
+So: `ApplyRadially` is the right default and stays so. `RadialMajor` is for a
+line touched *many* times — an iterative solve, a factorisation applied
+repeatedly, a sweep over several operators — which is what the preconditioner of
+a matrix-free 3-D operator does, and is the only reason to reach for it.
+
+**Two things the measurement changed in the code**, both found by the numbers
+rather than by design:
+
+- **Allocation dominates.** A first version constructing `RadialMajor(stack)`
+  inside the loop was 3–5× worse and never won at any pass count: allocating and
+  first-touching a buffer the size of the whole field costs more than the
+  transpose it exists to serve. `CopyFrom` and `SameShape` are there so that the
+  buffers can be hoisted, and without them the type would be useless.
+- **The tile size is 16, not 32.** A complex double is 16 bytes, so a 32-tile is
+  16 KiB and a pair of them is the whole of a 32 KiB L1. Measured over 8, 16, 32
+  and 64; 16 wins, though only by a few per cent.
+
+One hypothesis tested and **rejected**: cache-set aliasing at `nR = 256`, where
+the output stride is exactly 4096 bytes. Timings at `nR = 255, 256, 257` are
+identical, so the tiling already handles it and there is no padding to add.
+
+**Why the threaded ceiling is so much lower.** The gather threads well — 2.8× on
+8 cores — because it is fused with useful work and its scratch line stays in L1.
+The bulk transpose threads badly, because it is DRAM-bound and moves strictly
+more data: an extra read and write of the whole field per repack. Once memory is
+the constraint, extra traffic is pure loss, which is the same reading as §17.5's
+collapse of the batched forward transform and as `core-plan.md` §10.
+
+With this, all four steps of §17.3 are built. What is not built, and is not
+needed yet: a tensor *view* type (§17.6), and any use of `RadialMajor` inside
+the library itself — it is offered to callers and nothing here reaches for it,
+because nothing here touches a line more than once.
