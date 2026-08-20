@@ -4,6 +4,7 @@
 
 #include "CheckAdditionTheorem.h"
 #include "CheckLegendre.h"
+#include "CheckWignerBoundary.h"
 #include "CheckWignerConvention.h"
 
 namespace {
@@ -47,6 +48,17 @@ TEST(Wigner, CheckConventionDouble) {
 
 TEST(Wigner, CheckConventionLongDouble) {
   EXPECT_EQ(CheckWignerConvention<long double>(), 0);
+}
+
+// The seed row and the boundary orders come from recursions (T11); the closed
+// forms they replaced are the definition they answer to.
+TEST(Wigner, CheckBoundaryRecursionDouble) {
+  EXPECT_LT(CheckWignerBoundary<double>(), CheckWignerBoundaryTolerance<double>());
+}
+
+TEST(Wigner, CheckBoundaryRecursionLongDouble) {
+  EXPECT_LT(CheckWignerBoundary<long double>(),
+            CheckWignerBoundaryTolerance<long double>());
 }
 
 // Compare values for n = 0 to the std library function.

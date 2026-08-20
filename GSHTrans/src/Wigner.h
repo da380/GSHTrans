@@ -31,12 +31,12 @@ class Arguments {
 
   constexpr Arguments(Real theta) {
     constexpr auto half = static_cast<Real>(1) / static_cast<Real>(2);
-    _logSinHalf = std::sin(half * theta);
-    _logCosHalf = std::cos(half * theta);
-    _atLeft = _logSinHalf < std::numeric_limits<Real>::min();
-    _atRight = _logCosHalf < std::numeric_limits<Real>::min();
-    _logSinHalf = _atLeft ? static_cast<Real>(0) : std::log(_logSinHalf);
-    _logCosHalf = _atRight ? static_cast<Real>(0) : std::log(_logCosHalf);
+    _sinHalf = std::sin(half * theta);
+    _cosHalf = std::cos(half * theta);
+    _atLeft = _sinHalf < std::numeric_limits<Real>::min();
+    _atRight = _cosHalf < std::numeric_limits<Real>::min();
+    _logSinHalf = _atLeft ? static_cast<Real>(0) : std::log(_sinHalf);
+    _logCosHalf = _atRight ? static_cast<Real>(0) : std::log(_cosHalf);
   }
 
   constexpr auto AtLeft() const { return _atLeft; }
@@ -45,7 +45,17 @@ class Arguments {
   constexpr auto LogSinHalf() const { return _logSinHalf; }
   constexpr auto LogCosHalf() const { return _logCosHalf; }
 
+  // The linear values are kept as well as their logarithms. The closed forms
+  // below need the logarithms, because they form sqrt((2l)!/...) which is of
+  // order 4^l; the recursions need the values themselves, and they stay
+  // bounded because each step multiplies by about 2 sin(theta/2) cos(theta/2),
+  // which is sin(theta).
+  constexpr auto SinHalf() const { return _sinHalf; }
+  constexpr auto CosHalf() const { return _cosHalf; }
+
  private:
+  Real _sinHalf;
+  Real _cosHalf;
   Real _logSinHalf;
   Real _logCosHalf;
   bool _atLeft;
@@ -96,6 +106,102 @@ template <std::integral Int, RealFloatingPoint Real>
 constexpr auto WignerMaxUpperIndex(Int l, Int m, Arguments<Real> &arg) {
   return WignerMinOrder(l, -m, arg);
 }
+
+// x^k for a small non-negative k. Written out because the exponents here are
+// 2|n| and its neighbours -- four, for a rank-2 application -- and a loop of
+// that length is both exact and cheaper than a call to pow.
+template <RealFloatingPoint Real>
+constexpr auto IntegerPower(Real x, std::ptrdiff_t k) {
+  auto result = static_cast<Real>(1);
+  for (auto i = std::ptrdiff_t{0}; i < k; i++) result *= x;
+  return result;
+}
+
+// The two boundary values of a degree, run up the degrees rather than
+// evaluated in closed form at each one.
+//
+// Compute needs d^l_{n,-l} and d^l_{n,l} once per degree, and the closed forms
+// above cost three lgamma and an exp apiece. Paid once inside grid
+// construction that is affordable; paid inside a transform, which is what a
+// generating Wigner supplier does (core-plan.md step F'), it is of order 131k
+// transcendental evaluations per upper index per transform at lMax = 256,
+// comparable to the whole transform.
+//
+// The boundary obeys a one-term recursion in l. Writing
+//
+//   WignerMinOrder(l, n) = sqrt((2l)! / ((l-n)! (l+n)!)) s^{l+n} c^{l-n}
+//
+// with s = sin(theta/2) and c = cos(theta/2), the ratio at fixed n is
+//
+//   d(l) / d(l-1) = sqrt( 2l(2l-1) / ((l-n)(l+n)) ) * s * c,
+//
+// which is valid only for l > |n|: at l = |n| one factor of the denominator
+// vanishes and the seed is needed, where the square root is one and the value
+// is s^{2|n|} at n = +|n| and c^{2|n|} at n = -|n|. So one short power per
+// (n, theta) replaces three lgamma and an exp per (l, theta).
+//
+// Both boundaries ride on the same recursion, because the ratio depends on n
+// only through n^2 and because
+//
+//   WignerMaxOrder(l, n) = (-1)^{n+l} WignerMinOrder(l, -n),
+//
+// so carrying WignerMinOrder(l, +-n) as two running values gives both.
+//
+// This is more robust than the closed form rather than less. The closed form
+// works in logarithms because sqrt((2l)!/...) is of order 4^l and overflows
+// long before the value it belongs to, which is bounded by one; each step of
+// the recursion multiplies by about 2 s c = sin(theta), so nothing large is
+// ever formed. The special values at theta = 0 and pi come out of the seeds
+// unaided: the ratio is 0 * infinity there, but the seed is already the exact
+// 0 or 1 that the closed form's AtLeft and AtRight branches return, and the
+// factor is zero thereafter.
+//
+// Values are unnormalised. Compute applies sqrt((2l+1)/4pi) to the whole block
+// afterwards, which is also the contract a generating supplier must meet.
+template <RealFloatingPoint Real>
+class BoundaryValues {
+ public:
+  using Int = std::ptrdiff_t;
+
+  constexpr BoundaryValues(Int n, const Arguments<Real> &arg)
+      : _n{n},
+        _l{n < 0 ? -n : n},
+        _sinCos{arg.SinHalf() * arg.CosHalf()},
+        _atUpperIndex{IntegerPower(n >= 0 ? arg.SinHalf() : arg.CosHalf(),
+                                   2 * (n < 0 ? -n : n))},
+        _atMinusUpperIndex{IntegerPower(n >= 0 ? arg.CosHalf() : arg.SinHalf(),
+                                        2 * (n < 0 ? -n : n))} {}
+
+  // Move to the next degree. Degrees must be visited in ascending order from
+  // |n|, which is what Compute's loops already do; the recursion carries no
+  // way to skip one or to go back.
+  constexpr void Advance() {
+    _l++;
+    const auto Fl = static_cast<Real>(_l);
+    const auto Fn = static_cast<Real>(_n);
+    const auto factor =
+        std::sqrt(2 * Fl * (2 * Fl - 1) / ((Fl - Fn) * (Fl + Fn))) * _sinCos;
+    _atUpperIndex *= factor;
+    _atMinusUpperIndex *= factor;
+  }
+
+  constexpr auto Degree() const { return _l; }
+
+  // d^l_{n,-l}, which is WignerMinOrder(l, n).
+  constexpr auto MinOrder() const { return _atUpperIndex; }
+
+  // d^l_{n,l}, which is WignerMaxOrder(l, n).
+  constexpr auto MaxOrder() const {
+    return MinusOneToPower<Real>(_n + _l) * _atMinusUpperIndex;
+  }
+
+ private:
+  Int _n;
+  Int _l;
+  Real _sinCos;
+  Real _atUpperIndex;
+  Real _atMinusUpperIndex;
+};
 
 }  // namespace WignerDetails
 
@@ -344,21 +450,52 @@ class Wigner {
     auto d = GSHView<Real, MRange>(_lMax, _mMax, n, &_data[Offset(n, iTheta)]);
 
     // Set the values for l == |n|
+    //
+    // This is the seed row, and at l = |n| the closed form reduces to
+    //
+    //   WignerMinOrder(l, -m) = sqrt(C(2l, l+m)) s^{l-m} c^{l+m},
+    //
+    // whose binomial row is generated exactly by the standard step
+    // C(2l, k) = C(2l, k-1) (2l - k + 1) / k. The row is at most 2|n| + 1
+    // long -- five entries for a rank-2 application -- so unlike the boundary
+    // recursion this is not about cost.
+    //
+    // It is about lgamma. glibc's writes the global signgam, and ComputeAll
+    // calls Compute from every thread, so the closed form is a data race here
+    // -- benign, since nothing reads signgam, but the only genuine one
+    // ThreadSanitizer finds in this library (core-plan.md step F'). Leaving
+    // this row on the closed form while the degree loop moved off it would
+    // have left the race exactly where it was. The values are also exact this
+    // way, where the closed form was merely accurate.
     {
       const auto l = nAbs;
+      const auto s = arg.SinHalf();
+      const auto c = arg.CosHalf();
       auto m = d[l].MinOrder();
       auto iter = d[l].begin();
       auto finish = d[l].end();
-      if (n >= 0) {
-        while (iter != finish) {
-          *iter++ = WignerDetails::WignerMaxUpperIndex(l, m++, arg);
-        }
-      } else {
-        while (iter != finish) {
-          *iter++ = WignerDetails::WignerMinUpperIndex(l, m++, arg);
-        }
+
+      // C(2l, l+m) at the first order stored, formed by the same step.
+      auto binomial = static_cast<Real>(1);
+      for (auto k = Int{1}; k <= l + m; k++) {
+        binomial *= static_cast<Real>(2 * l - k + 1) / static_cast<Real>(k);
+      }
+
+      while (iter != finish) {
+        const auto root = std::sqrt(binomial);
+        *iter++ = n >= 0 ? root * WignerDetails::IntegerPower(s, l - m) *
+                               WignerDetails::IntegerPower(c, l + m)
+                         : MinusOneToPower<Real>(l - m) * root *
+                               WignerDetails::IntegerPower(s, l + m) *
+                               WignerDetails::IntegerPower(c, l - m);
+        binomial *= static_cast<Real>(l - m) / static_cast<Real>(l + m + 1);
+        m++;
       }
     }
+
+    // The boundary terms of every higher degree, on the one-term recursion
+    // that replaces the closed form at m = +-l.
+    auto boundary = WignerDetails::BoundaryValues<Real>(n, arg);
 
     // Set the values for l == n+1 if needed.
     if (nAbs < _lMax) {
@@ -366,6 +503,12 @@ class Wigner {
       const auto mMin = d[l].MinOrder();
       const auto mMax = d[l].MaxOrder();
       auto m = mMin;
+
+      // The boundary values are read only while the degree is still growing,
+      // since every use below is under l <= mMax and mMax is min(l, _mMax).
+      // Once l passes _mMax they are never wanted again, so the recursion
+      // stops rather than being advanced unused.
+      if (l <= _mMax) boundary.Advance();
 
       // Set iterators
       auto iterMinusOne = d[l - 1].begin();
@@ -375,7 +518,7 @@ class Wigner {
       // Add in value at m == -l if needed.
       if constexpr (std::same_as<_MRange, All>) {
         if (l <= mMax) {
-          *iter++ = WignerDetails::WignerMinOrder(l, n, arg);
+          *iter++ = boundary.MinOrder();
           m++;
         }
       }
@@ -395,7 +538,7 @@ class Wigner {
 
       // Add in value at m == l if needed
       if (l <= mMax) {
-        *iter++ = WignerDetails::WignerMaxOrder(l, n, arg);
+        *iter++ = boundary.MaxOrder();
       }
     }
 
@@ -404,6 +547,8 @@ class Wigner {
       const auto mMin = d[l].MinOrder();
       const auto mMax = d[l].MaxOrder();
       auto m = mMin;
+
+      if (l <= _mMax) boundary.Advance();
 
       // Set iterators.
       auto iterMinusTwo = d[l - 2].begin();
@@ -416,7 +561,7 @@ class Wigner {
         if (l <= mMax) {
           {
             // Add in the m == -l term.
-            *iter++ = WignerDetails::WignerMinOrder(l, n, arg);
+            *iter++ = boundary.MinOrder();
             m++;
           }
           {
@@ -473,7 +618,7 @@ class Wigner {
           m++;
         }
         // Now do m == l.
-        *iter++ = WignerDetails::WignerMaxOrder(l, n, arg);
+        *iter++ = boundary.MaxOrder();
       }
 
       // Add in the upper boundary term at the critical degree.

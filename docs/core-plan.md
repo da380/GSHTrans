@@ -703,7 +703,8 @@ accumulator extended.
 Two things must be true for it to be competitive, and both are part of the
 step rather than optimisations on top:
 
-1. **The boundary terms stop calling `lgamma`/`exp`.** `Compute` evaluates
+1. **The boundary terms stop calling `lgamma`/`exp`.** *Done, in T11's first
+   commit; §8 records what it measured.* `Compute` evaluates
    `WignerMinOrder`/`WignerMaxOrder` at `m = ±l` for every `(l, θ)` — three
    `lgamma` and an `exp` apiece. Paid once inside construction that is part of
    the 0.23 s; paid per call it is of order 130k transcendental evaluations per
@@ -718,7 +719,9 @@ step rather than optimisations on top:
    construction is concurrent-undefined by the letter of the standard today.
    Nothing reads `signgam`, so the effect is benign and no result is wrong —
    but it is the only genuine race ThreadSanitizer finds in this library, and
-   the boundary recursion is what deletes it.
+   the boundary recursion is what deletes it. *Deleting it took the seed row
+   as well as the degree loop; §8 says why, since this document had the seed
+   row down as not worth touching.*
 2. **The colatitudes are blocked.** Of the recursion's coefficients only
    `alpha` carries `cos θ`; `beta`, `gamma`, `sqrtIntInv[l ± m]` and
    `sqrtInt[l-1 ± m]` are θ-independent. Over a block of `B` colatitudes the
@@ -1384,10 +1387,10 @@ measurement, and the only way to get a real answer is a Clang build against a
 `libomp` compiled with `LIBOMP_TSAN_SUPPORT`. Worth doing once, before the
 layered layer adds a second level of threading; not worth doing repeatedly.
 
-**T11 — step F′, Wigner values on the fly.** *Next.* Two commits. First the
-boundary recursion replacing `lgamma`/`exp`, which stands on its own, applies
-to the stored path, removes the `signgam` race described in step F′, and lands
-with a tolerance test against the present values. Then the generating supplier
+**T11 — step F′, Wigner values on the fly.** *First commit done.* Two commits.
+First the boundary recursion replacing `lgamma`/`exp`, which stands on its own,
+applies to the stored path, removes the `signgam` race described in step F′, and
+lands with a tolerance test against the present values. Then the generating supplier
 behind step F's seam, θ-blocked, with the named constructor, validated against
 the stored path to round-trip tolerance and measured at
 `lMax ∈ {64, 128, 256}`, `k ∈ {1, 8}`, on one and eight threads. Those numbers
@@ -1404,7 +1407,17 @@ There are two kinds of call site and only one of them matters:
   is where the plan's "comparable to the whole transform" comes from.
 - **`Wigner.h:354`, `:358`** — the seed row at `l = |n|`, a loop over *m* at
   fixed `l`. Only `2|n|+1` values per `(n, θ)`, so five of them for a rank-2
-  application. Not worth touching.
+  application. Not worth touching *for cost*.
+
+  **It had to be touched anyway, and the note above was wrong to imply
+  otherwise.** Those two lines call `WignerMinUpperIndex`/`WignerMaxUpperIndex`,
+  which are the same two closed forms under other names, so they reach `lgamma`
+  too — from inside `ComputeAll`'s parallel region. Moving only the degree loop
+  off the closed form would have left the `signgam` race exactly where it was,
+  and this task claims to remove it. The row is generated instead from the
+  exact binomial recursion `C(2l, k) = C(2l, k−1)(2l−k+1)/k`, since at `l = |n|`
+  the closed form is `sqrt(C(2l, l+m)) · s^{l∓m} · c^{l±m}`. Being short is what
+  makes that cheap to do, not a reason not to.
 
 *The recursion, checked against the closed form rather than taken on trust.*
 Writing `WignerMinOrder(l, n) = sqrt((2l)! / ((l−n)!(l+n)!)) · s^{l+n} · c^{l−n}`
@@ -1431,6 +1444,28 @@ And the orthonormalisation `sqrt((2l+1)/4π)` is applied to the whole block
 *afterwards* (`Wigner.h:490`), so the recursion runs on unnormalised values —
 which is also the contract a generating supplier must meet in the second
 commit.
+
+*What the first commit measured.* Grid construction at `lMax = 256, nMax = 2`
+on eight bound threads, the two binaries run alternately eight times: **0.166 s
+before against 0.154 s after**, or about **1.08×**. Small, and *below* the ~10%
+noise floor §8 records for this machine — but the ranges are disjoint over six
+consecutive alternations, before never under 0.162 and after never over 0.158,
+which is the only reason it is quoted at all. The size is what the arithmetic
+predicts: the boundary is two values per degree out of `2l+1`, so however
+expensive a `lgamma` is, it is being paid on under 1% of the table.
+
+The accuracy is the other half. Against the closed forms, over
+`lMax = 128`, `|n| ≤ 3` and six colatitudes, the worst relative discrepancy is
+`2.2 × 10⁻¹³` in double and `8.7 × 10⁻¹⁷` in long double — very nearly the same
+multiple of `ε`, about 1000, in both. It grows linearly in `lMax` and not with
+the number of entries compared, which says the drift belongs to **the closed
+form**: it exponentiates a logarithm of size `O(l log 4)` and loses bits in
+proportion, where each recursion step multiplies by a factor of order one. So
+the test's tolerance is written as `20 · lMax · ε`, and the new values are the
+better ones. `CheckAdditionTheorem` is the end-to-end check that this did not
+disturb the interior: boundary values feed the two-term recursion at every
+higher degree, and it still holds `Σ_m d^l_{Nm} d^l_{N′m} = δ_{NN′}(2l+1)/4π`
+to `1000 ε` over all `|N|, |N′| ≤ 40`.
 
 *What the second commit substitutes into.* `ConstGSHView::operator[](l)` is
 already the row supplier, and both transform loops take their row from `d[l]`
