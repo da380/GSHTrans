@@ -1576,19 +1576,21 @@ conversions. A one-slice stack and an angular field stay distinct types.
 
 ### 17.3 The steps
 
-1. **`RadialGrid` and `LayeredSpinField`.** Storage, slice views, `Broadcast`,
-   and the batched transform over radii — which is the whole point and the
-   first consumer of step F.
+1. **`RadialGrid` and `LayeredSpinField`.** *(Done — §17.5.)* Storage, slice
+   views, `Broadcast`, and the batched transform over radii — which is the
+   whole point and the first consumer of step F.
 2. **The radial seam**, and with it the full gradient: `∂^±` from
    `SurfaceGradient` with the `r^{-1}` reinstated, `∂^0` from the supplied
    operator. This is where the angular library stops being half a gradient.
+   *(Done — §17.6.)*
 3. **Layered tensors.** These need a tensor *view* type, which does not exist —
    `TensorField` owns its buffers. Either it gains a storage template parameter
    as `SpinFieldView` already has, or the layered tensor exposes
    `Component<α…>(r)` directly and never forms a tensor view at all. The second
-   is smaller and is the way to try first.
+   is smaller and is the way to try first. *(Done by the second route, as part
+   of step 2 — §17.6. The tensor view is still not built and still not needed.)*
 4. **The spectral layouts**, `[r][(l,m)]` against `[(l,m)][r]`, with an
-   explicit repack and a measurement of what it costs.
+   explicit repack and a measurement of what it costs. *(Next.)*
 
 ### 17.4 What is deliberately not here
 
@@ -1657,3 +1659,88 @@ Two consequences, both for the target application rather than for this step:
 Neither changes step 1, which is correct and committed. Both are recorded so
 that step 4's repack measurement and the GEMM work start from numbers rather
 than from expectations.
+
+### 17.6 Steps 2 and 3 as built
+
+Step 2 asked for the radial seam and, with it, the full gradient. It needed
+somewhere to put the answer, so it pulled in the smaller of step 3's two
+options as well — which was always the plan's preference and turned out to be
+the right call.
+
+**The seam** is `GSHTrans/src/Layered/RadialOperator.h`. A radial operator is a
+callable taking one radial line to another; `ApplyRadially` gathers each line
+out of the radius-major stack, applies it, and scatters the answer back,
+threading over lines. The callable form is §17.2's decision. Contiguous spans
+rather than strided ones, because contiguous is what LAPACK, a band solver and
+a plain loop all want, and the gather that buys it is a fraction of the
+transform beside it.
+
+`LayeredSpinField` and `LayeredSpinExpansion` now present the radial axis under
+one pair of names, `NumberOfRadii` and `SliceSize`, so the seam works in either
+domain. A test pins the commutation down rather than leaving it assumed:
+differentiating radially then transforming equals transforming then
+differentiating. That is what licenses the model application's habit of doing
+all its radial work in the spectral domain — and there is a second reason to
+prefer that side, which the flat types already had but nothing had used: **a
+coefficient buffer is complex whatever the field's reality**, so a radial
+operator applied spectrally only ever sees complex data and the caller does not
+have to write one that is generic over `Real` and `Complex`.
+
+`IntegrateRadially` applies the grid's weights as they stand and does *not*
+insert the `r²` of the volume element — a caller integrating over the ball
+folds it into the weights and one integrating a profile does not want it.
+
+**The layered tensor** is `LayeredTensorField` / `LayeredTensorExpansion`, one
+radius-major stack per stored component rather than one interleaved buffer. The
+flat tensor interleaves so that components sharing an upper index form a batch;
+a layered tensor does not need that, because the radial axis already supplies
+`nR` fields per component. Keeping them apart means each component's stack *is*
+a `LayeredSpinField` — contiguous, directly transformable, and exactly the
+per-component radius-major array the existing applications already hold, so
+interop is handing the stack back. It also splits the real and complex
+components for free, which is the same split the flat type makes.
+
+All the combinatorics — orbits, slot layout, the conditions on the accessors —
+are taken from the flat type. Nothing is restated.
+
+**The gradient** is `LayeredGradient.h`. D&T's `grad = e_0 ∂_r + r⁻¹ grad_1`
+splits exactly along the seam, so the two halves are:
+
+    σ = ±1 :  r⁻¹ (grad_1 T)^{σ a₁…a_q}      the existing surface gradient
+    σ =  0 :  ∂_r T^{a₁…a_q}                 the supplied radial operator
+
+The angular half reuses `ContravariantDetails::FillComponent` verbatim, through
+a pair of adaptors that bind a radius. The only change to the flat code was a
+`scale` argument, defaulting to 1 and set to `r⁻¹` here — so **the gradient
+formula exists once**, which was the point. `e_0` is constant along `r` and
+`e_±` depend only on `(θ, φ)`, so the radial derivative carries no connection
+terms and the `σ = 0` block really is componentwise; every connection term is
+in `grad_1`, including the ones that move a slot between `e_0` and `e_±`.
+
+The `σ = 0` block is filled through the general coefficient accessor, so an
+operand component that is derived rather than stored costs nothing extra — which
+matters as soon as the operand carries a symmetry the rank-(q+1) result does
+not.
+
+**The verification** is the Laplacian. Contracting `grad grad f` with the metric
+`g_{αβ} = (−1)^α δ_{α+β,0}` must give
+
+    ∇²(r^a Y_{lm}) = [a(a+1) − l(l+1)] r^{a−2},
+
+and it does, to machine precision, at every radius, over a spread of `(a, l, m)`
+including negative `a`, `l = 0`, `m = ±l`, and the real-scalar path with its
+reduced `m ≥ 0` storage. This is the decisive test because the *second* gradient
+acts on a vector whose `e_0` component is non-zero: getting it right needs the
+`r⁻¹`, the radial block, and the `e_0 ↔ e_±` connection terms together. Nothing
+before this exercised the last of those at all.
+
+`r = 0` throws. The `r⁻¹` is in the operator and not in the field: the canonical
+basis is singular at the origin, and saying so beats returning an infinity.
+
+**What remains of §17.3.** Step 3's other half — a tensor *view* type, so that
+`Slice(r)` could hand back a whole tensor rather than a component at a time —
+is still not built and is still not needed. Step 4, the `[r][(l,m)]` against
+`[(l,m)][r]` repack, is untouched and is now the next thing: the radial solves
+that the preconditioner needs are at fixed `(l, m)`, and `ApplyRadially`'s
+gather is precisely the repack done one line at a time. Measuring it against a
+bulk transpose is what step 4 is for.

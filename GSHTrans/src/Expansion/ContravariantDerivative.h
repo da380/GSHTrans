@@ -112,8 +112,14 @@ auto ComponentOfArray(Result& result, std::index_sequence<I...>) {
 //
 // Only the components the result *stores* are filled: on a real tensor the
 // rest follow from eq:reality, and the gradient of a real tensor is real.
+//
+// `scale` multiplies every coefficient. It is 1 for the surface gradient and
+// r^{-1} for the angular part of the full three-dimensional one, which is the
+// only difference between them: D&T's gradient is [e_0 d_r + r^{-1} grad_1],
+// so the same formula serves both and the mathematics is written once.
 template <auto Indices, typename Result, typename Expansion>
-void FillComponent(Result& result, const Expansion& operand) {
+void FillComponent(Result& result, const Expansion& operand,
+                   typename Result::Real scale = 1) {
   using Int = std::ptrdiff_t;
   using Real = typename Result::Real;
   using Complex = typename Result::Complex;
@@ -126,6 +132,7 @@ void FillComponent(Result& result, const Expansion& operand) {
   if constexpr (sigma == 0) {
     (void)result;
     (void)operand;
+    (void)scale;
     return;
   } else {
     constexpr auto source = DropFirst<Rank>(Indices);
@@ -164,6 +171,7 @@ void FillComponent(Result& result, const Expansion& operand) {
         // under negation alone the only self-paired multi-index is the
         // all-zero one, which is pinned real. An imaginary pinning needs a
         // permutation sign, so it can only arise in an *operand*.
+        value *= scale;
         if constexpr (constraint == ComponentConstraint::Imaginary) {
           block[l, m] = Complex{0, -1} * value;
         } else {

@@ -5,6 +5,8 @@
 // a stack of angular slices. Two-dimensional is the primitive; a slice is an
 // ordinary spin field.
 #include "src/Layered/LayeredSpinField.h"
+#include "src/Layered/LayeredGradient.h"
+#include "src/Layered/LayeredTensorField.h"
 #include "src/Layered/RadialGrid.h"
 #include "src/Layered/RadialOperator.h"
 

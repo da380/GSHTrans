@@ -6,6 +6,7 @@
 #include <complex>
 #include <cstddef>
 #include <numeric>
+#include <ranges>
 #include <span>
 #include <stdexcept>
 #include <vector>
@@ -413,4 +414,219 @@ TEST(RadialOperator, IntegratesWithTheGridsOwnWeights) {
   // inventing a rule.
   auto unweighted = LayeredSpinField<0, Grid>(Radii(nR), grid);
   EXPECT_THROW(IntegrateRadially(unweighted), std::invalid_argument);
+}
+
+//--------------------------------------------------------------------------//
+//                            Layered tensors                                //
+//--------------------------------------------------------------------------//
+
+namespace {
+
+// d/dr acting exactly on c * r^power, so that a gradient test measures the
+// angular algebra and the seam and not a difference formula's truncation.
+struct PowerDerivative {
+  Real power;
+  std::vector<Real> r;
+
+  void operator()(std::span<const Complex> in, std::span<Complex> out) const {
+    for (std::size_t i = 0; i < in.size(); i++) {
+      out[i] = power * in[i] / r[i];
+    }
+  }
+};
+
+const auto TestRadii = std::vector<Real>{0.5, 0.75, 1.0};
+
+}  // namespace
+
+TEST(LayeredTensorField, HoldsOneRadiusMajorStackPerStoredComponent) {
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = RadialGrid<Real>(TestRadii);
+
+  using V = LayeredVectorField<Grid>;
+  auto v = V(radial, grid);
+
+  // A real vector stores two components: the pinned-real one at upper index
+  // zero and one complex one, which is three real degrees of freedom.
+  EXPECT_EQ(V::StoredComponents, 2);
+
+  auto& stack = v.ComponentStack<0>();
+  EXPECT_EQ(stack.NumberOfRadii(), 3);
+  EXPECT_EQ(stack.FieldSize(), grid.FieldSize());
+
+  // A stored component's stack is an ordinary LayeredSpinField, so writing
+  // through a slice writes the tensor.
+  auto slice = v.Component<0>(1);
+  slice.Data()[0] = 2.5;
+  EXPECT_EQ(stack.Slice(1).Data()[0], 2.5);
+}
+
+TEST(LayeredTensorField, TransformsComponentByComponentAsOneBatch) {
+  constexpr auto lMax = Int{8};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = RadialGrid<Real>(TestRadii);
+
+  auto e = LayeredVectorExpansion<Grid, ComplexTensor>(radial, grid, lMax);
+  for (auto i : e.RadiusIndices()) {
+    for (auto l : e.ComponentStack<1>().Degrees()) {
+      for (auto m : e.ComponentStack<1>().Orders(l)) {
+        e.ComponentStack<1>()[i, l, m] = Complex{0.1 * l + m, 0.2 - 0.05 * m};
+      }
+    }
+    for (auto l : e.ComponentStack<0>().Degrees()) {
+      for (auto m : e.ComponentStack<0>().Orders(l)) {
+        e.ComponentStack<0>()[i, l, m] = Complex{std::cos(0.3 * l), 0.1 * m};
+      }
+    }
+    for (auto l : e.ComponentStack<-1>().Degrees()) {
+      for (auto m : e.ComponentStack<-1>().Orders(l)) {
+        e.ComponentStack<-1>()[i, l, m] = Complex{0.4, std::sin(0.2 * l + m)};
+      }
+    }
+  }
+
+  auto field = Evaluate(e);
+  auto back = Expand(field, lMax);
+
+  for (auto i : e.RadiusIndices()) {
+    for (auto l : e.ComponentStack<1>().Degrees()) {
+      for (auto m : e.ComponentStack<1>().Orders(l)) {
+        const auto was = e.ComponentStack<1>()[i, l, m];
+        const auto is = back.ComponentStack<1>()[i, l, m];
+        EXPECT_NEAR(is.real(), was.real(), 1.0e-11);
+        EXPECT_NEAR(is.imag(), was.imag(), 1.0e-11);
+      }
+    }
+  }
+}
+
+//--------------------------------------------------------------------------//
+//                              The gradient                                 //
+//--------------------------------------------------------------------------//
+
+TEST(LayeredGradient, HasTheKnownCoefficientsOnAScalar) {
+  constexpr auto lMax = Int{8};
+  constexpr auto l = Int{4};
+  constexpr auto m = Int{2};
+  const auto a = Real{3};
+
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = RadialGrid<Real>(TestRadii);
+
+  // f_{lm}(r) = r^a in one (l, m) and zero elsewhere.
+  auto f = LayeredScalarExpansion<Grid, ComplexTensor>(radial, grid, lMax);
+  for (auto i : radial.RadiusIndices()) {
+    f.ComponentStack<>()[i, l, m] = std::pow(TestRadii[i], a);
+  }
+
+  auto g = Gradient(f, PowerDerivative{a, TestRadii});
+
+  // (grad f)^0 = df/dr, and (grad f)^{+-} = r^{-1} Omega^{0}_l f with
+  // Omega^{0}_l = sqrt(l(l+1)/2), the same for both signs because a scalar
+  // has upper index zero.
+  const auto omega = std::sqrt(l * (l + 1.0) / 2);
+  for (auto i : radial.RadiusIndices()) {
+    const auto r = TestRadii[i];
+    EXPECT_NEAR((g.Coefficient<0>(i, l, m)).real(), a * std::pow(r, a - 1),
+                1.0e-12);
+    EXPECT_NEAR((g.Coefficient<1>(i, l, m)).real(), omega * std::pow(r, a - 1),
+                1.0e-12);
+    EXPECT_NEAR((g.Coefficient<-1>(i, l, m)).real(), omega * std::pow(r, a - 1),
+                1.0e-12);
+  }
+}
+
+TEST(LayeredGradient, TwoGradientsContractToTheLaplacian) {
+  // The decisive test of the whole construction. Contracting grad grad f with
+  // the metric must give
+  //
+  //     lap (r^a Y_{lm}) = [a(a+1) - l(l+1)] r^{a-2},
+  //
+  // and it is decisive because the *second* gradient acts on a vector whose
+  // e_0 component is not zero. Getting the right answer needs the r^{-1}, the
+  // radial block, and the connection terms that move a slot between e_0 and
+  // e_{+-} -- the last of which nothing before this exercised at all.
+  constexpr auto lMax = Int{10};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = RadialGrid<Real>(TestRadii);
+
+  struct Case {
+    Real a;
+    Int l;
+    Int m;
+  };
+  const auto cases = std::vector<Case>{{3, 4, 2},  {1, 1, 0},  {-2, 6, -5},
+                                       {0, 2, 1},  {2.5, 0, 0}, {-1, 10, 10}};
+
+  for (const auto& c : cases) {
+    auto f = LayeredScalarExpansion<Grid, ComplexTensor>(radial, grid, lMax);
+    for (auto i : radial.RadiusIndices()) {
+      f.ComponentStack<>()[i, c.l, c.m] = std::pow(TestRadii[i], c.a);
+    }
+
+    auto g = Gradient(f, PowerDerivative{c.a, TestRadii});
+    auto h = Gradient(g, PowerDerivative{c.a - 1, TestRadii});
+
+    // g_{alpha beta} = (-1)^alpha delta_{alpha + beta, 0}.
+    for (auto i : radial.RadiusIndices()) {
+      const auto trace = h.Coefficient<0, 0>(i, c.l, c.m) -
+                         h.Coefficient<1, -1>(i, c.l, c.m) -
+                         h.Coefficient<-1, 1>(i, c.l, c.m);
+      const auto expected = (c.a * (c.a + 1) - c.l * (c.l + 1.0)) *
+                            std::pow(TestRadii[i], c.a - 2);
+      EXPECT_NEAR(trace.real(), expected, 1.0e-10 * (1 + std::abs(expected)))
+          << "a = " << c.a << ", l = " << c.l << ", m = " << c.m
+          << ", r = " << TestRadii[i];
+      EXPECT_NEAR(trace.imag(), 0.0, 1.0e-10);
+    }
+  }
+}
+
+TEST(LayeredGradient, HoldsOnARealScalarThroughTheReducedStorage) {
+  // The same identity with the reality condition switched on, so that the
+  // scalar's block holds only m >= 0 and the gradient's negative-index
+  // components are derived rather than stored.
+  constexpr auto lMax = Int{8};
+  constexpr auto l = Int{5};
+  const auto a = Real{2};
+
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = RadialGrid<Real>(TestRadii);
+
+  auto f = LayeredScalarExpansion<Grid>(radial, grid, lMax);
+  EXPECT_EQ(decltype(f)::StoredComponents, 1);
+  for (auto i : radial.RadiusIndices()) {
+    f.ComponentStack<>()[i, l, 3] = std::pow(TestRadii[i], a);
+  }
+
+  auto g = Gradient(f, PowerDerivative{a, TestRadii});
+  auto h = Gradient(g, PowerDerivative{a - 1, TestRadii});
+
+  for (auto i : radial.RadiusIndices()) {
+    for (auto m : {Int{3}, Int{-3}}) {
+      const auto trace = h.Coefficient<0, 0>(i, l, m) -
+                         h.Coefficient<1, -1>(i, l, m) -
+                         h.Coefficient<-1, 1>(i, l, m);
+      const auto f0 = f.Coefficient<>(i, l, m);
+      const auto expected =
+          (a * (a + 1) - l * (l + 1.0)) * std::pow(TestRadii[i], a - 2) * f0 /
+          std::pow(TestRadii[i], a);
+      EXPECT_NEAR(trace.real(), expected.real(), 1.0e-10);
+      EXPECT_NEAR(trace.imag(), expected.imag(), 1.0e-10);
+    }
+  }
+}
+
+TEST(LayeredGradient, RefusesTheOrigin) {
+  constexpr auto lMax = Int{4};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  const auto radii = std::vector<Real>{0.0, 0.5, 1.0};
+  auto radial = RadialGrid<Real>(radii);
+
+  auto f = LayeredScalarExpansion<Grid>(radial, grid, lMax);
+
+  // r^{-1} is in the operator, not in the field: the basis is singular at the
+  // origin and saying so beats returning an infinity.
+  EXPECT_THROW(Gradient(f, PowerDerivative{1, radii}), std::invalid_argument);
 }
