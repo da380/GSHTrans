@@ -1346,3 +1346,57 @@ really is a real tensor, of exactly the same kind as asking for a symmetry and
 unprovable here for the same reason. Without it the algebra could not produce
 a real tensor at all, which would have made the reduction useful only for
 inputs.
+
+---
+
+## 15. Phase 5 in detail
+
+The spectral side: expansions as objects rather than raw coefficient buffers,
+and the operators that connect different upper indices.
+
+### 15.1 What is actually needed
+
+Phase 2's transform bridge writes into a `std::span<Complex>` the caller
+allocates from `CoefficientSize(lMax)`. That works and is untyped: nothing
+stops a caller indexing the wrong block, and there is nowhere for `ð` to live.
+Phase 5 gives that span a type.
+
+**The storage does not split the way phase 4's did.** A pinned component is a
+real *field*, but its coefficients are complex numbers in the reduced `m ≥ 0`
+storage — so the expansion side is one complex buffer throughout, with blocks
+of differing lengths. That is what `CoefficientSize(lMax)` already computes.
+
+### 15.2 The steps
+
+1. **`SpinExpansion`** — the spectral counterpart of `SpinField`: a degree, an
+   upper index, and `operator[](l, m)`. Built on `GSHView`, which `Views.h`
+   already provides over coefficient storage, wrapped so that the upper index
+   is a compile-time property and the reduced `m ≥ 0` storage of a real field
+   is a type distinction rather than a convention. Plus the transforms between
+   it and `SpinField`.
+2. **`TensorExpansion`** — one buffer, per-component expansion views, and the
+   batched transform to and from `TensorField`. Mirrors phase 2 but without
+   the second buffer.
+3. **`ð` and `ð̄`** — raising and lowering, which in the spectral domain are a
+   multiplication by an `l`-dependent factor with no coupling between different
+   `(l, m)` (theory note `eq:eth`).
+
+### 15.3 The convention question, and what can be checked
+
+The theory note flags the **overall signs** in `eq:eth` as needing to be fixed
+against Phinney & Burridge, and says the magnitudes are not in doubt. §2 of
+this document has carried that as one of the two remaining unchecked
+conventions.
+
+Implementing the note's stated signs and testing what they imply is the honest
+position, and two identities are checkable without settling the convention:
+
+- **`ð̄ð` is the surface Laplacian on a scalar.** The factors multiply to
+  `−l(l+1)`, which is the eigenvalue of `∇²` on `Y_{lm}`. This pins the
+  *relative* sign of the two operators and both magnitudes.
+- **`[ð, ð̄] = −2N`.** A structural identity, independent of the overall sign.
+
+Flipping the sign of *both* operators leaves both identities intact, so the
+overall sign remains a convention this document cannot settle from inside.
+It is recorded at the point of use, and it is the one thing in phase 5 that
+wants an answer from the literature rather than from a test.
