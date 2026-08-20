@@ -51,16 +51,31 @@ class SpinFieldView {
 
   SpinFieldView() = delete;
 
-  SpinFieldView(GridType grid, std::span<_Element> data)
-      : _grid{std::move(grid)}, _data{data} {
+  // The stride is how far apart successive samples are, and it defaults to
+  // one because most views are over contiguous storage.
+  //
+  // It is not one when a tensor field is laid out point by point: there each
+  // component's samples are separated by the number of components, and a view
+  // is the only way to hand that component to the field algebra. The
+  // transform needs no repack either, since a batch is described by (count,
+  // stride, dist) (core-plan.md [C9]) -- so the layout stays a choice rather
+  // than becoming a precondition.
+  SpinFieldView(GridType grid, std::span<_Element> data, Int stride = 1)
+      : _grid{std::move(grid)}, _data{data}, _stride{stride} {
     if (!std::ranges::contains(_grid.UpperIndices(), UpperIndex)) {
       throw std::invalid_argument("This grid does not carry upper index " +
                                   std::to_string(UpperIndex));
     }
-    if (_data.size() != static_cast<std::size_t>(_grid.FieldSize())) {
+    if (_stride < 1) {
+      throw std::invalid_argument("A view's stride must be positive");
+    }
+    const auto span =
+        static_cast<std::size_t>((_grid.FieldSize() - 1) * _stride + 1);
+    if (_data.size() < span) {
       throw std::invalid_argument(
           "A view over " + std::to_string(_data.size()) +
-          " values does not cover this grid's " +
+          " values at stride " + std::to_string(_stride) +
+          " does not cover this grid's " +
           std::to_string(_grid.FieldSize()) + " points");
     }
   }
@@ -81,27 +96,38 @@ class SpinFieldView {
   template <typename S>
   requires std::convertible_to<Scalar, S>
   void EvaluateInto(std::span<S> target) const {
-    if (target.size() != _data.size()) {
+    const auto size = static_cast<std::size_t>(Size());
+    if (target.size() != size) {
       throw std::invalid_argument(
           "Evaluation target has size " + std::to_string(target.size()) +
-          ", but this field has " + std::to_string(_data.size()) + " points");
+          ", but this field has " + std::to_string(size) + " points");
     }
-    std::ranges::copy(_data, target.begin());
+    if (_stride == 1) {
+      std::ranges::copy(_data.first(size), target.begin());
+      return;
+    }
+    for (auto i = std::size_t{0}; i < size; i++) {
+      target[i] = static_cast<S>(_data[i * static_cast<std::size_t>(_stride)]);
+    }
   }
 
-  auto Size() const { return static_cast<Int>(_data.size()); }
+  // The number of samples, which is the grid's point count and not the extent
+  // of the storage those samples are spread over.
+  auto Size() const { return static_cast<Int>(_grid.FieldSize()); }
   auto Data() const { return _data; }
+  auto Stride() const { return _stride; }
 
  private:
   GridType _grid;
   std::span<_Element> _data;
+  Int _stride;
 
   Int FlatIndex(Int iTheta, Int iPhi) const {
     const auto nPhi = static_cast<Int>(_grid.NumberOfLongitudes());
     assert(iTheta >= 0 &&
            iTheta < static_cast<Int>(_grid.NumberOfCoLatitudes()));
     assert(iPhi >= 0 && iPhi < nPhi);
-    return iTheta * nPhi + iPhi;
+    return (iTheta * nPhi + iPhi) * _stride;
   }
 };
 

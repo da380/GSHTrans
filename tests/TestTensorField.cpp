@@ -428,3 +428,132 @@ TEST(TensorField, RejectsAGridThatCannotCarryItsUpperIndices) {
   auto wide = Grid(6, 2, FFTWpp::Estimate);
   EXPECT_NO_THROW((TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>(wide)));
 }
+
+//--------------------------------------------------------------------------//
+//                             The layout policy                             //
+//--------------------------------------------------------------------------//
+//
+// The two layouts must be interchangeable in every respect except where the
+// numbers sit. Nothing above this line asked which one it was using, and the
+// transform did not need a repack for either.
+
+namespace {
+
+using PointMajorTensor =
+    TensorField<2, Symmetric<2>, ComplexTensor, Grid, PointMajor>;
+using ComponentMajorTensor =
+    TensorField<2, Symmetric<2>, ComplexTensor, Grid, ComponentMajor>;
+
+}  // namespace
+
+TEST(TensorField, PointMajorInterleavesWhatComponentMajorSeparates) {
+  auto grid = TestGrid();
+  auto point = PointMajorTensor(grid);
+  auto component = ComponentMajorTensor(grid);
+
+  EXPECT_EQ(point.Size(), component.Size());
+  static_assert(PointMajorTensor::StoredComponents ==
+                ComponentMajorTensor::StoredComponents);
+
+  // Writing through a component view puts the samples in different places,
+  // and the view is what knows where.
+  point.Component<0, 1>()[0, 0] = Complex{7.0, -2.0};
+  component.Component<0, 1>()[0, 0] = Complex{7.0, -2.0};
+
+  const auto stored = PointMajorTensor::StoredComponents;
+  const auto slot = PointMajorTensor::SlotOfFlat(
+      MultiIndex<2>(std::array<Int, 2>{0, 1}).Flat());
+
+  EXPECT_EQ(point.Data()[slot], (Complex{7.0, -2.0}));
+  EXPECT_EQ(component.Data()[slot * component.FieldSize()],
+            (Complex{7.0, -2.0}));
+
+  // The second sample of the same component is one field away in one layout
+  // and one component away in the other.
+  point.Component<0, 1>()[0, 1] = Complex{1.0, 1.0};
+  EXPECT_EQ(point.Data()[slot + stored], (Complex{1.0, 1.0}));
+}
+
+TEST(TensorField, ComponentViewsAreStridedInPointMajor) {
+  auto grid = TestGrid();
+  auto t = PointMajorTensor(grid);
+
+  auto u = t.Component<0, 1>();
+  EXPECT_EQ(u.Stride(), PointMajorTensor::StoredComponents);
+  EXPECT_EQ(u.Size(), t.FieldSize());
+
+  auto v = ComponentMajorTensor(grid).Component<0, 1>();
+  EXPECT_EQ(v.Stride(), 1);
+
+  // A strided view is a node like any other: it evaluates, and it composes.
+  for (auto i = Int{0}; i < t.FieldSize(); i++) {
+    u[i / grid.NumberOfLongitudes(), i % grid.NumberOfLongitudes()] =
+        Complex{static_cast<Real>(i), 0.0};
+  }
+  auto target = std::vector<Complex>(t.FieldSize());
+  const auto& constU = u;
+  constU.EvaluateInto(std::span(target));
+  for (auto i = Int{0}; i < t.FieldSize(); i++) {
+    EXPECT_EQ(target[i], (Complex{static_cast<Real>(i), 0.0})) << "at " << i;
+  }
+
+  static_assert(SpinWeighted<decltype(u)>);
+}
+
+// The point of [C9]: a point-major tensor is transformable in place, with the
+// batch descriptor doing the work a repack would otherwise have to.
+TEST(TensorField, BothLayoutsTransformToTheSameCoefficients) {
+  constexpr auto lMax = Int{5};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  auto point = TensorField<2, Symmetric<2>, ComplexTensor, Grid, PointMajor>(
+      grid);
+  auto component =
+      TensorField<2, Symmetric<2>, ComplexTensor, Grid, ComponentMajor>(grid);
+
+  // The same field in each, written through the component views so that
+  // neither test knows the layout.
+  const auto Fill = [&](auto& t) {
+    const auto nPhi = grid.NumberOfLongitudes();
+    const auto write = [&](auto&& u, Int tag) {
+      for (auto iTheta : grid.CoLatitudeIndices()) {
+        for (auto iPhi : grid.LongitudeIndices()) {
+          u[iTheta, iPhi] = Complex{std::cos(0.3 * (iTheta * nPhi + iPhi) + tag),
+                                    std::sin(0.7 * iPhi - tag)};
+        }
+      }
+    };
+    write(t.template Component<-1, -1>(), 0);
+    write(t.template Component<-1, 0>(), 1);
+    write(t.template Component<-1, 1>(), 2);
+    write(t.template Component<0, 0>(), 3);
+    write(t.template Component<0, 1>(), 4);
+    write(t.template Component<1, 1>(), 5);
+  };
+  Fill(point);
+  Fill(component);
+
+  auto a = std::vector<Complex>(component.CoefficientSize(lMax));
+  auto b = std::vector<Complex>(point.CoefficientSize(lMax));
+  ASSERT_EQ(a.size(), b.size());
+
+  component.ForwardTransformation(lMax, a);
+  point.ForwardTransformation(lMax, b);
+
+  // Exactly equal: the strided read happens at the pack seam, which copies
+  // into the plan's own buffers either way, so nothing downstream of it can
+  // tell the difference.
+  for (auto i = std::size_t{0}; i < a.size(); i++) {
+    EXPECT_EQ(a[i], b[i]) << "coefficient " << i;
+  }
+
+  // And back again, into the interleaved layout.
+  point.InverseTransformation(lMax, b);
+  component.InverseTransformation(lMax, a);
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    for (auto iPhi : grid.LongitudeIndices()) {
+      EXPECT_EQ((point.Component<0, 1>()[iTheta, iPhi]),
+                (component.Component<0, 1>()[iTheta, iPhi]));
+    }
+  }
+}

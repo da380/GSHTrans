@@ -21,6 +21,26 @@
 
 namespace GSHTrans {
 
+// How a tensor's components are arranged in its buffer.
+//
+// ComponentMajor keeps each component contiguous, which is what a transform
+// wants and what a component-at-a-time traversal wants. PointMajor keeps all
+// of a point's components together, which is what applying a rank-4 tensor
+// pointwise to a rank-2 one wants -- the operation reads 81 numbers at one
+// point and none at any other.
+//
+// Both are offered rather than one being required, because the transform's
+// batch descriptor covers either: (stride 1, dist FieldSize) for the first
+// and (stride nStored, dist 1) for the second (core-plan.md [C9]). Which is
+// faster is a measurement, not a precondition, and the field-algebra plan
+// dropped the repack requirement on the strength of exactly that.
+struct ComponentMajor {};
+struct PointMajor {};
+
+template <typename L>
+concept TensorLayout =
+    std::same_as<L, ComponentMajor> or std::same_as<L, PointMajor>;
+
 // A tensor field on the sphere: one contiguous buffer, handing out its
 // canonical components as phase-1 nodes.
 //
@@ -39,7 +59,8 @@ namespace GSHTrans {
 // The field-algebra plan records that consequence for phase 4's reality
 // reduction; it arrives here already, because antisymmetry has it too.
 template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
-          TensorReality _Reality, AngularGrid _Grid>
+          TensorReality _Reality, AngularGrid _Grid,
+          TensorLayout _Layout = ComponentMajor>
 class TensorField {
  public:
   using Int = std::ptrdiff_t;
@@ -48,6 +69,10 @@ class TensorField {
   using Symmetry = _Symmetry;
   using Reality = _Reality;
   using GridType = _Grid;
+  using LayoutPolicy = _Layout;
+
+  static constexpr bool IsComponentMajor =
+      std::same_as<_Layout, ComponentMajor>;
   using Real = typename _Grid::Real;
   using Complex = std::complex<Real>;
 
@@ -213,7 +238,7 @@ class TensorField {
     constexpr auto sign = Orbits.sign[flat];
 
     auto view = ConstSpinFieldView<N, GridType, ComplexValued>(
-        _grid, StoredSpan<flat>());
+        _grid, StoredSpan<flat>(), ComponentStride);
 
     // Negated with std::move so that the expression node owns the view rather
     // than referring to this local one. A phase-1 node holds an lvalue
@@ -240,8 +265,8 @@ class TensorField {
   auto Component() {
     constexpr auto flat = FlatOf<Alphas...>;
     constexpr auto N = UpperIndexOf<Alphas...>;
-    return SpinFieldView<N, GridType, ComplexValued>(_grid,
-                                                     StoredSpan<flat>());
+    return SpinFieldView<N, GridType, ComplexValued>(_grid, StoredSpan<flat>(),
+                                                     ComponentStride);
   }
 
   //------------------------------------------------------------------------//
@@ -299,12 +324,10 @@ class TensorField {
       if (count == 0) continue;
       const auto coefficientSize =
           static_cast<Int>(_grid.CoefficientSize(lMax, n));
-      auto fields = Data().subspan(static_cast<std::size_t>(first * fieldSize),
-                                   static_cast<std::size_t>(count * fieldSize));
+      auto fields = FieldGroup(first, count);
       auto block =
           out.subspan(offset, static_cast<std::size_t>(count * coefficientSize));
-      _grid.ForwardTransformation(lMax, n, fields,
-                                  Batch::Contiguous(count, fieldSize), block,
+      _grid.ForwardTransformation(lMax, n, fields, FieldBatch(count), block,
                                   Batch::Contiguous(count, coefficientSize),
                                   policy);
       offset += static_cast<std::size_t>(count * coefficientSize);
@@ -323,12 +346,10 @@ class TensorField {
           static_cast<Int>(_grid.CoefficientSize(lMax, n));
       auto block =
           in.subspan(offset, static_cast<std::size_t>(count * coefficientSize));
-      auto fields = Data().subspan(static_cast<std::size_t>(first * fieldSize),
-                                   static_cast<std::size_t>(count * fieldSize));
+      auto fields = FieldGroup(first, count);
       _grid.InverseTransformation(lMax, n, block,
                                   Batch::Contiguous(count, coefficientSize),
-                                  fields, Batch::Contiguous(count, fieldSize),
-                                  policy);
+                                  fields, FieldBatch(count), policy);
       offset += static_cast<std::size_t>(count * coefficientSize);
     }
   }
@@ -336,6 +357,48 @@ class TensorField {
  private:
   GridType _grid;
   FFTWpp::vector<Scalar> _data;
+
+  // The window of the buffer holding a run of `count` components starting at
+  // `first`, and the descriptor that reads them.
+  //
+  // This is where the layout stops mattering to anything downstream. Both
+  // arrangements are one Batch: components laid end to end are (stride 1,
+  // dist FieldSize), and components interleaved point by point are (stride
+  // nStored, dist 1) with the run's own components picked out of the wider
+  // interleaving -- which is exactly the case Batch::Interleaved documents,
+  // where the count is smaller than the stride and the other components are
+  // no business of the call.
+  auto FieldGroup(Int first, Int count) const {
+    const auto fieldSize = FieldSize();
+    if constexpr (IsComponentMajor) {
+      return Data().subspan(static_cast<std::size_t>(first * fieldSize),
+                            static_cast<std::size_t>(count * fieldSize));
+    } else {
+      return Data().subspan(
+          static_cast<std::size_t>(first),
+          static_cast<std::size_t>((fieldSize - 1) * StoredComponents + count));
+    }
+  }
+
+  auto FieldGroup(Int first, Int count) {
+    const auto fieldSize = FieldSize();
+    if constexpr (IsComponentMajor) {
+      return Data().subspan(static_cast<std::size_t>(first * fieldSize),
+                            static_cast<std::size_t>(count * fieldSize));
+    } else {
+      return Data().subspan(
+          static_cast<std::size_t>(first),
+          static_cast<std::size_t>((fieldSize - 1) * StoredComponents + count));
+    }
+  }
+
+  Batch FieldBatch(Int count) const {
+    if constexpr (IsComponentMajor) {
+      return Batch::Contiguous(count, FieldSize());
+    } else {
+      return Batch::Interleaved(count, StoredComponents);
+    }
+  }
 
   void CheckCoefficients(std::size_t given, Int lMax) const {
     const auto needed = static_cast<std::size_t>(CoefficientSize(lMax));
@@ -350,22 +413,41 @@ class TensorField {
   // The stored component's samples. The representative is looked up at
   // compile time; only the multiplication by the field size is left to run
   // time, and that because the grid is a runtime object.
+  // Where a stored component's samples live, and how far apart. Contiguous
+  // and one apart in ComponentMajor; starting at the component's slot and
+  // StoredComponents apart in PointMajor.
+  static constexpr Int ComponentStride =
+      IsComponentMajor ? Int{1} : StoredComponents;
+
   template <Int Flat>
   std::span<Scalar> StoredSpan() {
-    constexpr auto slot = SlotOfFlat(Orbits.representative[Flat]);
-    static_assert(slot >= 0);
-    const auto size = static_cast<std::size_t>(_grid.FieldSize());
-    return std::span<Scalar>(_data).subspan(
-        static_cast<std::size_t>(slot) * size, size);
+    return std::span<Scalar>(_data).subspan(SpanOffset<Flat>(),
+                                            SpanExtent());
   }
 
   template <Int Flat>
   std::span<const Scalar> StoredSpan() const {
+    return std::span<const Scalar>(_data).subspan(SpanOffset<Flat>(),
+                                                  SpanExtent());
+  }
+
+  template <Int Flat>
+  std::size_t SpanOffset() const {
     constexpr auto slot = SlotOfFlat(Orbits.representative[Flat]);
     static_assert(slot >= 0);
-    const auto size = static_cast<std::size_t>(_grid.FieldSize());
-    return std::span<const Scalar>(_data).subspan(
-        static_cast<std::size_t>(slot) * size, size);
+    if constexpr (IsComponentMajor) {
+      return static_cast<std::size_t>(slot) *
+             static_cast<std::size_t>(_grid.FieldSize());
+    } else {
+      return static_cast<std::size_t>(slot);
+    }
+  }
+
+  // The elements a strided component is spread over: the last sample's offset
+  // plus one, which is less than the whole buffer by the slots that follow.
+  std::size_t SpanExtent() const {
+    return static_cast<std::size_t>((_grid.FieldSize() - 1) * ComponentStride +
+                                    1);
   }
 };
 

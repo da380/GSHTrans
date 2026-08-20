@@ -1135,6 +1135,42 @@ sharing an upper index, using the `(count, stride, dist)` descriptor: `stride =
 `PointMajor`. This is what step F was built for, and it is the first thing to
 consume it.
 
+*Steps 3 and 4 were taken in the other order*, since step 4 is what makes a
+tensor field useful and step 3's motivation — a rank-4 tensor applied
+pointwise — belongs to phase 3. Nothing depended on the order.
+
+### 12.4 What phase 2 landed, and the one thing that was not foreseen
+
+All four steps are in, with 127 tests running in Debug and under ASan and
+UBSan. The index machinery reproduces every table in the theory note and, as a
+check nobody wrote it for, gives **21 independent components for the elastic
+symmetry** `c_{ijkl} = c_{jikl} = c_{ijlk} = c_{klij}`.
+
+**The buffer is ordered by upper index, not by flat multi-index, and that was
+forced rather than chosen.** A batch is described by `(count, stride, dist)`,
+so its members must be uniformly spaced. In flat order the stored components
+sharing one upper index are scattered at no fixed spacing as soon as there is
+any symmetry — so no single descriptor covers them, and the batching that step
+F exists for would have been unreachable from the layer it was built for.
+Ordering by upper index makes each group a contiguous run on both sides.
+
+This is worth recording because §8 wrote the batch descriptor and the tensor
+layout as independent decisions, and they are not: **the descriptor's
+uniformity requirement is a constraint on tensor storage.** `Orbits.h` stays in
+flat order, which is pure combinatorics; the layout belongs to the field.
+
+Two smaller things learned:
+
+- **A component's accessor cannot return one type.** Stored components are
+  views, symmetric-permutation relatives are the same view, antisymmetric
+  relatives are an expression, and a vanishing orbit has nothing to return.
+  §8 recorded this as a phase-4 consequence of reality; it arrives at phase 2,
+  because antisymmetry has it too.
+- **Constraints must be `requires`-clauses, not `static_assert`s**, or the
+  negative tests are vacuous — and the pack size has to be checked before the
+  multi-index is formed, or a wrong-length component is a hard error inside
+  `std::array` rather than an unsatisfied constraint.
+
 ### 12.3 Decisions taken here
 
 **`Reality` is carried but inert until phase 4.** §8 names it as a phase-2
