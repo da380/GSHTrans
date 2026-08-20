@@ -1142,9 +1142,9 @@ Two notes on how it landed. The real-at-`n≠0` check went into
 it can see the real/complex distinction — the plan said "a throw in
 `ValidateTransformRequest`" without saying how it would learn the scalar kind.
 And `TestRealFieldSymmetry.cpp` was rewritten against raw coefficient buffers
-rather than the `CanonicalComponentExpansion` classes it used before: those are
-superseded and are deleted at step 7 of the field-algebra plan, so an oracle
-that phase 4 is meant to reuse could not keep depending on them.
+rather than the `CanonicalComponentExpansion` classes it used before: those
+were superseded and have since been deleted, so an oracle that phase 4 is meant
+to reuse could not keep depending on them.
 
 **T3 — step D, grid sizing.** *Done.* The riskiest of the four and the one that
 must not be deferred: `nPhi` changes `FieldSize()`. Smooth-integer helper, the

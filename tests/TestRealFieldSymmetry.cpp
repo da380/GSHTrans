@@ -28,8 +28,8 @@
 // relation at n = 2, move the storage tests to n = 0, and pin the rejection.
 //
 // Written against raw coefficient buffers rather than the
-// CanonicalComponentExpansion classes, which are superseded and are deleted at
-// step 7 of the field-algebra plan; this file is meant to outlive them.
+// CanonicalComponentExpansion classes, which were superseded and have since
+// been deleted; this file was meant to outlive them, and did.
 
 namespace {
 

@@ -24,10 +24,6 @@ add_executable(TestGaussLegendreGrid
                TestGaussLegendreGrid.cpp)
 target_link_libraries(TestGaussLegendreGrid PRIVATE GSHTrans gtest_main)
 
-add_executable(TestCanonicalComponentExpansion
-               TestCanonicalComponentExpansion.cpp)
-target_link_libraries(TestCanonicalComponentExpansion PRIVATE GSHTrans gtest_main)
-
 add_executable(TestRealFieldSymmetry
                TestRealFieldSymmetry.cpp)
 target_link_libraries(TestRealFieldSymmetry PRIVATE GSHTrans gtest_main)
@@ -35,11 +31,11 @@ target_link_libraries(TestRealFieldSymmetry PRIVATE GSHTrans gtest_main)
 # Every core header must compile on its own, and twice (core-plan.md F10).
 # One translation unit per header, generated at configure time.
 #
-# The list is the core set of GSHTrans/Core plus the umbrella module headers.
-# The superseded CanonicalComponentField and CanonicalComponentExpansion trees
-# are covered only through GSHTrans/All, since they are deleted at step 7 of
-# the field-algebra plan and are not worth fixing individually; add each new
-# header here deliberately.
+# The list is now every header the library ships, plus the umbrella module
+# headers. It used to carry an exemption for the superseded
+# CanonicalComponentField and CanonicalComponentExpansion trees, which were
+# covered only through GSHTrans/All; both are deleted, so there is nothing left
+# to exempt. Add each new header here deliberately.
 set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/3j.h
   GSHTrans/src/Concepts.h
@@ -55,6 +51,7 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/SpinField/SpinFieldOverloads.h
   GSHTrans/src/SpinField/SpinFieldView.h
   GSHTrans/Core
+  GSHTrans/Field
   GSHTrans/All
 )
 
@@ -77,5 +74,4 @@ gtest_discover_tests(TestConcepts)
 gtest_discover_tests(TestSpinField)
 gtest_discover_tests(TestWigner)
 gtest_discover_tests(TestGaussLegendreGrid)
-gtest_discover_tests(TestCanonicalComponentExpansion)
 gtest_discover_tests(TestRealFieldSymmetry)

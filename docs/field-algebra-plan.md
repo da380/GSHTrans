@@ -35,13 +35,33 @@ Superseded: `CanonicalComponentField*`, `CanonicalComponentExpansion*`, and the
 dormant `ScalarField/`, `VectorField/`, `MatrixField/`, `MatrixFieldOld/`,
 `ScalarFieldExpansion/` trees.
 
-*Status after phase-1 step 7.* All of those are **deleted** except
-`CanonicalComponentExpansion*`, which is the spectral side and is replaced at
-phase 5 rather than phase 1; deleting it now would remove working, tested code
-with nothing to put in its place. `FieldBase.h` and `ExpansionBase.h` went with
-them, having no remaining users — which settles the `CheckPointIndices`
-question step 7 raises below: the buggy comparison was deleted rather than
-fixed.
+*Status.* All of those are now **deleted**, together with `FieldBase.h` and
+`ExpansionBase.h` — which settles the `CheckPointIndices` question step 7
+raises below: the buggy comparison was deleted rather than fixed.
+
+`CanonicalComponentExpansion*` was kept back at step 7, on the grounds that
+deleting the spectral side would remove working, tested code with nothing to
+put in its place until phase 5. **It went after step F**, because that
+argument stopped holding in two ways that step −1 created:
+
+- **It could still represent what Q5 removed from the library.**
+  `Traits<CanonicalComponentExpansion>` set `MRange = NonNegative` whenever
+  `Value = RealValued`, at *any* `_N`, and its test instantiated
+  `RealCanonicalComponentExpansion<1, Grid>`. That is the reduced `m ≥ 0`
+  storage scheme core step A deleted, surviving on the spectral side of a
+  library whose spatial side is now type-prevented from expressing it (§9,
+  Q5).
+- **It held the grid as `_Grid&`**, taken from a non-const reference, which is
+  the ownership model core step B removed everywhere else (§3.7). Its test
+  pinned those semantics with an address comparison, so the tree could not be
+  moved onto the handle without rewriting the test that justified keeping it.
+
+Deleting it cost no coverage that phase 5 will want: it touched no transform,
+and `GSHIndices` is exercised far more heavily by `TestGaussLegendreGrid`.
+`Traits.h` went with it, the CRTP `Internal::Traits` scaffolding having had no
+other user, and the `GSHTrans/Expansion` umbrella went with that. Phase 5
+therefore starts from a clean spectral side rather than from a superseded
+one — which is what it was always going to do.
 
 | phase | content |
 |---|---|
@@ -658,9 +678,11 @@ ASan and UBSan. What phase 1 does *not* yet have is recorded in §11.
    *Done.* Deleted outright, along with the five dormant trees, `FieldBase.h`
    and `ExpansionBase.h`; nothing needed quarantining, because nothing outside
    those trees included them. `FieldBase` was deleted rather than fixed.
-   `CanonicalComponentExpansion*` stays until phase 5 (see §1), and needed one
+   `CanonicalComponentExpansion*` stayed at this step, and needed one
    `#include "../Traits.h"` that it had been getting transitively through
-   `ExpansionBase.h` — the same class of defect as core F10.
+   `ExpansionBase.h` — the same class of defect as core F10. It was deleted
+   later, after core step F; §1 records why the argument for keeping it
+   stopped holding.
 
    `examples/FieldExample.cpp` was rewritten against `SpinField` rather than
    deleted, so the public API is exercised from outside the test tree. Writing
