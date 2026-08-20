@@ -183,14 +183,29 @@ class GaussLegendreGrid
       auto d = _impl->wigner[n, iTheta];
       auto w = _impl->quad.W(iTheta) * scaleFactor;
 
-      // Loop over the spherical harmonic coefficients
+      // Loop over the spherical harmonic coefficients, taking the Wigner
+      // values one degree at a time.
+      //
+      // The row pointer comes from d[l] rather than from a single iterator
+      // walked across the whole block. That is the supplier seam of
+      // core-plan.md [C10]: the only thing this loop needs is a contiguous run
+      // of values in (l, m) order, one run per degree, and asking for it per
+      // degree is what lets step F' substitute a supplier that generates the
+      // row into per-thread scratch for one that points into the stored table.
+      // OffsetForDegree is closed-form, so the seam costs a few integer
+      // operations per degree against a loop of length 2l+1.
+      //
+      // The two constraints it carries, both already satisfied here: degrees
+      // are visited in ascending contiguous order from |n|, and each
+      // (n, iTheta) is visited once per pass. A generated row cannot be
+      // revisited without re-running the recursion.
       auto outIter = outBegin;
-      auto wigIter = d.begin();
       auto degrees = d.Degrees() | std::ranges::views::filter(
                                        [lMax](auto l) { return l <= lMax; });
 
       for (auto l : degrees) {
         auto dl = d[l];
+        auto wigIter = dl.begin();
 
         if constexpr (ComplexFloatingPoint<Scalar>) {
           auto workIter = std::prev(work.out.end(), dl.MaxOrder());
@@ -318,13 +333,15 @@ class GaussLegendreGrid
       // Get the Wigner values.
       auto d = _impl->wigner[n, iTheta];
 
-      // Loop over the coefficients.
+      // Loop over the coefficients, one degree at a time. As in the forward
+      // direction, the row pointer comes from d[l]: this is the same supplier
+      // seam, and step F' substitutes at the same point.
       auto inIter = in.begin();
-      auto wigIter = d.begin();
       auto degrees = d.Degrees() | std::ranges::views::filter(
                                        [lMax](auto l) { return l <= lMax; });
       for (auto l : degrees) {
         auto dl = d[l];
+        auto wigIter = dl.begin();
         if constexpr (ComplexFloatingPoint<Scalar>) {
           auto workIter = std::prev(work.in.end(), dl.MaxOrder());
           for (auto m : dl.NegativeOrders()) {
