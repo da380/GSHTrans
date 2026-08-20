@@ -62,8 +62,14 @@ class GaussLegendreGrid
   // (F4).
   GaussLegendreGrid() = delete;
 
-  GaussLegendreGrid(Int lMax, Int nMax, FFTWpp::Flag flag = FFTWpp::Measure)
-      : _impl{std::make_shared<const Impl>(lMax, nMax, flag)} {}
+  // The chunking policy is a property of the machine rather than of the call,
+  // which is why it is set here alongside the planner flag and not on every
+  // transform. `Automatic` assumes a modest cache; a caller who knows their
+  // machine passes `Chunking::ForCache(bytes)`, and one who has measured
+  // their own optimum passes `Chunking::Fixed(count)`.
+  GaussLegendreGrid(Int lMax, Int nMax, FFTWpp::Flag flag = FFTWpp::Measure,
+                    Chunking chunking = Chunking::Automatic())
+      : _impl{std::make_shared<const Impl>(lMax, nMax, flag, chunking)} {}
 
   // A grid for working with fields of maximum degree lBand, with quadrature
   // headroom for degree oversampling * lBand.
@@ -78,7 +84,8 @@ class GaussLegendreGrid
   // degree-2L quantity. The 3/2 rule is oversampling = 1.5; oversampling = 2
   // is exact for a single product.
   static auto ForBand(Int lBand, Int nMax, Real oversampling = 1,
-                      FFTWpp::Flag flag = FFTWpp::Measure) {
+                      FFTWpp::Flag flag = FFTWpp::Measure,
+                      Chunking chunking = Chunking::Automatic()) {
     if (lBand < 0) {
       throw std::invalid_argument("Band must be non-negative");
     }
@@ -87,7 +94,7 @@ class GaussLegendreGrid
     }
     const auto lGrid = static_cast<Int>(
         std::ceil(oversampling * static_cast<Real>(lBand)));
-    return GaussLegendreGrid(lGrid, nMax, flag);
+    return GaussLegendreGrid(lGrid, nMax, flag, chunking);
   }
 
   GaussLegendreGrid(const GaussLegendreGrid&) = default;
@@ -282,8 +289,9 @@ class GaussLegendreGrid
       }
     };
 
-    for (auto first = Int{0}; first < count; first += ChunkSize(count)) {
-      const auto c = std::min(ChunkSize(count), count - first);
+    const auto chunk = ChunkSize(coefficientSize, policy);
+    for (auto first = Int{0}; first < count; first += chunk) {
+      const auto c = std::min(chunk, count - first);
       const auto scratchSize = static_cast<std::size_t>(coefficientSize * c);
 
       if (!RunInParallel(policy)) {
@@ -485,8 +493,9 @@ class GaussLegendreGrid
       }
     };
 
-    for (auto first = Int{0}; first < count; first += ChunkSize(count)) {
-      const auto c = std::min(ChunkSize(count), count - first);
+    const auto chunk = ChunkSize(coefficientSize, policy);
+    for (auto first = Int{0}; first < count; first += chunk) {
+      const auto c = std::min(chunk, count - first);
       const auto scratchSize = static_cast<std::size_t>(coefficientSize * c);
 
       // Gather this chunk's coefficients into [coefficient][field] order
@@ -727,19 +736,15 @@ class GaussLegendreGrid
     }
   }
 
-  // How many fields the inner loop takes at once.
-  //
-  // Not the caller's count. P2 measured tier-1 batching at 2.3x with an
-  // optimum around eight fields, and *worse than no batching at all* beyond
-  // it, because the optimum is set by the coefficient block fitting in
-  // last-level cache. A caller who batches a hundred radii must therefore not
-  // have a hundred handed to the inner loop. The descriptor still describes
-  // what the caller has; this decides what is done with it.
-  //
-  // The cache-derived formula of P8 is not here yet -- it lands with the rest
-  // of the chunking work, and until it does the whole batch is one chunk,
-  // which is correct and, above the optimum, slow.
-  static Int ChunkSize(Int count) { return count; }
+  // How many fields the inner loop takes at once: the grid's chunking policy,
+  // asked about this particular call. The thread count is what the call will
+  // actually run on, which is one whenever the policy is sequential or a
+  // parallel region is already open.
+  Int ChunkSize(Int coefficientSize, Execution policy) const {
+    const auto threads = RunInParallel(policy) ? ThreadCount(policy) : 1;
+    return _impl->chunking.Count(
+        coefficientSize * static_cast<Int>(sizeof(Complex)), threads);
+  }
 
   // Scratch for one chunk's coefficients in [coefficient][field] order.
   //
@@ -849,8 +854,8 @@ class GaussLegendreGrid
   // no synchronisation. Step E's plan cache belongs here, and will be the one
   // mutable member, with its own lock.
   struct Impl {
-    Impl(Int lMaxIn, Int nMaxIn, FFTWpp::Flag flagIn)
-        : lMax{lMaxIn}, nMax{nMaxIn}, flag{flagIn} {
+    Impl(Int lMaxIn, Int nMaxIn, FFTWpp::Flag flagIn, Chunking chunkingIn)
+        : lMax{lMaxIn}, nMax{nMaxIn}, flag{flagIn}, chunking{chunkingIn} {
       assert(lMax >= 0);
       assert(std::abs(nMax) <= lMax);
       assert(flag != FFTWpp::WisdomOnly);
@@ -888,6 +893,7 @@ class GaussLegendreGrid
     Int lMax;
     Int nMax;
     FFTWpp::Flag flag;
+    Chunking chunking;
     GaussQuad::Quadrature1D<Real> quad;
     Wigner<Real, _MRange, _NRange, Multiple, ColumnMajor> wigner;
   };

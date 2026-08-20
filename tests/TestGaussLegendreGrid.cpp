@@ -1046,3 +1046,64 @@ TEST(BatchedTransform, SingleFieldIsTheBatchAtCountOne) {
       lMax, n, field, Batch::One(fieldSize), tooLong,
       Batch::One(coefficientSize)));
 }
+
+TEST(BatchedTransform, ChunkingDoesNotChangeTheAnswer) {
+  constexpr auto lMax = std::ptrdiff_t{6};
+  constexpr auto n = std::ptrdiff_t{2};
+  constexpr auto count = std::ptrdiff_t{5};
+
+  // Five fields in chunks of two: two full chunks and a short one, so the
+  // boundary the loop has to get right is exercised rather than assumed. At
+  // these degrees the automatic policy would take the whole batch at once,
+  // which is why the chunk is pinned instead.
+  auto chunked = BatchGrid(lMax, n, FFTWpp::Estimate, Chunking::Fixed(2));
+  auto whole = BatchGrid(lMax, n, FFTWpp::Estimate, Chunking::Fixed(count));
+
+  const auto fieldSize = static_cast<std::ptrdiff_t>(chunked.FieldSize());
+  const auto coefficientSize =
+      static_cast<std::ptrdiff_t>(chunked.CoefficientSize(lMax, n));
+
+  auto fields = FFTWpp::vector<BatchComplex>(count * fieldSize);
+  for (auto k = std::ptrdiff_t{0}; k < count; k++) {
+    const auto one = BatchField(fieldSize, k);
+    std::copy(one.begin(), one.end(), fields.begin() + k * fieldSize);
+  }
+
+  const auto inBatch = Batch::Contiguous(count, fieldSize);
+  const auto outBatch = Batch::Contiguous(count, coefficientSize);
+  auto inChunks = FFTWpp::vector<BatchComplex>(count * coefficientSize);
+  auto inOne = FFTWpp::vector<BatchComplex>(count * coefficientSize);
+
+  chunked.ForwardTransformation(lMax, n, fields, inBatch, inChunks, outBatch);
+  whole.ForwardTransformation(lMax, n, fields, inBatch, inOne, outBatch);
+
+  // Chunking partitions the batch; it does not touch the order of any sum.
+  for (auto i = std::ptrdiff_t{0}; i < count * coefficientSize; i++) {
+    EXPECT_EQ(inChunks[i], inOne[i]) << "element " << i;
+  }
+
+  // And the same for the inverse, back to the fields it came from.
+  auto backChunked = FFTWpp::vector<BatchComplex>(count * fieldSize);
+  auto backWhole = FFTWpp::vector<BatchComplex>(count * fieldSize);
+  chunked.InverseTransformation(lMax, n, inChunks, outBatch, backChunked,
+                                inBatch);
+  whole.InverseTransformation(lMax, n, inOne, outBatch, backWhole, inBatch);
+  for (auto i = std::ptrdiff_t{0}; i < count * fieldSize; i++) {
+    EXPECT_EQ(backChunked[i], backWhole[i]) << "element " << i;
+  }
+}
+
+TEST(BatchedTransform, ChunkingPolicyIsCarriedByTheGrid) {
+  constexpr auto lMax = std::ptrdiff_t{6};
+  constexpr auto n = std::ptrdiff_t{0};
+
+  // A copied grid shares the implementation, and with it the policy.
+  auto grid = BatchGrid(lMax, n, FFTWpp::Estimate, Chunking::Fixed(2));
+  auto copy = grid;
+  EXPECT_EQ(copy.Identity(), grid.Identity());
+
+  // ForBand forwards it too, rather than silently resetting to Automatic.
+  auto banded = BatchGrid::ForBand(4, n, 1.5, FFTWpp::Estimate,
+                                   Chunking::Fixed(3));
+  EXPECT_EQ(banded.MaxDegree(), 6);
+}

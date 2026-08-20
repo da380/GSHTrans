@@ -205,3 +205,77 @@ TEST(Batch, EqualityIsMemberwise) {
   EXPECT_EQ(Batch::Contiguous(3, 4), Batch::Strided(3, 1, 4));
   EXPECT_NE(Batch::Contiguous(3, 4), Batch::Contiguous(3, 5));
 }
+
+//--------------------------------------------------------------------------//
+//                          The chunking policy                              //
+//--------------------------------------------------------------------------//
+//
+// The coefficient block of one field at (lMax, n) holds (lMax+1)^2 - n^2
+// complex values, so at double precision:
+//
+//   lMax = 128, n = 2   16637 coefficients     266192 bytes
+//   lMax = 256, n = 2   66045 coefficients    1056720 bytes
+//   lMax = 512, n = 2  263165 coefficients    4210640 bytes
+//
+// Those are the sizes the numbers below are anchored on.
+
+namespace {
+constexpr auto bytesAt128 = Int{266192};
+constexpr auto bytesAt256 = Int{1056720};
+constexpr auto bytesAt512 = Int{4210640};
+constexpr auto mebibyte = Int{1} << 20;
+}  // namespace
+
+TEST(Chunking, ReproducesTheTwoMeasuredAnchors) {
+  // P2's optimum of eight was measured on a 16 MiB laptop at lMax = 256,
+  // running sequentially -- so one thread had the whole cache.
+  EXPECT_EQ(Chunking::ForCache(16 * mebibyte).Count(bytesAt256, 1), 8);
+
+  // P8's prediction for a 256 MiB, 64-core machine at full width. The point
+  // of dividing by the running threads rather than by a fixed per-core figure
+  // is that both of these come out right.
+  EXPECT_EQ(Chunking::ForCache(256 * mebibyte).Count(bytesAt256, 64), 2);
+
+  // And the collapse P8 warned about, if the same cache is divided by
+  // hardware threads instead of by the cores actually doing the work.
+  EXPECT_EQ(Chunking::ForCache(256 * mebibyte).Count(bytesAt256, 128), 1);
+}
+
+TEST(Chunking, TheDefaultIsConservative) {
+  const auto automatic = Chunking::Automatic();
+
+  // Below the eight measured on a 16 MiB machine, because overshooting the
+  // optimum is slower than not batching while undershooting only forgoes
+  // gain.
+  EXPECT_EQ(automatic.Count(bytesAt256, 1), 4);
+  EXPECT_EQ(automatic.Count(bytesAt128, 1), 16);
+
+  // At lMax = 512 one field's coefficients already fill the assumed cache, so
+  // there is nothing to batch and the floor holds.
+  EXPECT_EQ(automatic.Count(bytesAt512, 1), 1);
+
+  // Never zero, however little cache is assumed to be going spare.
+  EXPECT_EQ(automatic.Count(bytesAt512, 64), 1);
+  EXPECT_EQ(Chunking::ForCache(1).Count(bytesAt256, 1), 1);
+}
+
+TEST(Chunking, FixedDefeatsTheHeuristic) {
+  const auto fixed = Chunking::Fixed(3);
+  EXPECT_EQ(fixed.Count(bytesAt128, 1), 3);
+  EXPECT_EQ(fixed.Count(bytesAt512, 64), 3);
+  EXPECT_EQ(fixed.Count(0, 1), 3);
+}
+
+TEST(Chunking, IsBoundedAboveAtSmallDegrees) {
+  // The formula grows without bound as the degree falls, where the limit is
+  // per-call overhead rather than cache. The cap is a guard, not a measured
+  // optimum.
+  EXPECT_EQ(Chunking::Automatic().Count(16, 1), Chunking::MaximumCount);
+}
+
+TEST(Chunking, RejectsPoliciesThatDescribeNothing) {
+  EXPECT_THROW(Chunking::ForCache(0), std::invalid_argument);
+  EXPECT_THROW(Chunking::ForCache(-1), std::invalid_argument);
+  EXPECT_THROW(Chunking::Fixed(0), std::invalid_argument);
+  EXPECT_THROW(Chunking::Fixed(-2), std::invalid_argument);
+}

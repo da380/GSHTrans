@@ -1320,11 +1320,43 @@ and every test is green at each of the commits below.
    **exact** equality. Tier 1 widens the inner loop without reordering any
    sum, so a difference would mean it had been restructured rather than
    widened. 89 tests pass in Debug, in Release, and under ASan and UBSan.
-4. **Not started.** Chunking, the `k = 1` wrapper ([C3]), and the batched rows
-   in the harness. `ChunkSize` currently returns the whole batch, so a caller
-   batching far above the optimum gets a correct answer slowly. The wrapper is
-   in — both single-field entry points are the batched primitive at `count = 1`
-   — so what is left is P8's cache formula and the measurement.
+4. **Done.** Chunking, the `k = 1` wrapper ([C3]), and the batched rows in the
+   harness.
+
+   The chunk is a `Chunking` value set at grid construction, next to the
+   planner flag, because the cache figure it needs is a property of the machine
+   rather than of the call. `Automatic()` assumes a modest 8 MiB last-level
+   cache; `ForCache(bytes)` takes the caller's; `Fixed(count)` defeats the
+   heuristic, which is what a benchmark sweeping chunk widths needs. Not a
+   preprocessor macro: the library is header-only, so a knob defined
+   differently in two translation units would give `GaussLegendreGrid` two
+   inline bodies and let the linker choose in silence, and it could not be
+   swept without a rebuild.
+
+   **P8's formula needed two corrections, both found by checking it against
+   its own anchors.** It divides by *the threads actually running*, not by a
+   fixed per-core figure: P2's optimum of eight was measured sequentially, so
+   that one thread had the whole 16 MiB, and the 2 MiB per-core share of the
+   same machine would predict one. And it rounds to nearest rather than
+   truncating — both anchors land just below an integer, 7.94 and 1.98, so
+   truncation gives seven and *one*, and the second is precisely the collapse
+   to a chunk of one that P8 raised the formula to avoid. With both, the
+   formula returns eight and two, which is what §8 always claimed it did.
+
+   *Measured on the laptop, sequential, two runs back to back.* At
+   `lMax = 256` both agree: the optimum is `k = 8` at **2.4–2.6×**, falling to
+   1.3–1.9× at 16 and 1.05–1.20× at 32. That is P2 reproduced, including the
+   reversal beyond the optimum. `ForCache(16 MiB)` — this machine's real L3 —
+   returns exactly 8 there, so the heuristic lands on the measured optimum when
+   given a true cache figure. `Automatic()` returns 4 and reaches 2.05–2.26×,
+   which is the undershoot the conservative default is for.
+
+   At `lMax = 128` the optimum is **not resolvable on this machine**: the peak
+   swaps between 8 and 16 between the two runs, at 2.44× against 1.81× one way
+   and 2.02× against 2.43× the other. Run one alone would have supported
+   capping the automatic chunk near eight; run two refutes it. Recorded because
+   the temptation to act on the first run was real, and because it is the
+   noise floor of §8 doing exactly what that note warns about.
 
 *Two things not to rediscover.* Zeroing the output must respect the batch
 descriptor rather than filling the whole range — a `PointMajor` batch is

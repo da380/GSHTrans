@@ -192,6 +192,97 @@ class Batch {
   Int _dist;
 };
 
+// How many fields of a batch the inner loop takes at once.
+//
+// Not the caller's count. Tier-1 batching was measured at 2.3x with an optimum
+// around eight fields and *worse than no batching at all* beyond it
+// (core-plan.md P2), because the optimum is set by the chunk's coefficient
+// block fitting in last-level cache. A caller who batches a hundred radii must
+// therefore not have a hundred handed to the inner loop: the descriptor says
+// what the caller has, this says what is done with it.
+//
+// The figure that varies between machines is the cache, so that is what is
+// settable. `Automatic` assumes a modest machine and is deliberately
+// conservative -- undershooting forgoes some of the 2.3x, overshooting is
+// slower than not batching, so the default errs small and a caller who knows
+// their machine says so with `ForCache`. `Fixed` defeats the heuristic
+// entirely, which is what a benchmark sweeping chunk sizes needs, and what a
+// caller who has measured their own optimum should use.
+//
+// This is a value rather than a macro on purpose. The library is header-only,
+// so a preprocessor knob defined differently in two translation units would
+// give GaussLegendreGrid two inline bodies and let the linker pick one in
+// silence; it could not be swept without a rebuild, which is how measurements
+// stop being taken; and it could not read anything about the machine.
+class Chunking {
+ public:
+  using Int = std::ptrdiff_t;
+
+  // A modest desktop's last-level cache. At lMax = 256 this gives a chunk of
+  // three on one thread, against the eight P2 measured on a 16 MiB laptop --
+  // less gain, and no risk of the reversal beyond the optimum.
+  static constexpr Int DefaultCacheBytes = Int{8} << 20;
+
+  // A guard, not a measurement: at small degrees the formula below grows
+  // without bound, and there the limit is per-call overhead rather than
+  // cache. It also bounds the scratch a single call can ask for.
+  static constexpr Int MaximumCount = 64;
+
+  static Chunking Automatic() { return Chunking(DefaultCacheBytes, 0); }
+
+  // The total last-level cache of the machine, in bytes. Divided by the
+  // threads actually running, since that is what each of them gets.
+  static Chunking ForCache(Int bytes) {
+    if (bytes < 1) {
+      throw std::invalid_argument("Cache size must be positive");
+    }
+    return Chunking(bytes, 0);
+  }
+
+  static Chunking Fixed(Int count) {
+    if (count < 1) {
+      throw std::invalid_argument("Chunk size must be at least one");
+    }
+    return Chunking(DefaultCacheBytes, count);
+  }
+
+  // The chunk to use for a call whose coefficient block is `bytesPerField`
+  // bytes and which will run on `threads` threads.
+  //
+  // The divisor of two is headroom: the coefficient block is not alone in the
+  // cache, the streamed Wigner row and the FFT output are there too.
+  //
+  // Dividing by the running thread count rather than by the core count is the
+  // form that reproduces both of P8's anchors, which a fixed "per core" figure
+  // does not. P2's optimum of eight was measured *sequentially*, so that one
+  // thread had the whole of a 16 MiB cache: 16 MiB / 1 gives eight, while the
+  // 2 MiB per-core share of the same machine would give one. On a 256 MiB,
+  // 64-core machine at full width it gives two, which is what P8 predicted.
+  Int Count(Int bytesPerField, int threads) const {
+    if (_fixed > 0) return _fixed;
+    if (bytesPerField < 1) return MaximumCount;
+    const auto share = _cacheBytes / static_cast<Int>(threads > 0 ? threads : 1);
+    // Rounded to nearest, not truncated. Both of P8's anchors land just under
+    // an integer -- 7.94 on a 16 MiB cache at lMax = 256, and 1.98 on a
+    // 256 MiB cache at 64 threads -- so truncation would give seven and *one*,
+    // and the second is exactly the collapse to a chunk of one that P8 raised
+    // the formula to avoid. Adding half before dividing gives eight and two,
+    // which are the numbers that document quotes.
+    const auto count = (share + bytesPerField) / (2 * bytesPerField);
+    if (count < 1) return 1;
+    return count < MaximumCount ? count : MaximumCount;
+  }
+
+  bool operator==(const Chunking&) const = default;
+
+ private:
+  Chunking(Int cacheBytes, Int fixed)
+      : _cacheBytes{cacheBytes}, _fixed{fixed} {}
+
+  Int _cacheBytes;
+  Int _fixed;  // zero means "use the heuristic"
+};
+
 //-------------------------------------------------------------------------//
 //                      Numeric concepts, from elsewhere                    //
 //--------------------------------------------------------------------------//

@@ -483,7 +483,7 @@ int main(int argc, char** argv) {
   // server runs were lost to exactly that: the source reached the machine with
   // an old timestamp, make saw nothing to do, and the log looked plausible
   // while being produced by the previous harness.
-  constexpr auto revision = 3;
+  constexpr auto revision = 4;
 
   if (argc == 2 && std::string(argv[1]) == "--check") {
     std::printf("harness revision %d\n", revision);
@@ -496,8 +496,8 @@ int main(int argc, char** argv) {
               "harness revision %d\n", revision);
   std::printf("double precision, single field per call (k = 1)\n");
   std::printf(
-      "sections: stream grid transforms threading server huge "
-      "(all, if none named)\n");
+      "sections: stream grid transforms threading batching server "
+      "huge (all, if none named)\n");
 
   PrintMachineFacts();
 
@@ -695,6 +695,68 @@ int main(int argc, char** argv) {
       if (!AffordableAt(lMax, 2)) continue;
       RunScaling(lMax, 2, Windows(lMax));
     }
+  }
+
+  //------------------------------------------------------------------------//
+  //                    Batching, and the chunk heuristic                    //
+  //------------------------------------------------------------------------//
+
+  if (Want("batching")) {
+    PrintHeader("Batching (core-plan.md step F, tier 1)");
+    std::printf(
+        "Each row transforms k fields in one call, with the chunk pinned to k\n"
+        "so that the row measures one chunk of that width. P2 measured 2.3x at\n"
+        "an optimum near k = 8 on a 16 MiB laptop, and *worse than no batching*\n"
+        "beyond it. The `auto` column is what Chunking::Automatic would pick\n"
+        "here, and the point of these rows is whether it picks near the peak.\n");
+
+    for (auto lMax : {Int{128}, Int{256}}) {
+      const auto n = Int{2};
+      auto grid = GaussLegendreGrid<Real, All, All>(lMax, n, FFTWpp::Measure);
+      const auto fieldSize = static_cast<Int>(grid.FieldSize());
+      const auto coefficientSize =
+          static_cast<Int>(grid.CoefficientSize(lMax, n));
+      const auto bytesPerField =
+          coefficientSize * static_cast<Int>(sizeof(Complex));
+
+      std::printf("\nlMax = %zd, n = %zd, complex, sequential.  auto = %zd\n\n",
+                  lMax, n, Chunking::Automatic().Count(bytesPerField, 1));
+      std::printf("%6s %12s %14s %10s %12s\n", "k", "total(ms)",
+                  "per field(ms)", "speedup", "resident(MB)");
+
+      auto base = 0.0;
+      for (auto k : {Int{1}, Int{2}, Int{4}, Int{8}, Int{16}, Int{32}}) {
+        auto fields = FFTWpp::vector<Complex>(k * fieldSize);
+        for (auto i = Int{0}; i < k * fieldSize; i++) {
+          fields[i] = Complex{0.5 + 0.001 * i, -0.25 + 0.002 * i};
+        }
+        auto coefficients = FFTWpp::vector<Complex>(k * coefficientSize);
+
+        // One chunk of width k, whatever the heuristic would have said.
+        auto pinned = GaussLegendreGrid<Real, All, All>(
+            lMax, n, FFTWpp::Measure, Chunking::Fixed(k));
+        const auto inBatch = Batch::Contiguous(k, fieldSize);
+        const auto outBatch = Batch::Contiguous(k, coefficientSize);
+
+        const auto seconds = TimePerCall([&] {
+          pinned.ForwardTransformation(lMax, n, fields, inBatch, coefficients,
+                                       outBatch);
+        });
+        const auto perField = seconds / static_cast<double>(k);
+        if (k == 1) base = perField;
+        std::printf("%6zd %12.3f %14.4f %9.2fx %12.1f\n", k, seconds * 1e3,
+                    perField * 1e3, base / perField,
+                    static_cast<double>(k) *
+                        (fieldSize + coefficientSize) * 16 / 1e6);
+      }
+    }
+    std::printf(
+        "\nSpeedup is against k = 1 *per field*, so it is the batching gain\n"
+        "and nothing else. A row slower than 1.00x is past the optimum: the\n"
+        "chunk's coefficients no longer fit in cache and the Wigner stream is\n"
+        "being re-read. If `auto` sits well below the peak, the default cache\n"
+        "figure is too conservative for this machine and Chunking::ForCache\n"
+        "is what fixes it.\n");
   }
 
   // Named explicitly or not run. A 344 GB table needs a machine that has it

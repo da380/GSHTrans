@@ -128,7 +128,7 @@ cmake --build "$build" --target TransformBenchmark -j "$(nproc)" || exit 1
 # reported "Built target" without compiling anything, and the log that came
 # back looked entirely plausible while having been produced by the previous
 # harness. Nothing in the output said so, which is the part worth fixing.
-expected=3
+expected=4
 got="$("$binary" --check 2>/dev/null | awk '/harness revision/ {print $3}')"
 if [ "${got:-0}" -lt "$expected" ]; then
   echo
@@ -170,15 +170,15 @@ run () {
 }
 
 run "Run 1 of 3 -- threads bound to cores, memory wherever it falls" \
-  env OMP_PROC_BIND=spread OMP_PLACES=cores "$binary" stream server
+  env OMP_PROC_BIND=spread OMP_PLACES=cores "$binary" stream batching server
 
 run "Run 2 of 3 -- unbound, which is what an unprepared caller gets" \
-  env OMP_PROC_BIND=false "$binary" stream server
+  env OMP_PROC_BIND=false "$binary" stream batching server
 
 if command -v numactl >/dev/null && [ "$(ls -d /sys/devices/system/node/node* 2>/dev/null | wc -l)" -gt 1 ]; then
   run "Run 3 of 3 -- pages interleaved across nodes, the NUMA control" \
     env OMP_PROC_BIND=spread OMP_PLACES=cores \
-    numactl --interleave=all "$binary" stream server
+    numactl --interleave=all "$binary" stream batching server
 else
   echo
   nodes="$(ls -d /sys/devices/system/node/node* 2>/dev/null | wc -l)"
