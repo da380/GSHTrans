@@ -1384,14 +1384,59 @@ measurement, and the only way to get a real answer is a Clang build against a
 `libomp` compiled with `LIBOMP_TSAN_SUPPORT`. Worth doing once, before the
 layered layer adds a second level of threading; not worth doing repeatedly.
 
-**T11 — step F′, Wigner values on the fly.** Two commits. First the boundary
-recursion replacing `lgamma`/`exp`, which stands on its own, applies to the
-stored path, removes the `signgam` race described in step F′, and lands with a
-tolerance test against the present values.
-Then the generating supplier behind step F's seam, θ-blocked, with the named
-constructor, validated against the stored path to round-trip tolerance and
-measured at `lMax ∈ {64, 128, 256}`, `k ∈ {1, 8}`, on one and eight threads.
-Those numbers decide what step G is still for.
+**T11 — step F′, Wigner values on the fly.** *Next.* Two commits. First the
+boundary recursion replacing `lgamma`/`exp`, which stands on its own, applies
+to the stored path, removes the `signgam` race described in step F′, and lands
+with a tolerance test against the present values. Then the generating supplier
+behind step F's seam, θ-blocked, with the named constructor, validated against
+the stored path to round-trip tolerance and measured at
+`lMax ∈ {64, 128, 256}`, `k ∈ {1, 8}`, on one and eight threads. Those numbers
+decide what step G is still for.
+
+*Where the first commit lands, read off the code so it need not be found
+again.* `WignerDetails::WignerMinOrder` (`Wigner.h:56`) is the closed form,
+three `lgamma` and an `exp`; `WignerMaxOrder` (`:86`) is it again with a sign.
+There are two kinds of call site and only one of them matters:
+
+- **`Wigner.h:378`, `:398`, `:419`, `:476`** — the `m = ±l` terms, evaluated
+  once per degree inside `Compute`'s degree loops. This is the cost: at
+  `lMax = 256` it is `2 × 255 × 257 ≈ 131k` evaluations per upper index, which
+  is where the plan's "comparable to the whole transform" comes from.
+- **`Wigner.h:354`, `:358`** — the seed row at `l = |n|`, a loop over *m* at
+  fixed `l`. Only `2|n|+1` values per `(n, θ)`, so five of them for a rank-2
+  application. Not worth touching.
+
+*The recursion, checked against the closed form rather than taken on trust.*
+Writing `WignerMinOrder(l, n) = sqrt((2l)! / ((l−n)!(l+n)!)) · s^{l+n} · c^{l−n}`
+with `s = sin(θ/2)`, `c = cos(θ/2)`, the ratio at fixed `n` is
+
+```
+d(l) / d(l−1) = sqrt( 2l(2l−1) / ((l−n)(l+n)) ) · s · c
+```
+
+which is the plan's stated ratio, confirmed. It is valid only for `l > |n|`;
+at `l = |n|` one factor of the denominator vanishes and the seed is needed,
+where the square root is one and the value is `s^{2|n|}` at `n = +|n|` or
+`c^{2|n|}` at `n = −|n|` — one `pow` per `(n, θ)` instead of per `(l, θ)`.
+Carrying `WignerMinOrder(l, ±n)` as two running values gives both boundaries,
+since `WignerMaxOrder(l, n) = (−1)^{n+l} · WignerMinOrder(l, −n)`.
+
+*Four things not to be caught by.* `Compute` walks degrees ascending
+(`Wigner.h:403`), so a running value fits the existing loop with no
+restructuring. The boundary terms are guarded by `l <= mMax` and are never
+wanted again once `l` passes it, so the recursion stops rather than having to
+be advanced unused. The `AtLeft`/`AtRight` special cases at `Wigner.h:63–71`
+return exact 0/1 and must survive, since the ratio is `0 · ∞` there.
+And the orthonormalisation `sqrt((2l+1)/4π)` is applied to the whole block
+*afterwards* (`Wigner.h:490`), so the recursion runs on unnormalised values —
+which is also the contract a generating supplier must meet in the second
+commit.
+
+*What the second commit substitutes into.* `ConstGSHView::operator[](l)` is
+already the row supplier, and both transform loops take their row from `d[l]`
+once per degree (T10). The two constraints that seam carries are stated in
+step F and are still satisfied: degrees ascending and contiguous from `|n|`,
+and each `(n, iTheta)` visited once per pass.
 
 **T7 — the benchmark harness of §5.** *Done.* Then steps E–H, each gated on the
 measurement that justifies it. **The first run of the harness changed what
