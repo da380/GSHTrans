@@ -285,3 +285,154 @@ TEST(TensorAlgebra, ContractingAProductIsADoubleSum) {
   EXPECT_NEAR(got.real(), expected.real(), 1.0e-13);
   EXPECT_NEAR(got.imag(), expected.imag(), 1.0e-13);
 }
+
+//--------------------------------------------------------------------------//
+//                      Symmetrisation and materialisation                   //
+//--------------------------------------------------------------------------//
+
+TEST(TensorAlgebra, SymmetrisationProjectsOntoTheSymmetry) {
+  using T = TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>;
+  auto grid = TestGrid();
+  auto t = T(grid);
+  Fill<T, 0, 1>(t, 1.0);
+  Fill<T, 1, 0>(t, 5.0);
+
+  const auto& tensor = t;
+  auto sym = Symmetrise<Symmetric<2>>(tensor);
+  auto skew = Symmetrise<Antisymmetric<2>>(tensor);
+
+  static_assert(TensorExpr<decltype(sym)>);
+  static_assert(decltype(sym)::Rank == 2);
+
+  const auto a = tensor.Component<0, 1>()[2, 2];
+  const auto b = tensor.Component<1, 0>()[2, 2];
+
+  EXPECT_NEAR((sym.Component<0, 1>()[2, 2]).real(), (0.5 * (a + b)).real(),
+              1.0e-13);
+  EXPECT_NEAR((skew.Component<0, 1>()[2, 2]).real(), (0.5 * (a - b)).real(),
+              1.0e-13);
+
+  // The symmetric part is symmetric, and the antisymmetric part changes sign.
+  EXPECT_NEAR((sym.Component<1, 0>()[2, 2]).real(),
+              (sym.Component<0, 1>()[2, 2]).real(), 1.0e-13);
+  EXPECT_NEAR((skew.Component<1, 0>()[2, 2]).real(),
+              -(skew.Component<0, 1>()[2, 2]).real(), 1.0e-13);
+
+  // And they add back up to the original.
+  EXPECT_NEAR(
+      (sym.Component<0, 1>()[2, 2] + skew.Component<0, 1>()[2, 2]).real(),
+      a.real(), 1.0e-13);
+}
+
+TEST(TensorAlgebra, SymmetrisingAnAlreadySymmetricTensorIsTheIdentity) {
+  using T = TensorField<2, Symmetric<2>, ComplexTensor, Grid>;
+  auto grid = TestGrid();
+  auto t = T(grid);
+  Fill<T, 0, 1>(t, 2.0);
+
+  const auto& tensor = t;
+  auto sym = Symmetrise<Symmetric<2>>(tensor);
+  EXPECT_NEAR((sym.Component<0, 1>()[1, 1]).real(),
+              (tensor.Component<0, 1>()[1, 1]).real(), 1.0e-13);
+
+  // Antisymmetrising it gives zero, which is the check that the signs are the
+  // right way round.
+  auto skew = Symmetrise<Antisymmetric<2>>(tensor);
+  EXPECT_NEAR((skew.Component<0, 1>()[1, 1]).real(), 0.0, 1.0e-13);
+  EXPECT_NEAR((skew.Component<0, 1>()[1, 1]).imag(), 0.0, 1.0e-13);
+}
+
+TEST(TensorAlgebra, TheGroupIsClosedUnderItsGenerators) {
+  // Two generators give the whole symmetric group on three slots, and six
+  // elements is what that is.
+  static_assert(TensorDetails::GroupElements<3, Symmetric<3>>().second == 6);
+  static_assert(TensorDetails::GroupElements<2, Symmetric<2>>().second == 2);
+  static_assert(TensorDetails::GroupElements<4, Symmetric<4>>().second == 24);
+  static_assert(TensorDetails::GroupElements<2, NoSymmetry<2>>().second == 1);
+
+  // The elastic symmetry is a group of order 8: two independent pair swaps
+  // and the exchange of the pairs.
+  static_assert(TensorDetails::GroupElements<4, ElasticSymmetry>().second == 8);
+  SUCCEED();
+}
+
+TEST(TensorAlgebra, MaterialiseEvaluatesIntoAField) {
+  using T = TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>;
+  auto grid = TestGrid();
+  auto t = T(grid);
+  for (auto i = Int{0}; i < t.Size(); i++) {
+    t.Data()[i] = Complex{std::cos(0.4 * i), std::sin(0.9 * i)};
+  }
+
+  const auto& tensor = t;
+  auto transposed = Materialise(Transpose(tensor));
+  static_assert(std::same_as<decltype(transposed),
+                             TensorField<2, NoSymmetry<2>, ComplexTensor,
+                                         Grid>>);
+
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    for (auto iPhi : grid.LongitudeIndices()) {
+      EXPECT_EQ((transposed.Component<0, 1>()[iTheta, iPhi]),
+                (tensor.Component<1, 0>()[iTheta, iPhi]));
+      EXPECT_EQ((transposed.Component<-1, 1>()[iTheta, iPhi]),
+                (tensor.Component<1, -1>()[iTheta, iPhi]));
+    }
+  }
+}
+
+TEST(TensorAlgebra, MaterialiseStoresOnlyWhatTheAskedSymmetryKeeps) {
+  using T = TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>;
+  auto grid = TestGrid();
+  auto t = T(grid);
+  Fill<T, 0, 1>(t, 1.0);
+  Fill<T, 1, 0>(t, 5.0);
+
+  const auto& tensor = t;
+
+  // Asking for a symmetry is an assertion about the value, honoured by
+  // storing only the components it keeps: six rather than nine.
+  auto sym = Materialise<Symmetric<2>>(Symmetrise<Symmetric<2>>(tensor));
+  static_assert(decltype(sym)::StoredComponents == 6);
+  EXPECT_EQ(sym.Size(), 6 * sym.FieldSize());
+
+  const auto expected =
+      0.5 * (tensor.Component<0, 1>()[2, 2] + tensor.Component<1, 0>()[2, 2]);
+  EXPECT_NEAR((sym.Component<0, 1>()[2, 2]).real(), expected.real(), 1.0e-13);
+  EXPECT_NEAR((sym.Component<1, 0>()[2, 2]).real(), expected.real(), 1.0e-13);
+}
+
+// The composite the whole layer exists for: an elastic tensor applied to a
+// strain, which is a double contraction of a tensor product.
+TEST(TensorAlgebra, ElasticTensorAppliedToAStrain) {
+  using C = TensorField<4, ElasticSymmetry, ComplexTensor, Grid>;
+  using E = TensorField<2, Symmetric<2>, ComplexTensor, Grid>;
+  auto grid = TestGrid();
+
+  auto c = C(grid);
+  auto e = E(grid);
+  for (auto i = Int{0}; i < c.Size(); i++) {
+    c.Data()[i] = Complex{std::cos(0.13 * i), 0.0};
+  }
+  for (auto i = Int{0}; i < e.Size(); i++) {
+    e.Data()[i] = Complex{std::sin(0.27 * i), 0.0};
+  }
+
+  const auto& elastic = c;
+  const auto& strain = e;
+
+  // c^{ijkl} e^{mn} contracted on (k, m) and then on what was (l, n): the
+  // stress, of rank 2.
+  auto product = TensorProduct(elastic, strain);
+  static_assert(decltype(product)::Rank == 6);
+  auto once = Contract<2, 4>(product);
+  static_assert(decltype(once)::Rank == 4);
+  auto stress = Contract<2, 3>(once);
+  static_assert(decltype(stress)::Rank == 2);
+
+  // It is still a tensor, its components are still spin-weighted fields at
+  // the upper index their multi-index implies, and it can be materialised.
+  static_assert(decltype(stress.Component<1, 1>())::UpperIndex == 2);
+  auto materialised = Materialise(stress);
+  EXPECT_EQ((materialised.Component<1, 1>()[1, 1]),
+            (stress.Component<1, 1>()[1, 1]));
+}

@@ -1242,6 +1242,17 @@ what keeps the lazy layer sound.
 5. **Materialisation** into a `TensorField`, which is where a lazy tensor stops
    being lazy.
 
+*All five are in, with 145 tests.* The composite they were for —
+`Contract<2,3>(Contract<2,4>(c ⊗ e))`, an elastic tensor applied to a strain —
+is written in the test file in three lines, and every intermediate is checked
+by the compiler for rank and upper index.
+
+Nothing in phase 3 needed a change to phase 1 or phase 2. That was the bet §8
+made when it said "each delegates pointwise work to phase-1 nodes", and it paid
+off: the only new machinery is turning a computed multi-index back into
+template arguments, which `TensorDetails::ComponentOf` does once and everything
+else uses.
+
 ### 13.3 Decisions taken here
 
 **Operand storage follows phase 1 exactly** — `OperandStorage`, `IsTerminal`,

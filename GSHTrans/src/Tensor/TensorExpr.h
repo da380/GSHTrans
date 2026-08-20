@@ -119,6 +119,47 @@ constexpr auto Insert(const std::array<Int, Size>& surviving, Int alpha) {
   return full;
 }
 
+// The elements of the group a symmetry's generators generate, each a
+// permutation with the sign a component picks up under it.
+//
+// The orbit table walks this group implicitly and never names its elements;
+// symmetrisation has to sum over them, so it needs them listed. A breadth-
+// first closure under composition, where composing images A then B gives
+// C[i] = A[B[i]] -- the convention MultiIndex::Permuted fixes.
+template <Int Rank>
+constexpr Int FactorialBound() {
+  auto n = Int{1};
+  for (auto i = Int{2}; i <= Rank; i++) n *= i;
+  return n;
+}
+
+template <Int Rank, TensorSymmetry<Rank> Symmetry>
+constexpr auto GroupElements() {
+  constexpr auto Bound = FactorialBound<Rank>();
+  auto elements = std::array<SlotPermutation<Rank>, Bound>{};
+  auto count = Int{1};
+  elements[0] = SlotPermutation<Rank>{SymmetryDetails::Identity<Rank>(), 1};
+
+  const auto generators = Symmetry::Generators();
+  for (auto head = Int{0}; head < count; head++) {
+    for (const auto& generator : generators) {
+      auto image = std::array<Int, Rank>{};
+      for (auto i = Int{0}; i < Rank; i++) {
+        image[i] = elements[head].image[generator.image[i]];
+      }
+      const auto sign = elements[head].sign * generator.sign;
+
+      auto seen = false;
+      for (auto i = Int{0}; i < count; i++) {
+        if (elements[i].image == image) seen = true;
+      }
+      if (seen || count >= Bound) continue;
+      elements[count++] = SlotPermutation<Rank>{image, sign};
+    }
+  }
+  return std::pair(elements, count);
+}
+
 }  // namespace TensorDetails
 
 //--------------------------------------------------------------------------//
@@ -351,6 +392,150 @@ requires TensorExpr<std::remove_cvref_t<T>> &&
          (std::remove_cvref_t<T>::Rank == 2)
 auto Trace(T&& tensor) {
   return Contract<0, 1>(std::forward<T>(tensor)).template Component<>();
+}
+
+
+//--------------------------------------------------------------------------//
+//                              Symmetrisation                               //
+//--------------------------------------------------------------------------//
+
+// The projection onto a symmetry:
+//
+//   Sym(T)^{alpha} = (1/|G|) sum_{pi in G} sign(pi) T^{pi(alpha)}.
+//
+// Every term carries the same upper index, since a permutation preserves the
+// slot sum, so the sum is admissible and the result is again a tensor. What it
+// is *not* is a tensor whose type records the symmetry: the value has the
+// property, and only Materialise can be asked to store it that way.
+template <typename Symmetry, typename Operand>
+class SymmetriseNode {
+ public:
+  using Int = std::ptrdiff_t;
+  using OperandType = std::remove_cvref_t<Operand>;
+
+  static constexpr Int Rank = OperandType::Rank;
+  using GridType = typename OperandType::GridType;
+  using Real = typename GridType::Real;
+
+  static constexpr auto Group = TensorDetails::GroupElements<Rank, Symmetry>();
+  static constexpr Int GroupSize = Group.second;
+
+  explicit SymmetriseNode(Operand&& operand)
+      : _operand{std::forward<Operand>(operand)} {}
+
+  const GridType& Grid() const { return _operand.Grid(); }
+
+  template <std::size_t Element, Int... Alphas>
+  static constexpr auto Source =
+      MultiIndex<Rank>(std::array<Int, Rank>{Alphas...})
+          .Permuted(Group.first[Element].image)
+          .Slots();
+
+  template <Int... Alphas>
+  static constexpr bool RepresentsFn() {
+    if constexpr (sizeof...(Alphas) != static_cast<std::size_t>(Rank)) {
+      return false;
+    } else {
+      return [&]<std::size_t... E>(std::index_sequence<E...>) {
+        return (TensorDetails::Represents<Source<E, Alphas...>,
+                                          OperandType>() and
+                ...);
+      }(std::make_index_sequence<GroupSize>{});
+    }
+  }
+
+  template <Int... Alphas>
+  static constexpr bool Represents = RepresentsFn<Alphas...>();
+
+  template <Int... Alphas>
+  requires Represents<Alphas...>
+  auto Component() const {
+    return Sum<Alphas...>(std::make_index_sequence<GroupSize>{}) /
+           static_cast<Real>(GroupSize);
+  }
+
+ private:
+  OperandStorage<Operand> _operand;
+
+  // A fold over the group. Each term is the operand's component under one
+  // element, scaled by that element's sign; the terms need not have the same
+  // type, since a component may come back as a view from one element and as an
+  // expression from another, and phase 1's binary node does not care.
+  template <Int... Alphas, std::size_t... E>
+  auto Sum(std::index_sequence<E...>) const {
+    return ((static_cast<Real>(Group.first[E].sign) *
+             TensorDetails::ComponentOf<Source<E, Alphas...>>(_operand)) +
+            ...);
+  }
+};
+
+// Project onto a symmetry. Symmetrise<Symmetric<2>>(t) is the symmetric part,
+// Symmetrise<Antisymmetric<2>>(t) the antisymmetric one.
+template <typename Symmetry, typename T>
+requires TensorExpr<std::remove_cvref_t<T>>
+auto Symmetrise(T&& tensor) {
+  return SymmetriseNode<Symmetry, T>(std::forward<T>(tensor));
+}
+
+//--------------------------------------------------------------------------//
+//                              Materialisation                              //
+//--------------------------------------------------------------------------//
+
+namespace TensorDetails {
+
+// Copy one component of an expression into the same component of a field.
+//
+// Element by element rather than through EvaluateInto, because the target may
+// be strided: a point-major field's component is not contiguous, and
+// EvaluateInto writes a contiguous span. The contiguous case could take the
+// faster path; it is not worth two code paths until something measures it.
+template <auto Indices, typename Field, typename Expr, std::size_t... I>
+void AssignComponent(Field& field, const Expr& expr, std::index_sequence<I...>) {
+  auto target = field.template Component<Indices[I]...>();
+  const auto source = expr.template Component<Indices[I]...>();
+  const auto& grid = field.Grid();
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    for (auto iPhi : grid.LongitudeIndices()) {
+      target[iTheta, iPhi] = source[iTheta, iPhi];
+    }
+  }
+}
+
+template <typename Field, typename Expr, std::size_t Slot>
+void AssignSlot(Field& field, const Expr& expr) {
+  constexpr auto flat = Field::ComponentLayout.flatOfSlot[Slot];
+  constexpr auto indices = MultiIndex<Field::Rank>::FromFlat(flat).Slots();
+  if constexpr (Represents<indices, std::remove_cvref_t<Expr>>()) {
+    AssignComponent<indices>(field, expr,
+                             std::make_index_sequence<Field::Rank>{});
+  }
+}
+
+}  // namespace TensorDetails
+
+// Evaluate a tensor expression into a field, which is where a lazy tensor
+// stops being lazy.
+//
+// The symmetry is the caller's to state and defaults to none. The product of
+// two symmetric tensors is not symmetric, and inferring a symmetry from an
+// expression tree is a research problem rather than a design -- so asking for
+// one here is an assertion about the value, honoured by storing only the
+// components that symmetry keeps.
+template <typename Symmetry = void, typename Expr>
+requires TensorExpr<std::remove_cvref_t<Expr>>
+auto Materialise(const Expr& expr) {
+  using E = std::remove_cvref_t<Expr>;
+  using Chosen =
+      std::conditional_t<std::same_as<Symmetry, void>, NoSymmetry<E::Rank>,
+                         Symmetry>;
+  using Field =
+      TensorField<E::Rank, Chosen, ComplexTensor, typename E::GridType>;
+
+  auto field = Field(expr.Grid());
+  [&]<std::size_t... Slot>(std::index_sequence<Slot...>) {
+    (TensorDetails::AssignSlot<Field, E, Slot>(field, expr), ...);
+  }(std::make_index_sequence<static_cast<std::size_t>(Field::StoredComponents)>{});
+  return field;
 }
 
 }  // namespace GSHTrans
