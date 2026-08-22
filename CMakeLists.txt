@@ -12,7 +12,14 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+# No FindFFTW.cmake here, and no CMAKE_MODULE_PATH entry for one.
+#
+# FFTWpp ships its own, written around imported targets, and asks for
+# FFTW::Double. This project used to prepend its own module directory holding
+# an older variable-setting FindFFTW.cmake, which won the search and set
+# FFTW_LIBRARIES instead -- so configuring against a current FFTWpp failed
+# outright with "target FFTW::Double not found". GSHTrans uses no FFTW symbol
+# directly, so it has no business finding FFTW at all.
 
 include(FetchContent)
 include(GNUInstallDirs)
