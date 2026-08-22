@@ -1421,12 +1421,34 @@ and deriving is done in the spatial domain or by applying the relation to the
 representative. This asymmetry between the two domains was not foreseen and is
 the one place the mirror between `TensorField` and `TensorExpansion` breaks.
 
-**The `ð` sign convention is the one open item in this document.** §2 listed
-two unchecked conventions; the `e_±` sign remains untested because nothing yet
-observes it, and the `ð` signs are now implemented as the theory note states
-them, with `ð̄ð = ∇²` and `[ð, ð̄] = −2N` tested. Both survive flipping the pair,
-so the common sign wants an answer from Phinney & Burridge rather than from a
-test.
+**The `ð` sign convention was the one open item in this document, and is now
+closed.** §2 listed two unchecked conventions, and the reason neither was
+observable was the same for both: everything the library computed stayed in
+canonical components from end to end, so nothing ever read a result back into
+the physical frame where the answer is known independently.
+
+Reading it back closes both at once. `tests/TestConventions.cpp` inverts the
+`e_±` convention to get `(v_θ, v_φ, v_r)` from the canonical components, and
+requires that the surface gradient of a scalar be `θ̂ ∂_θ f + φ̂ (sinθ)^{-1}
+∂_φ f` pointwise, and that the metric trace of the surface gradient of a
+tangential vector field be its surface divergence. Both hold to `1e-13`;
+flipping either sign alone fails by `O(1)`, verified by doing it. Flipping
+both together is a relabelling of which component is called `+1`, so what is
+left is one convention rather than two unknowns — stated in the reference,
+and observed by a test.
+
+This did not need Phinney & Burridge. They do not use `ð` as such, so the
+overall sign was never theirs to settle; what had to be right is that
+gradients of functions are gradients, and that is checkable from inside.
+
+**One trap, found by the numbers.** A tangential field written as
+`a(θ,φ) θ̂` is almost never smooth, because `θ̂` is not: at a pole its
+direction depends on the azimuth of approach. `a = sinθ cosφ` looks harmless,
+is not differentiable there, and its spin-weighted expansion does not
+converge — the divergence check came out wrong by 0.18 at every truncation
+from `lMax = 8` to `128`, which is what a non-convergent expansion looks like
+and not what a bug looks like. The test fields are built as
+`grad f + r̂ × grad g` from smooth scalars instead.
 
 ---
 

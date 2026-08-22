@@ -29,13 +29,21 @@ namespace GSHTrans {
 //   eth      Y^N_{lm} = -sqrt((l - N)(l + N + 1)) Y^{N+1}_{lm}
 //   eth-bar  Y^N_{lm} = +sqrt((l + N)(l - N + 1)) Y^{N-1}_{lm}
 //
-// **The overall signs are a convention this library cannot settle from the
-// inside.** The theory note flags them as needing to be fixed against Phinney
-// & Burridge and says the magnitudes are not in doubt; the two are
-// implemented as the note states them. What *is* checked, and pins everything
-// but the common sign, is that eth-bar eth is the surface Laplacian on a
-// scalar -- the factors multiply to -l(l+1) -- and that the commutator is
-// -2N. Flipping the sign of both operators leaves both identities intact.
+// **The overall signs used to be an open convention, and are not any more.**
+// Two identities are checked and pin everything but the common sign: eth-bar
+// eth is the surface Laplacian on a scalar, the factors multiplying to
+// -l(l+1), and the commutator is -2N. Both survive flipping the pair, which
+// is why the sign was long carried as a question for Phinney & Burridge.
+//
+// It is not their question. P&B do not use eth as such, and what has to be
+// right is that gradients of functions come out as gradients -- which is
+// checkable here, and is checked, by reading a gradient back into the
+// physical (theta-hat, phi-hat) frame through the stated e_{+-} convention
+// and requiring it to equal d_theta f and (sin theta)^{-1} d_phi f pointwise.
+// That fixes the sign here against the sign in e_{+-}: flipping either alone
+// fails by an O(1) amount, flipping both together is a relabelling of which
+// component is called +1. tests/TestConventions.cpp is where it is observed,
+// and section 2.4 of docs/gshtrans-reference.tex states it.
 //
 // The degree ranges look after themselves. Raising a field at N >= 0 gives a
 // field starting at l = N + 1, and the factor at l = N is sqrt(0) = 0, so the

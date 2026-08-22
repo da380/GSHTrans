@@ -145,18 +145,54 @@ wrong costs a sign whenever $m-N$ is odd, and nothing when it is even ---
 which is exactly the kind of error that survives half a test suite.
 
 \subsection{What remains a convention}
+\label{sec:remains}
 
-Two statements in this document cannot be settled from inside the library.
+This document used to list two statements as unsettled: the sign $\mp$
+in \eqref{eq:basis}, since some authors use
+$\ebasis{\pm}=\pm(\hat{\boldsymbol{\theta}}\pm
+i\hat{\boldsymbol{\phi}})/\sqrt{2}$, which flips every odd-rank reality
+phase; and the overall signs of $\eth$ and $\conj{\eth}$
+(\S\ref{sec:eth}).  Each was said to be unobservable, and each was, for
+the same reason: everything the library computed stayed in canonical
+components from end to end, and a convention that is never read back
+into the physical frame cannot be seen.
 
-\begin{enumerate}
-  \item The sign $\mp$ in \eqref{eq:basis}.  Some authors use
-    $\ebasis{\pm}=\pm(\hat{\boldsymbol{\theta}}\pm
-    i\hat{\boldsymbol{\phi}})/\sqrt{2}$, which flips every odd-rank
-    reality phase.  Nothing the library currently computes observes it.
-  \item The overall signs of $\eth$ and $\conj{\eth}$
-    (\S\ref{sec:eth}).  The magnitudes are not in doubt, and two
-    identities pin everything else, but both survive flipping the pair.
-\end{enumerate}
+They are now pinned, jointly, by reading a gradient back into the
+physical frame and requiring it to be the gradient.  Inverting
+\eqref{eq:basis} for a vector $\mathbf{v}=v^{\alpha}\ebasis{\alpha}$,
+\begin{equation}
+  v_{\theta} = \frac{v^{-}-v^{+}}{\sqrt{2}},
+  \qquad
+  v_{\phi} = -i\,\frac{v^{+}+v^{-}}{\sqrt{2}},
+  \qquad
+  v_{r} = v^{0},
+  \label{eq:physical}
+\end{equation}
+and \code{tests/TestConventions.cpp} requires that for a scalar $f$ the
+surface gradient satisfies
+$\mathbf{v}=\hat{\boldsymbol{\theta}}\,\partial_{\theta}f
++\hat{\boldsymbol{\phi}}\,(\sin\theta)^{-1}\partial_{\phi}f$ pointwise,
+and that the metric trace of the surface gradient of a tangential vector
+field is its surface divergence.  Both hold to $10^{-13}$, and both fail
+by an $O(1)$ amount if either sign is flipped alone.
+
+What is left is genuinely a convention and nothing more: flipping
+\eqref{eq:basis} \emph{and} the sign of the $\eth$ pair together is a
+relabelling of which component is called $+1$, and \eqref{eq:physical}
+flips with it.  So there is one convention here rather than two unknowns,
+this document states it, and a test observes it.
+
+\paragraph{A trap worth recording.}  A tangential field written as
+$a(\theta,\phi)\,\hat{\boldsymbol{\theta}}$ is almost never smooth, because
+$\hat{\boldsymbol{\theta}}$ is not: at a pole its direction depends on the
+azimuth from which the pole is approached.  The innocuous-looking
+$a=\sin\theta\cos\phi$ is not differentiable there, its spin-weighted
+expansion does not converge, and the divergence check above came out wrong
+by $0.18$ at every truncation from $l_{\max}=8$ to $128$.  That is what a
+non-convergent expansion looks like, and it is easily mistaken for a bug in
+the operator.  The test fields are built as
+$\nabla_1 f + \hat{\mathbf{r}}\times\nabla_1 g$ from smooth scalars, which
+is smooth by construction.
 
 \section{Canonical components}
 \label{sec:components}
@@ -375,8 +411,8 @@ The surface gradient of a scalar has canonical components proportional to
 $\eth f$ and $\conj{\eth} f$, at upper index $+1$ and $-1$, with vanishing
 radial component.
 
-\paragraph{Two identities, and what they do not pin.}  Composing the
-factors,
+\paragraph{Two identities, and a third that pins the rest.}  Composing
+the factors,
 \begin{equation}
   \conj{\eth}\eth\big|_{N=0} = -l(l+1),
   \qquad
@@ -385,10 +421,17 @@ factors,
 \end{equation}
 The first says $\conj{\eth}\eth$ is the surface Laplacian on a scalar; it
 pins the relative sign of the two operators and both magnitudes.  The
-second is structural.  Both are tested.  \textbf{Both survive flipping the
-sign of the pair}, so the overall sign in \eqref{eq:eth} remains a
-convention to be fixed against Phinney \& Burridge, and is implemented as
-stated above.
+second is structural.  Both are tested, and both survive flipping the sign
+of the pair --- which is why this document long carried the overall sign
+as an open question for Phinney \& Burridge.
+
+It does not need one.  P\&B do not use $\eth$ as such, and the sign is not
+theirs to settle; what has to be right is that gradients of functions come
+out as gradients, which is checkable here.  Requiring exactly that, in the
+physical frame, fixes the overall sign in \eqref{eq:eth} against the sign
+in \eqref{eq:basis}: see \S\ref{sec:remains}.  The two are one convention,
+stated in this document and observed by
+\code{tests/TestConventions.cpp}.
 
 \paragraph{The degree ranges look after themselves.}  Raising a field at
 $N\geq 0$ produces one starting at $l=N+1$, and the factor at $l=N$ is

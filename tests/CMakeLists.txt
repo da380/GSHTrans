@@ -38,6 +38,10 @@ add_executable(TestExpansion
                TestExpansion.cpp)
 target_link_libraries(TestExpansion PRIVATE GSHTrans gtest_main)
 
+add_executable(TestConventions
+               TestConventions.cpp)
+target_link_libraries(TestConventions PRIVATE GSHTrans gtest_main)
+
 add_executable(TestLayered
                TestLayered.cpp)
 target_link_libraries(TestLayered PRIVATE GSHTrans gtest_main)
@@ -119,6 +123,7 @@ gtest_discover_tests(TestTensorField)
 gtest_discover_tests(TestTensorAlgebra)
 gtest_discover_tests(TestTensorReality)
 gtest_discover_tests(TestExpansion)
+gtest_discover_tests(TestConventions)
 gtest_discover_tests(TestLayered)
 gtest_discover_tests(TestWigner)
 gtest_discover_tests(TestGaussLegendreGrid)
