@@ -1,14 +1,31 @@
 # Directions to look into
 
-Five things raised as worth doing, expanded here into something that can be
-planned against. Each keeps the original note at the top and then says what it
-means concretely, where it overlaps what is already planned, and what would
-have to be decided.
+Things raised as worth doing, expanded here into something that can be planned
+against. Each keeps the original note at the top and then says what it means
+concretely, where it overlaps what is already planned, and what would have to
+be decided.
 
 Nothing here is scheduled. `core-plan.md` and `field-algebra-plan.md` remain
 the authorities on the numerical core and the field algebra respectively, and
 `gshtrans-reference.tex` on what exists. Where a direction below contradicts a
 decision already taken, it says so rather than quietly overriding it.
+
+**Status, 2026-08-22.** Sections 1 to 6 were the original set. Sections 2, 4
+and 5 are largely done and say so at the top; 1, 3 and 6 are open. Sections 7
+to 10 were raised later and are assessed here for the first time.
+
+| | subject | status |
+|---|---|---|
+| 1 | tangential tensor fields | open, and the next candidate |
+| 2 | three-dimensional tensor fields | **done** -- `field-algebra-plan.md` §17 |
+| 3 | specialisations for common objects | open, follows §1 |
+| 4 | project structure | **done**, except the `src/` rename, declined |
+| 5 | dependencies | **done** upstream; GaussQuad and FFTWpp both refactored |
+| 6 | Wigner 3-j symbols | open, and independent of everything else |
+| 7 | the `Interpolation` library | assessed here |
+| 8 | how three-dimensional the 3-D fields are | assessed here |
+| 9 | interpolating a field, as a callable | assessed here |
+| 10 | a wisdom mechanism for the computational options | assessed here |
 
 ---
 
@@ -146,6 +163,13 @@ derivative, which the narrow question never raised.
 
 ## 2. Three-dimensional tensor fields
 
+**Done.** Built as `field-algebra-plan.md` §17, in four steps recorded in
+§§17.5-17.7: `RadialGrid`, `LayeredSpinField`/`LayeredSpinExpansion`, the
+radial seam, layered tensors, `Gradient`, and `RadialMajor`. Everything this
+section anticipated held, including the `r^{-1}` warning below. §8 is the
+follow-on question -- *how much* the library knows about how the layers are
+linked, which this section did not ask.
+
 > *As raised:* 3D tensor fields. Built from a fixed angular grid and then a
 > specified set of radii. These are just "dumb" storage objects in the library,
 > but allow for things like transformations, and pointwise and tangential
@@ -253,6 +277,15 @@ that the tangential variants get named in the same pass.
 
 ## 4. Project structure
 
+**Done, 2026-08-22**, except one item declined. The SSH URL, the option names,
+`FetchContent` with `find_package` first, install and export rules, a version
+header, CI, the policies split out of `Concepts.h` and the one stray detail
+namespace are all in. What is *not* done is `GSHTrans/src/` -> `include/`:
+GaussQuad and FFTWpp both kept `<Name>/src/` through their own refactors, so
+the rename would be forty files of churn against the grain of the sibling
+projects rather than towards a convention they share. The `3j.h` coverage gap
+is §6's, not this section's.
+
 > *As raised:* Overall structure of the project, in terms of naming, file
 > structure, CMake. Basically, this all probably needs to be updated and
 > improved. Just surface level stuff, but of value.
@@ -308,6 +341,18 @@ worth fixing on its own before anyone else tries to build this.
 ---
 
 ## 5. Dependencies
+
+**Done, and done upstream.** GaussQuad and FFTWpp were both refactored on the
+strength of the plans this section produced; `GaussQuad-for-GSHTrans.md` and
+`FFTWpp-for-GSHTrans.md` are the hand-over notes. Eigen is gone from the
+dependency tree entirely -- GaussQuad replaced Golub-Welsch with an implicit-QL
+eigensolver and the two `llt().solve()` calls with a Thomas solve -- and
+`find_package(GSHTrans)` now works, which is what the whole exercise was for.
+The one prediction below that did not survive is Bogaert: GaussQuad took
+Glaser-Liu-Rokhlin as an option and kept Golub-Welsch as the default, because
+GLR's weights drift as `O(n eps)` where the default's stay flat. §7 is the
+same question asked about `Interpolation`, and the answer is now shorter
+because these two have been through it.
 
 > *As raised:* Look into dependencies that are my own, getting plans formed
 > that can be handed over for them to be updated. Both in general, and in light
@@ -533,25 +578,414 @@ idea — not hard, but not free either. That is an argument for deciding the
 
 ---
 
+## 7. The `Interpolation` library
+
+> *As raised:* another repo revisited, `da380/Interpolation`. Of potential use.
+> Certainly they will link up downstream.
+
+### What it is, as it stands
+
+Header-only, C++20, `Interpolation/` with the same `<Name>/src/` layout as
+FFTWpp and GaussQuad and the same extensionless umbrella headers. Six
+facilities: `Linear`, `CubicSpline`, `Akima`, `Lagrange`,
+`LagrangePolynomial`, `Polynomial1D`. Abscissae strictly increasing;
+ordinates real or complex where noted.
+
+**It is one-dimensional.** That is the single most important fact for how it
+joins to this library, and it is a good thing rather than a limitation: the
+radial axis is exactly where GSHTrans has deliberately stopped, so a
+one-dimensional interpolator is the missing half rather than a competitor to
+anything here. The angular half is not an interpolation problem of this kind
+at all — see §9.
+
+### Three things to settle before depending on it
+
+These are not objections. They are the same three things GaussQuad and FFTWpp
+had to fix, and both took about a fortnight, so the shape of the work is
+known.
+
+**It has no install or export rules.** `README.md` shows consumption by
+`FetchContent` and a bare `Interpolation` target name with no namespaced
+alias. That is precisely what blocked `find_package(GSHTrans)` until last
+week: an INTERFACE target can only be exported if everything it links is
+exported or imported. Taking a dependency on `Interpolation` as it stands
+would *undo* §5's result. This is a small change and it is the one that has
+to come first.
+
+**Cubic splines pull in Eigen.** The dependency tree has just been cleared of
+Eigen entirely, and this would bring it straight back — for a tridiagonal
+solve. GaussQuad hit the identical case and its two `llt().solve()` calls
+became a fifteen-line Thomas solve; a natural or clamped cubic spline is a
+symmetric tridiagonal system and wants exactly the same treatment. So the ask
+is one that has already been answered once in this family of libraries, and
+the answer can be lifted.
+
+**Every interpolator stores iterators rather than copying.** The README says
+so: "Keep the sample containers alive and do not reallocate them while an
+interpolator is in use." That is a lifetime contract of the kind this library
+is careful about — `field-algebra-plan.md` §3.8 is entirely about operand
+lifetime and aliasing, and §3.3 settled operand storage by value category
+precisely so that a node cannot outlive what it reads. An interpolator handed
+out by a GSHTrans field (§9) would inherit the hazard and hand it to a user
+who never chose it. Either the interpolators gain an owning mode, or anything
+built on them owns the samples itself and the borrowed form stays internal.
+
+### Where it would actually be used
+
+Four places, in decreasing order of how much they want it.
+
+1. **Evaluating a layered field at an arbitrary radius.** The obvious one, and
+   the one that needs nothing but `Linear` or `CubicSpline` along a gathered
+   radial line. It composes with the seam: `ApplyRadially` already gathers a
+   contiguous line and hands it to a callable, and this is the same gather
+   with a callable that returns a value rather than a line.
+2. **Remeshing between radial grids.** Model on one set of radii, computation
+   on another. Common, tedious, and entirely one-dimensional.
+3. **The spectral-element bases.** `LagrangePolynomial` gives the cardinal
+   functions on the GLL nodes GaussQuad now places exactly at `±1`, and
+   `Polynomial1D` differentiates them. That is the differentiation matrix a
+   caller currently has to build by hand in order to pass a radial derivative
+   to `Gradient`, and §8 argues it should be offered.
+4. **`Polynomial1D` for the radial power laws** used throughout the layered
+   tests. Minor, and no reason on its own.
+
+### The recommendation
+
+Worth depending on, after the three fixes, and worth writing them up as a
+hand-over plan the way §5 did for the other two — that route has now worked
+twice. Do not take the dependency before the install rules exist, because
+doing so gives back the thing §5 spent its effort buying. And keep it
+**optional**: a `GSHTRANS_WITH_INTERPOLATION` component, so that the core
+transform never acquires a dependency it does not need. Nothing in the
+angular library wants a one-dimensional interpolator; only the layered half
+does.
+
+---
+
+## 8. How three-dimensional are the three-dimensional fields?
+
+> *As raised:* there is a question over the extent to which this library
+> builds proper 3D fields or just acts as a dumb container for sets of radial
+> layers without knowing how they are linked. Flexibility here is likely to be
+> important, but we can have minimal functionality in place.
+
+### The honest answer
+
+**It is a container plus one named seam, and everything about how the layers
+are linked lives on the far side of the seam.** Precisely, the library knows
+four things about the radial axis and no more:
+
+| it knows | where |
+|---|---|
+| the radii, in increasing order | `RadialGrid` |
+| quadrature weights over them, optionally | `RadialGrid`, `IntegrateRadially` |
+| that two stacks are on the same radial grid | `RadialGrid::Identity` |
+| that a radial line can be gathered contiguously and handed to a callable | `ApplyRadially` |
+
+It does *not* know how to differentiate along `r`, how to interpolate between
+layers, whether the nodes form elements, whether a radius is repeated at a
+material interface, or what happens at either end. `Gradient` does not compute
+`∂_r`; it takes a `RadialOperator` from the caller and applies it. `RadialGrid`'s
+own comment states the position: element connectivity, the spectral-element
+basis, differentiation matrices and any factorisation "belong to the
+application that built them".
+
+So: a dumb container, but not accidentally — deliberately, with the seam named
+and documented, which is a different thing from not having thought about it.
+
+### Why that was right, and where it now costs
+
+It was right because the radial discretisations in view genuinely differ in
+kind. A finite-difference derivative is banded, a spectral-element one is
+block-diagonal, and a caller who has factorised an operator wants to apply the
+factorisation rather than hand over a matrix. `field-algebra-plan.md` §17.2
+chose a callable over a matrix for exactly that reason, and it has held.
+
+What it costs is that **the library cannot offer anything that needs to know
+how layers link.** Three consequences, and the first two are already live:
+
+- **The interpolation of §9 cannot be done in `r`** without knowing whether it
+  is legitimate to interpolate across a given pair of layers. A model with a
+  discontinuity at the core-mantle boundary has two different values at the
+  same radius, and a spline that smooths across it is silently wrong.
+- **Every user supplies a radial derivative**, including for the ordinary
+  cases. `Gradient` is unusable without one, and the tests reach for a
+  hand-written `PowerDerivative` to have anything to pass.
+- **There is no 3-D Laplacian, and cannot be one** at this level, because
+  `∇²` needs `∂_r` twice.
+
+### The middle position, which is what to build
+
+Keep the seam. Add two things, neither of which takes a decision away from the
+caller.
+
+**A. A small library of ready-made radial operators.** Each is nothing but a
+type satisfying `RadialOperator`, offered in a header of its own that nothing
+in the core includes:
+
+```
+FiniteDifferenceDerivative<Order>(radii)   second and fourth order, one-sided at the ends
+LagrangeDerivative(radii)                  the differentiation matrix on the given nodes
+SplineDerivative(radii)                    from §7's cubic spline
+ElementDerivative(radii, elements)         block-diagonal, GLL nodes per element
+```
+
+Offered, not imposed: a caller with their own operator passes their own, and
+nothing here changes. This is "minimal functionality in place" almost exactly
+as raised, it is a few hundred lines, and it makes `Gradient` usable out of
+the box, which today it is not.
+
+**B. Let `RadialGrid` optionally carry the element partition.** This is the
+one piece of *structure* worth adding, and it is the smallest fact that
+distinguishes a discretisation from a list of numbers: which radii belong to
+which element, and therefore where a repeated radius is a genuine interface
+rather than an error.
+
+It is worth singling out because it is the fact that **more than one thing
+needs and nothing can infer**. Interpolation must not cross an interface;
+`ElementDerivative` needs the blocks; the constructor's existing
+`is_sorted` check currently *rejects* a repeated radius, which is precisely
+how a two-sided material interface is represented. Carrying it optionally
+costs one `std::vector<Int>` and leaves a caller who has no elements exactly
+where they are now.
+
+Everything else — connectivity beyond that, basis functions, boundary
+conditions, factorisations — stays the application's, and should.
+
+### What this is not
+
+It is not a proposal to make the library own a radial discretisation. The
+distinction worth holding on to is between *knowing the mesh* and *owning the
+method*: A and B give the library enough to know the mesh, and leave every
+method a caller might disagree about on the far side of the seam where it is
+now.
+
+---
+
+## 9. Interpolating a field, as a callable of the two angles
+
+> *As raised:* providing the various fields with an interpolation method that
+> returns a callable object of the two angles. We could pass a "method"
+> variable which determines the scheme used, e.g. bilinear, bicubic (see
+> Interpolation) or direct expansion.
+
+### The shape of it
+
+```cpp
+auto f = SpinField<0, Grid>(grid, ...);
+auto at = Interpolate(f, Scheme::Bicubic());
+auto value = at(theta, phi);
+```
+
+`Interpolate` on any spin-weighted node, returning a callable of `(θ, φ)`. For
+a tensor field it is per component, or a callable returning the component set;
+that is a detail, and the rank-0 case decides everything else.
+
+### The `method` variable is a policy, and there is already a house style
+
+`Policies.h` holds four of these: `Execution`, `Batch`, `Chunking`,
+`WignerValues`. Each is a value with named constructors —
+`Chunking::ForCache(bytes)`, `WignerValues::Generated()` — rather than a
+template parameter or an enum, and for a stated reason: it is a decision the
+caller makes about the machine or the problem, not about the mathematics, and
+putting it in a type would make the mathematics carry it. An interpolation
+scheme is the same kind of thing. So `Scheme::Bilinear()`, `Scheme::Bicubic()`,
+`Scheme::Spectral()`, in `Policies.h`, and the fifth member of a set that
+already exists.
+
+### The two axes are not alike, and that is the whole design
+
+This is where the problem stops resembling one-dimensional interpolation twice
+over.
+
+**φ is uniform and periodic.** So interpolation in φ can be *exact* for a
+band-limited field, by trigonometric interpolation — zero-pad the Fourier
+coefficients and transform back, which is one FFT the library already owns.
+Bilinear in φ would be throwing away accuracy that costs nothing to keep.
+
+**θ is Gauss-Legendre and therefore non-uniform, and neither pole is a grid
+point.** Both facts bite. Non-uniform spacing rules out the usual fixed-stencil
+bicubic and calls for a genuine interpolant on given nodes — which is §7's
+`CubicSpline` or `Lagrange` along a colatitude line. And the poles are outside
+the convex hull of the nodes, so *every* local scheme extrapolates there. Near
+the poles a spin-weighted field also has the `sin^{|m|}θ` behaviour that makes
+polar truncation possible (`core-plan.md` §10), so an interpolant that ignores
+it will be worst exactly where it is least defensible.
+
+**Direct expansion is exact and pole-safe, and expensive per point.**
+Evaluating `Σ f^N_{lm} Y^N_{lm}(θ, φ)` needs the whole `d^l_{Nm}(θ)` column,
+which is `O(lMax²)` work for one point — against `O(1)` for a local scheme.
+The recursion for it already exists and is already threaded: `WignerValues::Generated()`
+runs it into per-thread scratch and was measured, so the machinery is in
+place. The crossover is the thing to measure: at some number of evaluation
+points, building a *second grid* and transforming onto it beats evaluating
+point by point, and the answer is a straightforward benchmark rather than a
+guess.
+
+### What that suggests
+
+Three schemes, and the middle one is the one to reach for by default:
+
+| scheme | φ | θ | exact? | cost per point |
+|---|---|---|---|---|
+| `Bilinear` | linear | linear | no | `O(1)` |
+| `Hybrid` | trigonometric, exact | spline on the GL nodes | in φ only | `O(1)` after setup |
+| `Spectral` | exact | exact | yes | `O(lMax²)` |
+
+`Spectral` is the reference the other two are *tested against*, which is worth
+more than it sounds: it makes the accuracy of a cheap scheme measurable rather
+than asserted, on any field, without an analytic answer to compare to.
+
+### Three things to decide before building
+
+**Lifetime.** The callable reads the field. Whether it borrows or owns is the
+same question §7 raises about `Interpolation`'s iterators and the same
+question `field-algebra-plan.md` §3.8 answered for expression nodes — and it
+should be answered the same way, by value category, so that
+`Interpolate(Materialise(...))` does not dangle. This is the one that will
+cause a real bug if it is decided casually.
+
+**What it is a callable *of*.** `(θ, φ)` as raised. Worth noting that a
+`ScalarFunctionS2` concept already exists in `Concepts.h` and is what field
+constructors take — so an interpolant that satisfies it can be fed straight
+back into another grid's constructor, which is remeshing in one line and is
+probably the commonest use.
+
+**Setup versus evaluation.** A spline along every colatitude line is `O(lMax²)`
+of setup that must not be redone per point, so the callable is a built object
+and not a lambda over the field. That is an argument for `Interpolate` being a
+named type rather than `auto`.
+
+---
+
+## 10. A wisdom mechanism for the computational options
+
+> *As raised:* as we are building various computational options, do we want a
+> simple "wisdom"-like method, whereby a user can trial different options for
+> their problem? A poor man's version of what FFTW3 does, but maybe of value.
+
+### The case for it is stronger here than it looks
+
+The library already carries five choices whose right answer is
+machine-dependent: the thread count, the chunk size, stored versus generated
+Wigner values, the FFTW planner flag, and — since §17.7 — bulk repack versus
+fused gather. Two more are coming: polar truncation and the transform-major
+GEMM layout.
+
+What makes this more than a convenience is that **the plans record, repeatedly,
+that these cannot be settled by reasoning.** The chunk optimum at `lMax = 128`
+"moves between runs". The batched forward transform gives 2.3× sequentially
+and collapses to 1.12× at `lMax = 256` on eight threads. The generated Wigner
+path lost on the laptop in every configuration and may still win on
+`earth-tunya`, where the aggregate L3 is sixteen times larger. Direction-aware
+chunking was worth 2.0× and was found only by measuring. Every one of those is
+a case where a user of this library, on a machine neither of us has, will be
+running with the wrong setting and have no way to know.
+
+That is exactly the situation FFTW's wisdom exists for, and the analogy holds
+in the way that matters: the object being tuned is built once and used many
+times, so measurement at construction is cheap against the run.
+
+### What it would look like
+
+The key is a *problem shape*, not a call: `(lMax, nMax, precision, batch count,
+direction, threads)`, plus a machine fingerprint. The value is a small tuple of
+policy values. The store is a file the user may load at start and save at exit.
+
+```cpp
+auto wisdom = Wisdom::Load("gshtrans.wisdom");        // or an empty one
+auto grid = Grid::Tuned(lMax, nMax, wisdom);          // measures what it must
+wisdom.Save("gshtrans.wisdom");
+```
+
+Three properties it must have, each of which is a way it could go wrong:
+
+- **The fingerprint is part of the key.** Wisdom carried to another machine is
+  worse than none, and the failure is silent. `earth-tunya` and the laptop
+  disagree about nearly everything measured so far.
+- **Measurement repeats.** The laptop's noise floor is about 10%, and several
+  of the differences at stake are smaller than that. A single timing is not a
+  measurement, and back-to-back repetition is what the benchmark harness
+  already does.
+- **The candidate set stays small.** The knobs are not independent — chunking
+  and threading interact, and direction changes the answer — but tuning them
+  jointly is a combinatorial explosion for a gain that is mostly in one knob.
+  One dimension at a time, in a fixed order, is enough and is honest about
+  being a heuristic.
+
+### Where to start, and it is small
+
+**`Chunking::Tuned(...)`, and nothing else at first.** It is the knob that has
+already been measured to matter most — getting it wrong cost 2.0× on the
+batched inverse, and the right rule was not guessable — it is a single scalar,
+and it is already "a property of the machine rather than of the call", which
+is where the grid takes it. Timing three or four candidates at grid
+construction costs a fraction of building the Wigner table it sits beside.
+
+That gives the mechanism a first customer and a measurable answer before any
+persistence, keying or fingerprinting exists. If it earns its place, the store
+generalises around it; if it does not, nothing has been built that has to be
+maintained.
+
+### What it is not, and the honest caveat
+
+It is not an autotuner, and it should not try to become one. FFTW searches a
+space of plans it generates itself; this would time a handful of named
+alternatives. The name "wisdom" is worth borrowing for the *persistence* — the
+idea that a machine's answer is worth writing down — and not for the search.
+
+And the caveat that applies to the whole idea: none of it substitutes for the
+target-machine run that `core-plan.md` §10 item 2 is waiting on. A tuner
+measures which of the options we have is best on a given machine. It does not
+tell us whether the option set is the right one, and three of the open
+performance questions are of the second kind.
+
+---
+
 ## Suggested order
 
-1. **The SSH URL in `CMakeLists.txt`** (§4). One word, and until it is fixed
-   nobody else can build the project.
-2. **Install rules on FFTWpp and GaussQuad** (§5), which is what blocks
-   `find_package(GSHTrans)`. Someone else's work, but small.
-3. **Tangential tensor fields** (§1). Self-contained, and the storage argument
-   is strong at rank 4.
-4. **Specialisations** (§3), immediately after, so the tangential forms are
-   named in the same pass.
-5. **The rest of the structural work** (§4), as a single deliberate tidy.
-6. **The GaussQuad plan** (§5), written and handed over — it is someone else's
-   work and does not block anything here.
-7. **Three-dimensional fields** (§2), which is the largest and the one that
-   completes the gradient, and which should start from `field-algebra-plan.md`
-   §8 rather than from scratch.
+Rewritten 2026-08-22. The original list had the dependency work and the
+project structure at the top, and both are done; three-dimensional fields were
+last and are done too. What is left divides cleanly into things that are ready
+and things that are waiting.
 
-Sitting outside that order, because it is independent of everything else and
-its priority depends on when coupling coefficients are actually wanted:
-**the 3-j work** (§6). If it is wanted at all, the orthogonality test should
-go in first — it is a few lines, it needs no reference, and it turns an
-unknown boundary into a known one.
+**Ready now, in order:**
+
+1. **Tangential tensor fields** (§1). Self-contained, the storage argument is
+   strong at rank 4, and the closed intrinsic derivative is the part that
+   makes it more than a saving. The change is one generalisation --
+   `MultiIndex`'s alphabet becoming a per-slot policy -- and everything
+   downstream is already generic over whatever indices exist.
+2. **Specialisations** (§3), immediately after, so that the tangential forms
+   are named in the same pass rather than bolted on.
+3. **Ready-made radial operators** (§8A), which is what makes `Gradient`
+   usable without the caller writing a differentiation matrix first, and is
+   the smallest useful answer to the question §8 asks.
+4. **The element partition on `RadialGrid`** (§8B), which §9 and §8A both
+   need and neither can infer.
+
+**Waiting on something:**
+
+- **`Interpolation`** (§7) waits on install rules upstream, exactly as
+  GaussQuad and FFTWpp did. Write the hand-over plan now -- that route has
+  worked twice -- and take the dependency after.
+- **Field interpolation** (§9) waits on §7 for the θ interpolant, though
+  `Scheme::Spectral()` needs nothing and could be built first as the reference
+  the others are tested against.
+- **The wisdom mechanism** (§10) waits on nothing technically, but its first
+  customer should be `Chunking::Tuned` alone, and the case for the wider
+  mechanism is better made after the target-machine run than before it.
+
+**Independent of all of it:** the **3-j work** (§6), whose priority depends
+entirely on when coupling coefficients are actually wanted. If it is wanted at
+all, the orthogonality test goes in first: it is a few lines, it needs no
+reference implementation, and it turns an unknown boundary into a known one.
+There are still two Wigner 3-j codes in this repository and neither is
+exercised by the suite.
+
+**Not on the list, and deliberately:** `core-plan.md` §10's efficiency work --
+the transform-major GEMM restructure and polar truncation. Those are the
+subject of that document's own ordering, they are gated on measurements from
+`earth-tunya`, and §10's standing judgement is that the field layer's own
+problems are worth more per unit effort than another factor of two on the
+transform.
