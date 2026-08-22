@@ -1,7 +1,9 @@
 #ifndef GSH_TRANS_CORE_MODULE_H
 #define GSH_TRANS_CORE_MODULE_H
 
-// Header files to include for use of GHSTrans library
+// Header files to include for use of the GSHTrans library
+#include "src/Version.h"
+
 #include "src/3j.h"
 #include "src/Concepts.h"
 #include "src/GaussLegendreGrid.h"

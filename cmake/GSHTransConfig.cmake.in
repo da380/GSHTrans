@@ -1,0 +1,16 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# Every dependency of the exported target must be findable here, because the
+# target file below refers to them by their imported names and CMake will not
+# invent them. All three of the header-only ones now ship packages of their
+# own; that they did not is what kept this file from existing.
+find_dependency(NumericConcepts)
+find_dependency(GaussQuad)
+find_dependency(FFTWpp)
+find_dependency(OpenMP)
+
+include("${CMAKE_CURRENT_LIST_DIR}/GSHTransTargets.cmake")
+
+check_required_components(GSHTrans)
