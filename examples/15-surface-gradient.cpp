@@ -117,6 +117,4 @@ int main() {
             << "  the relation says the second is conj of the first: "
             << (std::abs(derived - std::conj(stored)) < 1.0e-12 ? "yes" : "no")
             << "\n";
-
-  FFTWpp::CleanUp();
 }

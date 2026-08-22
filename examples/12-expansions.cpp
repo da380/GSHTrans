@@ -63,6 +63,4 @@ int main() {
   auto general = expansion.Component<-1, -1>();
   std::cout << "  the pinned block  " << pinned.Size() << " coefficients\n"
             << "  a complex block   " << general.Size() << "\n";
-
-  FFTWpp::CleanUp();
 }

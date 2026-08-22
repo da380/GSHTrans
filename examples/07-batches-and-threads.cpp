@@ -85,5 +85,4 @@ int main() {
   // is being amortised, so fields at different upper indices cannot batch
   // together. For a tensor that means batching over radii within each n, not
   // across components -- which example 08 shows the field layer arranging.
-  FFTWpp::CleanUp();
 }

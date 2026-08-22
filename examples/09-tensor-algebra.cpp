@@ -81,6 +81,4 @@ int main() {
   auto rotated = Permute<std::array<Int, 4>{2, 3, 0, 1}>(quartic);
   static_assert(decltype(rotated)::Rank == 4);
   std::cout << "rank-4 slot permutation compiles and relabels\n";
-
-  FFTWpp::CleanUp();
 }

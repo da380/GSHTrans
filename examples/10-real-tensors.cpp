@@ -85,6 +85,4 @@ int main() {
             << "  rank 4 elastic        "
             << (TensorField<4, ElasticSymmetry, RealTensor, Grid>::RealsPerPoint)
             << "   (the elastic constants)\n";
-
-  FFTWpp::CleanUp();
 }

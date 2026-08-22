@@ -44,6 +44,4 @@ int main() {
   // views alone.
   std::cout << "f at the first point " << (f[0, 0]) << "\n"
             << "field size           " << f.Size() << "\n";
-
-  FFTWpp::CleanUp();
 }

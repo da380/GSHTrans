@@ -80,6 +80,4 @@ int main() {
   static_assert(decltype(gradientPlus)::UpperIndex == 1);
   std::cout << "the raised field is a spin-1 field of "
             << gradientPlus.Size() << " samples\n";
-
-  FFTWpp::CleanUp();
 }

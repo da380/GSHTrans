@@ -69,6 +69,4 @@ int main() {
   auto complexOne = Expand(Materialise(g * Complex{1.0, 0.0}), lMax);
   std::cout << "real scalar    " << real.Size() << " coefficients\n"
             << "complex scalar " << complexOne.Size() << "\n";
-
-  FFTWpp::CleanUp();
 }

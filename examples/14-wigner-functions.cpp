@@ -138,6 +138,4 @@ int main() {
   } else {
     std::cout << "gnuplot not found; the data file is there to plot\n";
   }
-
-  FFTWpp::CleanUp();
 }

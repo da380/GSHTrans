@@ -66,6 +66,4 @@ int main() {
   auto damped = Map(abs2(u), [](auto x) { return std::exp(-x); });
   static_assert(decltype(damped)::UpperIndex == 0);
   std::cout << "exp(-|u|^2)    " << (damped[3, 4]) << "\n";
-
-  FFTWpp::CleanUp();
 }

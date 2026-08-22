@@ -60,6 +60,4 @@ int main() {
   auto locked = ConstSpinFieldView<1, Grid>(
       grid, std::span<const Complex>(storage).first(size));
   std::cout << "read-only view at the same point " << (locked[0, 0]) << "\n";
-
-  FFTWpp::CleanUp();
 }

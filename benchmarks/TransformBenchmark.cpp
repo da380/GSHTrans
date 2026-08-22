@@ -914,6 +914,4 @@ int main(int argc, char** argv) {
         "work, negligible Legendre work. Leg is the difference. GB/s is the\n"
         "Wigner bytes that call streams divided by the Legendre time.\n");
   }
-
-  FFTWpp::CleanUp();
 }

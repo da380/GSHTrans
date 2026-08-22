@@ -54,6 +54,4 @@ int main() {
             << (copy.Identity() == grid.Identity() ? "yes" : "no") << "\n"
             << "an identical grid does not: "
             << (twin.Identity() == grid.Identity() ? "yes" : "no") << "\n";
-
-  FFTWpp::CleanUp();
 }

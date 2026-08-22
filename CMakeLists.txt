@@ -104,6 +104,9 @@ if(PROJECT_IS_TOP_LEVEL)
   option(GSHTRANS_BUILD_TESTS      "Build the test suite" ON)
   option(GSHTRANS_BUILD_BENCHMARKS "Build the benchmarks" ON)
 
+  # Before the subdirectories, because the examples register tests too.
+  enable_testing()
+
   if(GSHTRANS_BUILD_EXAMPLES)
     add_subdirectory(examples)
   endif()
@@ -111,7 +114,6 @@ if(PROJECT_IS_TOP_LEVEL)
     add_subdirectory(benchmarks)
   endif()
   if(GSHTRANS_BUILD_TESTS)
-    enable_testing()
     add_subdirectory(tests)
   endif()
 endif()

@@ -79,6 +79,4 @@ int main() {
   static_assert(SpinWeighted<SpinField<0, Grid, RealValued>>);
 
   std::cout << "u + s does not compile; conj(u) * v does.\n";
-
-  FFTWpp::CleanUp();
 }

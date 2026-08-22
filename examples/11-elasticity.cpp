@@ -86,6 +86,4 @@ int main() {
   std::cout << "materialised stress: " << decltype(stored)::StoredComponents
             << " stored components, " << decltype(stored)::RealsPerPoint
             << " reals a point\n";
-
-  FFTWpp::CleanUp();
 }

@@ -73,6 +73,4 @@ int main() {
   using Elastic = TensorField<4, ElasticSymmetry, ComplexTensor, Grid>;
   std::cout << "elastic rank 4: stored " << Elastic::StoredComponents
             << " of " << Elastic::Components << "\n";
-
-  FFTWpp::CleanUp();
 }
