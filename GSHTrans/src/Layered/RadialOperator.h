@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "../Concepts.h"
+#include "../Policies.h"
 #include "LayeredSpinField.h"
 #include "RadialGrid.h"
 

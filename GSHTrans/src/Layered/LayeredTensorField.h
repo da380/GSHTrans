@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "../Concepts.h"
+#include "../Policies.h"
 #include "../Expansion/SpinExpansion.h"
 #include "../Expansion/TensorExpansion.h"
 #include "../Tensor/Orbits.h"

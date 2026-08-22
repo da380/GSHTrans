@@ -69,7 +69,9 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/GaussLegendreGrid.h
   GSHTrans/src/GridBase.h
   GSHTrans/src/Indexing.h
+  GSHTrans/src/Policies.h
   GSHTrans/src/Utility.h
+  GSHTrans/src/Version.h
   GSHTrans/src/Views.h
   GSHTrans/src/Wigner.h
   GSHTrans/src/SpinField/SpinWeighted.h

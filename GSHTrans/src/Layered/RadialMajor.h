@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "../Concepts.h"
+#include "../Policies.h"
 #include "RadialOperator.h"
 
 namespace GSHTrans {

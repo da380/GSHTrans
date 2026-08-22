@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "../Concepts.h"
+#include "../Policies.h"
 #include "../Indexing.h"
 #include "../SpinField/SpinField.h"
 #include "../SpinField/SpinFieldView.h"
