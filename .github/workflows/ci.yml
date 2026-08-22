@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.compiler }} / ${{ matrix.build_type }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [g++-13, g++-14]
+        build_type: [Debug, Release]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfftw3-dev ninja-build ${{ matrix.compiler }}
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      # The examples are registered as tests, so this runs them as well as the
+      # suite. That is the point: they were compile-only once and six of them
+      # were aborting.
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # Not verified locally, and allowed to fail for that reason. Clang needs
+  # libomp rather than libgomp for OpenMP, and no clang OpenMP runtime is
+  # installed on the development machine, so this leg exists to find out
+  # whether the library builds under clang at all rather than to gate on it.
+  # Promote it to a required job -- and fold it into the matrix above -- once
+  # it has been seen to pass.
+  clang:
+    name: clang-18 (advisory)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfftw3-dev ninja-build clang-18 libomp-18-dev
+
+      - name: Configure, build and test
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_CXX_COMPILER=clang++-18 \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+          ctest --test-dir build --output-on-failure
+
+  sanitizers:
+    name: ${{ matrix.sanitizer }} sanitizer
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, undefined]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfftw3-dev
+
+      - name: Run the sanitized test suite
+        run: ./scripts/test_sanitized.sh ${{ matrix.sanitizer }}
+
+  package:
+    name: install and find_package
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfftw3-dev ninja-build
+
+      - name: Build and install
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/prefix" \
+            -DGSHTRANS_BUILD_TESTS=OFF \
+            -DGSHTRANS_BUILD_EXAMPLES=OFF \
+            -DGSHTRANS_BUILD_BENCHMARKS=OFF
+          cmake --build build --parallel
+          cmake --install build
+
+      # The point of the install rules is that a separate project can consume
+      # them, so consume them from a separate project. This is also what would
+      # have caught the stale FindFFTW.cmake that stopped this library
+      # configuring at all against a current FFTWpp.
+      - name: Consume the installed package
+        run: |
+          cmake -S tests/package -B build-package -G Ninja \
+            -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/prefix"
+          cmake --build build-package --parallel
+          ctest --test-dir build-package --output-on-failure

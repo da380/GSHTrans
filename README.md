@@ -159,20 +159,47 @@ cmake --build build -j
 cd build && ctest
 ```
 
-Requires a C++23 compiler (GCC 13+ or Clang 16+), CMake 3.20+, and a local
-FFTW. `Eigen3`, `GaussQuad`, `FFTWpp` and `NumericConcepts` are fetched
-automatically by `FetchContent`; OpenMP is used for the parallel paths.
+Requires a C++23 compiler (GCC 13+), CMake 3.20+, and a local FFTW. OpenMP is
+used for the parallel paths. `GaussQuad`, `FFTWpp` and `NumericConcepts` are
+looked for on the system and fetched by `FetchContent` only if they are not
+there. All three are header-only, and none of them brings Eigen: GaussQuad
+used to, and no longer does.
 
 | option | default | effect |
 | :--- | :--- | :--- |
-| `MY_PROJECT_BUILD_EXAMPLES` | `ON` | build `examples/` |
-| `MY_PROJECT_BUILD_TESTS` | `ON` | build `tests/` and enable `ctest` |
-| `MY_PROJECT_BUILD_BENCHMARKS` | `ON` | build `benchmarks/TransformBenchmark` |
+| `GSHTRANS_BUILD_EXAMPLES` | `ON` | build and register `examples/` |
+| `GSHTRANS_BUILD_TESTS` | `ON` | build `tests/` |
+| `GSHTRANS_BUILD_BENCHMARKS` | `ON` | build `benchmarks/TransformBenchmark` |
+| `GSHTRANS_INSTALL` | `ON` when top level | generate the install and export rules |
 
-The test suite runs in Debug, in Release, and under AddressSanitizer and
-UndefinedBehaviorSanitizer. Every public header is additionally compiled on its
-own, twice, so that one which stops standing alone fails the build rather than
+### Using it from another project
+
+```cmake
+find_package(GSHTrans REQUIRED)
+target_link_libraries(your_target PRIVATE GSHTrans::GSHTrans)
+```
+
+`add_subdirectory` and `FetchContent` work too, and give the same target name.
+`GSHTrans/src/Version.h` defines `GSHTRANS_VERSION` for feature tests against
+a particular release.
+
+`tests/package` is a standalone project that consumes the installed package;
+it is what CI uses to check that the export rules still produce something
+usable, which the main build cannot see.
+
+### Testing
+
+The suite runs in Debug, in Release, and under AddressSanitizer and
+UndefinedBehaviorSanitizer -- `scripts/test_sanitized.sh address` does the
+latter. The examples are registered as tests, so they are run rather than
+merely compiled. Every public header is additionally compiled on its own, and
+twice, so that one which stops standing alone fails the build rather than
 waiting for the first consumer that does not already pull the missing include.
+
+ThreadSanitizer is deliberately not offered. The parallelism here is OpenMP,
+GCC's `libgomp` carries no TSan annotations, and every barrier and reduction
+is therefore reported as a race; that is a limitation of the tooling, not a
+finding.
 
 `TransformBenchmark` is not a test and `ctest` does not run it. It takes
 section names (`stream grid transforms threading batching server huge`) so that
@@ -182,12 +209,15 @@ an A/B costs one section rather than the whole run;
 ## Layout
 
 ```
-GSHTrans/Core          umbrella: grid, Wigner, indexing, 3j
+GSHTrans/Core          umbrella: grid, Wigner, indexing, policies, 3j
 GSHTrans/Field         umbrella: the spin-field algebra
-GSHTrans/All           both
+GSHTrans/Tensor        umbrella: tensor fields and their algebra
+GSHTrans/Expansion     umbrella: the spectral side
+GSHTrans/Layered       umbrella: three-dimensional fields
+GSHTrans/All           all of them
 GSHTrans/src/          the headers themselves
 docs/                  the plans, and the theory note
-tests/  examples/  benchmarks/
+tests/  examples/  benchmarks/  scripts/
 ```
 
 ## License

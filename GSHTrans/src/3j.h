@@ -138,7 +138,7 @@ class Axis {
 /*                        The computational kernels                        */
 /*------------------------------------------------------------------------*/
 
-namespace Internal {
+namespace ThreeJDetails {
 
 /**
  * @internal
@@ -282,7 +282,7 @@ void WoodhouseToPlain(const int l1, const int l3, std::span<T> a) {
   }
 }
 
-}  // namespace Internal
+}  // namespace ThreeJDetails
 
 /*------------------------------------------------------------------------*/
 /*                         Free kernel functions                           */
@@ -302,8 +302,8 @@ template <RealContiguousWritableRange Range>
 void FillWigner3jMatrix(int l1, int l2, int l3, Range&& table) {
   using T = std::ranges::range_value_t<Range>;
   auto span = std::span<T>(std::ranges::data(table), std::ranges::size(table));
-  Internal::WoodhouseMatrix<T>(l1, l2, l3, span);
-  Internal::WoodhouseToPlain<T>(l1, l3, span);
+  ThreeJDetails::WoodhouseMatrix<T>(l1, l2, l3, span);
+  ThreeJDetails::WoodhouseToPlain<T>(l1, l3, span);
 }
 
 /**
@@ -322,7 +322,7 @@ template <RealContiguousWritableRange Range>
 void FillWoodhouseMatrix(int l1, int l2, int l3, Range&& table) {
   using T = std::ranges::range_value_t<Range>;
   auto span = std::span<T>(std::ranges::data(table), std::ranges::size(table));
-  Internal::WoodhouseMatrix<T>(l1, l2, l3, span);
+  ThreeJDetails::WoodhouseMatrix<T>(l1, l2, l3, span);
 }
 
 /*------------------------------------------------------------------------*/
@@ -362,8 +362,8 @@ class Wigner3jMatrix {
         _data(static_cast<std::size_t>(2 * l1 + 1) *
               static_cast<std::size_t>(2 * l3 + 1)) {
     assert(l1 >= 0 and l2 >= 0 and l3 >= 0);
-    Internal::WoodhouseMatrix<T>(_l1, _l2, _l3, _data);
-    Internal::WoodhouseToPlain<T>(_l1, _l3, _data);
+    ThreeJDetails::WoodhouseMatrix<T>(_l1, _l2, _l3, _data);
+    ThreeJDetails::WoodhouseToPlain<T>(_l1, _l3, _data);
   }
 
   /** @brief Returns the first degree. */
