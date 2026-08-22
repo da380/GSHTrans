@@ -94,6 +94,13 @@ Canonical FromPhysicalFrame(Real vTheta, Real vPhi) {
 // components are checked pointwise. The second field carries the azimuthal
 // dependence the first does not, so a sign error in the phi component cannot
 // hide behind a zero.
+//
+// Every scalar here is a real spherical harmonic at low degree -- P_1, the
+// real part of Y_1^1, the real part of Y_2^2 -- which is deliberate and is
+// the general rule for this file: a harmonic is smooth at the poles by
+// construction, so its expansion converges and the check measures the
+// operator rather than the truncation. Trigonometry that merely looks smooth
+// is where the hours go.
 TEST(Conventions, TheSurfaceGradientOfAScalarIsTheGradient) {
   constexpr auto lMax = Int{12};
   auto grid = Grid(lMax, 2, FFTWpp::Estimate);
@@ -113,6 +120,12 @@ TEST(Conventions, TheSurfaceGradientOfAScalarIsTheGradient) {
        [](Real t, Real p) { return std::sin(t) * std::cos(p); },
        [](Real t, Real p) { return std::cos(t) * std::cos(p); },
        [](Real, Real p) { return -std::sin(p); }},
+      // Degree two, and with azimuthal order two, because degree one is
+      // special in enough ways that a check resting on it alone is thin.
+      {"sin^2(theta) cos(2 phi)",
+       [](Real t, Real p) { return std::sin(t) * std::sin(t) * std::cos(2 * p); },
+       [](Real t, Real p) { return 2 * std::sin(t) * std::cos(t) * std::cos(2 * p); },
+       [](Real t, Real p) { return -2 * std::sin(t) * std::sin(2 * p); }},
   };
 
   for (const auto& c : cases) {
@@ -170,50 +183,72 @@ TEST(Conventions, TheTraceOfTheSurfaceGradientIsTheSurfaceDivergence) {
   constexpr auto lMax = Int{16};
   auto grid = Grid(lMax, 2, FFTWpp::Estimate);
 
-  // f = sin(t) cos(p) and g = cos(t), both degree one, so div v = -2 f.
-  auto vTheta = [](Real t, Real p) { return std::cos(t) * std::cos(p); };
-  auto vPhi = [](Real t, Real p) { return -std::sin(p) - std::sin(t); };
-  auto divergence = [](Real t, Real p) {
-    return -2 * std::sin(t) * std::cos(p);
+  struct Case {
+    const char* name;
+    Real (*vTheta)(Real, Real);
+    Real (*vPhi)(Real, Real);
+    Real (*divergence)(Real, Real);
   };
 
-  auto v = TensorField<1, NoSymmetry<1>, ComplexTensor, Grid>(grid);
-  for (auto iTheta : grid.CoLatitudeIndices()) {
-    const auto t = grid.CoLatitudes()[iTheta];
-    for (auto iPhi : grid.LongitudeIndices()) {
-      const auto p = grid.Longitudes()[iPhi];
-      const auto c = FromPhysicalFrame(vTheta(t, p), vPhi(t, p));
-      v.Component<1>()[iTheta, iPhi] = c.plus;
-      v.Component<-1>()[iTheta, iPhi] = c.minus;
-      v.Component<0>()[iTheta, iPhi] = Complex{0, 0};
+  const Case cases[] = {
+      // f = Re Y_1^1 ~ sin(t) cos(p), g = P_1 ~ cos(t). div v = -2 f.
+      //
+      //   v_theta = d_t f - (1/s) d_p g,   v_phi = (1/s) d_p f + d_t g
+      {"degree one",
+       [](Real t, Real p) { return std::cos(t) * std::cos(p); },
+       [](Real t, Real p) { return -std::sin(p) - std::sin(t); },
+       [](Real t, Real p) { return -2 * std::sin(t) * std::cos(p); }},
+      // f = P_2 ~ (3 cos^2 t - 1)/2, g = Re Y_2^2 ~ sin^2(t) cos(2p).
+      // div v = -6 f.
+      {"degree two",
+       [](Real t, Real p) {
+         return -3 * std::cos(t) * std::sin(t) + 2 * std::sin(t) * std::sin(2 * p);
+       },
+       [](Real t, Real p) { return 2 * std::sin(t) * std::cos(t) * std::cos(2 * p); },
+       [](Real t, Real) {
+         return -3 * (3 * std::cos(t) * std::cos(t) - 1);
+       }},
+  };
+
+  for (const auto& c : cases) {
+    auto v = TensorField<1, NoSymmetry<1>, ComplexTensor, Grid>(grid);
+    for (auto iTheta : grid.CoLatitudeIndices()) {
+      const auto t = grid.CoLatitudes()[iTheta];
+      for (auto iPhi : grid.LongitudeIndices()) {
+        const auto p = grid.Longitudes()[iPhi];
+        const auto canonical = FromPhysicalFrame(c.vTheta(t, p), c.vPhi(t, p));
+        v.Component<1>()[iTheta, iPhi] = canonical.plus;
+        v.Component<-1>()[iTheta, iPhi] = canonical.minus;
+        v.Component<0>()[iTheta, iPhi] = Complex{0, 0};
+      }
     }
-  }
 
-  // Round-trip the construction first, so that a failure below is about the
-  // gradient rather than about the frame conversion.
-  for (auto iTheta : grid.CoLatitudeIndices()) {
-    const auto t = grid.CoLatitudes()[iTheta];
-    for (auto iPhi : grid.LongitudeIndices()) {
-      const auto p = grid.Longitudes()[iPhi];
-      const auto back = ToPhysicalFrame(v, iTheta, iPhi);
-      EXPECT_NEAR(back.theta.real(), vTheta(t, p), 1.0e-14);
-      EXPECT_NEAR(back.phi.real(), vPhi(t, p), 1.0e-14);
+    // Round-trip the construction first, so that a failure below is about the
+    // gradient rather than about the frame conversion.
+    for (auto iTheta : grid.CoLatitudeIndices()) {
+      const auto t = grid.CoLatitudes()[iTheta];
+      for (auto iPhi : grid.LongitudeIndices()) {
+        const auto p = grid.Longitudes()[iPhi];
+        const auto back = ToPhysicalFrame(v, iTheta, iPhi);
+        EXPECT_NEAR(back.theta.real(), c.vTheta(t, p), 1.0e-14) << c.name;
+        EXPECT_NEAR(back.phi.real(), c.vPhi(t, p), 1.0e-14) << c.name;
+      }
     }
-  }
 
-  auto gradient = Evaluate(SurfaceGradient(Expand(v, lMax)));
+    auto gradient = Evaluate(SurfaceGradient(Expand(v, lMax)));
 
-  // g_{ab} = (-1)^a delta_{a+b,0}, so the trace is -T^{-+} + T^{00} - T^{+-}.
-  for (auto iTheta : grid.CoLatitudeIndices()) {
-    const auto t = grid.CoLatitudes()[iTheta];
-    for (auto iPhi : grid.LongitudeIndices()) {
-      const auto p = grid.Longitudes()[iPhi];
-      const auto trace = -gradient.Component<-1, 1>()[iTheta, iPhi] +
-                         gradient.Component<0, 0>()[iTheta, iPhi] -
-                         gradient.Component<1, -1>()[iTheta, iPhi];
-      EXPECT_NEAR(trace.real(), divergence(t, p), 1.0e-11)
-          << "at theta = " << t << ", phi = " << p;
-      EXPECT_NEAR(trace.imag(), 0.0, 1.0e-11);
+    // g_{ab} = (-1)^a delta_{a+b,0}, so the trace is -T^{-+} + T^{00} - T^{+-}.
+    for (auto iTheta : grid.CoLatitudeIndices()) {
+      const auto t = grid.CoLatitudes()[iTheta];
+      for (auto iPhi : grid.LongitudeIndices()) {
+        const auto p = grid.Longitudes()[iPhi];
+        const auto trace = -gradient.Component<-1, 1>()[iTheta, iPhi] +
+                           gradient.Component<0, 0>()[iTheta, iPhi] -
+                           gradient.Component<1, -1>()[iTheta, iPhi];
+        EXPECT_NEAR(trace.real(), c.divergence(t, p), 1.0e-11)
+            << c.name << " at theta = " << t << ", phi = " << p;
+        EXPECT_NEAR(trace.imag(), 0.0, 1.0e-11) << c.name;
+      }
     }
   }
 }
