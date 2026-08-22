@@ -18,7 +18,6 @@
 #include <array>
 #include <map>
 #include <tuple>
-#include <mutex>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -585,15 +584,6 @@ class GaussLegendreGrid
     return buffer;
   }
 
-  // FFTW's planner is not re-entrant, so plan creation everywhere in the
-  // process is serialised on this. Execution is not: FFTW does allow a plan to
-  // be executed concurrently, and in any case each thread executes on its own
-  // workspace.
-  static std::mutex& PlannerMutex() {
-    static std::mutex mutex;
-    return mutex;
-  }
-
   // The aligned buffers a transform works in, and the FFTW plan bound to them.
   //
   // Held per thread rather than shared. The buffers are scratch and must be
@@ -652,7 +642,12 @@ class GaussLegendreGrid
 
       auto inView = FFTWpp::Ranges::View(in, inLayout);
       auto outView = FFTWpp::Ranges::View(out, outLayout);
-      auto lock = std::scoped_lock(PlannerMutex());
+      // No lock here. FFTW's planner is not re-entrant, but FFTWpp now takes
+      // its own PlannerMutex inside every planner entry point, so serialising
+      // again on ours would only add a second, coarser lock over the same
+      // critical section -- and one that unrelated FFTWpp users could not see.
+      // Execution stays unlocked in both: FFTW allows a plan to be executed
+      // concurrently, and each thread executes on its own workspace anyway.
       if constexpr (std::same_as<In, Out>) {
         return FFTWpp::Ranges::Plan(
             inView, outView, flag,
