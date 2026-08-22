@@ -22,7 +22,7 @@ to 10 were raised later and are assessed here for the first time.
 | 4 | project structure | **done**, except the `src/` rename, declined |
 | 5 | dependencies | **done** upstream; GaussQuad and FFTWpp both refactored |
 | 6 | Wigner 3-j symbols | open, and independent of everything else |
-| 7 | the `Interpolation` library | assessed here |
+| 7 | the `Interpolation` library | assessed here, against `refactor` |
 | 8 | how three-dimensional the 3-D fields are | assessed here |
 | 9 | interpolating a field, as a callable | assessed here |
 | 10 | a wisdom mechanism for the computational options | assessed here |
@@ -581,84 +581,103 @@ idea — not hard, but not free either. That is an argument for deciding the
 ## 7. The `Interpolation` library
 
 > *As raised:* another repo revisited, `da380/Interpolation`. Of potential use.
-> Certainly they will link up downstream.
+> Certainly they will link up downstream. The update is under a branch,
+> `refactor` — not `main`, which is what we might consider including. The
+> update should be in a good state.
 
-### What it is, as it stands
+**This section was first written against `main` and was wrong in every
+particular.** `main` is `4508a7b`, predates the rebuild, and each of the three
+obstacles listed against it has since been removed. What follows is written
+against `refactor` at `af994cb`, and the three obstacles are gone.
 
-Header-only, C++20, `Interpolation/` with the same `<Name>/src/` layout as
-FFTWpp and GaussQuad and the same extensionless umbrella headers. Six
-facilities: `Linear`, `CubicSpline`, `Akima`, `Lagrange`,
-`LagrangePolynomial`, `Polynomial1D`. Abscissae strictly increasing;
-ordinates real or complex where noted.
+### What it is now
 
-**It is one-dimensional.** That is the single most important fact for how it
-joins to this library, and it is a good thing rather than a limitation: the
-radial axis is exactly where GSHTrans has deliberately stopped, so a
-one-dimensional interpolator is the missing half rather than a competitor to
-anything here. The angular half is not an interpolation problem of this kind
-at all — see §9.
+C++23, header-only, `include/Interpolation/*.hpp`, **no external dependencies
+at all**. Sixteen commits of rebuild, with `docs/roadmap.md` recording the
+decisions the way this project does.
 
-### Three things to settle before depending on it
+The three things this section previously said had to be settled first are each
+settled, and one of them in a way worth remarking on:
 
-These are not objections. They are the same three things GaussQuad and FFTWpp
-had to fix, and both took about a fortnight, so the shape of the work is
-known.
+- **Install and export rules exist.** `Interpolation::Interpolation` is the
+  exported target, `cmake/InterpolationConfig.cmake.in` is the config file,
+  and the standard is carried on the target rather than set globally. So
+  depending on it would *not* undo what §5 bought.
+- **Eigen is gone**, removed in phase 2, the spline system solved with the
+  Thomas algorithm. That is the identical answer GaussQuad reached for the
+  identical problem, arrived at independently in the same fortnight.
+- **The lifetime hazard is fixed, by the rule this library already uses.** An
+  lvalue range is borrowed, an rvalue is moved in and owned. That is operand
+  storage by value category, which is exactly what `field-algebra-plan.md`
+  §3.3 chose for expression nodes and for the same reason. The convergence is
+  convenient: a `Function1D` handed out by a GSHTrans field (§9) can follow
+  one rule end to end rather than two.
 
-**It has no install or export rules.** `README.md` shows consumption by
-`FetchContent` and a bare `Interpolation` target name with no namespaced
-alias. That is precisely what blocked `find_package(GSHTrans)` until last
-week: an INTERFACE target can only be exported if everything it links is
-exported or imported. Taking a dependency on `Interpolation` as it stands
-would *undo* §5's result. This is a small change and it is the one that has
-to come first.
+  One sharp edge remains and is documented upstream: the splines compute their
+  coefficients once, at construction, so mutating a borrowed container leaves
+  new samples paired with old coefficients. Rebuild rather than mutate. Worth
+  repeating wherever GSHTrans hands one out, because it is not the kind of
+  staleness a lifetime rule catches.
 
-**Cubic splines pull in Eigen.** The dependency tree has just been cleared of
-Eigen entirely, and this would bring it straight back — for a tridiagonal
-solve. GaussQuad hit the identical case and its two `llt().solve()` calls
-became a fifteen-line Thomas solve; a natural or clamped cubic spline is a
-symmetric tridiagonal system and wants exactly the same treatment. So the ask
-is one that has already been answered once in this family of libraries, and
-the answer can be lifted.
+### What is in it that was not there before, and matters here
 
-**Every interpolator stores iterators rather than copying.** The README says
-so: "Keep the sample containers alive and do not reallocate them while an
-interpolator is in use." That is a lifetime contract of the kind this library
-is careful about — `field-algebra-plan.md` §3.8 is entirely about operand
-lifetime and aliasing, and §3.3 settled operand storage by value category
-precisely so that a node cannot outlive what it reads. An interpolator handed
-out by a GSHTrans field (§9) would inherit the hazard and hand it to a user
-who never chose it. Either the interpolators gain an owning mode, or anything
-built on them owns the samples itself and the borrowed form stays internal.
+**A function algebra.** Everything models `Function1D` — `Evaluate<N>(x)` for
+the `N`th derivative, `operator()` as `Evaluate<0>` — so interpolants add,
+multiply, differentiate, compose and integrate as *functions* rather than only
+evaluating at a point.
 
-### Where it would actually be used
+Worth naming the apparent tension and then dismissing it: `field-algebra-plan.md`
+§8 insists there is no second expression system, and this is one. It is not in
+conflict, because the two are over different things — GSHTrans's nodes are
+fields on a fixed grid, these are functions of one real variable — and they
+meet at exactly one place, the `ScalarFunctionS2` concept a field constructor
+takes. Keeping them apart is easy as long as neither tries to absorb the other,
+and neither has any reason to.
 
-Four places, in decreasing order of how much they want it.
+**`Piecewise`, which is the layered radial model.** Its own documentation says
+so: "built for data that is genuinely piecewise continuous — a layered model,
+say — where the value may jump at an interface". Pieces tile their interval,
+continuity at a breakpoint is deliberately not checked, evaluation is
+right-continuous, and `Limits` returns both one-sided values. That is the
+material-interface problem of §8, already solved, one repository over. It
+changes what §8 should build.
 
-1. **Evaluating a layered field at an arbitrary radius.** The obvious one, and
-   the one that needs nothing but `Linear` or `CubicSpline` along a gathered
-   radial line. It composes with the seam: `ApplyRadially` already gathers a
-   contiguous line and hands it to a callable, and this is the same gather
-   with a callable that returns a value rather than a line.
-2. **Remeshing between radial grids.** Model on one set of radii, computation
-   on another. Common, tedious, and entirely one-dimensional.
-3. **The spectral-element bases.** `LagrangePolynomial` gives the cardinal
-   functions on the GLL nodes GaussQuad now places exactly at `±1`, and
-   `Polynomial1D` differentiates them. That is the differentiation matrix a
-   caller currently has to build by hand in order to pass a radial derivative
-   to `Gradient`, and §8 argues it should be offered.
-4. **`Polynomial1D` for the radial power laws** used throughout the layered
-   tests. Minor, and no reason on its own.
+**Two-dimensional interpolation on rectilinear grids:** `Bilinear` and
+`BicubicSpline`, taking two axes and a flat row-major value range, with mixed
+partial derivatives. These are the two schemes named in the interpolation
+request, and §9 is rewritten around them.
+
+### Two facts checked rather than assumed
+
+**GCC 13 compiles it**, including `Bilinear`, `BicubicSpline` and
+`CubicSpline` instantiated and run. The README says CI covers GCC 14 and Clang
+18, and the roadmap decided to use deducing `this`, which GCC 13 lacks — but
+no use of it survived into the headers. This matters because `earth-tunya` has
+GCC 13.2, so the deployment target is not an obstacle. It is worth a CI leg
+upstream rather than a fact this document remembers.
+
+**The value layout is already ours.** `Bilinear` wants element `(i, j)` at
+`i * size(y) + j`; a GSHTrans field stores `iTheta * nPhi + iPhi`
+(`SpinField.h:240`). So a field's buffer, its colatitudes and its longitudes
+are directly the three arguments, with no repack and no copy. That is a
+better join than there was any reason to expect and it is what makes §9 small.
 
 ### The recommendation
 
-Worth depending on, after the three fixes, and worth writing them up as a
-hand-over plan the way §5 did for the other two — that route has now worked
-twice. Do not take the dependency before the install rules exist, because
-doing so gives back the thing §5 spent its effort buying. And keep it
-**optional**: a `GSHTRANS_WITH_INTERPOLATION` component, so that the core
-transform never acquires a dependency it does not need. Nothing in the
-angular library wants a one-dimensional interpolator; only the layered half
-does.
+Take it, from `refactor`, pinned to a commit — the roadmap says nothing
+reaches `main` until the sequence is proven, and that API breakage on the
+branch is expected and acceptable because consumers pin SHAs. Pinning is
+therefore the upstream expectation and not a hedge.
+
+Keep it **optional**, as a component: nothing in the angular core wants a
+one-dimensional interpolator, and the transform should not acquire a
+dependency the layered half alone uses.
+
+The one thing genuinely missing for this library's use is **boundary
+behaviour**, and it is ours rather than theirs. `Bilinear` continues the
+nearest edge cell outside the grid; the sphere is periodic in `φ` and has
+coordinate poles in `θ`, and neither is an edge cell. §9 says what to do about
+it, and the answer is padding on this side rather than a request upstream.
 
 ---
 
@@ -743,11 +762,28 @@ rather than an error.
 
 It is worth singling out because it is the fact that **more than one thing
 needs and nothing can infer**. Interpolation must not cross an interface;
-`ElementDerivative` needs the blocks; the constructor's existing
-`is_sorted` check currently *rejects* a repeated radius, which is precisely
-how a two-sided material interface is represented. Carrying it optionally
-costs one `std::vector<Int>` and leaves a caller who has no elements exactly
-where they are now.
+`ElementDerivative` needs the blocks; the constructor's existing `is_sorted`
+check currently *rejects* a repeated radius, which is precisely how a
+two-sided material interface is represented. Carrying it optionally costs one
+`std::vector<Int>` and leaves a caller who has no elements exactly where they
+are now.
+
+**And the representation is already decided, one repository over.**
+`Interpolation`'s `Piecewise` (§7) is built for exactly this: pieces that tile
+an interval between breakpoints, continuity across a breakpoint deliberately
+unchecked, right-continuous evaluation so piece `k` owns `[b_k, b_{k+1})`, and
+a `Limits` accessor returning both one-sided values — which at a real material
+interface is what is actually wanted. So the partition `RadialGrid` carries
+should *be* a breakpoint list in that sense, and the choices about which side
+a query is answered from should be the same choices, because getting two
+libraries to disagree about what happens at the core-mantle boundary is a
+trap laid for a future reader.
+
+That does not make the element partition unnecessary here. `Piecewise` knows
+where the breaks are; it does not know that the radii between two of them are
+the GLL nodes of one spectral element, which is what `ElementDerivative`
+needs. The two facts overlap and are not the same, and `RadialGrid` should
+carry the one that is ours.
 
 Everything else — connectivity beyond that, basis functions, boundary
 conditions, factorisations — stays the application's, and should.
@@ -767,12 +803,16 @@ now.
 > *As raised:* providing the various fields with an interpolation method that
 > returns a callable object of the two angles. We could pass a "method"
 > variable which determines the scheme used, e.g. bilinear, bicubic (see
-> Interpolation) or direct expansion.
+> interpolation) or direct expansion.
+
+The parenthesis is the instruction: `Interpolation` on `refactor` has
+`Bilinear` and `BicubicSpline` on rectilinear grids (§7), and they are what
+the first two schemes should be rather than anything written here.
 
 ### The shape of it
 
 ```cpp
-auto f = SpinField<0, Grid>(grid, ...);
+auto f  = SpinField<0, Grid>(grid, ...);
 auto at = Interpolate(f, Scheme::Bicubic());
 auto value = at(theta, phi);
 ```
@@ -781,80 +821,99 @@ auto value = at(theta, phi);
 a tensor field it is per component, or a callable returning the component set;
 that is a detail, and the rank-0 case decides everything else.
 
-### The `method` variable is a policy, and there is already a house style
+### The method variable is a policy, and there is already a house style
 
-`Policies.h` holds four of these: `Execution`, `Batch`, `Chunking`,
-`WignerValues`. Each is a value with named constructors —
-`Chunking::ForCache(bytes)`, `WignerValues::Generated()` — rather than a
-template parameter or an enum, and for a stated reason: it is a decision the
-caller makes about the machine or the problem, not about the mathematics, and
-putting it in a type would make the mathematics carry it. An interpolation
-scheme is the same kind of thing. So `Scheme::Bilinear()`, `Scheme::Bicubic()`,
-`Scheme::Spectral()`, in `Policies.h`, and the fifth member of a set that
+`Policies.h` holds four: `Execution`, `Batch`, `Chunking`, `WignerValues`.
+Each is a value with named constructors — `Chunking::ForCache(bytes)`,
+`WignerValues::Generated()` — rather than a template parameter or an enum, for
+a stated reason: it is a decision about the machine or the problem, not about
+the mathematics, and putting it in a type would make the mathematics carry it.
+An interpolation scheme is the same kind of thing, so `Scheme::Bilinear()`,
+`Scheme::Bicubic()`, `Scheme::Spectral()`, and the fifth member of a set that
 already exists.
 
-### The two axes are not alike, and that is the whole design
+### The join is better than expected, and it makes most of this small
 
-This is where the problem stops resembling one-dimensional interpolation twice
-over.
+`Bilinear` takes two axis ranges and a flat row-major value range with element
+`(i, j)` at `i * size(y) + j`. A GSHTrans field stores `iTheta * nPhi + iPhi`
+(`SpinField.h:240`). **So the field's buffer, `grid.CoLatitudes()` and
+`grid.Longitudes()` are directly the three arguments** — no repack, no copy,
+no adaptor. Two of the three schemes are then a constructor call and a
+forwarding `operator()`.
 
-**φ is uniform and periodic.** So interpolation in φ can be *exact* for a
-band-limited field, by trigonometric interpolation — zero-pad the Fourier
-coefficients and transform back, which is one FFT the library already owns.
-Bilinear in φ would be throwing away accuracy that costs nothing to keep.
+What is left is the part that is genuinely ours, and it is the boundaries.
 
-**θ is Gauss-Legendre and therefore non-uniform, and neither pole is a grid
-point.** Both facts bite. Non-uniform spacing rules out the usual fixed-stencil
-bicubic and calls for a genuine interpolant on given nodes — which is §7's
-`CubicSpline` or `Lagrange` along a colatitude line. And the poles are outside
-the convex hull of the nodes, so *every* local scheme extrapolates there. Near
-the poles a spin-weighted field also has the `sin^{|m|}θ` behaviour that makes
-polar truncation possible (`core-plan.md` §10), so an interpolant that ignores
-it will be worst exactly where it is least defensible.
+### The two axes are not alike, and neither of their boundaries is an edge
 
-**Direct expansion is exact and pole-safe, and expensive per point.**
-Evaluating `Σ f^N_{lm} Y^N_{lm}(θ, φ)` needs the whole `d^l_{Nm}(θ)` column,
-which is `O(lMax²)` work for one point — against `O(1)` for a local scheme.
-The recursion for it already exists and is already threaded: `WignerValues::Generated()`
-runs it into per-thread scratch and was measured, so the machinery is in
-place. The crossover is the thing to measure: at some number of evaluation
-points, building a *second grid* and transforming onto it beats evaluating
-point by point, and the answer is a straightforward benchmark rather than a
-guess.
+`Bilinear` and `BicubicSpline` continue the nearest edge cell outside the
+grid. That is the right default for a rectilinear grid and it is wrong for a
+sphere on both axes, in two different ways. Neither is an upstream problem;
+both are fixed by handing over a padded grid.
 
-### What that suggests
+**φ is uniform and periodic, and the wrap is not represented.** The longitudes
+run `0 … 2π − Δ`, so a query in the last cell interpolates against nothing and
+gets the edge value. The fix is one extra column: append `2π` with the values
+from `iPhi = 0`. That makes bilinear correct in φ and bicubic nearly so —
+nearly, because a spline with natural end conditions there is still not a
+periodic spline, and whether that matters is a measurement rather than an
+argument.
 
-Three schemes, and the middle one is the one to reach for by default:
+Worth knowing what is being given up: in φ, interpolation could be *exact* for
+a band-limited field, by trigonometric interpolation on a zero-padded Fourier
+coefficient array, which is one FFT the library already owns. That is strictly
+better than any local scheme and costs nothing extra. It is a reason to expect
+`Hybrid` — exact in φ, interpolated in θ — to be worth having eventually, and
+not a reason to delay the simple schemes.
 
-| scheme | φ | θ | exact? | cost per point |
-|---|---|---|---|---|
-| `Bilinear` | linear | linear | no | `O(1)` |
-| `Hybrid` | trigonometric, exact | spline on the GL nodes | in φ only | `O(1)` after setup |
-| `Spectral` | exact | exact | yes | `O(lMax²)` |
+**θ is Gauss–Legendre, so non-uniform, and neither pole is a grid point.**
+Non-uniformity is fine: `BicubicSpline` takes arbitrary increasing abscissae,
+which is precisely why it is the right tool and a fixed-stencil bicubic would
+not be. The poles are the real problem — they lie *outside* the convex hull of
+the nodes, so every local scheme extrapolates there, and it does so exactly
+where a spin-weighted field's `sin^{|m|}θ` behaviour is most delicate.
 
-`Spectral` is the reference the other two are *tested against*, which is worth
-more than it sounds: it makes the accuracy of a cheap scheme measurable rather
-than asserted, on any field, without an analytic answer to compare to.
+The fix is again padding, and it is exact rather than a fudge: **the value at a
+pole is computable from the expansion**, since only the harmonics with
+`m = -N` survive there. Prepending `θ = 0` and appending `θ = π` with those
+values makes the grid cover the closed domain and removes the extrapolation
+entirely. It costs one row at each end and an evaluation that already exists.
 
-### Three things to decide before building
+### `Spectral` is the reference, and should be built first
 
-**Lifetime.** The callable reads the field. Whether it borrows or owns is the
-same question §7 raises about `Interpolation`'s iterators and the same
-question `field-algebra-plan.md` §3.8 answered for expression nodes — and it
-should be answered the same way, by value category, so that
-`Interpolate(Materialise(...))` does not dangle. This is the one that will
-cause a real bug if it is decided casually.
+Evaluating `Σ f^N_{lm} Y^N_{lm}(θ, φ)` directly is exact for a band-limited
+field, pole-safe, and `O(lMax²)` a point against `O(1)` for a local scheme.
+The recursion it needs already exists and is already threaded —
+`WignerValues::Generated()` runs it into per-thread scratch and was measured
+in T11.
 
-**What it is a callable *of*.** `(θ, φ)` as raised. Worth noting that a
-`ScalarFunctionS2` concept already exists in `Concepts.h` and is what field
-constructors take — so an interpolant that satisfies it can be fed straight
-back into another grid's constructor, which is remeshing in one line and is
-probably the commonest use.
+Building it first is worth more than its own usefulness: it makes the accuracy
+of the cheap schemes **measurable on any field, without an analytic answer to
+compare against**. That is the same move as §17.7's crossover measurement and
+as the polar-truncation question, and this document's repeated experience is
+that the schemes whose error nobody can measure are the ones that turn out to
+be wrong.
 
-**Setup versus evaluation.** A spline along every colatitude line is `O(lMax²)`
-of setup that must not be redone per point, so the callable is a built object
-and not a lambda over the field. That is an argument for `Interpolate` being a
-named type rather than `auto`.
+There is also a crossover to measure: past some number of evaluation points,
+building a second grid and transforming onto it beats evaluating point by
+point. That is a benchmark, not a guess.
+
+### Two things to decide before building
+
+**Lifetime, and it now has one answer rather than two.** The callable reads
+the field, and `Interpolation`'s interpolators borrow lvalues and own rvalues
+— the same value-category rule `field-algebra-plan.md` §3.8 settled for
+expression nodes. So one rule can run end to end, and
+`Interpolate(Materialise(...))` can be made to own rather than dangle. The one
+hazard the rule does not catch is upstream's: a spline computes its
+coefficients at construction, so mutating a borrowed field afterwards leaves
+new samples against old coefficients. A field is mutable and this is a real
+trap; the callable should either own or say so loudly.
+
+**What it is a callable *of*.** `(θ, φ)`, as raised — and worth noting that
+`ScalarFunctionS2` in `Concepts.h` is already exactly that concept, and is
+what a field constructor takes. An interpolant that models it can be fed
+straight into another grid's constructor, which makes remeshing one line and
+is probably the commonest use of the whole feature.
 
 ---
 
@@ -966,12 +1025,16 @@ and things that are waiting.
 
 **Waiting on something:**
 
-- **`Interpolation`** (§7) waits on install rules upstream, exactly as
-  GaussQuad and FFTWpp did. Write the hand-over plan now -- that route has
-  worked twice -- and take the dependency after.
-- **Field interpolation** (§9) waits on §7 for the θ interpolant, though
-  `Scheme::Spectral()` needs nothing and could be built first as the reference
-  the others are tested against.
+- **`Interpolation`** (§7) waits on nothing but a pinned commit on
+  `refactor`. Its rebuild removed all three obstacles this document first
+  listed against it, and its `Bilinear`/`BicubicSpline` take a GSHTrans
+  field's buffer directly. No hand-over plan is needed; that assessment was
+  written against the superseded `main`.
+- **Field interpolation** (§9) is mostly small once §7 is in, because the
+  layouts already agree. What is ours is the two boundary paddings -- the φ
+  wrap and the exact polar rows -- and `Scheme::Spectral()`, which needs
+  nothing and should be built first as the reference the cheap schemes are
+  measured against.
 - **The wisdom mechanism** (§10) waits on nothing technically, but its first
   customer should be `Chunking::Tuned` alone, and the case for the wider
   mechanism is better made after the target-machine run than before it.
