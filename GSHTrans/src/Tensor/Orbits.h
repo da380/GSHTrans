@@ -30,6 +30,18 @@ namespace GSHTrans {
 // rank-2 tensor stores 5 of its 9 components and a rank-4 one stores 41 of 81;
 // a symmetric real rank-2 tensor has four orbits carrying six reals per point,
 // which is the number of independent entries of a real symmetric 3x3 matrix.
+//
+// The same algorithm serves a tangential tensor, whose slots run over {-1, +1}
+// rather than {-1, 0, +1}, and it is told nothing about the difference beyond
+// which multi-indices exist. Two answers fall out that are worth knowing in
+// advance, because they are the check that this is a generalisation and not a
+// special case: with no permutation symmetry, negation has no fixed point --
+// the all-zero index does not exist -- so every orbit has size two and there
+// are *no pinned components at all*, which removes the second buffer phase 4
+// had to introduce. Under a symmetry there can still be one: for a symmetric
+// tangential rank-2 tensor, negation maps (-+) to (+-) and the symmetry maps
+// it back, so that component is pinned real and the tensor is one complex
+// number plus one real, three reals a point -- a real symmetric 2x2 matrix.
 
 // What an orbit forces on its own representative.
 //
@@ -41,12 +53,13 @@ namespace GSHTrans {
 // slot sum while negation reverses it.
 enum class ComponentConstraint { None, Zero, Real, Imaginary };
 
-template <std::ptrdiff_t _Rank>
+template <std::ptrdiff_t _Rank, SlotAlphabet _Slots = AllSlots>
 struct OrbitTable {
   using Int = std::ptrdiff_t;
+  using SlotSet = _Slots;
 
   static constexpr Int Rank = _Rank;
-  static constexpr Int Size = MultiIndex<Rank>::Size;
+  static constexpr Int Size = MultiIndex<Rank, SlotSet>::Size;
 
   // For each of the 3^Rank components: the flat index of the component
   // actually stored for it, the sign relating the two, and whether the
@@ -70,7 +83,7 @@ struct OrbitTable {
   std::array<ComponentConstraint, Size> constraint{};
 
   constexpr Int UpperIndexOf(Int flat) const {
-    return MultiIndex<Rank>::FromFlat(flat).UpperIndex();
+    return MultiIndex<Rank, SlotSet>::FromFlat(flat).UpperIndex();
   }
 };
 
@@ -90,12 +103,13 @@ struct OrbitTable {
 // being transformed. That is well defined along any route because permutation
 // preserves N, negation reverses it, and (-1)^N = (-1)^{-N}.
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
-          bool IncludeNegation>
+          bool IncludeNegation, SlotAlphabet Slots = AllSlots>
 constexpr auto MakeOrbitTable() {
   using Int = std::ptrdiff_t;
-  constexpr auto Size = MultiIndex<Rank>::Size;
+  using Index = MultiIndex<Rank, Slots>;
+  constexpr auto Size = Index::Size;
 
-  auto table = OrbitTable<Rank>{};
+  auto table = OrbitTable<Rank, Slots>{};
   const auto generators = Symmetry::Generators();
 
   for (auto& r : table.representative) r = -1;
@@ -137,7 +151,7 @@ constexpr auto MakeOrbitTable() {
 
     while (head != tail) {
       const auto from = queue[head++];
-      const auto index = MultiIndex<Rank>::FromFlat(from);
+      const auto index = Index::FromFlat(from);
       const auto fromSign = table.sign[from];
       const auto fromConjugated = table.conjugate[from];
 
@@ -186,9 +200,9 @@ concept TensorReality =
     std::same_as<R, RealTensor> or std::same_as<R, ComplexTensor>;
 
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
-          TensorReality Reality>
+          TensorReality Reality, SlotAlphabet Slots = AllSlots>
 inline constexpr auto TensorOrbits =
-    MakeOrbitTable<Rank, Symmetry, Reality::ReducesOnReality>();
+    MakeOrbitTable<Rank, Symmetry, Reality::ReducesOnReality, Slots>();
 
 }  // namespace GSHTrans
 

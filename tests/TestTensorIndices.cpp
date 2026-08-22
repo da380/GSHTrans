@@ -17,9 +17,10 @@ using Int = std::ptrdiff_t;
 // is what the abstraction is *for*. It must come out equal to the number of
 // independent real degrees of freedom of the tensor, and it does so for every
 // rank and symmetry below without any of them being special-cased.
-template <Int Rank, typename Symmetry, bool Reality>
+template <Int Rank, typename Symmetry, bool Reality,
+          typename Slots = AllSlots>
 constexpr auto RealsPerPoint() {
-  constexpr auto table = MakeOrbitTable<Rank, Symmetry, Reality>();
+  constexpr auto table = MakeOrbitTable<Rank, Symmetry, Reality, Slots>();
   auto reals = Int{0};
   for (auto i = Int{0}; i < table.Size; i++) {
     if (table.slot[i] < 0) continue;
@@ -28,9 +29,24 @@ constexpr auto RealsPerPoint() {
   return reals;
 }
 
-template <Int Rank, typename Symmetry, bool Reality>
+template <Int Rank, typename Symmetry, bool Reality,
+          typename Slots = AllSlots>
 constexpr auto StoredCount() {
-  return MakeOrbitTable<Rank, Symmetry, Reality>().storedCount;
+  return MakeOrbitTable<Rank, Symmetry, Reality, Slots>().storedCount;
+}
+
+template <Int Rank, typename Symmetry, bool Reality,
+          typename Slots = AllSlots>
+constexpr auto PinnedCount() {
+  constexpr auto table = MakeOrbitTable<Rank, Symmetry, Reality, Slots>();
+  auto pinned = Int{0};
+  for (auto i = Int{0}; i < table.Size; i++) {
+    if (table.slot[i] >= 0 &&
+        table.constraint[i] != ComponentConstraint::None) {
+      pinned++;
+    }
+  }
+  return pinned;
 }
 
 }  // namespace
@@ -280,5 +296,184 @@ TEST(Orbits, RealityReducesOnlyARealTensor) {
   static_assert((TensorOrbits<4, NoSymmetry<4>, RealTensor>.storedCount) == 41);
   static_assert((TensorOrbits<4, ElasticSymmetry, RealTensor>.storedCount) ==
                 13);
+  SUCCEED();
+}
+
+
+//--------------------------------------------------------------------------//
+//                            The tangential alphabet                        //
+//--------------------------------------------------------------------------//
+
+// A tangential tensor has no radial slot: every index runs over {-1, +1}. The
+// point of these tests is not the tangential case itself but that nothing was
+// special-cased to reach it -- the same MultiIndex, the same orbit walk, the
+// same symmetry policies, told only which multi-indices exist.
+
+TEST(MultiIndex, TheTangentialAlphabetHasTwoLettersPerSlot) {
+  static_assert(MultiIndex<0, TangentialSlots>::Size == 1);
+  static_assert(MultiIndex<1, TangentialSlots>::Size == 2);
+  static_assert(MultiIndex<2, TangentialSlots>::Size == 4);
+  static_assert(MultiIndex<3, TangentialSlots>::Size == 8);
+  static_assert(MultiIndex<4, TangentialSlots>::Size == 16);
+
+  // Against 3^p, which is what the saving is: a factor of (3/2)^p, so five at
+  // rank four.
+  static_assert(MultiIndex<4, AllSlots>::Size == 81);
+
+  // The default is unchanged, which is what makes the generalisation additive.
+  static_assert(std::same_as<MultiIndex<2>, MultiIndex<2, AllSlots>>);
+  SUCCEED();
+}
+
+TEST(MultiIndex, TheTangentialFlatIndexRoundTrips) {
+  constexpr auto check = []<Int Rank>() {
+    using Index = MultiIndex<Rank, TangentialSlots>;
+    for (auto flat = Int{0}; flat < Index::Size; flat++) {
+      const auto index = Index::FromFlat(flat);
+      if (index.Flat() != flat) return false;
+      // Every slot is a letter of the alphabet, and none is radial.
+      for (auto slot = Int{0}; slot < Rank; slot++) {
+        if (index[slot] != -1 && index[slot] != 1) return false;
+      }
+    }
+    return true;
+  };
+  static_assert(check.template operator()<1>());
+  static_assert(check.template operator()<2>());
+  static_assert(check.template operator()<3>());
+  static_assert(check.template operator()<4>());
+  SUCCEED();
+}
+
+TEST(MultiIndex, ARadialSlotIsNotATangentialIndex) {
+  EXPECT_THROW((MultiIndex<2, TangentialSlots>(std::array<Int, 2>{0, 1})),
+               std::invalid_argument);
+  EXPECT_NO_THROW((MultiIndex<2, TangentialSlots>(std::array<Int, 2>{-1, 1})));
+  // The general alphabet still takes it.
+  EXPECT_NO_THROW((MultiIndex<2>(std::array<Int, 2>{0, 1})));
+}
+
+// N = sum of the slots still, but now every slot is odd, so N has the parity
+// of the rank and |N| <= Rank. Nothing is told this: it falls out of the
+// enumeration, which is why it is a test and not a check
+// (field-algebra-plan.md section 18.2 [D5]).
+TEST(MultiIndex, TheTangentialUpperIndexHasTheParityOfTheRank) {
+  constexpr auto check = []<Int Rank>() {
+    using Index = MultiIndex<Rank, TangentialSlots>;
+    for (auto flat = Int{0}; flat < Index::Size; flat++) {
+      const auto n = Index::FromFlat(flat).UpperIndex();
+      if (n < -Rank || n > Rank) return false;
+      if (((n % 2) + 2) % 2 != ((Rank % 2) + 2) % 2) return false;
+    }
+    return true;
+  };
+  static_assert(check.template operator()<1>());
+  static_assert(check.template operator()<2>());
+  static_assert(check.template operator()<3>());
+  static_assert(check.template operator()<4>());
+
+  // So a tangential rank-2 tensor has N in {-2, 0, +2} and nothing between:
+  // the binomial coefficients, where the general alphabet gives 1, 2, 3, 2, 1.
+  static_assert((ComponentsAtUpperIndex<2, TangentialSlots>(-2)) == 1);
+  static_assert((ComponentsAtUpperIndex<2, TangentialSlots>(-1)) == 0);
+  static_assert((ComponentsAtUpperIndex<2, TangentialSlots>(0)) == 2);
+  static_assert((ComponentsAtUpperIndex<2, TangentialSlots>(1)) == 0);
+  static_assert((ComponentsAtUpperIndex<2, TangentialSlots>(2)) == 1);
+  static_assert((ComponentsAtUpperIndex<2>(0)) == 3);
+  SUCCEED();
+}
+
+// Negation has no fixed point, because the all-zero index does not exist.
+TEST(MultiIndex, TangentialNegationHasNoFixedPoint) {
+  constexpr auto check = []<Int Rank>() {
+    using Index = MultiIndex<Rank, TangentialSlots>;
+    for (auto flat = Int{0}; flat < Index::Size; flat++) {
+      const auto index = Index::FromFlat(flat);
+      if (index.Negated() == index) return false;
+      if (index.Negated().Negated() != index) return false;
+    }
+    return true;
+  };
+  static_assert(check.template operator()<1>());
+  static_assert(check.template operator()<2>());
+  static_assert(check.template operator()<3>());
+  static_assert(check.template operator()<4>());
+  SUCCEED();
+}
+
+//--------------------------------------------------------------------------//
+//                    What the orbit walk finds unaided                      //
+//--------------------------------------------------------------------------//
+
+// The claim of section 18: the orbit machinery reaches the right answers for
+// a tangential tensor without being told anything about tangentiality.
+//
+// With no permutation symmetry, negation is fixed-point-free, so every orbit
+// has size two: 2^{Rank-1} stored components, none of them pinned. That last
+// is the interesting half -- the pinned components are the second buffer
+// phase 4 had to introduce, and a tangential tensor with no symmetry does not
+// have one.
+TEST(Orbits, ATangentialTensorWithoutSymmetryHasNoPinnedComponents) {
+  static_assert((StoredCount<1, NoSymmetry<1>, true, TangentialSlots>()) == 1);
+  static_assert((StoredCount<2, NoSymmetry<2>, true, TangentialSlots>()) == 2);
+  static_assert((StoredCount<3, NoSymmetry<3>, true, TangentialSlots>()) == 4);
+  static_assert((StoredCount<4, NoSymmetry<4>, true, TangentialSlots>()) == 8);
+
+  static_assert((PinnedCount<1, NoSymmetry<1>, true, TangentialSlots>()) == 0);
+  static_assert((PinnedCount<2, NoSymmetry<2>, true, TangentialSlots>()) == 0);
+  static_assert((PinnedCount<3, NoSymmetry<3>, true, TangentialSlots>()) == 0);
+  static_assert((PinnedCount<4, NoSymmetry<4>, true, TangentialSlots>()) == 0);
+
+  // Which the general alphabet does not manage: there the all-zero index is
+  // its own negation and is pinned.
+  static_assert((PinnedCount<2, NoSymmetry<2>, true>()) > 0);
+
+  // 2^Rank reals a point at every rank, which is the number of real degrees
+  // of freedom a real tangential tensor has.
+  static_assert((RealsPerPoint<1, NoSymmetry<1>, true, TangentialSlots>()) == 2);
+  static_assert((RealsPerPoint<2, NoSymmetry<2>, true, TangentialSlots>()) == 4);
+  static_assert((RealsPerPoint<3, NoSymmetry<3>, true, TangentialSlots>()) == 8);
+  static_assert((RealsPerPoint<4, NoSymmetry<4>, true, TangentialSlots>()) ==
+                16);
+  SUCCEED();
+}
+
+// Under a permutation symmetry a self-paired component reappears, and the
+// answer it produces is one anybody can check by hand: a real symmetric
+// tangential rank-2 tensor is a real symmetric 2x2 matrix, three reals.
+//
+// Negation maps (-+) to (+-) and the symmetry maps it back, so that component
+// is related to its own conjugate and pinned real. Nothing in the machinery
+// was told that; it is what the orbit walk finds when two routes reach the
+// same component and the two expressions are equated.
+TEST(Orbits, ASymmetricTangentialTensorIsARealSymmetricTwoByTwoMatrix) {
+  static_assert((StoredCount<2, Symmetric<2>, true, TangentialSlots>()) == 2);
+  static_assert((PinnedCount<2, Symmetric<2>, true, TangentialSlots>()) == 1);
+  static_assert((RealsPerPoint<2, Symmetric<2>, true, TangentialSlots>()) == 3);
+
+  // The pinned one is real rather than imaginary, and it sits at N = 0, which
+  // is where a self-paired component always sits.
+  constexpr auto pinned = [] {
+    constexpr auto table =
+        MakeOrbitTable<2, Symmetric<2>, true, TangentialSlots>();
+    for (auto i = Int{0}; i < table.Size; i++) {
+      if (table.slot[i] >= 0 &&
+          table.constraint[i] != ComponentConstraint::None) {
+        return i;
+      }
+    }
+    return Int{-1};
+  }();
+  static_assert(pinned >= 0);
+  static_assert(
+      MakeOrbitTable<2, Symmetric<2>, true, TangentialSlots>()
+          .constraint[pinned] == ComponentConstraint::Real);
+  static_assert(MakeOrbitTable<2, Symmetric<2>, true, TangentialSlots>()
+                    .UpperIndexOf(pinned) == 0);
+
+  // An antisymmetric one has a single degree of freedom, as a 2x2
+  // antisymmetric matrix does.
+  static_assert((RealsPerPoint<2, Antisymmetric<2>, true, TangentialSlots>()) ==
+                1);
   SUCCEED();
 }

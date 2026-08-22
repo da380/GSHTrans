@@ -1832,3 +1832,132 @@ With this, all four steps of §17.3 are built. What is not built, and is not
 needed yet: a tensor *view* type (§17.6), and any use of `RadialMajor` inside
 the library itself — it is offered to callers and nothing here reaches for it,
 because nothing here touches a line more than once.
+
+---
+
+## 18. Tangential tensors, in detail
+
+Written 2026-08-22, after `thoughts.md` §1 was raised again as ready to work
+on. That section is the assessment — what a tangential tensor is, what it
+costs and saves, and the two derivatives — and is not repeated here. This
+section is the work order and the decisions.
+
+### 18.1 The one change, and why everything else follows
+
+A tangential tensor has no radial slot: every index takes values in `{-1, +1}`
+rather than `{-1, 0, +1}`. `MultiIndex` hard-codes the alphabet — base three
+in `Flat()` and `FromFlat`, `3^Rank` in `Size`, and the range check in the
+constructor — and that is the whole of the coupling. Everything downstream is
+generic over *whatever indices exist*:
+
+- `Orbits.h` walks the group it is given over the components it is told about,
+  and the file says so: "the algorithm does not care which generators it is
+  given, which is the point".
+- The symmetry policies permute slots by index and never look at contents.
+- Storage groups by upper index, which is `Σαᵢ` however the slots are drawn.
+- A component is an ordinary `SpinField` at its upper index, which is unchanged.
+
+So the work is one generalisation and then a series of consequences, none of
+which is a redesign.
+
+### 18.2 Decisions taken here
+
+**[D1] The alphabet is a policy type, not a parameter pack or a second class.**
+`MultiIndex<Rank, Slots>` with `Slots::Alphabet` a `constexpr std::array`.
+This matches how the library expresses every other such choice — `MRange`,
+`NRange`, `Reality` are all tag types on the class — and it keeps one
+`MultiIndex`, so that every algorithm written against it stays written once.
+`AllSlots` and `TangentialSlots` are the two, and `AllSlots` is the default,
+which is what makes the change additive: no existing spelling of
+`MultiIndex<p>` has to move.
+
+**[D2] The alphabet is uniform across slots, not per slot.** `thoughts.md` §1
+proposed per-slot, and that is the more general thing, but it is not the thing
+being asked for and it costs more than it looks. D&T's decomposition has mixed
+objects — `T^{rΩ}` has one radial slot and one tangential — and a mixed tensor
+breaks an invariant the symmetry machinery relies on: a permutation may only
+exchange slots drawn from the same alphabet, so `Symmetric<2>` would become
+ill-formed rather than merely wrong on a mixed rank-2 tensor, and the
+`TensorSymmetry` concept would have to grow a compatibility check against the
+slot types. Uniform costs nothing to widen later — `Slots` becomes a list —
+and the seam is exactly `MultiIndex`'s constructor and `FromFlat`. Mixed
+tensors are named here as deferred rather than left unmentioned.
+
+**[D3] `SurfaceGradient` of a tangential tensor returns a general tensor, and
+that is not a defect to design around.** The ambient gradient leaves the
+tangent plane, by the Gauss formula, and the escaping part is the extrinsic
+curvature of the sphere. A type that hid it would be lying about the geometry.
+The honest signature is the one that says so, and a caller who wants the
+closed operator asks for the closed operator.
+
+**[D4] The intrinsic derivative gets a name of its own.** `IntrinsicDerivative`
+on a tangential tensor: `Ω` multiplication component by component, which is
+`ð` up to `√2`, closed by construction. It is not a new operator to derive —
+`Eth.h` already carries the argument, and `thoughts.md` §1 records that both
+lines of the split were checked against `SurfaceGradient` and hold *exactly*,
+to `0.000e+00`. What is new is that there is now a type on which it is closed,
+so it can be offered as an operator rather than as a fact about `ð`.
+
+**[D5] The upper-index constraint is not enforced anywhere.** For a tangential
+rank-`p` tensor `N ≡ p (mod 2)` and `|N| ≤ p`, so a tangential rank-2 tensor
+has `N ∈ {−2, 0, +2}` only. This falls out of the enumeration and nothing has
+to be told it; asserting it separately would be a second source of truth for a
+fact the multi-index already knows. It is worth a test, not a check.
+
+**[D6] Reality's second buffer disappears, except under symmetry, and the
+machinery must find that unaided.** The all-zero multi-index does not exist for
+`p ≥ 1`, so negation has no fixed point, so under `NoSymmetry` every orbit has
+size two: `2^{p−1}` complex fields, `2^p` reals, and **no pinned components**
+— which removes the one piece of awkwardness phase 4 introduced (§14). Under a
+permutation symmetry a self-paired component can still appear: for a symmetric
+tangential rank-2 tensor, negation maps `(−+)` to `(+−)` and the symmetry maps
+it back, so it is pinned real, giving one complex plus one real, three reals a
+point, which is a real symmetric 2×2 matrix. **That the orbit walk reaches
+both answers without being told is the first test to write**, because it is the
+claim that the generalisation is a generalisation and not a special case.
+
+**[D7] Tracelessness is still not expressible, and still should not be.**
+`thoughts.md` §1 is right that the traceless symmetric tangential rank-2 object
+has two real degrees of freedom and that tracelessness is a linear constraint
+rather than an orbit of a group acting on indices. `Orbits.h` cannot produce
+it and should not be extended to try. A caller subtracts the trace.
+
+### 18.3 The steps
+
+**T1 — the alphabet.** `MultiIndex<Rank, Slots>` and `OrbitTable<Rank, Slots>`,
+with `AllSlots` defaulted so that nothing existing moves. Pure generalisation:
+the existing tests must pass untouched, which is the check that it is one.
+New tests are D6's two counts, D5's constraint, and the round trip
+`Flat ∘ FromFlat = id` over the smaller alphabet.
+
+*Safe to land ahead of the rest*, because no public spelling changes and no
+behaviour does.
+
+**T2 — the field and the expansion carry it.** `TensorField`, `TensorExpr`,
+`TensorExpansion` and the layered forms gain the `Slots` parameter, defaulted
+the same way. A tangential field exists, stores `2^p` components, transforms,
+and takes part in the algebra. This is the step that widens the public surface
+and is the one to agree before starting.
+
+**T3 — `IntrinsicDerivative`.** Nearly free, per D4. The test that earns it is
+not that it agrees with `ð`, which is how it is implemented, but that it agrees
+with `SurfaceGradient` on the tangential part of the output when the operand is
+tangential — the first line of §1's split — and that the radial part of that
+same `SurfaceGradient` is `−T` with the slot replaced, which is the second.
+
+**T4 — projection and injection.** `Tangential(T)` from a general tensor and
+`Embed(T)` back. Both are pure index maps and neither needs storage: the
+projection drops components, the injection zero-fills them. The pair is what
+makes `SurfaceGradient`'s honest signature usable.
+
+**T5 — specialisations.** `thoughts.md` §3, done in the same pass so that the
+tangential forms are named alongside the general ones rather than bolted on
+afterwards.
+
+### 18.4 What this does not touch
+
+The transform, the grid, the Wigner machinery and the reality reduction's
+*mechanism*. A tangential component is an ordinary spin-weighted field at its
+own upper index, and the only thing that changes is which multi-indices exist.
+That is the measure of whether phases 2 to 4 got the separation right, and on
+this evidence they did.
