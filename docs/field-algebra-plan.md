@@ -2276,6 +2276,59 @@ tangential forms are named alongside the general ones rather than bolted on
 afterwards. The names are [D12]'s: `TangentialVectorField`,
 `TangentialTensorField`, `TangentialSymmetricField`.
 
+*Done, and it settled the two questions `thoughts.md` §3 left open.*
+
+**The grid comes first and the reality is defaulted to `RealTensor`.** §3 put
+this as a question — defaulting matches what applications want, at the cost of
+making the surprising case the silent one — and the deciding argument is that
+*the layered aliases already read this way*. `LayeredScalarField<Grid>` and
+`LayeredVectorField<Grid>` have taken `<Grid, Reality = RealTensor>` since
+§17.5, so the flat set was the inconsistent one and the question had in
+practice been answered. The cost §3 names is real and is worth stating: a real
+tensor stores fewer components and derives the rest, so a caller who wanted a
+complex one and forgot gets that reduction without being told. Against it,
+`ComplexTensor` is one word and the type name carries it.
+
+*The reordering fails loudly, which is why it is safe to make.* The old
+spelling `VectorField<ComplexTensor, Grid>` is a constraint failure rather than
+a silent reinterpretation, because `AngularGrid<ComplexTensor>` does not hold.
+A test pins that, since the failure mode of getting it wrong silently would be
+a tensor field over the wrong thing entirely.
+
+**Each name fixes a rank *and* a symmetry.** `Rank2TensorField` used to take
+the symmetry as a parameter; it now means the unsymmetric one, and
+`SymmetricTensorField` and `AntisymmetricTensorField` are names in their own
+right. A name that says "rank 2" and leaves the symmetry open says less than
+the specific name does, and the cases that recur are few enough to name.
+`TensorField` itself remains for anything else.
+
+The set is `ScalarField`, `VectorField`, `Rank2TensorField`,
+`SymmetricTensorField`, `AntisymmetricTensorField`, `ElasticTensorField`, and
+in the other bundle `TangentialVectorField`, `TangentialRank2Field`,
+`TangentialSymmetricField` and the general `TangentialTensorField`.
+
+**Aliases only. The named operations §3 wanted are not here, and each is
+blocked on something real rather than on effort.** This is the part of §3 that
+does not reduce to naming.
+
+- **`Deviatoric`** needs the metric as a tensor *expression*, and there is no
+  constant-tensor node: `g_{αβ} = (−1)^α δ_{α+β,0}` is a tensor whose
+  components are numbers, not fields, and nothing in phase 3 can express one.
+  That is a small piece of work with a design question in it — whether a
+  constant tensor broadcasts a scalar or is its own node kind — and it is not
+  an alias.
+- **`Divergence` and `Curl`** are contractions of a gradient, as D&T C.6.2
+  says, and the library now has *two* gradients: the surface one and the full
+  layered one. Naming these means choosing which, or offering both under one
+  name, which is the kind of decision this document has repeatedly declined to
+  take by default. A caller writes the contraction in one line meanwhile.
+
+*Tests:* three, at 259 — that each name is the type it claims, that the
+tangential names carry the smaller bundle and its counts, and that the
+argument order is enforced rather than conventional.
+
+**With this, §18 is complete.**
+
 ### 18.4 What this does not touch
 
 The transform, the grid, the Wigner machinery and the reality reduction's

@@ -676,15 +676,76 @@ class TensorField {
   }
 };
 
-// The ranks the library exposes, named for readability at the call site.
-template <TensorReality Reality, AngularGrid Grid>
+//--------------------------------------------------------------------------//
+//                          The objects that recur                          //
+//--------------------------------------------------------------------------//
+
+// Names for what applications actually hold, so that a call site says what
+// the object is rather than how it is parameterised.
+//
+// Two conventions, and both are chosen rather than inherited.
+//
+// **The grid comes first and the reality is defaulted**, matching the layered
+// aliases, which already read this way. Every one of these needs a grid and
+// most want a real tensor -- displacement, strain, stress, moduli are all real
+// -- so `VectorField<Grid>` is the common case written shortly. The cost is
+// that the surprising case is now the silent one: a real tensor stores fewer
+// components and derives the rest, and a caller who wanted a complex one and
+// forgot to say so gets that reduction without being told. `ComplexTensor` is
+// one word and the type name carries it.
+//
+// **Each name fixes a rank and a symmetry**, rather than taking the symmetry
+// as a parameter. A name that says "rank 2" and leaves the symmetry open says
+// less than `SymmetricTensorField` does, and the cases that recur are few
+// enough to name. `TensorField` itself is there for anything else.
+template <AngularGrid Grid, TensorReality Reality = RealTensor>
+using ScalarField = TensorField<0, NoSymmetry<0>, Reality, Grid>;
+
+template <AngularGrid Grid, TensorReality Reality = RealTensor>
 using VectorField = TensorField<1, NoSymmetry<1>, Reality, Grid>;
 
-template <typename Symmetry, TensorReality Reality, AngularGrid Grid>
-using Rank2TensorField = TensorField<2, Symmetry, Reality, Grid>;
+template <AngularGrid Grid, TensorReality Reality = RealTensor>
+using Rank2TensorField = TensorField<2, NoSymmetry<2>, Reality, Grid>;
 
-template <TensorReality Reality, AngularGrid Grid>
+template <AngularGrid Grid, TensorReality Reality = RealTensor>
+using SymmetricTensorField = TensorField<2, Symmetric<2>, Reality, Grid>;
+
+template <AngularGrid Grid, TensorReality Reality = RealTensor>
+using AntisymmetricTensorField = TensorField<2, Antisymmetric<2>, Reality,
+                                             Grid>;
+
+template <AngularGrid Grid, TensorReality Reality = RealTensor>
 using ElasticTensorField = TensorField<4, ElasticSymmetry, Reality, Grid>;
+
+// And the tangential forms, named alongside rather than bolted on afterwards
+// (field-algebra-plan.md section 18.2 [D12]). The prefix says which bundle the
+// object lives in, which is the thing about it that a reader most needs to
+// know: its indices run over {-1, +1}, it has 2^p components rather than 3^p,
+// and the derivative that is closed on it is the intrinsic one.
+template <AngularGrid Grid, TensorReality Reality = RealTensor>
+using TangentialVectorField =
+    TensorField<1, NoSymmetry<1>, Reality, Grid, ComponentMajor,
+                TangentialSlots>;
+
+template <AngularGrid Grid, TensorReality Reality = RealTensor>
+using TangentialRank2Field =
+    TensorField<2, NoSymmetry<2>, Reality, Grid, ComponentMajor,
+                TangentialSlots>;
+
+// The spin-2 object of surface geodesy and of the CMB, up to the trace that
+// `Orbits.h` cannot express and a caller subtracts ([D7]). As a real tensor it
+// is three reals a point: a real symmetric 2x2 matrix, which is what it is.
+template <AngularGrid Grid, TensorReality Reality = RealTensor>
+using TangentialSymmetricField =
+    TensorField<2, Symmetric<2>, Reality, Grid, ComponentMajor,
+                TangentialSlots>;
+
+// Anything else in that bundle.
+template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry, AngularGrid Grid,
+          TensorReality Reality = RealTensor>
+using TangentialTensorField =
+    TensorField<Rank, Symmetry, Reality, Grid, ComponentMajor,
+                TangentialSlots>;
 
 }  // namespace GSHTrans
 

@@ -31,6 +31,10 @@ concept Readable = requires(const T& t) { t.template Component<Alphas...>(); };
 template <typename T, std::ptrdiff_t... Alphas>
 concept Assignable = requires(T& t) { t.template Component<Alphas...>(); };
 
+// Whether an alias can be named with these two arguments in this order.
+template <typename A, typename B>
+concept Nameable = requires { typename VectorField<A, B>; };
+
 // A value that identifies the component it was written into, so that a later
 // read can say which one it actually reached.
 Complex Marker(Int component, Int point) {
@@ -279,19 +283,69 @@ TEST(TensorField, StoredComponentsGroupByUpperIndex) {
 //--------------------------------------------------------------------------//
 
 TEST(TensorField, TheNamedRanksAreWhatTheySay) {
-  static_assert(std::same_as<VectorField<ComplexTensor, Grid>,
+  static_assert(std::same_as<VectorField<Grid, ComplexTensor>,
                              TensorField<1, NoSymmetry<1>, ComplexTensor,
                                          Grid>>);
-  static_assert(ElasticTensorField<ComplexTensor, Grid>::StoredComponents ==
+  static_assert(ElasticTensorField<Grid, ComplexTensor>::StoredComponents ==
                 21);
+
+  // Each name fixes a rank and a symmetry; only the grid and the reality
+  // vary, and the reality defaults to the one applications mostly want.
+  static_assert(std::same_as<VectorField<Grid>,
+                             TensorField<1, NoSymmetry<1>, RealTensor, Grid>>);
+  static_assert(std::same_as<SymmetricTensorField<Grid, ComplexTensor>,
+                             TensorField<2, Symmetric<2>, ComplexTensor,
+                                         Grid>>);
+  static_assert(std::same_as<AntisymmetricTensorField<Grid, ComplexTensor>,
+                             TensorField<2, Antisymmetric<2>, ComplexTensor,
+                                         Grid>>);
+  static_assert(std::same_as<ScalarField<Grid, ComplexTensor>,
+                             TensorField<0, NoSymmetry<0>, ComplexTensor,
+                                         Grid>>);
 
   // A vector is the one rank where the multi-index and the upper index
   // coincide, which is the coincidence that makes rank 2 surprising.
   auto grid = TestGrid();
-  auto v = VectorField<ComplexTensor, Grid>(grid);
+  auto v = VectorField<Grid, ComplexTensor>(grid);
   static_assert(decltype(v.Component<-1>())::UpperIndex == -1);
   static_assert(decltype(v.Component<0>())::UpperIndex == 0);
   static_assert(decltype(v.Component<1>())::UpperIndex == 1);
+  SUCCEED();
+}
+
+// The tangential names, and the counts that say the name is doing work: the
+// bundle is smaller, and the symmetric real one is a real symmetric 2x2
+// matrix -- three reals a point, which is the spin-2 object up to its trace.
+TEST(TensorField, TheTangentialNamesSayWhichBundle) {
+  static_assert(std::same_as<TangentialVectorField<Grid, ComplexTensor>::SlotSet,
+                             TangentialSlots>);
+  static_assert(TangentialVectorField<Grid, ComplexTensor>::Components == 2);
+  static_assert(TangentialRank2Field<Grid, ComplexTensor>::Components == 4);
+
+  static_assert(TangentialSymmetricField<Grid>::RealsPerPoint == 3);
+  static_assert(TangentialSymmetricField<Grid>::ComplexComponents == 1);
+  static_assert(TangentialSymmetricField<Grid>::RealComponents == 1);
+
+  // A real tangential vector is two reals a point, with no pinned component
+  // at all -- negation has no fixed point without a zero letter.
+  static_assert(TangentialVectorField<Grid>::RealsPerPoint == 2);
+  static_assert(TangentialVectorField<Grid>::RealComponents == 0);
+
+  // And the escape hatch for anything else in that bundle.
+  static_assert(std::same_as<
+                TangentialTensorField<3, NoSymmetry<3>, Grid,
+                                      ComplexTensor>::SlotSet,
+                TangentialSlots>);
+  SUCCEED();
+}
+
+// The grid comes first, so the old spelling is a constraint failure rather
+// than a silent reinterpretation: AngularGrid<ComplexTensor> does not hold.
+// Worth pinning, because the failure mode of getting this wrong would
+// otherwise be a tensor field over the wrong thing entirely.
+TEST(TensorField, TheAliasesPutTheGridFirst) {
+  static_assert(Nameable<Grid, ComplexTensor>);
+  static_assert(!Nameable<ComplexTensor, Grid>);
   SUCCEED();
 }
 
