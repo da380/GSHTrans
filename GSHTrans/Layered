@@ -11,6 +11,7 @@
 #include "src/Layered/RadialMajor.h"
 #include "src/Layered/RadialOperator.h"
 #include "src/Layered/RadialDerivatives.h"
+#include "src/Layered/RadialSplineDerivative.h"
 #include "src/Layered/RadialResample.h"
 
 #endif

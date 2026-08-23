@@ -1048,6 +1048,7 @@ TEST(RadialOperator, OneOperatorServesEveryThread) {
   }
 }
 
+
 // What the whole exercise is for: Gradient now runs without the caller
 // writing a differentiation matrix first. The identity is the Laplacian one,
 // at a power both operators integrate exactly -- r^2 is degree two, and both
@@ -1090,6 +1091,7 @@ TEST(LayeredGradient, RunsWithAReadyMadeRadialDerivative) {
   check(lagrange, "the differentiation matrix");
 }
 
+#ifdef GSHTRANS_HAVE_INTERPOLATION
 // A natural spline is exact on straight lines and on nothing else, since the
 // end conditions force the second derivative to vanish where a curve's does
 // not. So the property test is the linear one, and everything beyond it is
@@ -1117,12 +1119,14 @@ TEST(RadialDerivatives, TheSplineRefusesARepeatedRadius) {
   EXPECT_THROW((SplineDerivative<Real>(radial)), std::invalid_argument);
 }
 
-#ifdef GSHTRANS_HAVE_INTERPOLATION
-// The oracle, and the reason the operator is allowed to be hand-written at
-// all: an independent implementation of the same spline, by another author in
-// another library, must agree with it to rounding. Anything this file could
-// asssert about the operator on its own terms would be weaker.
-TEST(RadialDerivatives, TheSplineAgreesWithAnIndependentImplementation) {
+// This used to be an oracle and is now an integration check, which is a
+// weaker thing honestly labelled. When the operator held its own spline, an
+// independent implementation agreeing with it said the algorithm was right;
+// now that both go through Interpolation's system, what it says is that the
+// right ordinates, nodes and derivative order were handed over. Still worth
+// having -- that is the half that can go wrong here -- and no longer worth
+// calling an oracle.
+TEST(RadialDerivatives, TheSplineMatchesAnOrdinarySplineAtTheNodes) {
   auto radial = RadialGrid<Real>(UnevenRadii);
   const auto d = SplineDerivative<Real>(radial);
 
@@ -1139,10 +1143,10 @@ TEST(RadialDerivatives, TheSplineAgreesWithAnIndependentImplementation) {
   }
 }
 
-// And on complex lines, which is what the spectral domain hands it. The
-// oracle takes complex ordinates directly, so the comparison is like for
-// like rather than a real-and-imaginary split on either side.
-TEST(RadialDerivatives, TheSplineAgreesOnComplexLinesToo) {
+// And on complex lines, which is what the spectral domain hands it: the
+// system's matrix stays real while the ordinates are complex, so one
+// factorisation serves both and no real-and-imaginary split happens anywhere.
+TEST(RadialDerivatives, TheSplineActsOnComplexLinesThroughARealSystem) {
   auto radial = RadialGrid<Real>(UnevenRadii);
   const auto d = SplineDerivative<Real>(radial);
 
@@ -1161,7 +1165,6 @@ TEST(RadialDerivatives, TheSplineAgreesOnComplexLinesToo) {
     EXPECT_NEAR(got[i].imag(), expected.imag(), 1.0e-12) << "node " << i;
   }
 }
-#endif
 
 // The spline serves the gradient like the other two, and one operator serves
 // every thread.
@@ -1182,6 +1185,8 @@ TEST(RadialDerivatives, TheSplineIsAnOrdinaryRadialOperator) {
     EXPECT_EQ(one.Data()[i], many.Data()[i]) << "at " << i;
   }
 }
+
+#endif  // GSHTRANS_HAVE_INTERPOLATION
 
 //--------------------------------------------------------------------------//
 //                          Resampling in radius                             //
@@ -1440,3 +1445,282 @@ TEST(RadialGrid, ElementsAndWeightsAreIndependent) {
   EXPECT_TRUE(noWeights.HasElements());
   EXPECT_FALSE(noWeights.HasWeights());
 }
+
+#ifdef GSHTRANS_HAVE_INTERPOLATION
+
+// What the rebuild bought, beyond deleting sixty lines. The hand-written
+// operator did natural ends and nothing else; the upstream system does
+// not-a-knot too, which stays fourth order right up to the ends where natural
+// costs an order -- and the ends are where a boundary condition is applied and
+// where a spline derivative was least trustworthy.
+TEST(RadialDerivatives, TheSplineOffersTheEndConditionsItUsedToLack) {
+  auto radial = RadialGrid<Real>(UnevenRadii);
+  const auto natural = SplineDerivative<Real>(radial);
+  const auto notAKnot = SplineDerivative<Real>(
+      radial, BoundaryCondition::NotAKnot, BoundaryCondition::NotAKnot);
+
+  // A cubic, which not-a-knot reproduces exactly and natural cannot: forcing
+  // the second derivative to zero at an end is wrong for a curve whose is not.
+  auto values = std::vector<Real>{};
+  for (auto r : UnevenRadii) values.push_back(r * r * r);
+
+  const auto exact = Line(notAKnot, values);
+  const auto forced = Line(natural, values);
+  for (std::size_t i = 0; i < UnevenRadii.size(); i++) {
+    const auto slope = 3.0 * UnevenRadii[i] * UnevenRadii[i];
+    EXPECT_NEAR(exact[i], slope, 1.0e-11) << "not-a-knot at node " << i;
+  }
+  // And natural is visibly not exact there, which is what says the choice
+  // means something.
+  EXPECT_GT(std::abs(forced[0] - 3.0 * UnevenRadii[0] * UnevenRadii[0]), 1.0e-3);
+}
+
+// Clamped is refused, and the message says why rather than leaving a caller to
+// wonder: the end slopes belong to the data, and a radial operator is handed
+// one line at a time with nowhere to say what they are.
+TEST(RadialDerivatives, TheSplineRefusesClampedEnds) {
+  auto radial = RadialGrid<Real>(UnevenRadii);
+  EXPECT_THROW((SplineDerivative<Real>(radial, BoundaryCondition::Clamped,
+                                       BoundaryCondition::Natural)),
+               std::invalid_argument);
+  EXPECT_NO_THROW((SplineDerivative<Real>(radial, BoundaryCondition::Natural,
+                                          BoundaryCondition::Natural)));
+}
+
+#endif  // GSHTRANS_HAVE_INTERPOLATION
+
+//--------------------------------------------------------------------------//
+//                          The element derivative                           //
+//--------------------------------------------------------------------------//
+
+// Within an element the field is the polynomial through its nodes, so the
+// derivative is exact there to that degree -- and it is exact *independently*
+// in each element, which is what block-diagonal means.
+TEST(RadialDerivatives, TheElementDerivativeIsExactWithinEachElement) {
+  const auto mesh = RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts);
+  const auto d = ElementDerivative<Real>(mesh);
+
+  // Three nodes per element, so each is exact through degree two.
+  for (auto degree = Int{0}; degree <= 2; degree++) {
+    auto values = std::vector<Real>{};
+    for (auto r : LayeredRadii) values.push_back(Monomial(r, degree));
+    const auto got = Line(d, values);
+    for (std::size_t i = 0; i < LayeredRadii.size(); i++) {
+      EXPECT_NEAR(got[i], MonomialSlope(LayeredRadii[i], degree), 1.0e-11)
+          << "degree " << degree << ", node " << i;
+    }
+  }
+}
+
+// The property that makes it an element operator rather than a global one:
+// changing the data in one element cannot change the answer in another. A
+// global differentiation matrix over the same radii fails this, which is what
+// says the two are genuinely different operators.
+TEST(RadialDerivatives, TheElementDerivativeDoesNotCoupleTheElements) {
+  const auto mesh = RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts);
+  const auto d = ElementDerivative<Real>(mesh);
+
+  auto values = std::vector<Real>(LayeredRadii.size(), Real{0});
+  for (std::size_t i = 0; i < LayeredRadii.size(); i++) {
+    values[i] = std::sin(2.0 * LayeredRadii[i]);
+  }
+  const auto before = Line(d, values);
+
+  // Disturb the upper element only.
+  auto disturbed = values;
+  disturbed[4] += 1.0;
+  const auto after = Line(d, disturbed);
+
+  for (std::size_t i = 0; i < 3; i++) {
+    EXPECT_EQ(before[i], after[i]) << "lower element moved at node " << i;
+  }
+  auto changed = false;
+  for (std::size_t i = 3; i < LayeredRadii.size(); i++) {
+    if (before[i] != after[i]) changed = true;
+  }
+  EXPECT_TRUE(changed) << "the upper element should have moved";
+}
+
+// At an interface the derivative is two numbers, one per side, each at its own
+// index -- which is what a discontinuity is, and what [E1]'s disjoint blocks
+// buy. A field with a jump has different slopes above and below, and this
+// reports both rather than averaging them into one that is neither.
+TEST(RadialDerivatives, TheElementDerivativeGivesBothSidesAtAnInterface) {
+  const auto mesh = RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts);
+  const auto d = ElementDerivative<Real>(mesh);
+
+  // Slope 1 below the interface and slope -3 above it, with a jump in value.
+  auto values = std::vector<Real>{};
+  for (std::size_t i = 0; i < LayeredRadii.size(); i++) {
+    const auto r = LayeredRadii[i];
+    values.push_back(i < 3 ? r : 10.0 - 3.0 * r);
+  }
+
+  const auto got = Line(d, values);
+  EXPECT_NEAR(got[2], 1.0, 1.0e-11) << "from below";
+  EXPECT_NEAR(got[3], -3.0, 1.0e-11) << "from above";
+}
+
+TEST(RadialDerivatives, TheElementDerivativeNeedsAGridThatKnowsItsElements) {
+  const auto plain = RadialGrid<Real>(LayeredRadii);
+  EXPECT_THROW((ElementDerivative<Real>(plain)), std::invalid_argument);
+
+  const auto mesh = RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts);
+  EXPECT_NO_THROW((ElementDerivative<Real>(mesh)));
+}
+
+// And it is an ordinary radial operator, so it composes with everything the
+// seam offers.
+TEST(RadialDerivatives, TheElementDerivativeIsAnOrdinaryRadialOperator) {
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  const auto mesh = RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts);
+
+  auto f = LayeredSpinField<0, Grid, ComplexValued>(mesh, grid);
+  for (Int i = 0; i < f.NumberOfRadii() * f.SliceSize(); i++) {
+    f.Data()[i] = Complex{std::cos(0.05 * i), std::sin(0.11 * i)};
+  }
+
+  const auto d = ElementDerivative<Real>(mesh);
+  const auto one = ApplyRadially(f, d, Execution::Sequential());
+  const auto many = ApplyRadially(f, d, Execution::Parallel());
+  for (std::size_t i = 0; i < one.Data().size(); i++) {
+    EXPECT_EQ(one.Data()[i], many.Data()[i]) << "at " << i;
+  }
+}
+
+#ifdef GSHTRANS_HAVE_INTERPOLATION
+
+// With a partition, no interpolant spans an interface. The check is a field
+// that is one straight line below the break and a different one above: fitting
+// through the discontinuity would smear the two together, and fitting per
+// piece reproduces each exactly.
+TEST(RadialResample, FitsPerPieceAndNeverAcrossAnInterface) {
+  constexpr auto lMax = Int{4};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  const auto mesh = RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts);
+
+  auto f = LayeredSpinField<0, Grid, ComplexValued>(mesh, grid);
+  for (auto i : mesh.RadiusIndices()) {
+    const auto r = mesh.Radius(i);
+    const auto value = i < 3 ? Complex{r, 0.0} : Complex{10.0 - 3.0 * r, 0.0};
+    auto slice = f.Slice(i);
+    for (auto iTheta : grid.CoLatitudeIndices()) {
+      for (auto iPhi : grid.LongitudeIndices()) slice[iTheta, iPhi] = value;
+    }
+  }
+
+  // Targets on both sides of the break, none of them a source node.
+  const auto onto = RadialGrid<Real>(std::vector<Real>{0.5, 0.7, 0.9, 1.1});
+  for (auto scheme : {RadialInterpolation::Linear(),
+                      RadialInterpolation::CubicSpline(),
+                      RadialInterpolation::Akima()}) {
+    const auto moved = Resample(f, onto, scheme);
+    for (auto i : onto.RadiusIndices()) {
+      const auto r = onto.Radius(i);
+      const auto expected = r < 0.8 ? r : 10.0 - 3.0 * r;
+      EXPECT_NEAR((moved.Slice(i)[1, 2]).real(), expected, 1.0e-11)
+          << "at r = " << r;
+    }
+  }
+}
+
+// The convention, pinned rather than described: a target landing exactly on a
+// breakpoint is answered from the piece *above* it -- right-continuous, which
+// is what Interpolation::Piecewise does with the same value. If the two ever
+// disagree about the core-mantle boundary, this is what says so.
+TEST(RadialResample, ABreakpointIsAnsweredFromAbove) {
+  constexpr auto lMax = Int{4};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  const auto mesh = RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts);
+
+  auto f = LayeredSpinField<0, Grid, ComplexValued>(mesh, grid);
+  for (auto i : mesh.RadiusIndices()) {
+    // A jump at the interface: 1 below, 2 above.
+    const auto value = i < 3 ? Complex{1.0, 0.0} : Complex{2.0, 0.0};
+    auto slice = f.Slice(i);
+    for (auto iTheta : grid.CoLatitudeIndices()) {
+      for (auto iPhi : grid.LongitudeIndices()) slice[iTheta, iPhi] = value;
+    }
+  }
+
+  const auto onto = RadialGrid<Real>(std::vector<Real>{0.6, 0.8, 1.0});
+  const auto moved = Resample(f, onto, RadialInterpolation::Linear());
+  EXPECT_NEAR((moved.Slice(0)[0, 0]).real(), 1.0, 1.0e-12) << "below";
+  EXPECT_NEAR((moved.Slice(1)[0, 0]).real(), 2.0, 1.0e-12) << "on the break";
+  EXPECT_NEAR((moved.Slice(2)[0, 0]).real(), 2.0, 1.0e-12) << "above";
+}
+
+// A grid without a partition is one piece, which is exactly what resampling
+// did before the partition existed.
+TEST(RadialResample, AGridWithoutElementsIsOnePiece) {
+  constexpr auto lMax = Int{4};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = RadialGrid<Real>(UnevenRadii);
+
+  auto f = LayeredSpinField<0, Grid, ComplexValued>(radial, grid);
+  for (Int i = 0; i < f.NumberOfRadii() * f.SliceSize(); i++) {
+    f.Data()[i] = Complex{std::cos(0.07 * i), std::sin(0.13 * i)};
+  }
+
+  const auto same = Resample(f, radial, RadialInterpolation::CubicSpline());
+  for (std::size_t i = 0; i < f.Data().size(); i++) {
+    EXPECT_NEAR(same.Data()[i].real(), f.Data()[i].real(), 1.0e-12) << i;
+  }
+}
+
+#endif  // GSHTRANS_HAVE_INTERPOLATION
+
+#ifdef GSHTRANS_HAVE_INTERPOLATION
+
+// What the partition buys the spline: it stops refusing. A grid that says a
+// repeated radius is an interface gets one spline per element, so a layered
+// model is an ordinary case rather than an error.
+TEST(RadialDerivatives, TheSplineFitsPerElementWhenTheGridSaysSo) {
+  const auto plain = RadialGrid<Real>(LayeredRadii);
+  EXPECT_THROW((SplineDerivative<Real>(plain)), std::invalid_argument);
+
+  const auto mesh = RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts);
+  const auto d = SplineDerivative<Real>(mesh);
+  EXPECT_EQ(d.PieceCount(), 2);
+
+  // One straight line below the interface and a different one above: each
+  // element reproduces its own exactly, which a single spline through the
+  // jump could not.
+  auto values = std::vector<Real>{};
+  for (std::size_t i = 0; i < LayeredRadii.size(); i++) {
+    const auto r = LayeredRadii[i];
+    values.push_back(i < 3 ? 2.0 * r : 10.0 - 3.0 * r);
+  }
+
+  const auto got = Line(d, values);
+  for (std::size_t i = 0; i < 3; i++) {
+    EXPECT_NEAR(got[i], 2.0, 1.0e-11) << "below, node " << i;
+  }
+  for (std::size_t i = 3; i < LayeredRadii.size(); i++) {
+    EXPECT_NEAR(got[i], -3.0, 1.0e-11) << "above, node " << i;
+  }
+}
+
+// And a grid with no partition is one piece, which is what it always was.
+TEST(RadialDerivatives, TheSplineIsOnePieceWithoutAPartition) {
+  const auto radial = RadialGrid<Real>(UnevenRadii);
+  EXPECT_EQ((SplineDerivative<Real>(radial).PieceCount()), 1);
+}
+
+// Not-a-knot constrains the whole system and needs four nodes, so it is not
+// available on elements of three. Upstream refuses it and the message is
+// upstream's, which is right: the constraint is the spline's, not ours.
+TEST(RadialDerivatives, NotAKnotNeedsEnoughNodesInEveryElement) {
+  const auto mesh = RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts);
+  EXPECT_THROW((SplineDerivative<Real>(mesh, BoundaryCondition::NotAKnot,
+                                       BoundaryCondition::NotAKnot)),
+               std::invalid_argument);
+
+  const auto wider = RadialGrid<Real>::WithElements(
+      std::vector<Real>{0.4, 0.5, 0.6, 0.8, 0.8, 1.0, 1.1, 1.2}, {0, 4, 8});
+  EXPECT_NO_THROW((SplineDerivative<Real>(wider, BoundaryCondition::NotAKnot,
+                                          BoundaryCondition::NotAKnot)));
+}
+
+#endif  // GSHTRANS_HAVE_INTERPOLATION

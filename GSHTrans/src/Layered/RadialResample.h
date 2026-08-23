@@ -8,17 +8,16 @@
 // and gives nothing: the option is what decides whether the facility exists,
 // and a caller who has turned it off has said they do not want it.
 //
-// It is the one place the library uses `Interpolation` at run time. The three
-// ready-made derivatives do not, deliberately -- they are called once per
-// radial line in the inner loop of a matrix-free solve, where an interpolant
-// constructed per line would cost more in allocation than the transform it
-// sits beside (field-algebra-plan.md section 19.5 [R4]).
+// It constructs an interpolant per radial line, which SplineDerivative goes
+// out of its way not to do. The difference is what the two are for: a
+// derivative is applied every iteration of a matrix-free solve, and remeshing
+// happens between solves. So paying per line here is affordable, and paying
+// for it buys the whole menu -- linear, cubic spline, Akima -- for the price
+// of a policy argument rather than three implementations.
 //
-// Resampling inverts that argument. Remeshing is something a caller does
-// between solves and not inside one, so an interpolant per line is
-// affordable, and paying for it buys the whole menu -- linear, natural cubic
-// spline, Akima -- for the price of a policy argument rather than three
-// implementations.
+// It could not avoid it in any case: Interpolation exposes a factorised
+// system for evaluation *at the nodes*, which is what a derivative wants, and
+// resampling asks for values at radii that are not nodes.
 
 #ifdef GSHTRANS_HAVE_INTERPOLATION
 
@@ -87,6 +86,38 @@ void Fit(std::span<const Real> from, std::span<const Scalar> values,
   }
 }
 
+// Which piece answers for each target radius, and how many fall to each.
+//
+// Right-continuous, which is Piecewise's convention and deliberately the same
+// one: piece k owns [b_k, b_{k+1}), and the last piece owns its upper end as
+// well, since somebody has to. Getting the two libraries to disagree about
+// which side of the core-mantle boundary a query is answered from is a trap
+// laid for a future reader, so a test pins it rather than a comment.
+//
+// The target radii are sorted, so this is one pass rather than a search per
+// point.
+template <typename Real>
+auto AssignPieces(const RadialGrid<Real>& source,
+                  std::span<const Real> onto) {
+  using Int = std::ptrdiff_t;
+  const auto pieces = source.ElementCount();
+  auto first = std::vector<Int>(static_cast<std::size_t>(pieces + 1), Int{0});
+
+  auto k = Int{0};
+  for (std::size_t t = 0; t < onto.size(); t++) {
+    // Advance to the piece that owns this radius. The comparison is against
+    // the breakpoint that *ends* piece k, and a target sitting exactly on it
+    // belongs to the piece above -- Side::Right.
+    while (k + 1 < pieces && !(onto[t] < source.Breakpoint(k + 1))) {
+      first[static_cast<std::size_t>(++k)] = static_cast<Int>(t);
+    }
+  }
+  for (auto j = k + 1; j <= pieces; j++) {
+    first[static_cast<std::size_t>(j)] = static_cast<Int>(onto.size());
+  }
+  return first;
+}
+
 }  // namespace ResampleDetails
 
 // The same field, on different radii.
@@ -121,6 +152,13 @@ auto Resample(const Stack& in, RadialGrid<Real> onto,
         "reach outside the ones the field is given on");
   }
 
+  // Where each target radius is answered from, computed once for all lines
+  // since it depends on the two grids and not on the data. Empty when the
+  // source grid does not know its elements, which is the one-piece case.
+  const auto pieces = in.Radial().HasElements()
+                          ? ResampleDetails::AssignPieces(in.Radial(), target)
+                          : std::vector<Int>{};
+
   const auto nOld = in.NumberOfRadii();
   const auto nNew = onto.NumberOfRadii();
   const auto lines = in.SliceSize();
@@ -151,20 +189,49 @@ auto Resample(const Stack& in, RadialGrid<Real> onto,
     auto answer =
         std::span<Scalar>(applied.data(), static_cast<std::size_t>(nNew));
 
-    // The branch is on the policy and not on the data, so it is the same for
-    // every line and costs a predicted jump.
-    if (scheme.IsLinear()) {
-      ResampleDetails::Fit<Interpolation::Linear<std::span<const Real>,
-                                                 std::span<const Scalar>>>(
-          from, values, target, answer);
-    } else if (scheme.IsAkima()) {
-      ResampleDetails::Fit<Interpolation::AkimaSpline<std::span<const Real>,
-                                                      std::span<const Scalar>>>(
-          from, values, target, answer);
+    // One interpolant per piece, so that none of them ever spans an
+    // interface. A grid that does not know its elements is one piece, which
+    // is exactly what this did before the partition existed.
+    const auto fit = [&](std::span<const Real> nodes,
+                         std::span<const Scalar> data,
+                         std::span<const Real> at, std::span<Scalar> into) {
+      // The branch is on the policy and not on the data, so it is the same
+      // for every line and costs a predicted jump.
+      if (scheme.IsLinear()) {
+        ResampleDetails::Fit<Interpolation::Linear<std::span<const Real>,
+                                                   std::span<const Scalar>>>(
+            nodes, data, at, into);
+      } else if (scheme.IsAkima()) {
+        ResampleDetails::Fit<
+            Interpolation::AkimaSpline<std::span<const Real>,
+                                       std::span<const Scalar>>>(nodes, data,
+                                                                 at, into);
+      } else {
+        ResampleDetails::Fit<
+            Interpolation::CubicSpline<std::span<const Real>,
+                                       std::span<const Scalar>>>(nodes, data,
+                                                                 at, into);
+      }
+    };
+
+    if (pieces.empty()) {
+      fit(from, values, target, answer);
     } else {
-      ResampleDetails::Fit<Interpolation::CubicSpline<std::span<const Real>,
-                                                      std::span<const Scalar>>>(
-          from, values, target, answer);
+      for (auto p = Int{0}; p < in.Radial().ElementCount(); p++) {
+        const auto lo = pieces[static_cast<std::size_t>(p)];
+        const auto hi = pieces[static_cast<std::size_t>(p + 1)];
+        if (lo == hi) continue;
+        const auto nodeFirst = in.Radial().ElementStart(p);
+        const auto nodeCount = in.Radial().ElementSize(p);
+        fit(from.subspan(static_cast<std::size_t>(nodeFirst),
+                         static_cast<std::size_t>(nodeCount)),
+            values.subspan(static_cast<std::size_t>(nodeFirst),
+                           static_cast<std::size_t>(nodeCount)),
+            target.subspan(static_cast<std::size_t>(lo),
+                           static_cast<std::size_t>(hi - lo)),
+            answer.subspan(static_cast<std::size_t>(lo),
+                           static_cast<std::size_t>(hi - lo)));
+      }
     }
 
     for (auto i = Int{0}; i < nNew; i++) {

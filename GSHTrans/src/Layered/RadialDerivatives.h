@@ -30,6 +30,11 @@ namespace GSHTrans {
 // All of them are linear maps that depend on the radii alone, which is what
 // makes that possible: what varies from line to line is the data, and what
 // costs anything to compute does not.
+//
+// The two here need nothing outside the standard library. SplineDerivative is
+// the third and lives in RadialSplineDerivative.h, because it is built on
+// Interpolation's factorised spline system and so exists only when that
+// dependency does (field-algebra-plan.md section 21.2 [R5]).
 
 namespace RadialDetails {
 
@@ -88,6 +93,54 @@ auto FirstDerivativeWeights(Real z, std::span<const Real> nodes) {
     weights[static_cast<std::size_t>(i)] = c[at(i, 1)];
   }
   return weights;
+}
+
+// The differentiation matrix of a set of nodes, row-major: D(j, i) is the
+// derivative at node j of the cardinal polynomial through node i.
+//
+// Built barycentrically, which is the numerically sound way to form it, and
+// shared between LagrangeDerivative -- which uses it over the whole grid --
+// and ElementDerivative, which uses one per element. A spectral element *is*
+// this matrix over its own nodes, so writing it twice would have been writing
+// the same thing twice.
+//
+// The diagonal is minus the row sum: the negative-sum trick. It is the
+// statement that a constant differentiates to zero, imposed rather than
+// evaluated from a closed form -- so the error in differentiating a constant
+// is the rounding of one sum rather than the accuracy of that form, which is
+// what would otherwise grow with the number of nodes. Applying the matrix sums
+// in a different order, so the answer is a few epsilon and not identically
+// zero.
+template <RealFloatingPoint Real>
+auto DifferentiationMatrix(std::span<const Real> nodes) {
+  const auto n = static_cast<Int>(nodes.size());
+
+  // Barycentric weights, w_i = 1 / prod_{k != i} (r_i - r_k).
+  auto w = std::vector<Real>(static_cast<std::size_t>(n), Real{1});
+  for (auto i = Int{0}; i < n; i++) {
+    for (auto k = Int{0}; k < n; k++) {
+      if (k == i) continue;
+      w[static_cast<std::size_t>(i)] *= nodes[static_cast<std::size_t>(i)] -
+                                        nodes[static_cast<std::size_t>(k)];
+    }
+    w[static_cast<std::size_t>(i)] = Real{1} / w[static_cast<std::size_t>(i)];
+  }
+
+  auto d = std::vector<Real>(static_cast<std::size_t>(n * n), Real{0});
+  for (auto j = Int{0}; j < n; j++) {
+    auto diagonal = Real{0};
+    for (auto i = Int{0}; i < n; i++) {
+      if (i == j) continue;
+      const auto value =
+          (w[static_cast<std::size_t>(i)] / w[static_cast<std::size_t>(j)]) /
+          (nodes[static_cast<std::size_t>(j)] -
+           nodes[static_cast<std::size_t>(i)]);
+      d[static_cast<std::size_t>(j * n + i)] = value;
+      diagonal -= value;
+    }
+    d[static_cast<std::size_t>(j * n + j)] = diagonal;
+  }
+  return d;
 }
 
 }  // namespace RadialDetails
@@ -219,39 +272,7 @@ class LagrangeDerivative {
     }
     const auto radii = _radial.Radii();
 
-    // Barycentric weights, w_i = 1 / prod_{k != i} (r_i - r_k).
-    auto w = std::vector<Real>(static_cast<std::size_t>(nR), Real{1});
-    for (auto i = Int{0}; i < nR; i++) {
-      for (auto k = Int{0}; k < nR; k++) {
-        if (k == i) continue;
-        w[static_cast<std::size_t>(i)] *=
-            radii[static_cast<std::size_t>(i)] - radii[static_cast<std::size_t>(k)];
-      }
-      w[static_cast<std::size_t>(i)] = Real{1} / w[static_cast<std::size_t>(i)];
-    }
-
-    // D(j, i) = (w_i / w_j) / (r_j - r_i) off the diagonal, and the diagonal
-    // is minus the row sum: the negative-sum trick. It is the statement that a
-    // constant differentiates to zero, imposed rather than evaluated from a
-    // closed form -- so the error in differentiating a constant is the
-    // rounding of one sum rather than the accuracy of that form, which is
-    // what would otherwise grow with the number of nodes. Applying the matrix
-    // sums in a different order, so the answer is a few epsilon and not
-    // identically zero.
-    _d.assign(static_cast<std::size_t>(nR * nR), Real{0});
-    for (auto j = Int{0}; j < nR; j++) {
-      auto diagonal = Real{0};
-      for (auto i = Int{0}; i < nR; i++) {
-        if (i == j) continue;
-        const auto value =
-            (w[static_cast<std::size_t>(i)] / w[static_cast<std::size_t>(j)]) /
-            (radii[static_cast<std::size_t>(j)] -
-             radii[static_cast<std::size_t>(i)]);
-        _d[static_cast<std::size_t>(j * nR + i)] = value;
-        diagonal -= value;
-      }
-      _d[static_cast<std::size_t>(j * nR + j)] = diagonal;
-    }
+    _d = RadialDetails::DifferentiationMatrix<Real>(radii);
   }
 
   const RadialGrid<Real>& Radial() const { return _radial; }
@@ -284,135 +305,102 @@ class LagrangeDerivative {
 };
 
 //--------------------------------------------------------------------------//
-//                            The spline derivative                          //
+//                          The element derivative                           //
 //--------------------------------------------------------------------------//
 
-// d/dr of the natural cubic spline through the samples.
+// d/dr element by element: block-diagonal, each block the differentiation
+// matrix of its own nodes.
 //
-// The middle ground between the two above, and the one to reach for when the
-// radii are many and unevenly spaced: it is global, like the differentiation
-// matrix, but its cost is linear in nR rather than quadratic, and unlike a
-// global polynomial it does not fall apart as the nodes multiply.
+// This is what a spectral element does. Within an element the field is the
+// polynomial through its nodes -- the Gauss-Lobatto-Legendre points, in
+// practice, though nothing here requires that -- so the derivative there is
+// that polynomial's, which is `LagrangeDerivative` restricted to the element.
+// The blocks do not talk to each other, and that is the point rather than an
+// approximation: the field is not assumed differentiable across an interface,
+// because at a material interface it is not.
 //
-// **Why this is written out rather than built on Interpolation, which has a
-// perfectly good CubicSpline.** That class computes its coefficients at
-// construction and holds them in a vector, so one costs about four
-// allocations -- and a radial operator is called once per line, of order
-// 66,000 times per application at lMax = 256. Ten milliseconds of allocation
-// against a two-millisecond transform is not a trade worth making in the
-// inner loop of a matrix-free solve.
+// **What makes this well defined is [E1].** The blocks are disjoint, so two
+// elements meet at a repeated radius and each owns one of the pair. The
+// derivative at an interface is therefore two numbers, one per side, each
+// stored at its own index -- which is what a discontinuity *is*, and is the
+// same pair `Interpolation::Piecewise::Limits` hands back. Had the elements
+// shared a node this operator would have had to choose between them, and that
+// choice belongs to the discretisation rather than here.
 //
-// The way out is what RadialOperator.h's contract asks for. The natural
-// spline's second derivatives satisfy a tridiagonal system whose *matrix
-// depends on the radii alone*; only its right-hand side carries the data. So
-// the matrix is factorised once, here, and a line costs one Thomas sweep into
-// thread_local scratch and no allocation at all. That is a thing upstream's
-// interface cannot express, which is why this is not duplication -- and
-// `Interpolation::CubicSpline` is the oracle the tests check it against,
-// which is a stronger check than any property this file could asssert about
-// itself (field-algebra-plan.md section 19.5 [R4]).
-//
-// Natural conditions, S'' = 0 at both ends. That is a choice and it shows: it
-// is wrong for data that is genuinely curved at the boundary, and the first
-// and last intervals are where a spline derivative is least trustworthy
-// whatever conditions are imposed. A caller who knows the end slopes has a
-// better operator available in three lines of their own, which is the point
-// of the seam.
+// Needs a grid built by `RadialGrid::WithElements`; a grid that does not know
+// its elements cannot say what the blocks are, and guessing is precisely what
+// the partition exists to stop.
 template <RealFloatingPoint _Real>
-class SplineDerivative {
+class ElementDerivative {
  public:
   using Int = std::ptrdiff_t;
   using Real = _Real;
 
-  SplineDerivative() = delete;
+  ElementDerivative() = delete;
 
-  explicit SplineDerivative(RadialGrid<Real> radial)
+  explicit ElementDerivative(RadialGrid<Real> radial)
       : _radial{std::move(radial)} {
-    const auto nR = _radial.NumberOfRadii();
-    if (nR < 2) {
-      throw std::invalid_argument("A spline derivative needs at least two radii");
+    if (!_radial.HasElements()) {
+      throw std::invalid_argument(
+          "An element derivative needs a grid that knows its elements, which "
+          "is what RadialGrid::WithElements builds; a plain grid is a list of "
+          "radii and cannot say where one element ends and the next begins");
     }
+
+    // One matrix per element, all node-dependent and so all built here.
+    // Stored end to end, since the elements need not be the same size.
     const auto radii = _radial.Radii();
-    const auto n = static_cast<std::size_t>(nR);
-
-    _h.resize(n - 1);
-    for (std::size_t i = 0; i + 1 < n; i++) {
-      _h[i] = radii[i + 1] - radii[i];
-      if (_h[i] <= Real{0}) {
-        throw std::invalid_argument(
-            "A spline derivative needs strictly increasing radii, and this "
-            "grid repeats one -- which is how a material interface is "
-            "written, and is a case for a piecewise operator rather than "
-            "this one");
-      }
-    }
-
-    // The system for the second derivatives m, with m = 0 at both ends. Only
-    // the three diagonals live here; the right-hand side is the data and is
-    // built per line.
-    _sub.assign(n, Real{0});
-    _diag.assign(n, Real{1});
-    _super.assign(n, Real{0});
-    for (std::size_t i = 1; i + 1 < n; i++) {
-      _sub[i] = _h[i - 1] / 6;
-      _diag[i] = (_h[i - 1] + _h[i]) / 3;
-      _super[i] = _h[i] / 6;
+    _offset.resize(static_cast<std::size_t>(_radial.ElementCount() + 1));
+    _offset[0] = 0;
+    for (auto k : _radial.ElementIndices()) {
+      const auto size = _radial.ElementSize(k);
+      const auto nodes = radii.subspan(
+          static_cast<std::size_t>(_radial.ElementStart(k)),
+          static_cast<std::size_t>(size));
+      const auto block = RadialDetails::DifferentiationMatrix<Real>(nodes);
+      _d.insert(_d.end(), block.begin(), block.end());
+      _offset[static_cast<std::size_t>(k + 1)] =
+          static_cast<Int>(_d.size());
     }
   }
 
   const RadialGrid<Real>& Radial() const { return _radial; }
 
+  // One element's matrix, row-major over its own nodes.
+  std::span<const Real> Matrix(Int k) const {
+    const auto first = static_cast<std::size_t>(_offset[static_cast<std::size_t>(k)]);
+    const auto last = static_cast<std::size_t>(_offset[static_cast<std::size_t>(k + 1)]);
+    return std::span<const Real>(_d).subspan(first, last - first);
+  }
+
   template <typename Scalar>
   void operator()(std::span<const Scalar> in, std::span<Scalar> out) const {
-    const auto n = static_cast<std::size_t>(_radial.NumberOfRadii());
-    if (in.size() != n || out.size() != n) {
+    const auto nR = _radial.NumberOfRadii();
+    if (in.size() != static_cast<std::size_t>(nR) ||
+        out.size() != static_cast<std::size_t>(nR)) {
       throw std::invalid_argument(
           "A radial operator acts on a line of one value per radius");
     }
 
-    // Scratch, not state: one operator serves every thread, so anything the
-    // call writes to lives here (RadialOperator.h).
-    thread_local auto diagonal = std::vector<Real>{};
-    thread_local auto m = std::vector<Scalar>{};
-    if (diagonal.size() < n) diagonal.resize(n);
-    if (m.size() < n) m.resize(n);
-
-    for (std::size_t i = 0; i < n; i++) diagonal[i] = _diag[i];
-    m[0] = Scalar{};
-    m[n - 1] = Scalar{};
-    for (std::size_t i = 1; i + 1 < n; i++) {
-      m[i] = (in[i + 1] - in[i]) / _h[i] - (in[i] - in[i - 1]) / _h[i - 1];
+    for (auto k : _radial.ElementIndices()) {
+      const auto first = _radial.ElementStart(k);
+      const auto size = _radial.ElementSize(k);
+      const auto block = Matrix(k);
+      for (auto j = Int{0}; j < size; j++) {
+        auto sum = Scalar{};
+        for (auto i = Int{0}; i < size; i++) {
+          sum += block[static_cast<std::size_t>(j * size + i)] *
+                 in[static_cast<std::size_t>(first + i)];
+        }
+        out[static_cast<std::size_t>(first + j)] = sum;
+      }
     }
-
-    // Thomas, in place. No pivoting, and none needed: an interior row has
-    // off-diagonal magnitude (h[i-1] + h[i]) / 6 against a diagonal of
-    // (h[i-1] + h[i]) / 3, so the system is strictly diagonally dominant.
-    for (std::size_t i = 1; i < n; i++) {
-      const auto factor = _sub[i] / diagonal[i - 1];
-      diagonal[i] -= factor * _super[i - 1];
-      m[i] -= factor * m[i - 1];
-    }
-    m[n - 1] = m[n - 1] / diagonal[n - 1];
-    for (auto i = static_cast<Int>(n) - 2; i >= 0; i--) {
-      const auto k = static_cast<std::size_t>(i);
-      m[k] = (m[k] - _super[k] * m[k + 1]) / diagonal[k];
-    }
-
-    // S'(r_j) from the left end of the interval that starts there, and from
-    // the right end of the last interval for the final node.
-    for (std::size_t j = 0; j + 1 < n; j++) {
-      out[j] = (in[j + 1] - in[j]) / _h[j] -
-               _h[j] * (Real{2} * m[j] + m[j + 1]) / Real{6};
-    }
-    const auto last = n - 2;
-    out[n - 1] = (in[n - 1] - in[last]) / _h[last] +
-                 _h[last] * (m[last] + Real{2} * m[n - 1]) / Real{6};
   }
 
  private:
   RadialGrid<Real> _radial;
-  std::vector<Real> _h;
-  std::vector<Real> _sub, _diag, _super;
+  std::vector<Real> _d;
+  std::vector<Int> _offset;
 };
 
 }  // namespace GSHTrans

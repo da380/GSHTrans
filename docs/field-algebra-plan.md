@@ -2762,3 +2762,164 @@ because the partition is exactly what its current refusal points at: it throws
 on a repeated radius today, and with a partition it could fit per piece and
 become usable on a layered model rather than only on a smooth one. Worth doing
 if E1 to E3 leave it looking natural; not worth forcing.
+
+---
+
+## 21. After the Interpolation update
+
+`da380/Interpolation` answered all four asks of
+`docs/Interpolation-for-GSHTrans.md` in one commit (`36a9539`, 2026-08-23).
+This section is what that changes here.
+
+### 21.1 Checked first
+
+**Nothing broke.** GSHTrans builds against the new `main` and passes its 280
+tests unchanged. The refactor moved a good deal — `Samples.hpp` shrank by two
+thirds and two `Detail` helpers went — and none of it was anything this
+library reached for.
+
+**The new shape is exactly what `SplineDerivative` wanted**, verified by
+compiling it rather than by reading the header:
+
+```cpp
+const CubicSplineSystem<std::span<const Real>> system{radii};   // once
+system.Solve(line, std::span<Complex>(curvature));              // per line
+system.EvaluateAtNodes<1>(line, curvature, std::span<Complex>(slope));
+```
+
+`Solve` is `const` and allocates nothing, so one system serves every thread —
+which is `RadialOperator.h`'s contract, met by the upstream type rather than
+by ours. The matrix is real while the ordinates are complex, which is the case
+the spectral domain needs. And `EvaluateAtNodes<1>` agrees with
+`Evaluate<1>(Node(k))` to **exactly zero** difference, measured, so the nodal
+path is the same numbers by a cheaper route.
+
+**What is *not* there, and it decides one step below.** There is no
+arbitrary-`x` evaluation from a solved system, and no `CubicSpline`
+constructor taking a prebuilt one — `CubicSpline` still assembles its own.
+So a caller evaluating at points that are *not* nodes cannot hoist the
+factorisation. That is fine and not a complaint: it is exactly the shape
+`Resample` has, and `Resample` is the cold path [R4] said it was.
+
+### 21.2 [R5] `SplineDerivative` is rebuilt on `CubicSplineSystem`, and
+becomes conditional
+
+**This reverses [R4]'s split, and returns it to the one originally chosen.**
+The first question put to the author offered "optional, default on" with the
+gloss *"SplineDerivative guarded; FiniteDifferenceDerivative and
+LagrangeDerivative always available"*, and that is what was chosen. [R4] then
+deviated from it, for one reason: the spline factorisation was unreachable, so
+building the operator on `Interpolation` meant a spline per line. That reason
+is gone.
+
+So the sixty lines of natural-spline system and Thomas sweep are deleted, and
+`SplineDerivative` holds a `CubicSplineSystem`. Three things follow.
+
+- **The dependency-off build loses `SplineDerivative`.** It keeps the two
+  operators that need nothing — which are the two that are dependency-free by
+  nature rather than by effort, so the line falls where it should.
+- **It gains boundary conditions.** The hand-rolled version did natural ends
+  and nothing else. The upstream system does Natural, Clamped and NotAKnot,
+  the last being fourth-order to the ends where Natural costs an order — which
+  matters precisely at the first and last radii, where a boundary condition is
+  applied and where the old header admitted a spline derivative is least
+  trustworthy.
+- **The oracle test weakens, and is relabelled rather than kept as it was.**
+  Comparing our operator against `Interpolation::CubicSpline` was an
+  independent-implementation check; once both go through the same system it
+  becomes an integration check — that the right ordinates, nodes and
+  derivative order were passed. Still worth having, and no longer worth
+  calling an oracle.
+
+### 21.2a What this is for, which is worth stating before more is built
+
+Recorded from the author, because it sets the level of effort the rest of this
+section deserves.
+
+**The pre-built operators are conveniences, and the seam is the product.** The
+discretisations these codes actually run on are finite differences, a
+finite-element basis, or a radial spectral basis — Chebyshev being the obvious
+one not yet looked at and perfectly implementable behind the same seam. A
+cubic spline is what a caller reaches for to *process* a field, not to solve
+on one. So efficiency here is not mission-critical, and `SplineDerivative`
+being written for clarity rather than tuned is the right trade rather than a
+compromise.
+
+**And the full derivative operators are not the usual path either.** A
+production application interleaves the basic steps — transform to
+coefficients, apply a local or radial operator, transform back — rather than
+calling `Gradient`. That is already what the library supports: `Expand`,
+`ApplyRadially` and `Evaluate` compose exactly that way, and `Gradient` is the
+assembled convenience on top.
+
+So the measure of this layer is **whether bespoke things are easy to build**,
+not whether the supplied ones are fast. What follows is sized accordingly.
+
+### 21.3 The order to work in
+
+1. **N1 — rebuild `SplineDerivative`**, per [R5]. Self-contained, and it makes
+   the rest smaller.
+
+   *Done.* It moved to `RadialSplineDerivative.h`, guarded in its entirety like
+   `RadialResample.h`, so that `RadialDerivatives.h` stays honestly free of any
+   dependency. Sixty lines of spline system and Thomas sweep are gone and what
+   is left is assembly: a `CubicSplineSystem` built once, `Solve` into
+   `thread_local` curvature, `EvaluateAtNodes<1>` out.
+
+   Two tests changed meaning rather than passing unchanged, and are relabelled
+   to say so. Comparing against `Interpolation::CubicSpline` was an
+   independent-implementation oracle; with both going through the same system
+   it is an integration check — that the right ordinates, nodes and derivative
+   order were handed over. That is still the half that can go wrong here, and
+   it is no longer an oracle.
+
+   Two tests are new, for what the rebuild bought. `NotAKnot` reproduces a
+   cubic exactly where `Natural` is visibly wrong at the ends by `10⁻³`, which
+   is the order Natural costs there. And `Clamped` is refused, because the end
+   slopes belong to the data and a radial operator is handed one line at a time
+   with nowhere to say what they are.
+
+   *With the dependency off:* 270 tests against 282, and the missing twelve are
+   the six spline tests, five resampling tests and one that used both.
+2. **E2 — `ElementDerivative`**, unchanged by any of this: block-diagonal
+   `LagrangeDerivative`, needing no dependency.
+
+   *Done.* The barycentric construction lifted out of `LagrangeDerivative`
+   into `RadialDetails::DifferentiationMatrix` first, since a spectral element
+   *is* that matrix over its own nodes and writing it twice would have been
+   writing the same thing twice. The tests are the two properties that make it
+   an element operator rather than a global one: **disturbing one element
+   cannot change the answer in another**, and **at an interface the derivative
+   is two numbers, one per side**, each at its own index. The second is [E1]
+   paying off — the operator never has to choose between the two, because the
+   partition gave each of them somewhere to live.
+
+3. **E3 — `Resample` per piece.** *Done.* One interpolant per element, so none
+   of them spans an interface; a grid with no partition is one piece, which is
+   what resampling always did. Still one interpolant per line, per §21.1.
+
+   *I did not use `Interpolation::Side` after all.* The plan said to, to avoid
+   a second convention, but nothing in the code needed the type — it would have
+   been an include for the sake of a comment. What actually holds the two
+   libraries together is a **test**: a target radius landing exactly on a
+   breakpoint is answered from the piece above, right-continuously, which is
+   what `Piecewise` does with the same value. A convention pinned by an
+   assertion is worth more than one pinned by an import.
+
+4. **E4 — `SplineDerivative` per piece.** *Done*, and N1 did make it nearly
+   free: one `CubicSplineSystem` per element instead of one per grid, which is
+   a loop rather than an idea. The operator stops refusing a layered model —
+   it refuses one only when the grid repeats a radius *without saying what it
+   means*, and the message now points at `WithElements` rather than at a
+   piecewise operator that did not exist when it was written.
+
+   One limit found rather than designed: `NotAKnot` constrains the whole system
+   and needs four nodes, so it is unavailable on elements of three. Upstream
+   refuses it and the message is upstream's, which is right — the constraint
+   belongs to the spline and not to this library.
+
+*Not done, and worth saying:* `Resample` does not hoist a shared
+factorisation, because there is nothing to hoist it into. If that ever
+matters, the ask upstream is a `CubicSpline` constructible from an existing
+`System` — but it does not matter yet, and asking for it now would be asking
+on speculation.
