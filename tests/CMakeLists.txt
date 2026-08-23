@@ -97,6 +97,7 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/Layered/RadialGrid.h
   GSHTrans/src/Layered/LayeredSpinField.h
   GSHTrans/src/Layered/RadialDerivatives.h
+  GSHTrans/src/Layered/RadialResample.h
   GSHTrans/Core
   GSHTrans/Field
   GSHTrans/Tensor

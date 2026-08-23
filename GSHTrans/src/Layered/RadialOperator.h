@@ -75,6 +75,11 @@ concept LayeredStack = requires(const Stack& stack) {
   { stack.Radial() };
   { stack.Data() };
   { stack.SameShape() } -> std::same_as<Stack>;
+  // The same stack on a different set of radii. Not needed by anything here,
+  // where the radial axis is fixed, and required all the same because it is
+  // what distinguishes an operator along that axis from a change *of* it --
+  // which is what Resample is, and why it is not a RadialOperator.
+  { stack.SameShapeOn(stack.Radial()) } -> std::same_as<Stack>;
 };
 
 // Apply a radial operator at every angular index, or at every coefficient.

@@ -83,6 +83,13 @@ class LayeredSpinField {
   auto SliceSize() const { return FieldSize(); }
   auto SameShape() const { return LayeredSpinField(_radialGrid, _grid); }
 
+  // The same field on a different set of radii, which is what resampling
+  // needs and what SameShape cannot give: a radial operator maps a stack to
+  // one of the same shape, and changing nR is precisely not that.
+  auto SameShapeOn(RadialGridType radialGrid) const {
+    return LayeredSpinField(std::move(radialGrid), _grid);
+  }
+
   auto Data() { return std::span<Scalar>(_data); }
   auto Data() const { return std::span<const Scalar>(_data); }
 
@@ -182,6 +189,10 @@ class LayeredSpinExpansion {
 
   auto SameShape() const {
     return LayeredSpinExpansion(_radialGrid, _grid, MaxDegree());
+  }
+
+  auto SameShapeOn(RadialGridType radialGrid) const {
+    return LayeredSpinExpansion(std::move(radialGrid), _grid, MaxDegree());
   }
 
   auto Data() { return std::span<Complex>(_data); }

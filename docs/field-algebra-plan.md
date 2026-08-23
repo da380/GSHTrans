@@ -2542,5 +2542,35 @@ a second seam and one small addition to the stack types — a way to ask for the
 same shape on a *different* radial grid, next to the `SameShape()` that
 already exists.
 
+*Done.* `SameShapeOn(radialGrid)` on both stack types, and it joins the
+`LayeredStack` concept — required there not because anything in
+`RadialOperator.h` uses it, but because **it is what distinguishes an operator
+*along* the radial axis from a change *of* it**, and stating that in the
+concept is cheaper than explaining it twice.
+
+`RadialInterpolation` is the policy, with `::Linear()`, `::CubicSpline()` and
+`::Akima()`, following the house style of `Execution` and `Chunking` for the
+reason `Policies.h` gives. The three are not interchangeable and the header
+says how they differ: linear cannot overshoot, so a monotone profile stays
+monotone, which for a density or a modulus often matters more than
+smoothness; the cubic spline is smooth and can overshoot at a sharp change;
+Akima is local, so a bad patch stays local.
+
+**Extrapolation is refused.** Every interpolant here will return a number
+outside the range it was fitted on and that number is worth nothing, so a
+target reaching beyond the source radii throws. A caller who wants to extend a
+model past its outermost radius is saying something the model does not, and
+should say it themselves.
+
+*The identity test is the one that matters*, and it is ours rather than
+upstream's: resampling onto the radii a field already has must reproduce it
+exactly, under every scheme, because every scheme passes through its own
+nodes. That is the check that the gather and the scatter line up.
+
+*The header is conditional in its entirety*, so including it without the
+dependency is not an error and simply gives nothing. The umbrella includes it
+unconditionally and a build with the option off has 268 tests where the full
+one has 275 — the seven being the two spline oracles and the five here.
+
 **S6 — `ElementDerivative`** waits for §8B's element partition, and is named
 here so the set reads as incomplete on purpose.

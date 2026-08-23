@@ -1182,3 +1182,141 @@ TEST(RadialDerivatives, TheSplineIsAnOrdinaryRadialOperator) {
     EXPECT_EQ(one.Data()[i], many.Data()[i]) << "at " << i;
   }
 }
+
+//--------------------------------------------------------------------------//
+//                          Resampling in radius                             //
+//--------------------------------------------------------------------------//
+
+#ifdef GSHTRANS_HAVE_INTERPOLATION
+
+// Resampling onto the radii a field already has is the identity, whichever
+// interpolant is asked for: every scheme here passes through its own nodes.
+// That is the check that the gather and scatter line up, which is the half of
+// this that is ours rather than upstream's.
+TEST(RadialResample, OntoTheSameRadiiIsTheIdentity) {
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = RadialGrid<Real>(UnevenRadii);
+
+  auto f = LayeredSpinField<0, Grid, ComplexValued>(radial, grid);
+  for (Int i = 0; i < f.NumberOfRadii() * f.SliceSize(); i++) {
+    f.Data()[i] = Complex{std::cos(0.07 * i), std::sin(0.13 * i)};
+  }
+
+  for (auto scheme : {RadialInterpolation::Linear(),
+                      RadialInterpolation::CubicSpline(),
+                      RadialInterpolation::Akima()}) {
+    const auto same = Resample(f, radial, scheme);
+    ASSERT_EQ(same.Data().size(), f.Data().size());
+    for (std::size_t i = 0; i < f.Data().size(); i++) {
+      EXPECT_NEAR(same.Data()[i].real(), f.Data()[i].real(), 1.0e-12) << i;
+      EXPECT_NEAR(same.Data()[i].imag(), f.Data()[i].imag(), 1.0e-12) << i;
+    }
+  }
+}
+
+// Data that every scheme reproduces exactly -- a straight line in r -- so that
+// what is being tested is the resampling and not the interpolant's accuracy.
+TEST(RadialResample, CarriesALinearProfileExactlyOntoNewRadii) {
+  constexpr auto lMax = Int{5};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = RadialGrid<Real>(UnevenRadii);
+  const auto finer = RadialGrid<Real>(
+      std::vector<Real>{0.40, 0.50, 0.62, 0.85, 1.10, 1.28, 1.45});
+
+  auto f = LayeredSpinField<0, Grid, ComplexValued>(radial, grid);
+  for (auto i : radial.RadiusIndices()) {
+    auto slice = f.Slice(i);
+    for (auto iTheta : grid.CoLatitudeIndices()) {
+      for (auto iPhi : grid.LongitudeIndices()) {
+        slice[iTheta, iPhi] = Complex{2.0 * UnevenRadii[i] + 1.0,
+                                      -0.5 * UnevenRadii[i]};
+      }
+    }
+  }
+
+  for (auto scheme : {RadialInterpolation::Linear(),
+                      RadialInterpolation::CubicSpline(),
+                      RadialInterpolation::Akima()}) {
+    const auto moved = Resample(f, finer, scheme);
+    EXPECT_EQ(moved.NumberOfRadii(), 7);
+    EXPECT_EQ(moved.SliceSize(), f.SliceSize());
+    for (auto i : finer.RadiusIndices()) {
+      const auto r = finer.Radius(i);
+      const auto got = moved.Slice(i)[1, 2];
+      EXPECT_NEAR(got.real(), 2.0 * r + 1.0, 1.0e-12) << "at r = " << r;
+      EXPECT_NEAR(got.imag(), -0.5 * r, 1.0e-12) << "at r = " << r;
+    }
+  }
+}
+
+// It works in either domain, because the radial axis does not distinguish a
+// slice of angular points from a slice of coefficients -- which is the
+// property LayeredStack exists to state.
+TEST(RadialResample, ActsOnAnExpansionAsReadilyAsAField) {
+  constexpr auto lMax = Int{5};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = RadialGrid<Real>(UnevenRadii);
+  const auto coarser = RadialGrid<Real>(std::vector<Real>{0.55, 0.90, 1.30});
+
+  auto e = LayeredSpinExpansion<0, Grid, ComplexValued>(radial, grid, lMax);
+  for (auto i : radial.RadiusIndices()) {
+    for (auto l : e.Degrees()) {
+      for (auto m : e.Orders(l)) {
+        e[i, l, m] = Complex{3.0 * UnevenRadii[i], 1.0};
+      }
+    }
+  }
+
+  const auto moved = Resample(e, coarser, RadialInterpolation::Linear());
+  EXPECT_EQ(moved.NumberOfRadii(), 3);
+  EXPECT_EQ(moved.SliceSize(), e.SliceSize());
+  for (auto i : coarser.RadiusIndices()) {
+    const auto got = moved[i, 2, -1];
+    EXPECT_NEAR(got.real(), 3.0 * coarser.Radius(i), 1.0e-12);
+    EXPECT_NEAR(got.imag(), 1.0, 1.0e-12);
+  }
+}
+
+// Extrapolation is refused rather than silently performed: every interpolant
+// here returns a number outside the range it was fitted on, and that number
+// is worth nothing.
+TEST(RadialResample, RefusesToExtrapolate) {
+  constexpr auto lMax = Int{4};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = RadialGrid<Real>(UnevenRadii);
+  auto f = LayeredSpinField<0, Grid, ComplexValued>(radial, grid);
+
+  const auto tooFar = RadialGrid<Real>(std::vector<Real>{0.3, 0.8, 1.2});
+  const auto tooHigh = RadialGrid<Real>(std::vector<Real>{0.5, 0.8, 1.6});
+  EXPECT_THROW(Resample(f, tooFar), std::invalid_argument);
+  EXPECT_THROW(Resample(f, tooHigh), std::invalid_argument);
+
+  // The endpoints themselves are inside, so a target that reaches them is
+  // fine.
+  const auto ends = RadialGrid<Real>(std::vector<Real>{0.40, 0.9, 1.45});
+  EXPECT_NO_THROW(Resample(f, ends));
+}
+
+TEST(RadialResample, ThreadingChangesNothing) {
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = RadialGrid<Real>(UnevenRadii);
+  const auto onto = RadialGrid<Real>(std::vector<Real>{0.45, 0.8, 1.1, 1.4});
+
+  auto f = LayeredSpinField<0, Grid, ComplexValued>(radial, grid);
+  for (Int i = 0; i < f.NumberOfRadii() * f.SliceSize(); i++) {
+    f.Data()[i] = Complex{std::cos(0.09 * i), std::sin(0.17 * i)};
+  }
+
+  const auto one = Resample(f, onto, RadialInterpolation::Akima(),
+                            Execution::Sequential());
+  const auto many = Resample(f, onto, RadialInterpolation::Akima(),
+                             Execution::Parallel());
+  ASSERT_EQ(one.Data().size(), many.Data().size());
+  for (std::size_t i = 0; i < one.Data().size(); i++) {
+    EXPECT_EQ(one.Data()[i], many.Data()[i]) << "at " << i;
+  }
+}
+
+#endif  // GSHTRANS_HAVE_INTERPOLATION
