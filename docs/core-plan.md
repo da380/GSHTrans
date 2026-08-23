@@ -1817,3 +1817,30 @@ So: take item 1 because it is nearly free, take the server numbers because
 they are being waited on anyway, and then build phase 2 — leaving the
 transform-major restructure as a well-specified piece of work to pick up when
 the field layer's real problems ask for it.
+
+### What happened next, 2026-08-23
+
+*The advice above was taken, and the paragraph it rests on is now out of date
+in the way one hopes for.* Phases 2 to 5 are built, and so are the
+contravariant derivative, the layered fields, the tangential bundle and the
+radial seam — `field-algebra-plan.md` §§12–21. The field layer is no longer
+the thing that is missing.
+
+Three consequences for this document, none of which change its conclusions.
+
+- **Step F has consumers now**, several of them. The batched transform is used
+  by the tensor layer's per-upper-index groups and by the layered layer's
+  radial stacks, and §17.5 measured what it is worth there — including the
+  case where it collapses to nothing, which is the forward direction at
+  `lMax = 256` on eight threads, because the thread-private accumulator no
+  longer fits. That is the sharpest argument yet for item 3, and it is a
+  measurement rather than the abstract factor of two this section had.
+- **Item 2, the target-machine run, is still outstanding**, and is still the
+  cheapest thing on the list. The one attempt returned a machine description
+  and a STREAM figure and no transform tables at all.
+- **The strategic caveat still holds, pointed the other way.** It said the
+  field layer's problems were worth more than another 2× on the transform.
+  They were, and they have been done; what is left in the field layer is
+  small and mostly editorial. So the balance has genuinely shifted towards
+  item 3 — which should be started from the server numbers rather than from
+  the laptop ones.

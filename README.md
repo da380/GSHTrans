@@ -12,22 +12,36 @@ when it is run.
 
 ## Status
 
-The library is mid-rebuild, against two planning documents in `docs/`:
+The rebuild is complete through the layers below, against two planning
+documents in `docs/`. Both record their decisions and the measurements behind
+them, including the ones that turned out to be wrong.
 
 * **`docs/core-plan.md`** — the numerical core: `GaussLegendreGrid`, `Wigner`,
-  `Indexing`, `Views`. Steps A–H are landed, including the batched transform
-  primitive; the remaining work is generating Wigner values on the fly (step
-  F′) and the storage questions behind it (step G).
-* **`docs/field-algebra-plan.md`** — the field layer. Phase 1, the spin-field
-  algebra described below, is complete. Phases 2–5 — tensor storage, tensor
-  algebra, reality reduction, and the spectral side — are planned and not yet
-  written.
+  `Indexing`, `Views`. Steps A–H are landed, with the batched transform, the
+  plan cache, threading, and Wigner values generated on the fly as a
+  construction-time policy. What remains is the transform-major restructure
+  (step G with step F tier 2) and polar truncation, both gated on measurements
+  from a target machine rather than on design.
+* **`docs/field-algebra-plan.md`** — the field layer, and everything built on
+  it:
+
+  | | |
+  |---|---|
+  | phases 1–5 | spin fields, tensor storage, tensor algebra, reality reduction, the spectral side |
+  | §16 | the contravariant derivative — D&T's surface gradient |
+  | §17 | layered (three-dimensional) fields, the radial seam, `RadialMajor` |
+  | §18 | tangential tensors, the intrinsic derivative, the bundle maps |
+  | §19 | ready-made radial derivatives, and resampling |
+  | §20 | the element partition on `RadialGrid` |
+  | §21 | what the `Interpolation` update changed |
 
 `docs/canonical-components.tex` is the authority on the mathematics and the
-conventions; both plans defer to it.
+conventions; both plans defer to it. `docs/gshtrans-reference.tex` describes
+the library that exists.
 
-Both plans record their decisions and the measurements behind them. Read
-`core-plan.md` §8 before touching core code.
+Read `core-plan.md` §8 before touching core code, and
+`field-algebra-plan.md` §18.2 and §19.5 before touching the tensor bundles or
+the radial seam — those are where the decisions live.
 
 ## The spin-field algebra
 

@@ -34,6 +34,16 @@ It is used in exactly two places.
 It is deliberately **not** used for the three ready-made radial derivatives,
 which are self-contained. §3 is why, and it is the substance of this note.
 
+> **Postscript, 2026-08-23.** All four asks below were answered, and §3's
+> request changed what GSHTrans built. `SplineDerivative` is now assembly over
+> `CubicSplineSystem` — the sixty duplicated lines are gone — so it *is* a
+> runtime user of this library, and the sentence above holds for the other two
+> operators only. `ElementDerivative` joined them since, so the
+> dependency-free set is three: finite differences, the differentiation
+> matrix, and the element derivative. `docs/field-algebra-plan.md` §21 records
+> what else changed, including the measurement in §3 being corrected downwards
+> from an order of magnitude to 1.2×–2×.
+
 ---
 
 ## 2. What was checked and is fine

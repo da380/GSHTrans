@@ -17,6 +17,9 @@ set(GSHTRANS_EXAMPLES
   14-wigner-functions
   15-surface-gradient
   16-layered-fields
+  17-tangential-tensors
+  18-radial-operators
+  19-layered-models
 )
 
 foreach(example IN LISTS GSHTRANS_EXAMPLES)

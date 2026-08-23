@@ -10,22 +10,34 @@ the authorities on the numerical core and the field algebra respectively, and
 `gshtrans-reference.tex` on what exists. Where a direction below contradicts a
 decision already taken, it says so rather than quietly overriding it.
 
-**Status, 2026-08-22.** Sections 1 to 6 were the original set. Sections 2, 4
-and 5 are largely done and say so at the top; 1, 3 and 6 are open. Sections 7
-to 10 were raised later and are assessed here for the first time.
+**Status, 2026-08-23.** Sections 1 to 6 were the original set and 7 to 10 were
+raised later. Only three are still open, and two of those are waiting on a
+machine rather than on a decision.
 
 | | subject | status |
 |---|---|---|
-| 1 | tangential tensor fields | open, and the next candidate |
-| 2 | three-dimensional tensor fields | **done** -- `field-algebra-plan.md` §17 |
-| 3 | specialisations for common objects | open, follows §1 |
+| 1 | tangential tensor fields | **done** -- `field-algebra-plan.md` §18 |
+| 2 | three-dimensional tensor fields | **done** -- §17 |
+| 3 | specialisations for common objects | **done** as names, §18's T5. The rank-specific *operations* are open; see below |
 | 4 | project structure | **done**, except the `src/` rename, declined |
-| 5 | dependencies | **done** upstream; GaussQuad and FFTWpp both refactored |
-| 6 | Wigner 3-j symbols | open, and independent of everything else |
-| 7 | the `Interpolation` library | assessed here, against `refactor` |
-| 8 | how three-dimensional the 3-D fields are | assessed here |
-| 9 | interpolating a field, as a callable | assessed here |
-| 10 | a wisdom mechanism for the computational options | assessed here |
+| 5 | dependencies | **done** upstream; GaussQuad, FFTWpp and Interpolation all refactored |
+| 6 | Wigner 3-j symbols | **open**, and independent of everything else |
+| 7 | the `Interpolation` library | **done** -- adopted as an optional dependency, §19.5 [R1]; it answered the hand-over note and §21 records what that changed |
+| 8 | how three-dimensional the 3-D fields are | **done** -- §8A is §19, §8B is §20 |
+| 9 | interpolating a field, as a callable | **open** in the angular variables; the radial half is §19's `Resample` |
+| 10 | a wisdom mechanism for the computational options | **open**, and better argued after a target-machine run |
+
+**What is left of §3.** `Deviatoric` needs the metric as a tensor *expression*,
+and there is no constant-tensor node -- the metric's components are numbers
+rather than fields. `Divergence` and `Curl` are contractions of a gradient, and
+the library now has two, so naming them means choosing. Both are decisions
+rather than work.
+
+**And one direction not yet in this document:** a radial *spectral* basis --
+Chebyshev being the obvious one -- behind the same seam as the operators of
+§19. Nothing about `RadialOperator` prevents it; a Chebyshev derivative is a
+transform, a multiply and a transform back, which is a callable like any
+other.
 
 ---
 
