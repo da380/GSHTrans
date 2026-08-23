@@ -2758,11 +2758,71 @@ already exists. [C12]'s cross-kernel comparison would catch any sign or
 index error immediately, which is the argument for having kept both kernels
 and is worth noting as it paying off a second time.
 
-**Not built here.** The condition [C15] set — that M5 say the path is worth
-deepening — is answered by the numbers above rather than by a judgement, and
-what they say is *worth deepening for two reasons, neither of which is the one
-originally given*. Restating the case correctly is what M6 needed before it
-could be built, and that is what this section is.
+#### M6, built
+
+`WignerMatrices::Reflected` stores non-negative orders only and checks the
+angles support it; `Sign(l, n)` is the reflection, in one place, so no caller
+writes it out. Both kernels take the `−m` product from the `+m` matrix, with
+the colatitudes reversed and the sign applied — on the way out in the forward
+direction, on the way in in the inverse.
+
+*The oracle paid for itself.* All fourteen cross-kernel tests passed **first
+try**, and flipping the sign or dropping the reversal fails six of them each.
+That is the whole argument for [C12] arriving: this is the numerically
+delicate step, and it was checked against an independent arrangement of the
+same sum rather than against a tolerance on a property it asserts about
+itself.
+
+**The table halves, as predicted**: 647.5 → 325.0 MiB at `lMax = 256,
+nMax = 2`, and 5150 → 2580 MiB at `lMax = 512`. A shade over half because
+order zero is its own reflection and is stored once either way, which is what
+the count test asserts.
+
+#### The first version was slower sequentially, and the measurement said why
+
+Pairing `±m` into one GEMM — the `N`-doubling this section argued for — needs
+both right-hand sides adjacent, so **both** have to be copied into a buffer.
+Interleaved A/B on an idle machine, matrix-kernel forward at `lMax = 256,
+k = 8`: **1.5× better on eight threads and 1.5× worse on one**.
+
+That asymmetry is the answer. If the `N`-doubling were buying anything it
+would show sequentially, where arithmetic efficiency is what is left; it
+showed the opposite. So the threaded gain is the **halved traffic**, and the
+paired copy is pure cost — consistent with M5, which found the batched regime
+at a third of the roof and therefore not traffic-bound, and the threaded one
+closer to it.
+
+**So the pairing was taken out and only the halving kept.** Each order does
+two GEMMs against one matrix: `+m` multiplied where it already lies, `−m`
+through a reversed copy, which is the one copy the reflection genuinely
+requires since no BLAS takes a negative stride. `N` stays at `2k`.
+
+#### What M6 is worth, interleaved, three passes
+
+Matrix-kernel time at `lMax = 256, k = 8`, before against after:
+
+| | before | after | gain |
+|---|---|---|---|
+| forward, 1 thread | 19.7, 19.5, 19.2 ms | 16.8, 16.9, 16.9 | 1.16× |
+| forward, 8 threads | 8.63, 8.34, 8.65 ms | 6.15, 6.18, 6.10 | **1.39×** |
+| inverse, 1 thread | 32.7, 33.6, 33.2 ms | 21.6, 21.4, 21.3 | **1.55×** |
+| inverse, 8 threads | 9.37, 8.87, 8.89 ms | 6.58, 6.86, 6.51 | **1.36×** |
+
+*The sequential inverse gains most, and not from the reflection.* Splitting
+the pair let the `+m` product write **straight into its block of the
+intermediate** instead of through a result buffer — which is how the kernel
+worked before M6 for the `+m` half and is a copy M3b had introduced without
+noticing. The reflection is what made the inefficiency visible.
+
+Against the loop kernel, `lMax = 256, k = 8` on eight threads, the restructure
+now stands at **5.8–6.0× forward and 2.9–3.2× inverse**, from 4.0–4.2× and
+2.3× before this step.
+
+**[C15]'s claim was wrong in a way worth keeping.** It said the reduction
+halves the table *and the arithmetic*. The table halves. The arithmetic does
+not, and the attempt to convert the symmetry into arithmetic — the paired
+GEMM — measured worse. What the reflection buys is traffic and memory, which
+is what §12's own DRAM argument should have predicted.
 
 ### 11.5 What this does to the wisdom question
 

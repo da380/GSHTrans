@@ -341,6 +341,18 @@ double ScanBandwidthGBs(double bytes, int threads, int touch, int windows = 5) {
 
 // Bytes of Wigner values one transform at this degree and upper index streams:
 // the (l, m) block for that upper index, once per colatitude.
+// Bytes the *matrix* kernel streams: the same values, but only for m >= 0,
+// the rest coming from the reflection (step M6). Order zero is its own
+// reflection and is counted once, so this is a shade over half.
+double ReflectedWignerBytes(Int lMax, Int n) {
+  const auto nTheta = lMax + 1;
+  auto values = 0.0;
+  for (auto m = Int{0}; m <= lMax; ++m) {
+    values += static_cast<double>(lMax - std::max(std::abs(n), m) + 1);
+  }
+  return values * static_cast<double>(nTheta) * sizeof(Real);
+}
+
 double WignerBytes(Int lMax, Int n) {
   const auto perColatitude = GSHIndices<All>(lMax, lMax, n).Size();
   const auto nTheta = lMax + 1;
@@ -498,7 +510,7 @@ int main(int argc, char** argv) {
   // server runs were lost to exactly that: the source reached the machine with
   // an old timestamp, make saw nothing to do, and the log looked plausible
   // while being produced by the previous harness.
-  constexpr auto revision = 6;
+  constexpr auto revision = 7;
 
   if (argc == 2 && std::string(argv[1]) == "--check") {
     std::printf("harness revision %d\n", revision);
@@ -887,10 +899,12 @@ int main(int argc, char** argv) {
             "than take it on trust.\n\n");
       }
       std::printf(
-          "GB/s is table traffic over time; roof is a one-thread-touched\n"
-          "read scan of the same bytes. Where the table fits in cache the\n"
-          "first exceeds the second, which says the table is not coming\n"
-          "from DRAM rather than that anything is wrong.\n\n");
+          "GB/s is the reported kernel's own table traffic over time --\n"
+          "the matrix kernel streams only non-negative orders (M6), a\n"
+          "shade over half. Roof is a one-thread-touched read scan. Where\n"
+          "the table fits in cache the first exceeds the second, which says\n"
+          "the table is not coming from DRAM rather than that anything is\n"
+          "wrong.\n\n");
       std::printf("%5s %4s %8s %11s %11s %9s %10s %10s\n", "lMax", "dir",
                   "threads", "loop (ms)", "matrix (ms)", "ratio", "GB/s",
                   "roof");
@@ -945,8 +959,14 @@ int main(int argc, char** argv) {
             // that way it is what the roof column is comparable with. A batch
             // larger than the internal chunk reads the table more than once,
             // which makes this a lower bound there rather than a value.
+            // The two kernels stream different amounts: the matrix kernel's
+            // table holds only non-negative orders (M6), so reporting the
+            // loop kernel's byte count against it would overstate its rate by
+            // two and put it above a roof it is nowhere near.
             const auto reported = wantMatrix ? tMatrix : tLoop;
-            const auto gbs = reported > 0 ? bytes / reported / 1e9 : 0.0;
+            const auto streamed =
+                wantMatrix ? ReflectedWignerBytes(lMax, n) : bytes;
+            const auto gbs = reported > 0 ? streamed / reported / 1e9 : 0.0;
 
             std::printf("%5zd %4s %8d ", lMax, forward ? "fwd" : "inv",
                         threads);

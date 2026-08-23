@@ -5,6 +5,8 @@
 
 #include <cassert>
 #include <cstddef>
+#include <limits>
+#include <numbers>
 #include <ranges>
 #include <span>
 #include <stdexcept>
@@ -77,13 +79,30 @@ class WignerMatrices {
 
   WignerMatrices() = default;
 
+  // Every order the alphabet has. What M1 built.
   template <std::ranges::range Range>
   requires RealFloatingPoint<std::ranges::range_value_t<Range>>
-  WignerMatrices(Int lMax, Int mMax, Int nMax, Range &&theta)
+  static auto Full(Int lMax, Int mMax, Int nMax, Range &&theta) {
+    return WignerMatrices(lMax, mMax, nMax, theta, false);
+  }
+
+  // Non-negative orders only, the negative ones recovered from the reflection
+  // (step M6). Requires colatitudes symmetric about pi/2, and checks it.
+  template <std::ranges::range Range>
+  requires RealFloatingPoint<std::ranges::range_value_t<Range>>
+  static auto Reflected(Int lMax, Int mMax, Int nMax, Range &&theta) {
+    return WignerMatrices(lMax, mMax, nMax, theta, true);
+  }
+
+  template <std::ranges::range Range>
+  requires RealFloatingPoint<std::ranges::range_value_t<Range>>
+  WignerMatrices(Int lMax, Int mMax, Int nMax, Range &&theta,
+                 bool reflected = false)
       : _lMax{lMax},
         _mMax{mMax},
         _nMax{nMax},
-        _nTheta(static_cast<Int>(std::ranges::size(theta))) {
+        _nTheta(static_cast<Int>(std::ranges::size(theta))),
+        _reflected{reflected} {
     if (lMax < 0) throw std::invalid_argument("Maximum degree must be positive");
     if (mMax < 0 || mMax > lMax) {
       throw std::invalid_argument(
@@ -92,6 +111,26 @@ class WignerMatrices {
     if (std::abs(nMax) > lMax) {
       throw std::invalid_argument(
           "Maximum upper index must not exceed the maximum degree");
+    }
+
+    // The reflection is a statement about theta and pi - theta both being
+    // sample points, so it is only available on a grid that has them. A
+    // Gauss-Legendre grid does -- its nodes are symmetric to one ulp of pi and
+    // its weights exactly -- but this class takes any angles at all, so it
+    // asks rather than assumes. Getting this wrong would produce a table that
+    // is quietly the wrong values for half the orders.
+    if (_reflected) {
+      const auto pi = std::numbers::pi_v<Real>;
+      for (auto i = Int{0}; i < _nTheta; i++) {
+        const auto mirror = theta[_nTheta - 1 - i];
+        if (std::abs(theta[i] + mirror - pi) >
+            static_cast<Real>(64) * std::numeric_limits<Real>::epsilon() * pi) {
+          throw std::invalid_argument(
+              "The reflected layout stores non-negative orders only and "
+              "recovers the rest from d^l_{nm}(pi - theta), so it needs "
+              "colatitudes symmetric about pi / 2");
+        }
+      }
     }
 
     // One offset per (n, m), and the matrices laid end to end in that order.
@@ -114,13 +153,33 @@ class WignerMatrices {
   auto MaxDegree() const { return _lMax; }
   auto MaxOrder() const { return _mMax; }
 
+  // Zero when reflected, whatever the alphabet: the negative orders are not
+  // stored and are reached through Sign() instead.
   auto MinOrder() const {
+    if (_reflected) return Int{0};
     if constexpr (std::same_as<MRange, All>) {
       return -_mMax;
     } else {
       return Int{0};
     }
   }
+
+  auto IsReflected() const { return _reflected; }
+
+  // The reflection itself, as one function so that no caller writes the sign
+  // out by hand:
+  //
+  //     d^l_{nm}(pi - theta) = (-1)^{l+n} d^l_{n,-m}(theta)
+  //
+  // verified against this library's own values to 3.8e-15 on values of order
+  // one. Equivalently, the matrix at -m is the matrix at +m with its columns
+  // reversed and this sign applied to row l.
+  static constexpr Real Sign(Int l, Int n) {
+    return ((l + n) % 2 == 0) ? Real{1} : Real{-1};
+  }
+
+  // Where the mirror of colatitude i lives.
+  auto MirrorAngle(Int iTheta) const { return _nTheta - 1 - iTheta; }
 
   auto Orders() const {
     return std::ranges::views::iota(MinOrder(), MaxOrder() + 1);
@@ -192,6 +251,7 @@ class WignerMatrices {
   Int _mMax{};
   Int _nMax{};
   Int _nTheta{};
+  bool _reflected{false};
 
   std::vector<Real> _data;
   std::vector<std::size_t> _offset;
@@ -242,9 +302,11 @@ class WignerMatrices {
             thetaRange[iTheta], sqrtIntView, sqrtIntInvView);
 
         // Scatter: (l, m) in the block goes to column iTheta of matrix (n, m).
+        const auto lowest = MinOrder();
         for (auto l : indices.Degrees()) {
           auto [blockOffset, sub] = indices.Index(l);
           for (auto m : sub.Orders()) {
+            if (m < lowest) continue;
             _data[_offset[OffsetIndex(n, m)] +
                   static_cast<std::size_t>((l - MinDegree(n, m)) * nTheta +
                                            iTheta)] =

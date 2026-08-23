@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <numbers>
 #include <vector>
 
 #include "CheckAdditionTheorem.h"
@@ -228,4 +229,120 @@ TEST(WignerMatrices, MatrixHeightFallsWithOrder) {
   EXPECT_EQ(matrices.NumberOfDegrees(0, 0), lMax + 1);
   EXPECT_EQ(matrices.NumberOfDegrees(0, lMax), 1);
   EXPECT_EQ(matrices.NumberOfDegrees(0, -lMax), 1);
+}
+
+// -- The reflected layout (core-plan.md section 11, step M6).
+//
+// D&T (C.118) in this library's stored values reads
+//
+//     d^l_{nm}(pi - theta) = (-1)^{l+n} d^l_{n,-m}(theta)
+//
+// so a table over colatitudes symmetric about pi/2 need store only the
+// non-negative orders. These tests pin the relation itself, the halving it
+// licenses, and the refusal when the angles do not support it -- because a
+// table that is quietly the wrong values for half its orders is the failure
+// mode here, and it would show up nowhere else until a transform was wrong.
+namespace {
+
+auto SymmetricAngles(std::ptrdiff_t nTheta) {
+  // Symmetric about pi/2 by construction rather than by quadrature, so the
+  // test does not depend on GaussQuad.
+  auto theta = std::vector<double>{};
+  for (auto i = std::ptrdiff_t{0}; i < nTheta; i++) {
+    theta.push_back(std::numbers::pi_v<double> *
+                    (static_cast<double>(i) + 0.5) /
+                    static_cast<double>(nTheta));
+  }
+  return theta;
+}
+
+}  // namespace
+
+TEST(WignerMatrices, ReflectionRecoversTheNegativeOrders) {
+  using namespace GSHTrans;
+  using Int = std::ptrdiff_t;
+
+  constexpr Int lMax = 9;
+  constexpr Int nMax = 2;
+  const auto theta = SymmetricAngles(8);
+  const auto nTheta = static_cast<Int>(theta.size());
+
+  const auto full = WignerMatrices<double, All, All>::Full(lMax, lMax, nMax,
+                                                           theta);
+  const auto half = WignerMatrices<double, All, All>::Reflected(lMax, lMax,
+                                                                nMax, theta);
+
+  EXPECT_FALSE(full.IsReflected());
+  EXPECT_TRUE(half.IsReflected());
+  EXPECT_EQ(full.MinOrder(), -lMax);
+  EXPECT_EQ(half.MinOrder(), 0);
+
+  for (auto n : half.UpperIndices()) {
+    for (auto m : half.Orders()) {
+      ASSERT_GE(m, 0);
+      const auto stored = half[n, m];
+      const auto reference = full[n, m];
+      ASSERT_EQ(stored.size(), reference.size());
+      // What is kept is kept exactly.
+      for (std::size_t i = 0; i < stored.size(); i++) {
+        EXPECT_EQ(stored[i], reference[i]) << "n " << n << " m " << m;
+      }
+
+      if (m == 0) continue;
+
+      // And what is dropped is recoverable: the matrix at -m is this one with
+      // its columns reversed and the sign applied to row l.
+      const auto lMin = half.MinDegree(n, m);
+      ASSERT_EQ(full.MinDegree(n, -m), lMin);
+      const auto negative = full[n, -m];
+      for (auto l : half.Degrees(n, m)) {
+        const auto sign = WignerMatrices<double, All, All>::Sign(l, n);
+        for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
+          const auto mirror = nTheta - 1 - iTheta;
+          EXPECT_NEAR(negative[(l - lMin) * nTheta + iTheta],
+                      sign * stored[(l - lMin) * nTheta + mirror], 1e-14)
+              << "n " << n << " m " << m << " l " << l << " i " << iTheta;
+        }
+      }
+    }
+  }
+}
+
+TEST(WignerMatrices, ReflectedStorageIsHalfTheOrders) {
+  using namespace GSHTrans;
+  using Int = std::ptrdiff_t;
+
+  constexpr Int lMax = 12;
+  const auto theta = SymmetricAngles(10);
+
+  auto count = [&](const auto& table) {
+    std::size_t total = 0;
+    for (auto n : table.UpperIndices()) {
+      for (auto m : table.Orders()) total += table[n, m].size();
+    }
+    return total;
+  };
+
+  const auto full = WignerMatrices<double, All, All>::Full(lMax, lMax, 2, theta);
+  const auto half =
+      WignerMatrices<double, All, All>::Reflected(lMax, lMax, 2, theta);
+
+  // Not exactly half: order zero is its own reflection and is stored once
+  // either way. So the saving is (total - zeroth) / 2, and stating it that
+  // way is the check that nothing else was dropped or duplicated.
+  std::size_t zeroth = 0;
+  for (auto n : full.UpperIndices()) zeroth += full[n, 0].size();
+  EXPECT_EQ(count(half), (count(full) - zeroth) / 2 + zeroth);
+}
+
+TEST(WignerMatrices, ReflectedRefusesUnsymmetricAngles) {
+  using namespace GSHTrans;
+  // Symmetric about pi/2 is the whole premise; without it half the table
+  // would be quietly wrong.
+  const auto skewed = std::vector<double>{0.3, 0.9, 1.4, 2.0};
+  EXPECT_THROW(
+      (WignerMatrices<double, All, All>::Reflected(6, 6, 1, skewed)),
+      std::invalid_argument);
+  // The unreflected layout takes any angles at all, as it always has.
+  EXPECT_NO_THROW((WignerMatrices<double, All, All>::Full(6, 6, 1, skewed)));
 }

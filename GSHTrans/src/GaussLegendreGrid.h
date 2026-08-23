@@ -1095,7 +1095,11 @@ class GaussLegendreGrid
   template <typename Body>
   void OverOrders(Int minOrder, Int lMax, Int c, Execution policy,
                   Body&& body) const {
-    const auto scratchSize = static_cast<std::size_t>((lMax + 1) * c);
+    // Room for a paired product and a paired right-hand side at once: step
+    // M6 puts the orders +m and -m through one GEMM, so the widest case is
+    // two columns of each, and the right-hand side is nTheta rows deep.
+    const auto scratchSize =
+        static_cast<std::size_t>(2 * c * (lMax + 1 + static_cast<Int>(this->NumberOfCoLatitudes())));
     const auto orders = lMax - minOrder + 1;
 
     // **A team is opened even for the sequential case, and that is the point
@@ -1158,7 +1162,10 @@ class GaussLegendreGrid
     const auto indices = GSHIndices<MRangeForScalar>(lMax, lMax, n);
     const auto coefficientSize = static_cast<Int>(indices.Size());
     const auto nFourier = FourierSize<Scalar>();
-    const auto minOrder = RealFloatingPoint<Scalar> ? Int{0} : -lMax;
+
+    // A real field has no negative orders to pair with: its coefficients at
+    // -m are the conjugates of those at +m and are not stored at all.
+    constexpr bool paired = !RealFloatingPoint<Scalar>;
 
     const auto chunk = InverseChunkSize(coefficientSize);
 
@@ -1180,37 +1187,44 @@ class GaussLegendreGrid
       // writes. **No accumulator and no reduction, in either direction** --
       // which is the forward loop kernel's weak point deleted rather than
       // tuned, and is why this restructure subsumes [C11].
-      auto DoOrder = [&](Int m, Complex* result) {
+      // One order and, where there is one, its negation -- both against the
+      // *same* matrix (step M6).
+      //
+      //     f^n_{l,-m} = (-1)^{l+n} sum_j w_j D^(n,m)_{lj} F_{-m}(theta_j-bar)
+      //
+      // so the product at -m is the product at +m applied to the -m Fourier
+      // data in reversed colatitude order, with a sign on the output rows.
+      // Two consequences, and the second is the one that pays.
+      //
+      // The table halves, because only m >= 0 is stored. And the two
+      // right-hand sides go into **one** GEMM rather than two, which doubles
+      // N from 2c to 4c -- N being the skinniest dimension in the problem and
+      // the one M5 measured as limiting, at 55 to 95 Gflop/s against peak.
+      //
+      // The arithmetic does *not* halve, and section 11's [C15] said it
+      // would; the same products are still done, of the same shapes.
+      auto DoOrder = [&](Int m, Complex* scratch) {
         const auto lMin = std::max(std::abs(n), std::abs(m));
         const auto rows = lMax - lMin + 1;
+        const auto pairs = paired && m > 0 ? Int{2} : Int{1};
 
-        // Negative orders live at the top of the FFT output, which is what
-        // the loop kernel's own indexing says too.
-        const auto mFourier = m >= 0 ? m : nPhi + m;
-        auto* block = stage.data() + mFourier * nTheta * c;
+        const auto* a = matrices[n, m].data();
+        auto* plus = stage.data() + m * nTheta * c;
 
-        // The quadrature weight and the 2 pi / nPhi. Applied here, to this
-        // order's block alone, rather than in a pass over the whole
-        // intermediate: each block is read by exactly one product, so the
-        // scaling is disjoint in the same way the product is, and doing it
-        // immediately before the read is one less pass over 16 MiB.
-        //
-        // Not folded into the matrix, which would be cheaper still and is not
-        // available: the same matrix serves the inverse transform, which
-        // carries no weight, and one stored matrix serving both directions is
-        // the whole reason the layout is worth having.
+        // The +m half is scaled in place and multiplied where it lies, as it
+        // was before the reflection existed. Only the -m half is copied, and
+        // it has to be: the reflection reverses the colatitude, and no BLAS
+        // takes a negative stride.
         for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
           const auto w = _impl->quad.W(iTheta) * scaleFactor;
-          for (auto k = Int{0}; k < c; k++) block[iTheta * c + k] *= w;
+          for (auto k = Int{0}; k < c; k++) plus[iTheta * c + k] *= w;
         }
 
         BlasDetails::RowMajorGemm(
             static_cast<int>(rows), static_cast<int>(2 * c),
-            static_cast<int>(nTheta), Real{1}, matrices[n, m].data(),
-            static_cast<int>(nTheta),
-            reinterpret_cast<const Real*>(block), static_cast<int>(2 * c),
-            Real{0}, reinterpret_cast<Real*>(result),
-            static_cast<int>(2 * c));
+            static_cast<int>(nTheta), Real{1}, a, static_cast<int>(nTheta),
+            reinterpret_cast<const Real*>(plus), static_cast<int>(2 * c),
+            Real{0}, reinterpret_cast<Real*>(scratch), static_cast<int>(2 * c));
 
         // Scatter: the coefficient block is triangular, so the stride between
         // consecutive degrees at one order is not constant and the product
@@ -1218,13 +1232,39 @@ class GaussLegendreGrid
         for (auto l = lMin; l <= lMax; l++) {
           const auto j = indices.Index(l, m);
           for (auto k = Int{0}; k < c; k++) {
-            outFirst[outBatch.Offset(j, first + k)] =
-                result[(l - lMin) * c + k];
+            outFirst[outBatch.Offset(j, first + k)] = scratch[(l - lMin) * c + k];
+          }
+        }
+
+        if (pairs == 1) return;
+
+        auto* rhs = scratch + rows * c;
+        const auto* minus = stage.data() + (nPhi - m) * nTheta * c;
+        for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
+          const auto w = _impl->quad.W(iTheta) * scaleFactor;
+          const auto mirror = nTheta - 1 - iTheta;
+          for (auto k = Int{0}; k < c; k++) {
+            rhs[iTheta * c + k] = minus[mirror * c + k] * w;
+          }
+        }
+
+        BlasDetails::RowMajorGemm(
+            static_cast<int>(rows), static_cast<int>(2 * c),
+            static_cast<int>(nTheta), Real{1}, a, static_cast<int>(nTheta),
+            reinterpret_cast<const Real*>(rhs), static_cast<int>(2 * c),
+            Real{0}, reinterpret_cast<Real*>(scratch), static_cast<int>(2 * c));
+
+        for (auto l = lMin; l <= lMax; l++) {
+          const auto sign = std::remove_cvref_t<decltype(matrices)>::Sign(l, n);
+          const auto jMinus = indices.Index(l, -m);
+          for (auto k = Int{0}; k < c; k++) {
+            outFirst[outBatch.Offset(jMinus, first + k)] =
+                sign * scratch[(l - lMin) * c + k];
           }
         }
       };
 
-      OverOrders(minOrder, lMax, c, policy, DoOrder);
+      OverOrders(Int{0}, lMax, c, policy, DoOrder);
     }
   }
 
@@ -1250,7 +1290,10 @@ class GaussLegendreGrid
     const auto indices = GSHIndices<MRangeForScalar>(lMax, lMax, n);
     const auto coefficientSize = static_cast<Int>(indices.Size());
     const auto nFourier = FourierSize<Scalar>();
-    const auto minOrder = RealFloatingPoint<Scalar> ? Int{0} : -lMax;
+
+    // A real field has no negative orders to pair with: its coefficients at
+    // -m are the conjugates of those at +m and are not stored at all.
+    constexpr bool paired = !RealFloatingPoint<Scalar>;
 
     const auto chunk = InverseChunkSize(coefficientSize);
 
@@ -1279,14 +1322,23 @@ class GaussLegendreGrid
       // Disjoint in the same way the forward direction is, and for the same
       // reason: each order reads coefficients no other order reads and writes
       // the one block of the intermediate that its own FFT order occupies.
+      // The mirror of the forward direction, order by order (step M6). With
+      // g_l = (-1)^{l+n} f^n_{l,-m}, the reflection gives
+      //
+      //     F_{-m}(theta_i) = sum_l D^(n,m)_{l,i-bar} g_l
+      //
+      // so the -m result comes out of the same product, in reversed
+      // colatitude order, from coefficients that carry the sign on the way in.
       auto DoOrder = [&](Int m, Complex* gathered) {
         const auto lMin = std::max(std::abs(n), std::abs(m));
         const auto rows = lMax - lMin + 1;
-        const auto mFourier = m >= 0 ? m : nPhi + m;
+        const auto pairs = paired && m > 0 ? Int{2} : Int{1};
 
-        // Gather this order's coefficients out of the caller's storage. The
-        // block is triangular, so this is the mirror of the forward
-        // direction's scatter and is unavoidable for the same reason.
+        const auto* a = matrices[n, m].data();
+
+        // The +m product writes straight into its block of the intermediate,
+        // as it did before the reflection existed. Only the -m product needs
+        // somewhere to land first, because its rows come out mirrored.
         for (auto l = lMin; l <= lMax; l++) {
           const auto j = indices.Index(l, m);
           for (auto k = Int{0}; k < c; k++) {
@@ -1296,15 +1348,42 @@ class GaussLegendreGrid
 
         BlasDetails::RowMajorGemmTransposed(
             static_cast<int>(nTheta), static_cast<int>(2 * c),
-            static_cast<int>(rows), Real{1}, matrices[n, m].data(),
-            static_cast<int>(nTheta),
+            static_cast<int>(rows), Real{1}, a, static_cast<int>(nTheta),
             reinterpret_cast<const Real*>(gathered), static_cast<int>(2 * c),
             Real{0},
-            reinterpret_cast<Real*>(stage.data() + mFourier * nTheta * c),
+            reinterpret_cast<Real*>(stage.data() + m * nTheta * c),
             static_cast<int>(2 * c));
+
+        if (pairs == 1) return;
+
+        // The sign rides in on the coefficients, so the product is the -m
+        // field with its colatitudes reversed.
+        for (auto l = lMin; l <= lMax; l++) {
+          const auto sign = std::remove_cvref_t<decltype(matrices)>::Sign(l, n);
+          const auto jMinus = indices.Index(l, -m);
+          for (auto k = Int{0}; k < c; k++) {
+            gathered[(l - lMin) * c + k] =
+                sign * inFirst[inBatch.Offset(jMinus, first + k)];
+          }
+        }
+
+        auto* result = gathered + rows * c;
+        BlasDetails::RowMajorGemmTransposed(
+            static_cast<int>(nTheta), static_cast<int>(2 * c),
+            static_cast<int>(rows), Real{1}, a, static_cast<int>(nTheta),
+            reinterpret_cast<const Real*>(gathered), static_cast<int>(2 * c),
+            Real{0}, reinterpret_cast<Real*>(result), static_cast<int>(2 * c));
+
+        auto* minus = stage.data() + (nPhi - m) * nTheta * c;
+        for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
+          // Row iTheta of the product is F_{-m} at the *mirrored* angle.
+          const auto mirror = nTheta - 1 - iTheta;
+          const auto* row = result + iTheta * c;
+          for (auto k = Int{0}; k < c; k++) minus[mirror * c + k] = row[k];
+        }
       };
 
-      OverOrders(minOrder, lMax, c, policy, DoOrder);
+      OverOrders(Int{0}, lMax, c, policy, DoOrder);
 
       auto stageSpan = std::span<const Complex>(
           stage.data(), static_cast<std::size_t>(nFourier * nTheta * c));
@@ -1545,7 +1624,11 @@ class GaussLegendreGrid
         std::tie(sqrtInt, sqrtIntInv) =
             WignerDetails::PreComputeTables<Real>(lMax, lMax, nMax);
       } else if (kernel.IsMatrix()) {
-        wignerMatrices = WignerMatrices<Real, _MRange, _NRange>(
+        // Reflected: non-negative orders only, halving 648 MB to 324 at
+        // lMax = 256 with nMax = 2. The quadrature is symmetric about the
+        // equator, which is what makes it available, and WignerMatrices
+        // checks that rather than taking it on trust.
+        wignerMatrices = WignerMatrices<Real, _MRange, _NRange>::Reflected(
             lMax, lMax, nMax, quad.Points());
       } else {
         wigner = Wigner<Real, _MRange, _NRange, Multiple, ColumnMajor>(
