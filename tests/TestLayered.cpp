@@ -868,6 +868,10 @@ TEST(LayeredGradient, TakesNoTangentialOperand) {
   SUCCEED();
 }
 
+#ifdef GSHTRANS_HAVE_INTERPOLATION
+#include <Interpolation/CubicSpline.hpp>
+#endif
+
 //--------------------------------------------------------------------------//
 //                         Ready-made radial derivatives                     //
 //--------------------------------------------------------------------------//
@@ -1084,4 +1088,97 @@ TEST(LayeredGradient, RunsWithAReadyMadeRadialDerivative) {
 
   check(fd, "finite differences");
   check(lagrange, "the differentiation matrix");
+}
+
+// A natural spline is exact on straight lines and on nothing else, since the
+// end conditions force the second derivative to vanish where a curve's does
+// not. So the property test is the linear one, and everything beyond it is
+// the oracle below.
+TEST(RadialDerivatives, TheSplineIsExactOnStraightLines) {
+  auto radial = RadialGrid<Real>(UnevenRadii);
+  const auto d = SplineDerivative<Real>(radial);
+
+  for (auto degree = Int{0}; degree <= 1; degree++) {
+    auto values = std::vector<Real>{};
+    for (auto r : UnevenRadii) values.push_back(Monomial(r, degree));
+    const auto got = Line(d, values);
+    for (std::size_t i = 0; i < UnevenRadii.size(); i++) {
+      EXPECT_NEAR(got[i], MonomialSlope(UnevenRadii[i], degree), 1.0e-12)
+          << "degree " << degree << ", node " << i;
+    }
+  }
+}
+
+TEST(RadialDerivatives, TheSplineRefusesARepeatedRadius) {
+  // A repeated radius is how a two-sided material interface is written, and a
+  // single spline through it is not what is wanted there. Refusing says so.
+  auto interface = std::vector<Real>{0.4, 0.7, 0.7, 1.0};
+  auto radial = RadialGrid<Real>(interface);
+  EXPECT_THROW((SplineDerivative<Real>(radial)), std::invalid_argument);
+}
+
+#ifdef GSHTRANS_HAVE_INTERPOLATION
+// The oracle, and the reason the operator is allowed to be hand-written at
+// all: an independent implementation of the same spline, by another author in
+// another library, must agree with it to rounding. Anything this file could
+// asssert about the operator on its own terms would be weaker.
+TEST(RadialDerivatives, TheSplineAgreesWithAnIndependentImplementation) {
+  auto radial = RadialGrid<Real>(UnevenRadii);
+  const auto d = SplineDerivative<Real>(radial);
+
+  // Data with no polynomial structure, so that agreement is not an accident
+  // of both being exact on it.
+  auto values = std::vector<Real>{};
+  for (auto r : UnevenRadii) values.push_back(std::exp(r) * std::sin(3.0 * r));
+
+  const auto got = Line(d, values);
+  const Interpolation::CubicSpline oracle{UnevenRadii, values};
+  for (std::size_t i = 0; i < UnevenRadii.size(); i++) {
+    EXPECT_NEAR(got[i], oracle.Evaluate<1>(UnevenRadii[i]), 1.0e-12)
+        << "node " << i;
+  }
+}
+
+// And on complex lines, which is what the spectral domain hands it. The
+// oracle takes complex ordinates directly, so the comparison is like for
+// like rather than a real-and-imaginary split on either side.
+TEST(RadialDerivatives, TheSplineAgreesOnComplexLinesToo) {
+  auto radial = RadialGrid<Real>(UnevenRadii);
+  const auto d = SplineDerivative<Real>(radial);
+
+  auto values = std::vector<Complex>{};
+  for (auto r : UnevenRadii) {
+    values.push_back(Complex{std::exp(r) * std::sin(3.0 * r), std::cos(2.0 * r)});
+  }
+
+  auto got = std::vector<Complex>(values.size());
+  d(std::span<const Complex>(values), std::span<Complex>(got));
+
+  const Interpolation::CubicSpline oracle{UnevenRadii, values};
+  for (std::size_t i = 0; i < UnevenRadii.size(); i++) {
+    const auto expected = oracle.Evaluate<1>(UnevenRadii[i]);
+    EXPECT_NEAR(got[i].real(), expected.real(), 1.0e-12) << "node " << i;
+    EXPECT_NEAR(got[i].imag(), expected.imag(), 1.0e-12) << "node " << i;
+  }
+}
+#endif
+
+// The spline serves the gradient like the other two, and one operator serves
+// every thread.
+TEST(RadialDerivatives, TheSplineIsAnOrdinaryRadialOperator) {
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = RadialGrid<Real>(UnevenRadii);
+
+  auto f = LayeredSpinField<0, Grid, ComplexValued>(radial, grid);
+  for (Int i = 0; i < f.NumberOfRadii() * f.SliceSize(); i++) {
+    f.Data()[i] = Complex{std::cos(0.05 * i), std::sin(0.11 * i)};
+  }
+
+  const auto d = SplineDerivative<Real>(radial);
+  const auto one = ApplyRadially(f, d, Execution::Sequential());
+  const auto many = ApplyRadially(f, d, Execution::Parallel());
+  for (std::size_t i = 0; i < one.Data().size(); i++) {
+    EXPECT_EQ(one.Data()[i], many.Data()[i]) << "at " << i;
+  }
 }

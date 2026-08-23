@@ -2511,6 +2511,31 @@ statement is true.
 `thread_local` solve, and agreement with `Interpolation::CubicSpline` to
 rounding where the dependency is present.
 
+*S2 and S4 are done.* `GSHTRANS_WITH_INTERPOLATION` is on by default and
+fetched-or-found like the siblings; the macro it defines is carried on the
+exported target rather than generated into a header, because `Version.h` is
+hand-written so that copying the `GSHTrans` directory stays a complete way to
+vendor the library, and a build-tree header would break exactly that.
+
+**Off is a supported configuration and is checked**, not merely claimed: a
+build with `-DGSHTRANS_WITH_INTERPOLATION=OFF` compiles, fetches nothing, and
+runs 268 of the 270 tests — the two missing ones being the oracle, which is
+the only thing the dependency is for.
+
+*The operator is what [R4] said it would be.* The natural spline's second
+derivatives satisfy a tridiagonal system whose matrix is a function of the
+radii alone, so it is built once and a line costs one Thomas sweep into
+`thread_local` scratch. Strictly diagonally dominant, so no pivoting, and the
+header says why rather than asserting it.
+
+*And the oracle is the point.* `Interpolation::CubicSpline` is an independent
+implementation of the same spline by another author, and the test requires
+agreement to `1e-12` on data with no polynomial structure — real and complex
+both, the latter directly, since the upstream interpolators take complex
+ordinates. That is a stronger check than any property the operator could
+assert about itself, and it is what makes hand-writing the operator honest
+rather than a duplication.
+
 **S5 — `Resample`.** Not a `RadialOperator`: it changes `nR`, so it does not
 map a stack to one of the same shape and cannot use `ApplyRadially`. It needs
 a second seam and one small addition to the stack types — a way to ask for the

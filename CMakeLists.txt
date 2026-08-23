@@ -94,6 +94,35 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(NumericConcepts GaussQuad FFTWpp)
 
+# Interpolation, which is optional and is the one dependency only part of the
+# library uses.
+#
+# Nothing angular wants a one-dimensional interpolator: the transform, the
+# index algebra and the surface gradient are complete without it, and so are
+# all three ready-made radial derivatives, which are self-contained by
+# design (field-algebra-plan.md section 19.5 [R4]). What it buys is
+# resampling a layered field onto a different radial grid, where the whole
+# menu of schemes comes for the price of a policy argument.
+#
+# On by default because it is header-only, depends on nothing but
+# NumericConcepts -- which is already here -- and is small. Off is a supported
+# configuration and the suite runs in it.
+#
+# Tracking main, like the three above. Interpolation's own README asks
+# consumers to pin a reviewed commit, which is right for a stranger and wrong
+# for four libraries with one author that move together (section 19.5 [R2]).
+option(GSHTRANS_WITH_INTERPOLATION
+       "Radial resampling, built on da380/Interpolation" ON)
+
+if(GSHTRANS_WITH_INTERPOLATION)
+  FetchContent_Declare(
+    Interpolation
+    GIT_REPOSITORY https://github.com/da380/Interpolation.git
+    GIT_TAG main
+    FIND_PACKAGE_ARGS)
+  FetchContent_MakeAvailable(Interpolation)
+endif()
+
 # If a dependency was fetched rather than found, it is an ordinary target in
 # this build and must be in an export set of its own for GSHTrans to be
 # exportable at all. CMake does notice, but only at the generate step and with
@@ -101,6 +130,9 @@ FetchContent_MakeAvailable(NumericConcepts GaussQuad FFTWpp)
 # arrive here is a build tree configured before this file asked for the
 # install, whose cache still holds the old answer. So say it plainly.
 if(GSHTRANS_INSTALL)
+  # Interpolation is not in this list, and that is not an omission: its
+  # install rules are unconditional, so a fetched copy installs itself with no
+  # option to set and there is nothing here to check.
   foreach(_dependency NumericConcepts GaussQuad FFTWpp)
     if(TARGET ${_dependency})
       get_target_property(_imported ${_dependency} IMPORTED)
@@ -136,6 +168,17 @@ target_link_libraries(GSHTrans INTERFACE
   FFTWpp::FFTWpp
   GaussQuad::GaussQuad
   OpenMP::OpenMP_CXX)
+
+# The optional half, and the macro that guards the headers using it. Carried
+# on the target rather than generated into a header, because Version.h is
+# written by hand so that copying the GSHTrans directory remains a complete
+# way to vendor the library -- and a build-tree-generated header would break
+# exactly that. An INTERFACE definition is exported with the target, so an
+# installed consumer sees the same answer this build did.
+if(GSHTRANS_WITH_INTERPOLATION)
+  target_link_libraries(GSHTrans INTERFACE Interpolation::Interpolation)
+  target_compile_definitions(GSHTrans INTERFACE GSHTRANS_HAVE_INTERPOLATION)
+endif()
 
 target_compile_features(GSHTrans INTERFACE cxx_std_23)
 

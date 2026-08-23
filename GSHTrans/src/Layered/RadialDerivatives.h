@@ -283,6 +283,138 @@ class LagrangeDerivative {
   std::vector<Real> _d;
 };
 
+//--------------------------------------------------------------------------//
+//                            The spline derivative                          //
+//--------------------------------------------------------------------------//
+
+// d/dr of the natural cubic spline through the samples.
+//
+// The middle ground between the two above, and the one to reach for when the
+// radii are many and unevenly spaced: it is global, like the differentiation
+// matrix, but its cost is linear in nR rather than quadratic, and unlike a
+// global polynomial it does not fall apart as the nodes multiply.
+//
+// **Why this is written out rather than built on Interpolation, which has a
+// perfectly good CubicSpline.** That class computes its coefficients at
+// construction and holds them in a vector, so one costs about four
+// allocations -- and a radial operator is called once per line, of order
+// 66,000 times per application at lMax = 256. Ten milliseconds of allocation
+// against a two-millisecond transform is not a trade worth making in the
+// inner loop of a matrix-free solve.
+//
+// The way out is what RadialOperator.h's contract asks for. The natural
+// spline's second derivatives satisfy a tridiagonal system whose *matrix
+// depends on the radii alone*; only its right-hand side carries the data. So
+// the matrix is factorised once, here, and a line costs one Thomas sweep into
+// thread_local scratch and no allocation at all. That is a thing upstream's
+// interface cannot express, which is why this is not duplication -- and
+// `Interpolation::CubicSpline` is the oracle the tests check it against,
+// which is a stronger check than any property this file could asssert about
+// itself (field-algebra-plan.md section 19.5 [R4]).
+//
+// Natural conditions, S'' = 0 at both ends. That is a choice and it shows: it
+// is wrong for data that is genuinely curved at the boundary, and the first
+// and last intervals are where a spline derivative is least trustworthy
+// whatever conditions are imposed. A caller who knows the end slopes has a
+// better operator available in three lines of their own, which is the point
+// of the seam.
+template <RealFloatingPoint _Real>
+class SplineDerivative {
+ public:
+  using Int = std::ptrdiff_t;
+  using Real = _Real;
+
+  SplineDerivative() = delete;
+
+  explicit SplineDerivative(RadialGrid<Real> radial)
+      : _radial{std::move(radial)} {
+    const auto nR = _radial.NumberOfRadii();
+    if (nR < 2) {
+      throw std::invalid_argument("A spline derivative needs at least two radii");
+    }
+    const auto radii = _radial.Radii();
+    const auto n = static_cast<std::size_t>(nR);
+
+    _h.resize(n - 1);
+    for (std::size_t i = 0; i + 1 < n; i++) {
+      _h[i] = radii[i + 1] - radii[i];
+      if (_h[i] <= Real{0}) {
+        throw std::invalid_argument(
+            "A spline derivative needs strictly increasing radii, and this "
+            "grid repeats one -- which is how a material interface is "
+            "written, and is a case for a piecewise operator rather than "
+            "this one");
+      }
+    }
+
+    // The system for the second derivatives m, with m = 0 at both ends. Only
+    // the three diagonals live here; the right-hand side is the data and is
+    // built per line.
+    _sub.assign(n, Real{0});
+    _diag.assign(n, Real{1});
+    _super.assign(n, Real{0});
+    for (std::size_t i = 1; i + 1 < n; i++) {
+      _sub[i] = _h[i - 1] / 6;
+      _diag[i] = (_h[i - 1] + _h[i]) / 3;
+      _super[i] = _h[i] / 6;
+    }
+  }
+
+  const RadialGrid<Real>& Radial() const { return _radial; }
+
+  template <typename Scalar>
+  void operator()(std::span<const Scalar> in, std::span<Scalar> out) const {
+    const auto n = static_cast<std::size_t>(_radial.NumberOfRadii());
+    if (in.size() != n || out.size() != n) {
+      throw std::invalid_argument(
+          "A radial operator acts on a line of one value per radius");
+    }
+
+    // Scratch, not state: one operator serves every thread, so anything the
+    // call writes to lives here (RadialOperator.h).
+    thread_local auto diagonal = std::vector<Real>{};
+    thread_local auto m = std::vector<Scalar>{};
+    if (diagonal.size() < n) diagonal.resize(n);
+    if (m.size() < n) m.resize(n);
+
+    for (std::size_t i = 0; i < n; i++) diagonal[i] = _diag[i];
+    m[0] = Scalar{};
+    m[n - 1] = Scalar{};
+    for (std::size_t i = 1; i + 1 < n; i++) {
+      m[i] = (in[i + 1] - in[i]) / _h[i] - (in[i] - in[i - 1]) / _h[i - 1];
+    }
+
+    // Thomas, in place. No pivoting, and none needed: an interior row has
+    // off-diagonal magnitude (h[i-1] + h[i]) / 6 against a diagonal of
+    // (h[i-1] + h[i]) / 3, so the system is strictly diagonally dominant.
+    for (std::size_t i = 1; i < n; i++) {
+      const auto factor = _sub[i] / diagonal[i - 1];
+      diagonal[i] -= factor * _super[i - 1];
+      m[i] -= factor * m[i - 1];
+    }
+    m[n - 1] = m[n - 1] / diagonal[n - 1];
+    for (auto i = static_cast<Int>(n) - 2; i >= 0; i--) {
+      const auto k = static_cast<std::size_t>(i);
+      m[k] = (m[k] - _super[k] * m[k + 1]) / diagonal[k];
+    }
+
+    // S'(r_j) from the left end of the interval that starts there, and from
+    // the right end of the last interval for the final node.
+    for (std::size_t j = 0; j + 1 < n; j++) {
+      out[j] = (in[j + 1] - in[j]) / _h[j] -
+               _h[j] * (Real{2} * m[j] + m[j + 1]) / Real{6};
+    }
+    const auto last = n - 2;
+    out[n - 1] = (in[n - 1] - in[last]) / _h[last] +
+                 _h[last] * (m[last] + Real{2} * m[n - 1]) / Real{6};
+  }
+
+ private:
+  RadialGrid<Real> _radial;
+  std::vector<Real> _h;
+  std::vector<Real> _sub, _diag, _super;
+};
+
 }  // namespace GSHTrans
 
 #endif  // GSH_TRANS_RADIAL_DERIVATIVES_GUARD_H
