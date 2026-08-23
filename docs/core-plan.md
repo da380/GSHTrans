@@ -1735,7 +1735,7 @@ which reaches DRAM.
 | symmetry reduction [P3, P4] | ~2× | small | large | high on traffic; irregular access |
 | transform-major layout + GEMM [P5] | ~1.3× | **potentially large** | large | the only lever aimed at what binds |
 | generation, F′ rungs B and C | — | — | large | measured to lose (T11) |
-| polar truncation | ~1.5–2× | ~1.5–2× | medium | **not previously in this document** |
+| polar truncation | ~1.5–2× | ~1.5–2× | medium | **not previously in this document** — *and the estimate is wrong; §11.7 measures ~1.15× at lMax = 256* |
 
 Two entries need saying out loud.
 
@@ -2071,7 +2071,8 @@ is no longer a number that says whether the restructure was worth doing.
 **[C16] Polar truncation is not part of this.** §10 item 4 remains its own
 piece of work. It is independent of the layout, it applies to both kernels,
 and folding it in would make the A/B unreadable for the same reason [C15]
-defers the reflection.
+defers the reflection. *§11.7 measures what it would be worth, now that there
+is a kernel it would fit, and the answer is much less than §10 supposed.*
 
 ### 11.3 What has to change, and one cost §12 understates
 
@@ -2823,6 +2824,65 @@ halves the table *and the arithmetic*. The table halves. The arithmetic does
 not, and the attempt to convert the symmetry into arithmetic — the paired
 GEMM — measured worse. What the reflection buys is traffic and memory, which
 is what §12's own DRAM argument should have predicted.
+
+---
+
+### 11.7 Polar truncation, priced before it is planned
+
+§10 put polar truncation in the option table at **~1.5–2×, in both regimes**,
+and called it "the only option here that makes the problem *smaller*". The
+matrix kernel is where it would fit: the intermediate is `[m][θ][k]`, so a
+band of colatitudes at fixed order is **contiguous**, and truncating it is a
+pointer offset and a smaller `K` — nothing else changes. It is awkward in the
+loop kernel and natural in this one.
+
+So it is worth pricing before it is planned. Measured on the built table,
+`nMax = 2`, as the fraction of values retained when the colatitudes are
+trimmed to where the values exceed a tolerance times the largest in their
+matrix:
+
+| lMax | rectangular, 1e-15 | 1e-8 | per-degree, 1e-15 | 1e-8 |
+|-----:|---:|---:|---:|---:|
+|  64 | 94.7% | 91.0% | 92.6% | 86.8% |
+| 128 | 90.6% | 87.0% | 86.2% | 80.5% |
+| 256 | 86.7% | 83.9% | 80.1% | 75.4% |
+
+and the per-degree ceiling out to larger degrees, at `nMax = 0`: **75.1%** at
+`lMax = 512` and **71.3%** at 1024.
+
+**Three things follow, and together they say this is not the lever §10 thought.**
+
+- **The buildable version saves about 13% at `lMax = 256`, not a factor of
+  1.5.** A GEMM takes a rectangle, so the band has to be one band per order —
+  and a rectangle is set by its *widest* row. The per-degree trim is
+  triangular, needs a product per row-block rather than one per order, and
+  still only reaches 1.25× there.
+- **It does not improve much with degree.** The ceiling is 1.40× at
+  `lMax = 1024` and flattening. §10's 1.5–2× is not reached at any size
+  measured. The reasoning was right — `d^l_{nm}` does fall off like
+  `sin^{|m|}θ` — but the decay to a tolerance worth having is slower than the
+  argument suggests: at `1e-15`, `sin^{256}θ` is still above threshold over a
+  third of the range.
+- **And the time saved would be less than the arithmetic saved**, which is the
+  decisive point. Truncation shrinks `K`, and M5 measured GEMM efficiency
+  falling with the inner dimension — 95 Gflop/s at `n_L = 255` against 55 at
+  3. So a 13% cut in flops buys less than 13% in time, and possibly nothing.
+
+*What it would cost to build*, for the record, since the shape is now clear: a
+band per `(n, m)` in `WignerMatrices` and the rule that sets it, an offset and
+a smaller `K` in the forward kernel, the same plus zeroing the out-of-band
+rows in the inverse, a tolerance policy, and tests. Comparable to M1 and M3a
+together — the smaller half of what §11 took, since the infrastructure exists.
+
+*And one cost that is not effort.* The tolerance would enter [C12]'s oracle:
+the two kernels would agree only to the truncation tolerance rather than to
+`1e-13`, so the check that made §11 safe to build gets weaker exactly as the
+saving grows. That argues for a default tolerance tight enough to leave the
+oracle intact, which is also the setting that saves least.
+
+**So it is recorded as measured and not scheduled.** §10's entry stands
+corrected: the option is real, the mechanism is sound, and it is worth about
+1.15× where this library is used rather than 1.5–2×.
 
 ### 11.5 What this does to the wisdom question
 
