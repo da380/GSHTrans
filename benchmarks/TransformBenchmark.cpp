@@ -27,6 +27,7 @@
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <set>
 #include <string>
 #include <thread>
@@ -312,12 +313,26 @@ double ScanBandwidthGBs(double bytes, int threads, int touch, int windows = 5) {
   auto* ap = a.get();
   const auto count = static_cast<std::ptrdiff_t>(n);
   static volatile double sink = 0.0;  // keeps the sum from being optimised out
+  // Four accumulators, not one, and this was a defect rather than a
+  // refinement. A single `sum += a[i]` is a floating-point dependency chain,
+  // and the compiler may not reassociate it without -ffast-math -- so at one
+  // thread this measured add latency and not memory at all: 12.7 GB/s against
+  // a triad of 36.2 on the same machine, a threefold understatement. It came
+  // right at four threads and above, where several chains overlap, which is
+  // why the figures section 10 quotes -- all taken at eight threads -- stand.
+  // Any single-thread comparison made against the old column was wrong.
   const auto seconds = TimePerCall(
       [&] {
         auto sum = 0.0;
 #pragma omp parallel for schedule(static) reduction(+ : sum) \
     num_threads(threads)
-        for (std::ptrdiff_t i = 0; i < count; ++i) sum += ap[i];
+        for (std::ptrdiff_t i = 0; i < count; i += 4) {
+          auto s0 = ap[i];
+          auto s1 = i + 1 < count ? ap[i + 1] : 0.0;
+          auto s2 = i + 2 < count ? ap[i + 2] : 0.0;
+          auto s3 = i + 3 < count ? ap[i + 3] : 0.0;
+          sum += (s0 + s1) + (s2 + s3);
+        }
         sink = sum;
       },
       0.15, windows);
@@ -483,7 +498,7 @@ int main(int argc, char** argv) {
   // server runs were lost to exactly that: the source reached the machine with
   // an old timestamp, make saw nothing to do, and the log looked plausible
   // while being produced by the previous harness.
-  constexpr auto revision = 5;
+  constexpr auto revision = 6;
 
   if (argc == 2 && std::string(argv[1]) == "--check") {
     std::printf("harness revision %d\n", revision);
@@ -497,7 +512,22 @@ int main(int argc, char** argv) {
   std::printf("double precision, single field per call (k = 1)\n");
   std::printf(
       "sections: stream grid transforms threading batching generated "
-      "server huge (all, if none named)\n");
+      "kernels kernels-loop kernels-matrix server huge "
+      "(all, if none named)\n");
+
+  // An unoptimised build measures nothing, and the default build directory is
+  // one: `cmake -S . -B build` leaves CMAKE_BUILD_TYPE empty, which is fine
+  // for the test suite and useless here. The whole harness runs about ten
+  // times slow in it -- and every number is self-consistent, so nothing looks
+  // wrong. Found the hard way while adding the `kernels` section, whose first
+  // run reported speedups of forty.
+#ifndef NDEBUG
+  std::printf(
+      "\n*** WARNING: built without NDEBUG, so probably without "
+      "optimisation. ***\n"
+      "*** Every figure below is meaningless. Configure with "
+      "-DCMAKE_BUILD_TYPE=Release. ***\n");
+#endif
 
   PrintMachineFacts();
 
@@ -808,6 +838,211 @@ int main(int argc, char** argv) {
   //------------------------------------------------------------------------//
   //             Thread scaling to the full machine ([C11])                  //
   //------------------------------------------------------------------------//
+
+  //------------------------------------------------------------------------//
+  //                     Loop kernel against matrix kernel                    //
+  //------------------------------------------------------------------------//
+
+#ifdef GSHTRANS_HAVE_BLAS
+  // Step M5 of core-plan.md section 11.
+  //
+  // Three requirements, each guarding a way this measurement can mislead, and
+  // section 11.4 states them as part of the step rather than as presentation.
+  //
+  // -- Two tables, batched and unbatched, and not one with k as a row. The
+  // restructure is predicted to buy nothing unbatched at high degree on many
+  // threads, where the stage is already at the memory roof. That is the
+  // prediction coming true, and a column of 1.0x sitting beside the batched
+  // gains reads as failure to anyone scanning it.
+  //
+  // -- A GB/s column against the roof the `stream` section measures. This is
+  // the requirement that does the real work. A caption asserting that no gain
+  // is expected is something a reader must take on trust; a row showing 40
+  // GB/s against a 42 GB/s roof demonstrates it.
+  //
+  // -- One kernel per invocation, for a careful A/B. Comparing
+  // construction-time policies means two grids, and at lMax = 256 that is
+  // 648 MB of table each: both live costs 1.3 GB and the second starts on a
+  // cold cache with different page placement. `kernels-loop` and
+  // `kernels-matrix` each build one. Plain `kernels` builds both in one
+  // process and prints the ratio, which is the convenient form and not the
+  // careful one -- it says so in its own output.
+  const auto RunKernelSection = [](bool wantLoop, bool wantMatrix,
+                                   bool ratios) {
+    const auto degrees = std::vector<Int>{64, 128, 256};
+    const Int nMax = 2;
+    const Int n = 2;
+
+    for (const auto batched : {false, true}) {
+      const auto k = batched ? Int{8} : Int{1};
+      PrintHeader(batched ? "Kernels, batched (k = 8): the regime phases 2-5 "
+                            "run in"
+                          : "Kernels, unbatched (k = 1): predicted to gain "
+                            "nothing at the roof");
+      if (!batched) {
+        std::printf(
+            "Section 12 predicts no gain here at high degree and many\n"
+            "threads, because the loop kernel is already at the memory\n"
+            "roof. The GB/s and roof columns are how to check that rather\n"
+            "than take it on trust.\n\n");
+      }
+      std::printf(
+          "GB/s is table traffic over time; roof is a one-thread-touched\n"
+          "read scan of the same bytes. Where the table fits in cache the\n"
+          "first exceeds the second, which says the table is not coming\n"
+          "from DRAM rather than that anything is wrong.\n\n");
+      std::printf("%5s %4s %8s %11s %11s %9s %10s %10s\n", "lMax", "dir",
+                  "threads", "loop (ms)", "matrix (ms)", "ratio", "GB/s",
+                  "roof");
+
+      for (auto lMax : degrees) {
+        const auto bytes = WignerBytes(lMax, n);
+        auto loop = std::optional<GaussLegendreGrid<Real, All, All>>{};
+        auto matrix = std::optional<GaussLegendreGrid<Real, All, All>>{};
+        if (wantLoop) loop.emplace(lMax, nMax, FFTWpp::Measure);
+        if (wantMatrix) {
+          matrix.emplace(lMax, nMax, FFTWpp::Measure, Chunking::Automatic(),
+                         WignerValues::Stored(), TransformKernel::Matrix());
+        }
+        const auto& any = wantLoop ? *loop : *matrix;
+        const auto fieldSize = static_cast<Int>(any.FieldSize());
+        const auto coefficientSize =
+            static_cast<Int>(any.CoefficientSize(lMax, n));
+
+        auto fields = FFTWpp::vector<Complex>(k * fieldSize);
+        for (std::size_t i = 0; i < fields.size(); ++i) {
+          fields[i] = Complex{std::cos(0.31 * static_cast<double>(i)),
+                              std::sin(0.17 * static_cast<double>(i))};
+        }
+        auto coefficients = FFTWpp::vector<Complex>(k * coefficientSize);
+        const auto fb = Batch::Contiguous(k, fieldSize);
+        const auto cb = Batch::Contiguous(k, coefficientSize);
+
+        for (auto threads : ThreadLadder()) {
+          const auto policy = threads == 1 ? Execution::Sequential()
+                                           : Execution::Parallel(threads);
+          const auto roof = ScanBandwidthGBs(bytes, threads, 1, 3);
+
+          for (const auto forward : {true, false}) {
+            const auto Run = [&](const auto& grid) {
+              return TimePerCall([&] {
+                if (forward) {
+                  grid.ForwardTransformation(lMax, n, fields, fb, coefficients,
+                                             cb, policy);
+                } else {
+                  grid.InverseTransformation(lMax, n, coefficients, cb, fields,
+                                             fb, policy);
+                }
+              });
+            };
+            const auto tLoop = wantLoop ? Run(*loop) : 0.0;
+            const auto tMatrix = wantMatrix ? Run(*matrix) : 0.0;
+
+            // Table traffic, not work: the Wigner values for this upper
+            // index are streamed **once per chunk**, so a batch that fits in
+            // one chunk reads them once however many fields it holds. So the
+            // figure is bytes over time and not bytes times k -- and read
+            // that way it is what the roof column is comparable with. A batch
+            // larger than the internal chunk reads the table more than once,
+            // which makes this a lower bound there rather than a value.
+            const auto reported = wantMatrix ? tMatrix : tLoop;
+            const auto gbs = reported > 0 ? bytes / reported / 1e9 : 0.0;
+
+            std::printf("%5zd %4s %8d ", lMax, forward ? "fwd" : "inv",
+                        threads);
+            if (wantLoop) {
+              std::printf("%11.3f ", tLoop * 1e3);
+            } else {
+              std::printf("%11s ", "-");
+            }
+            if (wantMatrix) {
+              std::printf("%11.3f ", tMatrix * 1e3);
+            } else {
+              std::printf("%11s ", "-");
+            }
+            if (ratios && tMatrix > 0) {
+              std::printf("%8.2fx ", tLoop / tMatrix);
+            } else {
+              std::printf("%9s ", "-");
+            }
+            std::printf("%10.1f %10.1f\n", gbs, roof);
+          }
+        }
+      }
+    }
+    if (ratios) {
+      std::printf(
+          "\nBoth grids were built in this process, so the second pays a cold\n"
+          "cache and whatever placement the first left. For an A/B that turns\n"
+          "on tens of percent, run `kernels-loop` and `kernels-matrix` in\n"
+          "separate invocations instead.\n");
+    }
+  };
+
+  if (Want("kernels")) RunKernelSection(true, true, true);
+  if (WantNamed("kernels-loop")) RunKernelSection(true, false, false);
+  if (WantNamed("kernels-matrix")) RunKernelSection(false, true, false);
+
+  //------------------------------------------------------------------------//
+  //          Why the inverse gains less: efficiency against K                //
+  //------------------------------------------------------------------------//
+
+  if (Want("kernels")) {
+    PrintHeader("Per-order products: Gflop/s against the inner dimension");
+    std::printf(
+        "M3b attributed the inverse's smaller gain to its inner dimension.\n"
+        "The two directions do the same arithmetic on the same matrices:\n"
+        "\n"
+        "    forward:  (nL x nTheta)(nTheta x 2k)   K = nTheta, a few hundred\n"
+        "    inverse:  (nTheta x nL)(nL x 2k)       K = nL, falls to one\n"
+        "\n"
+        "Equal flops, so Gflop/s compares efficiency directly. If the\n"
+        "hypothesis holds, the inverse's rate falls with nL and the\n"
+        "forward's does not.\n\n");
+    std::printf("%6s %6s %8s %8s %14s %14s\n", "lMax", "order", "nL", "K inv",
+                "fwd Gflop/s", "inv Gflop/s");
+
+    const Int lMax = 256;
+    const Int n = 2;
+    const Int k = 8;
+    const auto nTheta = lMax + 1;
+    const auto matrices = WignerMatrices<Real, All, All>(
+        lMax, lMax, n, std::vector<Real>(nTheta, 0.7));
+
+    auto rhs = std::vector<Complex>(nTheta * k);
+    auto coeff = std::vector<Complex>((lMax + 1) * k);
+    auto out = std::vector<Complex>(std::max(nTheta, lMax + 1) * k);
+    for (std::size_t i = 0; i < rhs.size(); ++i) rhs[i] = Complex{0.5, 0.25};
+    for (std::size_t i = 0; i < coeff.size(); ++i) coeff[i] = Complex{0.3, 0.7};
+
+    for (auto m : {Int{0}, Int{64}, Int{128}, Int{192}, Int{240}, Int{254}}) {
+      const auto lMin = std::max(std::abs(n), std::abs(m));
+      const auto nL = lMax - lMin + 1;
+      const auto* a = matrices[n, m].data();
+      const auto flops = 2.0 * nL * nTheta * 2 * k;
+
+      const auto fwd = TimePerCall([&] {
+        BlasDetails::RowMajorGemm(
+            static_cast<int>(nL), static_cast<int>(2 * k),
+            static_cast<int>(nTheta), Real{1}, a, static_cast<int>(nTheta),
+            reinterpret_cast<const Real*>(rhs.data()), static_cast<int>(2 * k),
+            Real{0}, reinterpret_cast<Real*>(out.data()),
+            static_cast<int>(2 * k));
+      });
+      const auto inv = TimePerCall([&] {
+        BlasDetails::RowMajorGemmTransposed(
+            static_cast<int>(nTheta), static_cast<int>(2 * k),
+            static_cast<int>(nL), Real{1}, a, static_cast<int>(nTheta),
+            reinterpret_cast<const Real*>(coeff.data()),
+            static_cast<int>(2 * k), Real{0},
+            reinterpret_cast<Real*>(out.data()), static_cast<int>(2 * k));
+      });
+
+      std::printf("%6zd %6zd %8zd %8zd %14.2f %14.2f\n", lMax, m, nL, nL,
+                  flops / fwd / 1e9, flops / inv / 1e9);
+    }
+  }
+#endif  // GSHTRANS_HAVE_BLAS
 
   if (Want("server")) {
     PrintHeader("Thread scaling to the full machine (core-plan.md [C11])");

@@ -1098,13 +1098,27 @@ class GaussLegendreGrid
     const auto scratchSize = static_cast<std::size_t>((lMax + 1) * c);
     const auto orders = lMax - minOrder + 1;
 
-    if (!RunInParallel(policy)) {
-      auto& scratch = OrderScratch(scratchSize);
-      for (auto i = Int{0}; i < orders; i++) body(minOrder + i, scratch.data());
-      return;
-    }
+    // **A team is opened even for the sequential case, and that is the point
+    // rather than an accident of the code.** M3a measured that a threaded
+    // BLAS loses on these products -- 23.7 ms against 17.0 at
+    // lMax = 256, k = 8, with GSHTrans sequential and so with no nesting to
+    // blame -- because the 513 products are skinny and thread launch
+    // dominates. The library cannot set a BLAS's thread count portably: there
+    // is no standard call, and OPENBLAS_NUM_THREADS is a property of one
+    // implementation and is inert in its OpenMP build.
+    //
+    // What it can do is make sure every GEMM is issued from *inside* an
+    // OpenMP region. A BLAS on the same runtime is then nested, and the
+    // default of one active level makes it serial without anyone being asked
+    // to set anything. A BLAS on its own pthread pool is unaffected and still
+    // needs the caller's environment, which is what the CMake comment says.
+    //
+    // Found by falling into it: the M5 benchmark's sequential rows reported
+    // table traffic at twice single-core bandwidth, because "GSHTrans
+    // sequential" had been letting the BLAS take the whole machine.
+    const auto threads = RunInParallel(policy) ? ThreadCount(policy) : 1;
 
-#pragma omp parallel num_threads(ThreadCount(policy))
+#pragma omp parallel num_threads(threads)
     {
       auto& scratch = OrderScratch(scratchSize);
 #pragma omp for schedule(dynamic)

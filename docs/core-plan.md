@@ -2583,6 +2583,116 @@ be misread or can mislead.
   supports one kernel per invocation, so this costs nothing. Failing that,
   run both orders and say so if they disagree.
 
+*Done*, as the `kernels`, `kernels-loop` and `kernels-matrix` sections, with
+the per-order `Gflop/s` table beside them. All three requirements above are
+built in.
+
+#### Three defects in the harness, found by using it
+
+**The default build directory measures nothing, and says so now.**
+`cmake -S . -B build` leaves `CMAKE_BUILD_TYPE` **empty**, so the benchmark
+built there runs about ten times slow — and every figure is internally
+consistent, so nothing looks wrong. The first run of this section reported
+speedups of *forty*. The harness now prints a warning when built without
+`NDEBUG`. This is not new and is not confined to the new section: the
+pre-existing `transforms` section in the same build reports `lMax = 256` at
+151 ms against 15 ms in a Release build.
+
+**The read-scan roof was measuring floating-point latency, not memory.**
+`ScanBandwidthGBs` accumulated into one variable, which is a dependency chain
+the compiler may not reassociate, so at one thread it reported **12.7 GB/s
+against a triad of 36.2 on the same machine** — a threefold understatement. It
+came right at four threads and above, where several chains overlap. Fixed with
+four accumulators; the scan and the triad now agree at one thread, 36.7 against
+35.6.
+
+*This matters beyond the harness, and the damage is bounded.* §10's central
+claim — 39–40 GB/s "against a machine roof near 42", so 95% of it — was taken
+at eight threads, where the old helper was already right. **That claim
+stands.** Any single-thread comparison made against that column did not, and
+this document made none.
+
+**And one the library owned rather than the harness.** The sequential rows
+reported table traffic at twice single-core bandwidth, because with an OpenMP
+BLAS linked, "GSHTrans sequential" did not mean "BLAS sequential": with no
+outer region open, the BLAS took the whole machine. `OPENBLAS_NUM_THREADS` is
+inert in that build, and there is no portable call to set a BLAS's thread
+count. `OverOrders` now opens a team **even for the sequential case**, so
+every GEMM is issued from inside an OpenMP region and a same-runtime BLAS is
+nested and serial without anyone setting anything. Verified: sequential
+`lMax = 256, k = 8` gives 19.6 ms at `OMP_NUM_THREADS=16` and 20.8 at 1, where
+before the fix the two differed.
+
+#### The measurement
+
+Speedup of matrix over loop, with the matrix kernel's table traffic and the
+machine's roof beside it:
+
+*Unbatched, `k = 1`, `lMax = 256`:*
+
+| threads | fwd | inv | GB/s | roof |
+|--------:|----:|----:|-----:|-----:|
+| 1 | 2.95× | 1.94× | 25.8 | 39.9 |
+| 4 | 2.03× | 1.50× | 46.3 | 44.4 |
+| 8 | **1.53×** | **1.14×** | **41.0** | **41.0** |
+
+*Batched, `k = 8`, `lMax = 256`:*
+
+| threads | fwd | inv | GB/s | roof |
+|--------:|----:|----:|-----:|-----:|
+| 1 | 2.95× | 1.69× | 6.8 | 39.6 |
+| 4 | 5.35× | 2.18× | 14.6 | 44.0 |
+| 8 | **4.10×** | **2.22×** | **13.8** | **42.2** |
+
+**The roof column does exactly what it was put there to do.** Unbatched on
+eight threads the matrix kernel runs at **41.0 GB/s against a 41.0 GB/s
+roof** — it is *at* the ceiling, so the 1.53× is everything there was to win
+and no further arrangement can add to it. Batched it runs at a third of the
+roof, so the gain there is not bandwidth at all. Two regimes, separated by a
+number rather than by an assertion, which is what §11.4 asked for.
+
+*A refinement of §12, which was right in substance and wrong in detail.* It
+predicted no gain unbatched **because the loop kernel is already at the
+roof**. Measured, the loop kernel is at 65% of it and the *matrix* kernel is
+at 100%, which is why there is still a 1.53× rather than nothing. The
+conclusion — that nothing further is available in that regime — is
+unaffected and is now demonstrated rather than predicted.
+
+#### M3b's hypothesis is refuted
+
+M3b attributed the inverse's smaller gain to its inner dimension falling to
+one. The per-order table settles it, and against that hypothesis. Equal flops
+both ways, so `Gflop/s` compares efficiency directly, at `lMax = 256, k = 8`:
+
+| n_L | 255 | 193 | 129 | 65 | 17 | 3 |
+|---|---|---|---|---|---|---|
+| forward | 94.9 | 74.6 | 74.5 | 74.4 | 71.2 | 54.9 |
+| inverse | 92.3 | 74.8 | 76.3 | 74.0 | 71.0 | 56.5 |
+
+**Identical, at every height.** Efficiency does fall with `n_L` — from 95 to
+55 — but it falls *the same way in both directions*, because `n_L` is `M` for
+the forward and `K` for the inverse and a small dimension costs the same
+either way. There is no asymmetry in the products to explain an asymmetry in
+the transforms.
+
+**What actually explains it is the loop kernel, not the matrix kernel.** At
+`lMax = 256, k = 8` on eight threads the matrix kernel's two directions are
+9.86 ms and 9.82 ms — the same to within noise. The **loop** kernel's are
+40.4 ms and 21.8 ms: its inverse is nearly twice as fast as its forward,
+because the inverse carries no thread-private accumulator and §10's
+direction-aware chunking already gave it what it needed. So "the inverse gains
+less" was never a statement about the matrix kernel. It is the loop kernel's
+inverse having less room to improve, and the right reading is that the matrix
+kernel makes the two directions cost the same where they did not before.
+
+*One residual, named and not established.* Sequentially the matrix kernel is
+still asymmetric — 19.9 ms forward against 32.7 inverse at `lMax = 256,
+k = 8` — and the per-order table says it is not the products. The leading
+candidate is that the inverse's products write into the 16 MiB intermediate,
+520 separate blocks each touched once, while the forward's write a small
+buffer reused at every order and scatter separately. It disappears at four
+threads and above, so it is not worth chasing.
+
 **M6 — the reflection**, per [C15], if M5 says the path is worth deepening.
 
 ### 11.5 What this does to the wisdom question
