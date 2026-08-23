@@ -25,6 +25,7 @@ the point rather than only asserting it.
 | `17-tangential-tensors` | the bundle with no radial slot: what it saves, `Embed` and `Tangential`, and the derivative that is closed on it |
 | `18-radial-operators` | the seam, the operators that come ready made, and how to write your own |
 | `19-layered-models` | elements and interfaces: a two-valued derivative at a discontinuity, and remeshing that does not cross one |
+| `20-transform-kernels` | the two Legendre kernels, why both are kept, what each refuses, and the one thing a threaded BLAS needs told |
 
 `wig` and `wigner3j_tests` are standalone Wigner 3-j experiments and are not
 part of the series.

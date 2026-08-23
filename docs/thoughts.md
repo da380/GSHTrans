@@ -942,8 +942,9 @@ is probably the commonest use of the whole feature.
 The library already carries five choices whose right answer is
 machine-dependent: the thread count, the chunk size, stored versus generated
 Wigner values, the FFTW planner flag, and — since §17.7 — bulk repack versus
-fused gather. Two more are coming: polar truncation and the transform-major
-GEMM layout.
+fused gather. A seventh arrived and is the strongest case yet: which of the
+two transform kernels a machine should use (§11 [C12]). Polar truncation was
+expected to be an eighth and will not be — it was measured and dropped.
 
 What makes this more than a convenience is that **the plans record, repeatedly,
 that these cannot be settled by reasoning.** The chunk optimum at `lMax = 128`
@@ -1083,11 +1084,9 @@ reference implementation, and it turns an unknown boundary into a known one.
 There are still two Wigner 3-j codes in this repository and neither is
 exercised by the suite.
 
-**Not on the list, and deliberately:** `core-plan.md`'s efficiency work — the
-transform-major GEMM restructure and polar truncation. Those are the subject
-of that document's own ordering. *Two things about them changed on
-2026-08-23 and this paragraph used to say otherwise.* They are **no longer
-gated on `earth-tunya`** (§11.1), and §10's standing judgement — that the
-field layer's own problems were worth more per unit effort — has been
-overtaken by those problems being solved, so the restructure is now planned
-in §11 rather than deferred.
+**No longer on the list, because it is finished:** `core-plan.md`'s efficiency
+work. *This paragraph twice said otherwise and is now retired.* The
+transform-major GEMM restructure is **built** (§11, M1–M6, 2026-08-23) and
+polar truncation was **measured and dropped** (§11.7) — about 1.15× rather
+than the 1.5–2× that document assumed. So `core-plan.md` has no scheduled work
+left, and everything below is the whole of what is open.

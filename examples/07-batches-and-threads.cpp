@@ -3,6 +3,9 @@
 // The transform's primitive is "transform k fields sharing a grid, a degree
 // and an upper index", with the single field as k = 1. Batching amortises the
 // Wigner values, which is where nearly all of the cost is.
+//
+// Batched is also the regime where the choice of Legendre kernel matters most,
+// and there are two -- see example 20.
 
 #include <GSHTrans/All>
 #include <chrono>

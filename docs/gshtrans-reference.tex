@@ -1435,10 +1435,16 @@ above about sixteen threads.  It is the natural next piece of performance
 work, and \S\ref{sec:gemm} sets it out in full.
 
 \paragraph{Polar truncation}, skipping the $(m,\theta)$ pairs where
-$d^l_{Nm}$ is negligible --- it falls off like $\sin^{|m|}\theta$ --- is
-the one option that makes the problem smaller rather than making the
-machine work harder, and it reduces storage and arithmetic together.  It
-is not implemented and probably dominates both of the reductions above.
+$d^l_{Nm}$ is negligible --- it falls off like $\sin^{|m|}\theta$ --- is the
+one option that makes the problem smaller rather than making the machine work
+harder.  \emph{This paragraph used to add that it probably dominates both of
+the reductions above.  Measured, it does not.}  \code{core-plan.md} \S11.7
+prices it at about $1.15\times$ at $l_{\max}=256$ for the rectangular trim a
+GEMM can take, and $1.40\times$ at $l_{\max}=1024$ for the triangular ceiling
+--- against the $1.5$ to $2\times$ that was assumed.  The decay is real but
+slower to a useful tolerance than the argument suggests: at $10^{-15}$,
+$\sin^{256}\theta$ is still above threshold over a third of the range.  It is
+dropped rather than deferred.
 
 \paragraph{The two open conventions} of \S\ref{sec:conventions} want an
 answer from the literature rather than from a test.

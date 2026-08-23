@@ -20,6 +20,7 @@ set(GSHTRANS_EXAMPLES
   17-tangential-tensors
   18-radial-operators
   19-layered-models
+  20-transform-kernels
 )
 
 foreach(example IN LISTS GSHTRANS_EXAMPLES)

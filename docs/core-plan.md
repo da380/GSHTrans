@@ -1735,7 +1735,7 @@ which reaches DRAM.
 | symmetry reduction [P3, P4] | ~2× | small | large | high on traffic; irregular access |
 | transform-major layout + GEMM [P5] | ~1.3× | **potentially large** | large | the only lever aimed at what binds |
 | generation, F′ rungs B and C | — | — | large | measured to lose (T11) |
-| polar truncation | ~1.5–2× | ~1.5–2× | medium | **not previously in this document** — *and the estimate is wrong; §11.7 measures ~1.15× at lMax = 256* |
+| polar truncation | ~1.5–2× | ~1.5–2× | medium | **the estimate is wrong, and the option is dropped**: §11.7 measures ~1.15× at lMax = 256 |
 
 Two entries need saying out loud.
 
@@ -1802,7 +1802,23 @@ missed it.
 4. **Evaluate polar truncation** before [C4]'s symmetry-versus-precision
    question, since it dominates both and is independent of them.
 
+   *Done, and it is dropped.* §11.7 measures it: about **1.15×** at
+   `lMax = 256` for the version a GEMM can take, against the 1.5–2× this
+   document assumed, and it does not reach that figure at any degree measured.
+   Two further facts settle it — the time saved would be less than the
+   arithmetic saved, since truncation shrinks the GEMM's inner dimension and
+   M5 measured efficiency falling with it; and the tolerance would enter
+   [C12]'s cross-kernel oracle, weakening the check that made §11 safe to
+   build exactly as the saving grew. The item is closed rather than deferred:
+   it was evaluated, which is what this line asked for, and the evaluation
+   went against it.
+
 F′'s rungs B and C are not to be built, and [C4] drops below all of the above.
+
+**With item 4 answered, this document has no scheduled work left.** §11 is
+built through M6; the target-machine run of item 2 is wanted and gates
+nothing. What remains is `thoughts.md`'s list, which is a different document's
+business.
 
 ### The strategic caveat, which matters more than the ordering
 
@@ -2880,9 +2896,14 @@ the two kernels would agree only to the truncation tolerance rather than to
 saving grows. That argues for a default tolerance tight enough to leave the
 oracle intact, which is also the setting that saves least.
 
-**So it is recorded as measured and not scheduled.** §10's entry stands
-corrected: the option is real, the mechanism is sound, and it is worth about
-1.15× where this library is used rather than 1.5–2×.
+**So it is dropped, and the rationale is here rather than in a decision
+line.** §10's entry stands corrected. The option is real and the mechanism is
+sound; it is worth about 1.15× where this library is used rather than 1.5–2×,
+the realised figure would be lower still, and it would be paid for in the one
+safety net that made §11 tractable. Anyone who revisits it should start from
+the table above rather than from §10's estimate, and should know that the
+arithmetic is available at the price of a triangular trim and a product per
+row-block — which is a different design from the one costed here.
 
 ### 11.5 What this does to the wisdom question
 

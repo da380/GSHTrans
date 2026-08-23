@@ -22,8 +22,9 @@ them, including the ones that turned out to be wrong.
   construction-time policy. §11's transform-major restructure is built through
   M6, all of it: `TransformKernel::Matrix()` is a second construction-time
   kernel beside the loop one, worth 3–6× where it is worth anything and
-  storing half the table, with the loop kernel kept as its oracle. What
-  remains is polar truncation.
+  storing half the table, with the loop kernel kept as its oracle. **Nothing
+  in that document is scheduled now**: polar truncation, the last item, was
+  measured at ~1.15× rather than the 1.5–2× assumed and dropped (§11.7).
 * **`docs/field-algebra-plan.md`** — the field layer, and everything built on
   it:
 
