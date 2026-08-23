@@ -1,4 +1,10 @@
-cmake_minimum_required(VERSION 3.20)
+# 3.24, not the 3.20 this declared until now. Every dependency below is
+# declared with FetchContent_Declare(... FIND_PACKAGE_ARGS), which is a 3.24
+# feature, so a 3.20 configure never worked -- it simply failed later and less
+# clearly. field-algebra-plan.md section 19.4 recorded this as a known
+# one-line defect; raising the floor does not break anyone who was working,
+# because nobody between 3.20 and 3.23 was.
+cmake_minimum_required(VERSION 3.24)
 
 project(GSHTrans
         VERSION 1.0.0
@@ -123,6 +129,49 @@ if(GSHTRANS_WITH_INTERPOLATION)
   FetchContent_MakeAvailable(Interpolation)
 endif()
 
+# The GEMM behind the matrix transform kernel (core-plan.md section 11 [C14]).
+#
+# Found and not fetched, unlike the four above, because BLAS is neither
+# header-only nor ours: a system OpenBLAS, MKL or Accelerate is what a caller
+# on a real machine already has, and building one here would be this library
+# taking on a responsibility it has declined for every other dependency. It is
+# therefore the first non-header-only dependency, which is why it is an option
+# and not a requirement -- everything the library did before this exists
+# without it, and a build with it off simply does not offer
+# TransformKernel::Matrix().
+#
+# Three states rather than two, because ON has to mean two different things
+# depending on who said it. AUTO -- the default -- uses BLAS if it is there
+# and says so if it is not. ON demands it, and fails the configure if it is
+# missing, which is what a caller who typed it deserves rather than a silent
+# downgrade to the loop kernel. OFF never looks.
+#
+# A note for whoever links this against a threaded BLAS: the matrix kernel
+# threads over orders itself, so the BLAS must be single-threaded when it
+# does. A BLAS on the same OpenMP runtime gets that for free; one with its own
+# pthread pool needs OPENBLAS_NUM_THREADS=1 or its equivalent. See section 11,
+# step M4.
+set(GSHTRANS_WITH_BLAS AUTO CACHE STRING
+    "Matrix transform kernel, built on a system BLAS (AUTO, ON, OFF)")
+set_property(CACHE GSHTRANS_WITH_BLAS PROPERTY STRINGS AUTO ON OFF)
+
+set(GSHTRANS_BLAS_FOUND OFF)
+if(NOT GSHTRANS_WITH_BLAS STREQUAL "OFF")
+  if(GSHTRANS_WITH_BLAS STREQUAL "ON")
+    find_package(BLAS REQUIRED)
+  else()
+    find_package(BLAS)
+  endif()
+  if(BLAS_FOUND)
+    set(GSHTRANS_BLAS_FOUND ON)
+  else()
+    message(STATUS
+      "GSHTrans: no BLAS found, so the matrix transform kernel is not built. "
+      "The loop kernel is unaffected and is what the library has always used. "
+      "Configure with -DGSHTRANS_WITH_BLAS=ON to make this an error instead.")
+  endif()
+endif()
+
 # If a dependency was fetched rather than found, it is an ordinary target in
 # this build and must be in an export set of its own for GSHTrans to be
 # exportable at all. CMake does notice, but only at the generate step and with
@@ -178,6 +227,11 @@ target_link_libraries(GSHTrans INTERFACE
 if(GSHTRANS_WITH_INTERPOLATION)
   target_link_libraries(GSHTrans INTERFACE Interpolation::Interpolation)
   target_compile_definitions(GSHTrans INTERFACE GSHTRANS_HAVE_INTERPOLATION)
+endif()
+
+if(GSHTRANS_BLAS_FOUND)
+  target_link_libraries(GSHTrans INTERFACE BLAS::BLAS)
+  target_compile_definitions(GSHTrans INTERFACE GSHTRANS_HAVE_BLAS)
 endif()
 
 target_compile_features(GSHTrans INTERFACE cxx_std_23)

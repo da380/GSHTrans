@@ -1658,3 +1658,131 @@ TEST(FourierStage, TheAliasingGuardChangesNoAnswers) {
     ASSERT_EQ(byDefault[i], reference[i]) << "default, at " << i;
   }
 }
+
+// -- The matrix kernel (core-plan.md section 11, step M3).
+//
+// [C12] keeps both kernels permanently, and this is what that buys: the same
+// inputs through two independent arrangements of the same sum. A GEMM sums in
+// whatever order its kernel chooses, so this cannot be a bit comparison the
+// way the batched-against-unbatched tests are -- but to a tolerance it checks
+// the layout, the indexing, the FFT ordering and the accumulation together,
+// which is very nearly everything the restructure can get wrong.
+//
+// The two are not independent in the d-values themselves: both read the same
+// recursion. That half is pinned separately, by CheckWignerConvention against
+// the l = 1 table and CheckLegendre against std::sph_legendre.
+#ifdef GSHTRANS_HAVE_BLAS
+namespace {
+
+template <typename Grid, typename Scalar>
+void CheckKernelsAgreeForward(std::ptrdiff_t lMax, std::ptrdiff_t gridDegree,
+                              std::ptrdiff_t n, std::ptrdiff_t count,
+                              double tolerance) {
+  auto loop = Grid(gridDegree, std::abs(n), FFTWpp::Estimate);
+  auto matrix = Grid(gridDegree, std::abs(n), FFTWpp::Estimate,
+                     Chunking::Automatic(), WignerValues::Stored(),
+                     TransformKernel::Matrix());
+
+  const auto fieldSize = static_cast<std::ptrdiff_t>(loop.FieldSize());
+  const auto coefficientSize = static_cast<std::ptrdiff_t>(
+      std::is_same_v<Scalar, double> ? loop.RealCoefficientSize(lMax)
+                                     : loop.CoefficientSize(lMax, n));
+
+  auto fields = std::vector<Scalar>(count * fieldSize);
+  for (std::size_t i = 0; i < fields.size(); i++) {
+    if constexpr (std::is_same_v<Scalar, std::complex<double>>) {
+      fields[i] = Scalar{std::cos(0.31 * static_cast<double>(i)),
+                         std::sin(0.17 * static_cast<double>(i))};
+    } else {
+      fields[i] = std::cos(0.31 * static_cast<double>(i));
+    }
+  }
+
+  auto fromLoop = std::vector<std::complex<double>>(count * coefficientSize);
+  auto fromMatrix = std::vector<std::complex<double>>(count * coefficientSize);
+  const auto fieldBatch = Batch::Contiguous(count, fieldSize);
+  const auto coeffBatch = Batch::Contiguous(count, coefficientSize);
+
+  loop.ForwardTransformation(lMax, n, fields, fieldBatch, fromLoop, coeffBatch);
+  matrix.ForwardTransformation(lMax, n, fields, fieldBatch, fromMatrix,
+                               coeffBatch);
+
+  // Scaled to the largest coefficient, since the absolute size of these
+  // depends on the data and a fixed tolerance would be a statement about the
+  // test field rather than about the kernels.
+  double scale = 0;
+  for (const auto& z : fromLoop) scale = std::max(scale, std::abs(z));
+  ASSERT_GT(scale, 0.0);
+
+  for (std::size_t i = 0; i < fromLoop.size(); i++) {
+    EXPECT_NEAR(fromMatrix[i].real(), fromLoop[i].real(), tolerance * scale)
+        << "at " << i;
+    EXPECT_NEAR(fromMatrix[i].imag(), fromLoop[i].imag(), tolerance * scale)
+        << "at " << i;
+  }
+}
+
+}  // namespace
+
+TEST(MatrixKernel, ForwardAgreesWithTheLoopKernel) {
+  using Grid = GaussLegendreGrid<double, All, All>;
+  CheckKernelsAgreeForward<Grid, std::complex<double>>(8, 8, 0, 1, 1e-13);
+  CheckKernelsAgreeForward<Grid, std::complex<double>>(8, 8, 2, 1, 1e-13);
+  CheckKernelsAgreeForward<Grid, std::complex<double>>(8, 8, -2, 1, 1e-13);
+}
+
+TEST(MatrixKernel, ForwardAgreesOverABatch) {
+  using Grid = GaussLegendreGrid<double, All, All>;
+  CheckKernelsAgreeForward<Grid, std::complex<double>>(10, 10, 1, 5, 1e-13);
+  CheckKernelsAgreeForward<Grid, std::complex<double>>(16, 16, 2, 8, 1e-13);
+}
+
+// A transform below the grid's own degree takes a prefix of each matrix's
+// rows. Nothing is copied for it, so getting the prefix wrong would be
+// invisible except here.
+TEST(MatrixKernel, ForwardAgreesBelowTheGridDegree) {
+  using Grid = GaussLegendreGrid<double, All, All>;
+  CheckKernelsAgreeForward<Grid, std::complex<double>>(6, 12, 1, 3, 1e-13);
+  CheckKernelsAgreeForward<Grid, std::complex<double>>(1, 12, 0, 2, 1e-13);
+}
+
+// The reduced m >= 0 storage, which is a different coefficient layout and a
+// different FFT on the way in.
+TEST(MatrixKernel, ForwardAgreesForARealField) {
+  using Grid = GaussLegendreGrid<double, All, All>;
+  CheckKernelsAgreeForward<Grid, double>(8, 8, 0, 1, 1e-13);
+  CheckKernelsAgreeForward<Grid, double>(12, 12, 0, 4, 1e-13);
+}
+
+// A grid that stores only m >= 0 -- the real scalar grid of [C1] -- has a
+// different Wigner layout again, since its matrices exist only at
+// non-negative orders. Worth its own case because everything above runs on a
+// grid holding all orders and merely declining to use half of them.
+TEST(MatrixKernel, ForwardAgreesOnAScalarGrid) {
+  using Grid = GaussLegendreGrid<double, NonNegative, All>;
+  CheckKernelsAgreeForward<Grid, double>(8, 8, 0, 1, 1e-13);
+  CheckKernelsAgreeForward<Grid, double>(11, 11, 0, 3, 1e-13);
+}
+
+TEST(MatrixKernel, RefusesWhatItCannotDo) {
+  using Grid = GaussLegendreGrid<double, All, All>;
+  using WideGrid = GaussLegendreGrid<long double, All, All>;
+
+  // Generated values cannot be had one order at a time.
+  EXPECT_THROW(Grid(8, 2, FFTWpp::Estimate, Chunking::Automatic(),
+                    WignerValues::Generated(), TransformKernel::Matrix()),
+               std::invalid_argument);
+
+  // BLAS has no long double.
+  EXPECT_THROW(WideGrid(8, 2, FFTWpp::Estimate, Chunking::Automatic(),
+                        WignerValues::Stored(), TransformKernel::Matrix()),
+               std::invalid_argument);
+
+  // Both of those are fine on the loop kernel, which is the point of keeping
+  // it: nothing the library could do before is withdrawn.
+  EXPECT_NO_THROW(Grid(8, 2, FFTWpp::Estimate, Chunking::Automatic(),
+                       WignerValues::Generated(), TransformKernel::Loop()));
+  EXPECT_NO_THROW(WideGrid(8, 2, FFTWpp::Estimate, Chunking::Automatic(),
+                           WignerValues::Stored(), TransformKernel::Loop()));
+}
+#endif  // GSHTRANS_HAVE_BLAS

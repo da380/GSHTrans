@@ -69,6 +69,7 @@ target_link_libraries(TestRealFieldSymmetry PRIVATE GSHTrans gtest_main)
 # to exempt. Add each new header here deliberately.
 set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/3j.h
+  GSHTrans/src/Blas.h
   GSHTrans/src/Concepts.h
   GSHTrans/src/GaussLegendreGrid.h
   GSHTrans/src/GridBase.h

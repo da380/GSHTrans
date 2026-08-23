@@ -2257,6 +2257,93 @@ and inverse, real and complex, batched and unbatched, agreeing to a tolerance.
 Plus the existing round-trip and analytic tests run on a matrix grid, which
 costs nothing to add and covers what the cross-kernel check cannot.
 
+**Split in two, as T2 was.** M3a is the forward direction and all the
+infrastructure — the build option, the policy, the grid wiring, the BLAS
+binding — and M3b is the inverse, which reuses every part of it.
+
+#### M3a, done
+
+`GSHTRANS_WITH_BLAS`, `Blas.h`, `TransformKernel` in `Policies.h`, and
+`ForwardMatrixKernel` on the grid. The forward transform agrees with the loop
+kernel to `1e-13` relative across complex and real fields, batched and
+unbatched, on a full grid and truncated below it, and on the reduced `m ≥ 0`
+scalar grid. Perturbing the negative-order mapping fails the three complex
+cases and correctly not the two real ones, which have no negative orders.
+
+**The option is three-state, not two.** `AUTO` — the default — uses a BLAS if
+one is there and says so if not; `ON` demands one and fails the configure;
+`OFF` never looks. `ON` has to mean something different from the default
+because a caller who typed it deserves a failed configure rather than a silent
+downgrade to the loop kernel, which is [C17]'s argument applied to the build.
+
+**A third refusal, which [C17] did not anticipate: BLAS has no `long
+double`.** The interface is `s`, `d`, `c`, `z` and nothing wider, so a grid at
+that precision cannot have the matrix kernel however it is configured. It is
+refused at construction like the other two, and the dispatch carries an
+`if constexpr` so that the body is never instantiated there. This is a real
+narrowing — the loop kernel serves `long double` and always will — and it
+belongs beside [C14]'s other costs rather than in a footnote.
+
+**Off is a supported configuration and was checked, not claimed** — and the
+check earned its place immediately: the first version of the precision
+refusal was outside the `#ifdef` and broke the no-BLAS build, because
+`BlasDetails` does not exist there. With the option off the suite runs 308
+tests against 314, the six being the cross-kernel ones.
+
+**The weights are applied to the intermediate, not folded into the matrix.**
+They cannot be folded: the same matrix serves the inverse, which carries no
+weight, and one stored matrix serving both directions is the whole reason the
+layout is worth having. So it is one extra pass over the intermediate, which
+is 16 MiB at `lMax = 256, k = 8`.
+
+**The scatter cannot be avoided either.** The coefficient block is triangular
+— the stride between consecutive degrees at one order is `2l + 1` and so is
+not constant — and a GEMM writes with one leading dimension. So the product
+goes to a small per-order buffer and is scattered from there, which is the
+same volume of writing the loop kernel's own scatter does.
+
+#### What it is worth, measured
+
+Forward, complex, `n = 2`, one thread, BLAS pinned to one thread:
+
+| lMax | k | loop | matrix | speedup |
+|-----:|--:|-----:|-------:|--------:|
+|   64 | 1 | 0.15 ms | 0.06 ms | 2.5× |
+|   64 | 8 | 0.67 ms | 0.25 ms | 2.7× |
+|  128 | 1 | 1.90 ms | 0.58 ms | 3.3× |
+|  128 | 8 | 5.88 ms | 2.07 ms | 2.8× |
+|  256 | 1 | 10.27 ms | 5.17 ms | 2.0× |
+|  256 | 8 | 49.15 ms | 17.86 ms | 2.8× |
+
+**Two to three and a bit, which is exactly what §12 predicted** — and worth
+saying, because this document's measurements have more often contradicted its
+predictions than confirmed them.
+
+**But the gain is there unbatched too, which §12 predicted it would not be.**
+That section says the restructure "buys nothing at all in the regime where the
+stage is bandwidth-bound — which it is, unbatched, on eight threads at
+`lMax = 128`". The qualifier is the whole of it: *on eight threads*.
+Sequentially the stage is bound by per-core load/store throughput and not by
+DRAM — P1's finding — so it sits far below the roof, and the GEMM's better
+arithmetic per memory operation helps at `k = 1` as much as at `k = 8`. §12's
+prediction is a claim about the threaded regime and **remains untested until
+M4**, which is where the matrix kernel learns to thread. Nothing here
+contradicts it.
+
+**A threaded BLAS loses, and by more than nesting explains.** §11.4's M4 note
+says the BLAS must be single-threaded when GSHTrans threads over orders,
+because two thread pools multiply. Measured, it is worse than that: with
+GSHTrans **sequential**, so with no nesting at all to blame, giving OpenBLAS
+eight threads costs 23.72 ms against 16.97 at `lMax = 256, k = 8`, and 0.15
+against 0.10 at `lMax = 64, k = 1`. The 513 products per upper index are
+individually skinny — `N = 2k` is at most 16 — so thread launch dominates what
+the threads could win. **So the obligation is simpler and stronger than M4
+stated it: the BLAS should be single-threaded here always, not merely when
+GSHTrans threads.**
+
+*One caveat on all of the above.* Run to run these move by 10–15%, which is
+this laptop's noise floor and is smaller than every difference quoted.
+
 **M4 — threading over orders.** Products at different `m` write disjoint
 outputs, so there is no accumulator and no reduction in either direction —
 which is how this subsumes [C11], by deleting the thing [C11] was a question

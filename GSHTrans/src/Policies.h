@@ -309,6 +309,64 @@ class WignerValues {
   bool _stored;
 };
 
+// Which Legendre kernel a grid uses, and therefore how it lays out its Wigner
+// values.
+//
+// Loop is the kernel of core-plan.md steps F and H, and is what the library
+// has always done: a colatitude at a time, an axpy of length k per (l, m),
+// reading a table contiguous in (l, m) at fixed (n, theta).
+//
+// Matrix is the transform-major restructure of section 11: all the FFTs
+// first, then one matrix product per order against a table contiguous in
+// (l, theta) at fixed (n, m). Products at different orders write disjoint
+// outputs, so it needs no accumulator and no reduction in either direction --
+// which is the forward transform's weak point at high thread counts, deleted
+// rather than tuned.
+//
+// **Both are kept, permanently** ([C12]). This is not a migration with a flag
+// day: the two coexist, and the point of that is measurement. A GEMM sums in
+// whatever order its kernel chooses, so the matrix path cannot be
+// bit-compared against the loop path -- but it can be compared to a
+// tolerance, on identical inputs, which is a check of the layout, the
+// indexing, the FFT ordering and the accumulation that no single-kernel
+// library has available. It also means the right kernel for a machine is a
+// question that machine can answer for itself.
+//
+// A property of the grid rather than of the call, for the reason WignerValues
+// is: the two layouts are mutually exclusive -- 648 MB at lMax = 256 with
+// nMax = 2 is not a thing to hold twice -- and a template parameter would put
+// a machine decision into every downstream type.
+//
+// -- Matrix is absent, not merely refused, in a build without BLAS ([C17]).
+// The factory below does not exist there, so asking for it is a compile error
+// at the call site rather than a throw at grid construction. That is the
+// tighter of the two options and the reversible one: offering it later with a
+// runtime throw breaks nobody, while withdrawing it would.
+//
+// -- Matrix with WignerValues::Generated() is refused at grid construction,
+// and that is a fact about the recursion rather than an unimplemented case.
+// The recursion's output for one (n, theta) spans every order at once, so
+// isolating the single (n, m) block a per-order product wants means either
+// keeping all of it -- which is the table, and not having one is the entire
+// purpose of generating -- or re-running the recursion once per order. There
+// is no third way.
+class TransformKernel {
+ public:
+  static TransformKernel Loop() { return TransformKernel(false); }
+
+#ifdef GSHTRANS_HAVE_BLAS
+  static TransformKernel Matrix() { return TransformKernel(true); }
+#endif
+
+  auto IsMatrix() const { return _matrix; }
+
+  bool operator==(const TransformKernel&) const = default;
+
+ private:
+  explicit TransformKernel(bool matrix) : _matrix{matrix} {}
+  bool _matrix;
+};
+
 }  // namespace GSHTrans
 
 #endif  //  GSH_TRANS_POLICIES_GUARD_H

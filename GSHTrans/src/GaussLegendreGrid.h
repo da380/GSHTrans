@@ -30,8 +30,10 @@
 #include "Policies.h"
 #include "GridBase.h"
 #include "Indexing.h"
+#include "Blas.h"
 #include "Utility.h"
 #include "Wigner.h"
+#include "WignerMatrices.h"
 
 namespace GSHTrans {
 
@@ -71,9 +73,10 @@ class GaussLegendreGrid
   // their own optimum passes `Chunking::Fixed(count)`.
   GaussLegendreGrid(Int lMax, Int nMax, FFTWpp::Flag flag = FFTWpp::Measure,
                     Chunking chunking = Chunking::Automatic(),
-                    WignerValues values = WignerValues::Stored())
-      : _impl{std::make_shared<const Impl>(lMax, nMax, flag, chunking,
-                                           values)} {}
+                    WignerValues values = WignerValues::Stored(),
+                    TransformKernel kernel = TransformKernel::Loop())
+      : _impl{std::make_shared<const Impl>(lMax, nMax, flag, chunking, values,
+                                           kernel)} {}
 
   // A grid for working with fields of maximum degree lBand, with quadrature
   // headroom for degree oversampling * lBand.
@@ -90,7 +93,8 @@ class GaussLegendreGrid
   static auto ForBand(Int lBand, Int nMax, Real oversampling = 1,
                       FFTWpp::Flag flag = FFTWpp::Measure,
                       Chunking chunking = Chunking::Automatic(),
-                      WignerValues values = WignerValues::Stored()) {
+                      WignerValues values = WignerValues::Stored(),
+                      TransformKernel kernel = TransformKernel::Loop()) {
     if (lBand < 0) {
       throw std::invalid_argument("Band must be non-negative");
     }
@@ -99,7 +103,7 @@ class GaussLegendreGrid
     }
     const auto lGrid = static_cast<Int>(
         std::ceil(oversampling * static_cast<Real>(lBand)));
-    return GaussLegendreGrid(lGrid, nMax, flag, chunking, values);
+    return GaussLegendreGrid(lGrid, nMax, flag, chunking, values, kernel);
   }
 
   GaussLegendreGrid(const GaussLegendreGrid&) = default;
@@ -198,6 +202,24 @@ class GaussLegendreGrid
     const auto nTheta = static_cast<Int>(this->NumberOfCoLatitudes());
     const auto scaleFactor = static_cast<Real>(2) * std::numbers::pi_v<Real> /
                              static_cast<Real>(nPhi);
+
+#ifdef GSHTRANS_HAVE_BLAS
+    // The matrix kernel is a different arrangement of the same sum, not a
+    // different sum: all the FFTs first, then one matrix product per order.
+    // It is reached only when the grid was built for it ([C12]), and the loop
+    // below is untouched by its existence.
+    //
+    // The `if constexpr` is what keeps a long double grid compiling: BLAS has
+    // no such precision, so the body must not be instantiated there. The
+    // constructor has already refused the combination, so the discarded
+    // branch is unreachable as well as uninstantiated.
+    if constexpr (BlasDetails::BlasReal<Real>)
+    if (_impl->kernel.IsMatrix()) {
+      ForwardMatrixKernel<Scalar>(lMax, n, in, inBatch, outFirst, outBatch,
+                                  count, nPhi, nTheta, scaleFactor, policy);
+      return;
+    }
+#endif
 
     // One colatitude's contribution from a chunk of `c` fields, accumulated
     // into a [coefficient][field] scratch buffer.
@@ -934,6 +956,119 @@ class GaussLegendreGrid
         coefficientSize * static_cast<Int>(sizeof(Complex)), 1);
   }
 
+#ifdef GSHTRANS_HAVE_BLAS
+  // Scratch for the m-major Fourier intermediate and for one order's product.
+  // Kept per thread and grown, never allocated per call: section 17.7 of the
+  // field-algebra plan measured an allocation inside a loop it was meant to
+  // serve costing 3 to 5 times the operation itself.
+  static std::vector<Complex>& MatrixScratch(std::size_t size) {
+    thread_local auto buffer = std::vector<Complex>{};
+    if (buffer.size() < size) buffer.resize(size);
+    return buffer;
+  }
+
+  static std::vector<Complex>& OrderScratch(std::size_t size) {
+    thread_local auto buffer = std::vector<Complex>{};
+    if (buffer.size() < size) buffer.resize(size);
+    return buffer;
+  }
+
+  // The forward transform as one matrix product per order (step M3).
+  //
+  // Reordered so that the sum over colatitudes is innermost, the Legendre
+  // stage is, at fixed upper index and order,
+  //
+  //     f^n_{lm} = sum_i D^(n,m)_{li} b^(m)_i,    b^(m)_i = w_i F_m(theta_i)
+  //
+  // and over a chunk of c fields the right-hand side is a matrix, so this is
+  // a GEMM of shape (nL x nTheta) times (nTheta x c). D is real while the
+  // data are complex, and that is a gift rather than an obstacle: a complex
+  // (nTheta x c) block with the batch index fastest *is* a real
+  // (nTheta x 2c) one, because std::complex stores its parts adjacently. So
+  // the whole stage is dgemm with N = 2c, and the doubling helps most exactly
+  // where c is small.
+  //
+  // Degrees below max(|n|, |m|) do not exist, so the matrix at each order
+  // starts there and its height falls linearly in |m|. A transform at a
+  // degree below the grid's takes a contiguous *prefix* of the rows, at the
+  // same leading dimension, so nothing is copied for a truncated call.
+  template <RealOrComplexFloatingPoint Scalar,
+            std::ranges::input_range InRange, typename OutIterator>
+  void ForwardMatrixKernel(Int lMax, Int n, InRange&& in, Batch inBatch,
+                           OutIterator outFirst, Batch outBatch, Int count,
+                           Int nPhi, Int nTheta, Real scaleFactor,
+                           Execution policy) const {
+    using MRangeForScalar =
+        std::conditional_t<RealFloatingPoint<Scalar>, NonNegative, All>;
+
+    const auto& matrices = *_impl->wignerMatrices;
+    const auto indices = GSHIndices<MRangeForScalar>(lMax, lMax, n);
+    const auto coefficientSize = static_cast<Int>(indices.Size());
+    const auto nFourier = FourierSize<Scalar>();
+    const auto minOrder = RealFloatingPoint<Scalar> ? Int{0} : -lMax;
+
+    const auto chunk = InverseChunkSize(coefficientSize);
+
+    for (auto first = Int{0}; first < count; first += chunk) {
+      const auto c = std::min(chunk, count - first);
+
+      // All the FFTs, landing [m][theta][k].
+      auto& stage = MatrixScratch(
+          static_cast<std::size_t>(nFourier * nTheta * c));
+      auto stageSpan = std::span<Complex>(stage.data(),
+                                          static_cast<std::size_t>(
+                                              nFourier * nTheta * c));
+      ForwardFourierStage(in, inBatch, first, c, stageSpan);
+
+      // The quadrature weight and the 2 pi / nPhi, applied once to the whole
+      // intermediate rather than folded into the matrix. They cannot be
+      // folded: the same matrix serves the inverse transform, which carries
+      // no weight, and one stored matrix serving both directions is the whole
+      // reason the layout is worth having.
+      for (auto m = Int{0}; m < nFourier; m++) {
+        auto* row = stage.data() + m * nTheta * c;
+        for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
+          const auto w = _impl->quad.W(iTheta) * scaleFactor;
+          for (auto k = Int{0}; k < c; k++) row[iTheta * c + k] *= w;
+        }
+      }
+
+      auto& result = OrderScratch(static_cast<std::size_t>((lMax + 1) * c));
+
+      for (auto m = minOrder; m <= lMax; m++) {
+        const auto lMin = std::max(std::abs(n), std::abs(m));
+        if (lMin > lMax) continue;
+        const auto rows = lMax - lMin + 1;
+
+        // Negative orders live at the top of the FFT output, which is what
+        // the loop kernel's own indexing says too.
+        const auto mFourier = m >= 0 ? m : nPhi + m;
+
+        const auto* a = matrices[n, m].data();
+        const auto* b = reinterpret_cast<const Real*>(stage.data() +
+                                                      mFourier * nTheta * c);
+        auto* out = reinterpret_cast<Real*>(result.data());
+
+        BlasDetails::RowMajorGemm(
+            static_cast<int>(rows), static_cast<int>(2 * c),
+            static_cast<int>(nTheta), Real{1}, a, static_cast<int>(nTheta), b,
+            static_cast<int>(2 * c), Real{0}, out, static_cast<int>(2 * c));
+
+        // Scatter: the coefficient block is triangular, so the stride between
+        // consecutive degrees at one order is not constant and the product
+        // cannot be written into it directly.
+        for (auto l = lMin; l <= lMax; l++) {
+          const auto j = indices.Index(l, m);
+          for (auto k = Int{0}; k < c; k++) {
+            outFirst[outBatch.Offset(j, first + k)] =
+                result[(l - lMin) * c + k];
+          }
+        }
+      }
+    }
+  }
+#endif
+
   // The Wigner values for one (n, iTheta), over the degrees |n| .. lMax.
   //
   // This is the seam of core-plan.md [C10], and it returns the same type on
@@ -1092,12 +1227,13 @@ class GaussLegendreGrid
   // mutable member, with its own lock.
   struct Impl {
     Impl(Int lMaxIn, Int nMaxIn, FFTWpp::Flag flagIn, Chunking chunkingIn,
-         WignerValues valuesIn)
+         WignerValues valuesIn, TransformKernel kernelIn)
         : lMax{lMaxIn},
           nMax{nMaxIn},
           flag{flagIn},
           chunking{chunkingIn},
-          values{valuesIn} {
+          values{valuesIn},
+          kernel{kernelIn} {
       assert(lMax >= 0);
       assert(std::abs(nMax) <= lMax);
       assert(flag != FFTWpp::WisdomOnly);
@@ -1121,15 +1257,55 @@ class GaussLegendreGrid
       quad.Transform([](auto x) { return std::acos(-x); },
                      [](auto x) -> Real { return 1; });
 
+      // The matrix kernel needs values in an order the recursion cannot
+      // produce one order at a time, so the two policies do not compose. See
+      // Policies.h at TransformKernel, and core-plan.md [C17]: this is a fact
+      // about the recursion and not an unimplemented case, which is why it is
+      // refused here rather than worked around.
+      // BLAS offers single and double precision and nothing wider, so a
+      // long double grid cannot have the matrix kernel whatever else is true.
+      // Refused here, where Real is known, rather than in a call.
+      //
+      // Guarded, because BlasDetails does not exist without a BLAS -- and
+      // without one neither does TransformKernel::Matrix(), so there is
+      // nothing left to refuse.
+#ifdef GSHTRANS_HAVE_BLAS
+      if constexpr (!BlasDetails::BlasReal<Real>) {
+        if (kernel.IsMatrix()) {
+          throw std::invalid_argument(
+              "The matrix transform kernel needs a BLAS, and BLAS offers "
+              "single and double precision only, so it is unavailable at this "
+              "grid's precision");
+        }
+      }
+#endif
+
+      if (kernel.IsMatrix() && !values.AreStored()) {
+        throw std::invalid_argument(
+            "The matrix transform kernel cannot generate its Wigner values on "
+            "the fly: the recursion produces every order of one colatitude "
+            "together, so a single (n, m) block cannot be had without either "
+            "keeping the whole table or repeating the recursion for every "
+            "order. Ask for WignerValues::Stored(), or for "
+            "TransformKernel::Loop()");
+      }
+
       // A generating grid builds no table. What it needs instead is the two
       // square-root tables the recursion indexes, which are 2 lMax + 1
       // entries each against the table's 648 MB at lMax = 256.
-      if (values.AreStored()) {
-        wigner = Wigner<Real, _MRange, _NRange, Multiple, ColumnMajor>(
-            lMax, lMax, nMax, quad.Points());
-      } else {
+      //
+      // A matrix grid builds the same values in the transform-major layout
+      // instead, and only that one: the two are the same size and holding
+      // both would double 648 MB for nothing.
+      if (!values.AreStored()) {
         std::tie(sqrtInt, sqrtIntInv) =
             WignerDetails::PreComputeTables<Real>(lMax, lMax, nMax);
+      } else if (kernel.IsMatrix()) {
+        wignerMatrices = WignerMatrices<Real, _MRange, _NRange>(
+            lMax, lMax, nMax, quad.Points());
+      } else {
+        wigner = Wigner<Real, _MRange, _NRange, Multiple, ColumnMajor>(
+            lMax, lMax, nMax, quad.Points());
       }
 
       // The planner flag is kept as the caller gave it. It used to be used to
@@ -1145,10 +1321,16 @@ class GaussLegendreGrid
     FFTWpp::Flag flag;
     Chunking chunking;
     WignerValues values;
+    TransformKernel kernel;
     GaussQuad::Quadrature1D<Real> quad;
 
-    // Empty on a generating grid, which is the whole of what that grid saves.
+    // Empty on a generating grid, which is the whole of what that grid saves,
+    // and on a matrix grid, which holds the other layout instead.
     std::optional<Wigner<Real, _MRange, _NRange, Multiple, ColumnMajor>> wigner;
+
+    // Empty unless this is a matrix grid. Exactly one of these two is ever
+    // occupied, and on a generating grid neither is.
+    std::optional<WignerMatrices<Real, _MRange, _NRange>> wignerMatrices;
 
     // Empty on a stored grid, whose table already carries what these are for.
     std::vector<Real> sqrtInt;

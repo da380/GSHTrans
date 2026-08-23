@@ -3,7 +3,7 @@
 # stop producing a usable package -- which is a failure mode the main build
 # cannot see, since there the targets are all present as real ones. It is
 # deliberately not part of the main build.
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.24)
 project(GSHTransPackageTest LANGUAGES CXX)
 
 find_package(GSHTrans REQUIRED)
