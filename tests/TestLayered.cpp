@@ -1320,3 +1320,123 @@ TEST(RadialResample, ThreadingChangesNothing) {
 }
 
 #endif  // GSHTRANS_HAVE_INTERPOLATION
+
+//--------------------------------------------------------------------------//
+//                           The element partition                           //
+//--------------------------------------------------------------------------//
+
+namespace {
+
+// Two elements meeting at r = 0.8, which is stored twice: once as the top of
+// the lower element and once as the bottom of the upper one. That repetition
+// is the interface, and saying so is the whole content of the partition.
+const auto LayeredRadii =
+    std::vector<Real>{0.4, 0.6, 0.8, 0.8, 1.0, 1.2};
+const auto LayeredStarts = std::vector<Int>{0, 3, 6};
+
+}  // namespace
+
+TEST(RadialGrid, CarriesTheElementsWhenItIsGivenThem) {
+  const auto plain = RadialGrid<Real>(LayeredRadii);
+  EXPECT_FALSE(plain.HasElements());
+  EXPECT_EQ(plain.ElementCount(), 0);
+
+  const auto mesh = RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts);
+  EXPECT_TRUE(mesh.HasElements());
+  EXPECT_EQ(mesh.ElementCount(), 2);
+
+  EXPECT_EQ(mesh.ElementStart(0), 0);
+  EXPECT_EQ(mesh.ElementEnd(0), 3);
+  EXPECT_EQ(mesh.ElementSize(0), 3);
+  EXPECT_EQ(mesh.ElementStart(1), 3);
+  EXPECT_EQ(mesh.ElementEnd(1), 6);
+
+  // Every node belongs to exactly one element, which is what disjointness
+  // buys and what makes a block-diagonal derivative well defined.
+  EXPECT_EQ(mesh.ElementOf(2), 0);
+  EXPECT_EQ(mesh.ElementOf(3), 1);
+
+  // The breakpoints are read off the radii rather than stored beside them.
+  EXPECT_EQ(mesh.Breakpoint(0), 0.4);
+  EXPECT_EQ(mesh.Breakpoint(1), 0.8);
+  EXPECT_EQ(mesh.Breakpoint(2), 1.2);
+
+  // And a grid without the partition is exactly what it was before.
+  EXPECT_EQ(plain.NumberOfRadii(), mesh.NumberOfRadii());
+}
+
+// Each check is a different way of being wrong, so each is exercised.
+TEST(RadialGrid, RefusesAPartitionThatIsNotOne) {
+  const auto bad = [](std::vector<Real> radii, std::vector<Int> starts) {
+    return [radii = std::move(radii), starts = std::move(starts)]() {
+      (void)RadialGrid<Real>::WithElements(radii, starts);
+    };
+  };
+
+  // Does not cover the radii.
+  EXPECT_THROW(bad(LayeredRadii, {0, 3})(), std::invalid_argument);
+  EXPECT_THROW(bad(LayeredRadii, {1, 3, 6})(), std::invalid_argument);
+
+  // An element of one node spans no interval.
+  EXPECT_THROW(bad({0.4, 0.6, 0.6, 0.8}, {0, 2, 3, 4})(),
+               std::invalid_argument);
+
+  // A repeated radius inside an element is not an interface; it is a mistake,
+  // and this is the check that lets the grid tell the two apart at all.
+  EXPECT_THROW(bad({0.4, 0.6, 0.6, 0.8, 1.0, 1.2}, {0, 3, 6})(),
+               std::invalid_argument);
+
+  // A gap: one element ends where the next does not begin, so the field is
+  // undefined between them.
+  EXPECT_THROW(bad({0.4, 0.6, 0.8, 0.9, 1.0, 1.2}, {0, 3, 6})(),
+               std::invalid_argument);
+
+  // Fewer than two starts is no element at all.
+  EXPECT_THROW(bad(LayeredRadii, {0})(), std::invalid_argument);
+
+  EXPECT_NO_THROW(bad(LayeredRadii, LayeredStarts)());
+}
+
+// A continuous mesh is expressible too, by duplicating the interior boundary
+// and keeping the duplicates equal -- which is the caller's business, exactly
+// as continuity across a Piecewise breakpoint is.
+TEST(RadialGrid, AContinuousMeshDuplicatesItsInteriorBoundaries) {
+  const auto radii = std::vector<Real>{0.0, 0.5, 1.0, 1.0, 1.5, 2.0};
+  const auto mesh = RadialGrid<Real>::WithElements(radii, {0, 3, 6});
+  EXPECT_EQ(mesh.ElementCount(), 2);
+  EXPECT_EQ(mesh.NumberOfRadii(), 6);
+
+  // Five distinct radii held as six nodes: nR + nElements - 1, which is the
+  // price [E1] records.
+  EXPECT_EQ(mesh.Radius(2), mesh.Radius(3));
+}
+
+// The partition rides on the grid's identity like everything else, so two
+// stacks are on the same radial grid when their handles agree and not when
+// their numbers do.
+TEST(RadialGrid, ThePartitionIsPartOfTheGridAndNotOfTheNumbers) {
+  const auto a = RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts);
+  const auto b = RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts);
+  const auto copy = a;
+
+  EXPECT_NE(a.Identity(), b.Identity());
+  EXPECT_EQ(a.Identity(), copy.Identity());
+  EXPECT_TRUE(copy.HasElements());
+}
+
+// Weights still work alongside, and the named constructor takes them last so
+// that a caller with elements and no weights does not have to pass an empty
+// vector to reach the partition.
+TEST(RadialGrid, ElementsAndWeightsAreIndependent) {
+  const auto weights = std::vector<Real>(LayeredRadii.size(), Real{0.2});
+  const auto mesh =
+      RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts, weights);
+  EXPECT_TRUE(mesh.HasElements());
+  EXPECT_TRUE(mesh.HasWeights());
+  EXPECT_EQ(mesh.Weight(0), 0.2);
+
+  const auto noWeights =
+      RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts);
+  EXPECT_TRUE(noWeights.HasElements());
+  EXPECT_FALSE(noWeights.HasWeights());
+}

@@ -2444,12 +2444,40 @@ guessed:
 
 > `Interpolation::CubicSpline` computes its coefficients at construction and
 > holds them in a `std::vector`, so constructing one costs about four
-> allocations. A radial operator is called once per line — `nθ · nφ` in the
-> spatial domain, or about 66,000 coefficients at `lMax = 256` in the spectral
-> one — so a spline built per line is of order 10 ms of allocation per
-> application, against a batched transform of about 2 ms per field. In the
-> inner loop of the matrix-free solver §17.1 describes, that is not a cost
-> worth paying.
+> allocations, and `Evaluate` locates its segment by binary search, so reading
+> the derivative at every node costs `nR log nR` lookups. A radial operator is
+> called once per line — `nθ · nφ` in the spatial domain, or about 66,000
+> coefficients at `lMax = 256` in the spectral one — so both are paid per
+> line, and neither is what the interface is bad at: it is built for
+> evaluating a curve at a point, and this asks it for the derivative at every
+> node of the curve it was just fitted to.
+
+**Measured afterwards, and it corrects this paragraph rather than confirming
+it.** Over 66,049 lines, a spline constructed per line against the operator
+that reuses its factorisation:
+
+| `nR` | per line | reused factorisation | ratio |
+|---:|---:|---:|---:|
+| 9 | 13.9 ms | 6.8 ms | 2.0× |
+| 17 | 23.0 ms | 13.8 ms | 1.7× |
+| 33 | 58.4 ms | 27.8 ms | 2.1× |
+| 65 | 73.4 ms | 61.2 ms | 1.2× |
+| 129 | 193.6 ms | 137.4 ms | 1.4× |
+| 257 | 401.9 ms | 296.9 ms | 1.4× |
+
+So it is **1.2× to 2×, not an order of magnitude**, and the run-to-run spread
+is around 20% at the larger sizes. The first draft of this paragraph put the
+allocation cost at "10 ms per application against a 2 ms transform", and that
+comparison was wrong in its frame as much as its number: the radial derivative
+costs 60 ms at these sizes whichever way it is done, so a transform was never
+the thing to measure it against.
+
+[R4] stands, for two reasons that survive the correction. A 1.4× on an
+operation applied every iteration of a matrix-free solve is still worth not
+paying, and — the stronger one — the alternative was reaching into
+`Interpolation::Detail` for the tridiagonal solver, which is not ours to do.
+But the decision is now recorded as buying tens of per cent rather than the
+factor it was first argued from.
 
 The way out is not to reach into `Interpolation::Detail`, where the
 tridiagonal solver lives, but to notice **what a derivative operator actually
@@ -2574,3 +2602,163 @@ one has 275 — the seven being the two spline oracles and the five here.
 
 **S6 — `ElementDerivative`** waits for §8B's element partition, and is named
 here so the set reads as incomplete on purpose.
+
+---
+
+## 20. The element partition, in detail
+
+Written 2026-08-23, when `thoughts.md` §8B was picked up. That section is the
+assessment — what a dumb container costs and what the middle position is — and
+is not repeated. This is the working plan.
+
+### 20.1 What it is
+
+**The smallest fact that distinguishes a discretisation from a list of
+numbers: which radii belong to which element.** `RadialGrid` carries nodes,
+weights and identity, and deliberately nothing else. §8B's argument for adding
+this one thing and no more is that it is the fact **more than one thing needs
+and nothing can infer**:
+
+- `ElementDerivative` needs the blocks, and is the last unbuilt entry in §19's
+  set.
+- Interpolation must not cross a material interface, so `Resample` cannot know
+  what it is allowed to do without it (§20.4).
+- §9's field interpolation will meet the same question in the radial variable.
+
+### 20.2 Two things checked, and §8B is wrong about one of them
+
+**`RadialGrid` already accepts a repeated radius.** §8B says "the
+constructor's existing `is_sorted` check currently *rejects* a repeated
+radius, which is precisely how a two-sided material interface is
+represented". It does not: `std::ranges::is_sorted` is not strict, so
+`{0.4, 0.7, 0.7, 1.0}` is accepted today, and `SplineDerivative` is the only
+thing in the library that refuses one — deliberately, and with a message
+pointing here.
+
+That correction *sharpens* the case rather than weakening it. The
+representation already works; what is missing is not permission but **meaning**.
+A repeated radius today is indistinguishable from a caller's mistake, and
+nothing can ask which it was.
+
+**`Interpolation::Piecewise` is what §8B says it is**, verified against
+current `main`: breakpoints strictly increasing and one longer than the
+pieces, the pieces tile with no gaps, continuity across a breakpoint
+deliberately unchecked, evaluation right-continuous so piece `k` owns
+`[b_k, b_{k+1})`, and `Limits(x)` returning both one-sided values. So the
+breakpoints this plan adds should *be* breakpoints in that sense, and the two
+libraries should not be able to disagree about what happens at the
+core–mantle boundary.
+
+### 20.3 The representation, which is the decision
+
+A partition is a list of blocks of node indices. The two candidates differ
+over what happens where two elements meet, and the difference is not
+cosmetic — it decides whether `ElementDerivative` is well defined.
+
+**Disjoint blocks.** Block `k` is `[start_k, start_{k+1})` and every node
+belongs to exactly one block, so an element owns both its endpoints and two
+elements that meet do so at a **repeated radius**. The derivative is then
+genuinely block-diagonal, both one-sided derivatives exist at an interface,
+and that is the same pair `Piecewise::Limits` returns. The cost is that a
+continuous mesh has to duplicate its interior element boundaries, storing
+`nR + nElements - 1` values where it stores `nR` today, and keeping the
+duplicates equal is the caller's business.
+
+**Shared boundary nodes.** Block `k` is `[first_k, last_k]` with
+`last_k == first_{k+1}`, which is what a continuous-Galerkin field already
+looks like and costs no extra storage. But the derivative at a shared node is
+then two-valued — the two elements disagree, which is what a `C⁰` basis
+means — so the operator has to choose: average the two, take one side, or
+refuse. That choice is real and belongs to the discretisation rather than to
+this library, which is an argument for not taking it here at all.
+
+Both can be supported; supporting both means the operator carries the choice
+anyway. §20.5 asks which.
+
+### 20.4 What it changes elsewhere
+
+Adding the fact is small. Acting on it is not, and each of these is a
+separate decision rather than a consequence:
+
+- **`Resample` across a break.** Today it fits one interpolant through the
+  whole radial line. With a partition it should either fit one per piece, or
+  refuse a target radius that lands on a break, or keep doing what it does.
+  The first is what `Piecewise` is for and is almost certainly right; it is
+  still a change in behaviour of a function that already exists.
+- **`SplineDerivative`'s refusal.** It throws on a repeated radius. With a
+  partition it could instead fit per piece, which would make it usable on a
+  layered model rather than only on a smooth one.
+- **`IntegrateRadially`.** Unaffected: the weights are the caller's and a
+  quadrature that spans an interface is the caller's arithmetic.
+
+### 20.5 Decisions taken
+
+**[E1] The blocks are disjoint, and two elements meet at a repeated radius.**
+Block `k` is `[start_k, start_{k+1})`, every node belongs to exactly one
+block, and the partition is the `nElements + 1` starts. What decides it is
+that the derivative is then **well defined without a policy**: each block is
+independent, both one-sided derivatives exist at an interface, and they are
+the pair `Piecewise::Limits` returns on the other side of the join. The
+shared-node alternative would have made `ElementDerivative` choose between
+averaging, taking a side, and refusing — a choice that belongs to the
+discretisation and not to this library.
+
+The price is stated rather than hidden: a continuous mesh duplicates its
+interior element boundaries, holding `nR + nElements - 1` values where it
+holds `nR` today, and keeping the duplicates equal is the caller's business —
+the same contract `Piecewise` sets when it declines to check continuity.
+
+**[E2] `Resample` fits one interpolant per piece.** No interpolant crosses an
+interface, and a target radius is answered from the piece that owns it,
+right-continuously, as `Piecewise` does. This *changes* the behaviour of a
+function that has already shipped, which is why it is a decision and not a
+consequence: a grid with no partition behaves exactly as before, and one with
+a partition stops fitting through its own discontinuity.
+
+**[E3] The partition is derived from, and consistent with, the radii.** The
+breakpoints are read off rather than stored separately — `b_0` is the first
+radius, `b_{k+1}` is the shared radius where block `k` ends and `k + 1`
+begins — so there is one source of truth and no way for the two to disagree.
+That makes the validation the interesting part, and it is what the constructor
+does:
+
+- the starts begin at `0`, end at `nR`, and strictly increase;
+- every block holds at least two nodes, since a block spanning no interval is
+  not an element;
+- radii strictly increase *within* a block, so a repeated radius can occur
+  only at a boundary — which is exactly the statement that a repetition means
+  an interface;
+- and the radius at the end of block `k` equals the one at the start of block
+  `k + 1`, so the blocks tile and there is no gap where the field would be
+  undefined.
+
+### 20.6 The steps
+
+**E1 — `RadialGrid` carries it.** A named constructor, `WithElements`, since
+adding a third defaulted parameter would make a caller who has elements but no
+weights pass an empty vector to reach it. Accessors for the count, a block's
+range, the block a node belongs to, and the breakpoints. The validation above.
+
+*Done.* Five tests, at 280. The one worth naming is
+`RefusesAPartitionThatIsNotOne`, which exercises each check separately because
+each is a different way of being wrong — not covering the radii, an element of
+one node, a repeated radius *inside* an element, and a gap between two of them.
+The third of those is the one the whole section exists for: it is what lets the
+grid tell an interface from a mistake, which nothing could do before.
+
+A grid built without the partition is byte-for-byte what it was, and the
+partition rides on the handle's identity like everything else, so two meshes
+with equal numbers are still different grids.
+
+**E2 — `ElementDerivative`.** Block-diagonal, and each block is the
+differentiation matrix of its own nodes — which is what a spectral element
+*is*, so this is `LagrangeDerivative` applied per block and shares its
+barycentric construction rather than repeating it.
+
+**E3 — `Resample` per piece**, per [E2] above.
+
+**E4 — `SplineDerivative` per piece.** Not required by anything and listed
+because the partition is exactly what its current refusal points at: it throws
+on a repeated radius today, and with a partition it could fit per piece and
+become usable on a layered model rather than only on a smooth one. Worth doing
+if E1 to E3 leave it looking natural; not worth forcing.
