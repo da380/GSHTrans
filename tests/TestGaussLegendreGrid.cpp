@@ -1367,3 +1367,294 @@ TEST(BatchedTransform, ChunkRuleCountsCopiesNotThreads) {
   EXPECT_EQ(Chunking::Fixed(5).Count(bytesPerField, 1), 5);
   EXPECT_EQ(Chunking::Fixed(5).Count(bytesPerField, 64), 5);
 }
+
+// -- The matrix kernel's Fourier stage (core-plan.md section 11, step M2).
+//
+// Section 11 asked for this to be checked against the loop kernel's own FFT
+// stage. It is checked against a naive DFT written out here instead, which is
+// strictly stronger: comparing two paths through the same FFTW plan would
+// agree even if the plan were the wrong transform, and would say nothing at
+// all about the sign of the exponent, the normalisation, or where negative
+// orders live. An independent sum says all three.
+namespace {
+
+using StageReal = double;
+using StageComplex = std::complex<StageReal>;
+using StageGrid = GaussLegendreGrid<StageReal, All, All>;
+
+// out[m][iTheta][k] by direct summation. FFTW's forward transform carries no
+// normalisation and a negative exponent, and for a complex field its order m
+// sits at index m for m >= 0 and at nPhi - |m| for m < 0 -- which is what
+// running the index from 0 to nPhi - 1 says.
+auto NaiveFourier(const std::vector<StageComplex>& fields, std::ptrdiff_t nTheta,
+                  std::ptrdiff_t nPhi, std::ptrdiff_t count,
+                  std::ptrdiff_t nFourier) {
+  auto out = std::vector<StageComplex>(nFourier * nTheta * count);
+  for (auto m = std::ptrdiff_t{0}; m < nFourier; m++) {
+    for (auto iTheta = std::ptrdiff_t{0}; iTheta < nTheta; iTheta++) {
+      for (auto k = std::ptrdiff_t{0}; k < count; k++) {
+        auto sum = StageComplex{0, 0};
+        for (auto iPhi = std::ptrdiff_t{0}; iPhi < nPhi; iPhi++) {
+          const auto angle = -2 * std::numbers::pi_v<StageReal> *
+                             static_cast<StageReal>(iPhi * m) /
+                             static_cast<StageReal>(nPhi);
+          sum += fields[k * nTheta * nPhi + iTheta * nPhi + iPhi] *
+                 StageComplex{std::cos(angle), std::sin(angle)};
+        }
+        out[m * nTheta * count + iTheta * count + k] = sum;
+      }
+    }
+  }
+  return out;
+}
+
+}  // namespace
+
+TEST(FourierStage, MatchesADirectTransform) {
+  constexpr auto lMax = std::ptrdiff_t{5};
+  constexpr auto count = std::ptrdiff_t{3};
+
+  auto grid = StageGrid(lMax, 2, FFTWpp::Estimate);
+  const auto nTheta = static_cast<std::ptrdiff_t>(grid.NumberOfCoLatitudes());
+  const auto nPhi = static_cast<std::ptrdiff_t>(grid.NumberOfLongitudes());
+  const auto fieldSize = nTheta * nPhi;
+
+  auto fields = std::vector<StageComplex>(count * fieldSize);
+  for (auto k = std::ptrdiff_t{0}; k < count; k++) {
+    const auto one = BatchField(fieldSize, k);
+    std::copy(one.begin(), one.end(), fields.begin() + k * fieldSize);
+  }
+
+  const auto nFourier = grid.FourierSize<StageComplex>();
+  EXPECT_EQ(nFourier, nPhi);
+
+  auto stage = std::vector<StageComplex>(
+      grid.ForwardFourierStageSize<StageComplex>(count));
+  grid.ForwardFourierStage(fields, Batch::Contiguous(count, fieldSize), 0,
+                           count, std::span<StageComplex>(stage));
+
+  const auto expected = NaiveFourier(fields, nTheta, nPhi, count, nFourier);
+  ASSERT_EQ(stage.size(), expected.size());
+  for (std::size_t i = 0; i < stage.size(); i++) {
+    EXPECT_NEAR(stage[i].real(), expected[i].real(), 1e-12) << "at " << i;
+    EXPECT_NEAR(stage[i].imag(), expected[i].imag(), 1e-12) << "at " << i;
+  }
+}
+
+// A real field's stage holds nPhi / 2 + 1 orders, the negative ones being the
+// conjugates of the positive. The same direct sum, over the orders that are
+// stored.
+TEST(FourierStage, MatchesADirectTransformForARealField) {
+  constexpr auto lMax = std::ptrdiff_t{5};
+  constexpr auto count = std::ptrdiff_t{2};
+
+  auto grid = StageGrid(lMax, 0, FFTWpp::Estimate);
+  const auto nTheta = static_cast<std::ptrdiff_t>(grid.NumberOfCoLatitudes());
+  const auto nPhi = static_cast<std::ptrdiff_t>(grid.NumberOfLongitudes());
+  const auto fieldSize = nTheta * nPhi;
+
+  auto fields = std::vector<StageReal>(count * fieldSize);
+  auto asComplex = std::vector<StageComplex>(count * fieldSize);
+  for (std::size_t i = 0; i < fields.size(); i++) {
+    fields[i] = std::cos(0.11 * static_cast<StageReal>(i)) +
+                0.5 * std::sin(0.37 * static_cast<StageReal>(i));
+    asComplex[i] = StageComplex{fields[i], 0};
+  }
+
+  const auto nFourier = grid.FourierSize<StageReal>();
+  EXPECT_EQ(nFourier, nPhi / 2 + 1);
+
+  auto stage = std::vector<StageComplex>(
+      grid.ForwardFourierStageSize<StageReal>(count));
+  grid.ForwardFourierStage(fields, Batch::Contiguous(count, fieldSize), 0,
+                           count, std::span<StageComplex>(stage));
+
+  const auto expected = NaiveFourier(asComplex, nTheta, nPhi, count, nFourier);
+  ASSERT_EQ(stage.size(), expected.size());
+  for (std::size_t i = 0; i < stage.size(); i++) {
+    EXPECT_NEAR(stage[i].real(), expected[i].real(), 1e-12) << "at " << i;
+    EXPECT_NEAR(stage[i].imag(), expected[i].imag(), 1e-12) << "at " << i;
+  }
+}
+
+// Blocking bounds the FFT workspace and must not otherwise exist. Bit-exact,
+// not near: a block boundary that lost or duplicated a row would show up as a
+// wrong number, and a block size that changed the answer at all would mean
+// the copy back into place is reading the wrong run.
+TEST(FourierStage, BlockingChangesNothing) {
+  constexpr auto lMax = std::ptrdiff_t{7};
+  constexpr auto count = std::ptrdiff_t{3};
+
+  auto grid = StageGrid(lMax, 1, FFTWpp::Estimate);
+  const auto nTheta = static_cast<std::ptrdiff_t>(grid.NumberOfCoLatitudes());
+  const auto nPhi = static_cast<std::ptrdiff_t>(grid.NumberOfLongitudes());
+  const auto fieldSize = nTheta * nPhi;
+
+  auto fields = std::vector<StageComplex>(count * fieldSize);
+  for (auto k = std::ptrdiff_t{0}; k < count; k++) {
+    const auto one = BatchField(fieldSize, k);
+    std::copy(one.begin(), one.end(), fields.begin() + k * fieldSize);
+  }
+
+  const auto size = grid.ForwardFourierStageSize<StageComplex>(count);
+  auto whole = std::vector<StageComplex>(size);
+  grid.ForwardFourierStage(fields, Batch::Contiguous(count, fieldSize), 0,
+                           count, std::span<StageComplex>(whole));
+
+  for (auto block : {std::ptrdiff_t{1}, std::ptrdiff_t{2}, std::ptrdiff_t{3},
+                     nTheta - 1, nTheta, nTheta + 5}) {
+    auto blocked = std::vector<StageComplex>(size);
+    grid.ForwardFourierStage(fields, Batch::Contiguous(count, fieldSize), 0,
+                             count, std::span<StageComplex>(blocked), block);
+    for (std::size_t i = 0; i < whole.size(); i++) {
+      ASSERT_EQ(blocked[i], whole[i]) << "block " << block << ", at " << i;
+    }
+  }
+}
+
+// The caller's stride enters at PackRow and nowhere else, so an interleaved
+// batch -- tensor components stored point by point -- must give the same
+// answer as the same fields laid end to end. This is the [C9] path, and it is
+// the one that would break silently if the pack were written against
+// contiguity.
+TEST(FourierStage, InterleavedBatchMatchesContiguous) {
+  constexpr auto lMax = std::ptrdiff_t{5};
+  constexpr auto count = std::ptrdiff_t{2};
+  constexpr auto width = std::ptrdiff_t{5};
+
+  auto grid = StageGrid(lMax, 1, FFTWpp::Estimate);
+  const auto nTheta = static_cast<std::ptrdiff_t>(grid.NumberOfCoLatitudes());
+  const auto nPhi = static_cast<std::ptrdiff_t>(grid.NumberOfLongitudes());
+  const auto fieldSize = nTheta * nPhi;
+
+  auto contiguous = std::vector<StageComplex>(count * fieldSize);
+  auto interleaved = std::vector<StageComplex>(width * fieldSize, {0, 0});
+  for (auto k = std::ptrdiff_t{0}; k < count; k++) {
+    const auto one = BatchField(fieldSize, k);
+    std::copy(one.begin(), one.end(), contiguous.begin() + k * fieldSize);
+    for (auto j = std::ptrdiff_t{0}; j < fieldSize; j++) {
+      interleaved[j * width + k] = one[j];
+    }
+  }
+
+  const auto size = grid.ForwardFourierStageSize<StageComplex>(count);
+  auto fromContiguous = std::vector<StageComplex>(size);
+  auto fromInterleaved = std::vector<StageComplex>(size);
+  grid.ForwardFourierStage(contiguous, Batch::Contiguous(count, fieldSize), 0,
+                           count, std::span<StageComplex>(fromContiguous));
+  grid.ForwardFourierStage(interleaved, Batch::Interleaved(count, width), 0,
+                           count, std::span<StageComplex>(fromInterleaved));
+
+  for (std::size_t i = 0; i < fromContiguous.size(); i++) {
+    EXPECT_EQ(fromInterleaved[i], fromContiguous[i]) << "at " << i;
+  }
+}
+
+// A sub-range of a batch, which is what the chunking of step M3 will hand it.
+TEST(FourierStage, TransformsASubRangeOfTheBatch) {
+  constexpr auto lMax = std::ptrdiff_t{4};
+  constexpr auto count = std::ptrdiff_t{4};
+
+  auto grid = StageGrid(lMax, 1, FFTWpp::Estimate);
+  const auto nTheta = static_cast<std::ptrdiff_t>(grid.NumberOfCoLatitudes());
+  const auto nPhi = static_cast<std::ptrdiff_t>(grid.NumberOfLongitudes());
+  const auto fieldSize = nTheta * nPhi;
+
+  auto fields = std::vector<StageComplex>(count * fieldSize);
+  for (auto k = std::ptrdiff_t{0}; k < count; k++) {
+    const auto one = BatchField(fieldSize, k);
+    std::copy(one.begin(), one.end(), fields.begin() + k * fieldSize);
+  }
+
+  // Fields two and three of four, against the same two transformed alone.
+  auto pair = std::vector<StageComplex>(2 * fieldSize);
+  std::copy(fields.begin() + 2 * fieldSize, fields.begin() + 4 * fieldSize,
+            pair.begin());
+
+  const auto size = grid.ForwardFourierStageSize<StageComplex>(2);
+  auto fromSubRange = std::vector<StageComplex>(size);
+  auto fromOwnBatch = std::vector<StageComplex>(size);
+  grid.ForwardFourierStage(fields, Batch::Contiguous(count, fieldSize), 2, 2,
+                           std::span<StageComplex>(fromSubRange));
+  grid.ForwardFourierStage(pair, Batch::Contiguous(2, fieldSize), 0, 2,
+                           std::span<StageComplex>(fromOwnBatch));
+
+  for (std::size_t i = 0; i < size; i++) {
+    EXPECT_EQ(fromSubRange[i], fromOwnBatch[i]) << "at " << i;
+  }
+}
+
+TEST(FourierStage, RejectsBadRequests) {
+  constexpr auto lMax = std::ptrdiff_t{4};
+  auto grid = StageGrid(lMax, 1, FFTWpp::Estimate);
+  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+
+  auto fields = std::vector<StageComplex>(2 * fieldSize);
+  auto out = std::vector<StageComplex>(
+      grid.ForwardFourierStageSize<StageComplex>(2));
+  const auto batch = Batch::Contiguous(2, fieldSize);
+
+  // Fields outside the batch.
+  EXPECT_THROW(grid.ForwardFourierStage(fields, batch, 1, 2,
+                                        std::span<StageComplex>(out)),
+               std::invalid_argument);
+  EXPECT_THROW(grid.ForwardFourierStage(fields, batch, -1, 2,
+                                        std::span<StageComplex>(out)),
+               std::invalid_argument);
+  // A count that is not a count.
+  EXPECT_THROW(grid.ForwardFourierStage(fields, batch, 0, 0,
+                                        std::span<StageComplex>(out)),
+               std::invalid_argument);
+  // An output buffer sized for the wrong number of fields.
+  auto tooSmall = std::vector<StageComplex>(
+      grid.ForwardFourierStageSize<StageComplex>(1));
+  EXPECT_THROW(grid.ForwardFourierStage(fields, batch, 0, 2,
+                                        std::span<StageComplex>(tooSmall)),
+               std::invalid_argument);
+}
+
+// The aliasing guard shrinks a block whose output stride would be a power of
+// two. That is a speed decision and must be invisible in the answers, so what
+// is checked here is that a request which triggers it still agrees with one
+// that does not: eight fields with a block of eight gives an output stride of
+// 1024 bytes, which is the case measured at three times its neighbours'.
+TEST(FourierStage, TheAliasingGuardChangesNoAnswers) {
+  constexpr auto lMax = std::ptrdiff_t{6};
+  constexpr auto count = std::ptrdiff_t{8};
+
+  auto grid = StageGrid(lMax, 1, FFTWpp::Estimate);
+  const auto nTheta = static_cast<std::ptrdiff_t>(grid.NumberOfCoLatitudes());
+  const auto nPhi = static_cast<std::ptrdiff_t>(grid.NumberOfLongitudes());
+  const auto fieldSize = nTheta * nPhi;
+
+  auto fields = std::vector<StageComplex>(count * fieldSize);
+  for (auto k = std::ptrdiff_t{0}; k < count; k++) {
+    const auto one = BatchField(fieldSize, k);
+    std::copy(one.begin(), one.end(), fields.begin() + k * fieldSize);
+  }
+  const auto batch = Batch::Contiguous(count, fieldSize);
+  const auto size = grid.ForwardFourierStageSize<StageComplex>(count);
+
+  auto reference = std::vector<StageComplex>(size);
+  grid.ForwardFourierStage(fields, batch, 0, count,
+                           std::span<StageComplex>(reference), 1);
+
+  // 8 aliases at count = 8 and is shrunk; 16 and 32 likewise; 3 does not.
+  for (auto block : {std::ptrdiff_t{3}, std::ptrdiff_t{8}, std::ptrdiff_t{16},
+                     std::ptrdiff_t{32}}) {
+    auto guarded = std::vector<StageComplex>(size);
+    grid.ForwardFourierStage(fields, batch, 0, count,
+                             std::span<StageComplex>(guarded), block);
+    for (std::size_t i = 0; i < size; i++) {
+      ASSERT_EQ(guarded[i], reference[i]) << "block " << block << ", at " << i;
+    }
+  }
+
+  // And the default, which is what a caller who says nothing gets.
+  auto byDefault = std::vector<StageComplex>(size);
+  grid.ForwardFourierStage(fields, batch, 0, count,
+                           std::span<StageComplex>(byDefault));
+  for (std::size_t i = 0; i < size; i++) {
+    ASSERT_EQ(byDefault[i], reference[i]) << "default, at " << i;
+  }
+}

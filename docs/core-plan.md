@@ -2179,6 +2179,75 @@ numbers as the interleaved path in a different order, so it can be checked
 against the current FFT stage before any matrix exists. §11.3's working-set
 question is measurable here too, ahead of the kernel.
 
+*Done*, as `ForwardFourierStage` on the grid, beside the transforms rather
+than inside them: [C12] keeps the loop kernel exactly as it is, so this is a
+second entry point that nothing calls yet and M3 will.
+
+**The oracle is a direct sum, not the loop kernel's FFT stage.** This section
+asked for the latter. The former is strictly stronger and cost a dozen lines:
+two paths through the same FFTW plan agree even when the plan is the wrong
+transform, and say nothing about the sign of the exponent, the normalisation,
+or where negative orders sit. A naive DFT written out in the test says all
+three, and it passed first time, so those three conventions are now pinned
+rather than inherited.
+
+*Seven tests, and four of them bite.* Perturbing the pack from θ-major to
+k-major fails three. The two that survive — the interleaved-batch and
+sub-range tests — compare two calls perturbed identically, which is worth
+recording as a limit rather than a gap: a relative test cannot catch an error
+common to both of its sides, and it is the direct sum that covers them.
+
+#### What the measurement changed, which is most of what this step produced
+
+**§12's "the transpose itself is free" is true only away from one hazard, and
+badly false at it.** The output write has stride `howMany` complex doubles, so
+when `howMany · 16` is a power of two the writes for successive orders collide
+in the same cache sets. Measured directly at `nPhi = 520`, per transform:
+
+| howMany | 62 | **64** | 66 | 254 | **256** | 258 | 2046 | **2048** | 2050 |
+|---|---|---|---|---|---|---|---|---|---|
+| cost | 0.80 | **2.96** | 0.83 | 0.90 | **7.32** | 0.88 | 1.76 | **8.53** | 1.65 |
+
+Four to eight times, at every power of two and nowhere else. **This is the
+hypothesis `field-algebra-plan.md` §17.7 raised for `RadialMajor` and
+rejected**, having found `nR = 255, 256, 257` identical — correctly, because
+its tiling already handled it. Nothing tiles here: FFTW writes straight
+through. So the same hypothesis is right in one place and wrong in the other,
+and the difference is whether anything sits between the write and the cache.
+
+**A small block beats one big call, which is the opposite of §12's design.**
+That section specifies a single `plan_many` over `nθ k` rows. Measured, one
+thread, `k = 8`:
+
+| lMax | stage, block 3 | stage, all θ | FFT workspace, block 3 | all θ | full forward |
+|-----:|---------------:|-------------:|-----------------------:|------:|-------------:|
+|   64 |        0.11 ms |      0.23 ms |                 0.1 MiB | 2.1 MiB |     0.67 ms |
+|  128 |        0.59 ms |      1.15 ms |                 0.2 MiB | 8.2 MiB |     6.00 ms |
+|  256 |        3.25 ms |      5.46 ms |                 0.4 MiB | 32.6 MiB |    52.01 ms |
+
+So the small block is **1.7× to 2× faster and wants eighty times less
+workspace**. A strided write over a few hundred bytes stays inside a couple of
+cache lines; one over tens of kilobytes does not. The default is therefore a
+block of three, guarded to shrink further if the product would alias, and
+`thetaBlock` is a hint in the sense `Chunking` is rather than an instruction.
+
+**§11.3 priced the working set at half of what it is.** It put the
+`m`-major intermediate at 17 MB at `lMax = 256, k = 8` and treated that as the
+cost. There are *two* buffers of that size in a full-height call — the packed
+input as well as the transposed output — so it was 33 MB, per thread. Blocking
+removes that objection rather than answering it: the intermediate `out` stays
+16.3 MiB because the problem fixes it, and everything else drops to 0.4 MiB.
+
+**And the headline for M3.** The Fourier stage is **3.25 ms against a 52 ms
+forward transform** at `lMax = 256, k = 8` on one thread — about six per cent.
+So the restructure's cost is not in this half, and whatever M3 measures will
+be the Legendre stage's doing. That is the number M5 should hold on to.
+
+*The copy blocking costs is not the problem either*, which was the other thing
+worth ruling out: split three ways, the copy is 0.7–1.9 ms against the FFT's
+1.65–18 ms at `lMax = 256`, and it falls as the block grows. Both sides are
+contiguous in `(θ, k)`, so it is a `memcpy` per order and not a gather.
+
 **M3 — the matrix kernel.** Per-order `dgemm` with `N = 2k`, one stored matrix
 serving both directions through a transpose flag. `TransformKernel::Matrix()`,
 `GSHTRANS_WITH_BLAS`, and the construction-time refusals of [C13] and [C14].

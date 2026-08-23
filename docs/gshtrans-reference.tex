@@ -1306,10 +1306,18 @@ stage, rather than interleaved per colatitude as now --- the intermediate
 is $n_\phi \times n_\theta \times k$ complex, which is just the field, 2.1\,MB
 at $l_{\max}=256$ and $k=1$.
 
-The transpose itself is free, for the same reason it was free in tier 1
-(P6).  A single \code{plan\_many} over $n_\theta k$ rows with output stride
-$n_\theta k$ and output distance 1 writes the result directly in
-$[m][\theta][\kappa]$ order.
+The transpose is nearly free, for the same reason it was free in tier 1
+(P6): a \code{plan\_many} with output stride equal to the number of
+transforms and output distance 1 writes the result directly in
+$[m][\theta][\kappa]$ order.  \emph{Nearly}, and this paragraph used to say
+\emph{free} and to specify a single call over all $n_\theta k$ rows.  Both
+were corrected by measurement at \code{core-plan.md} M2.  The strided write
+costs four to eight times as much when the number of transforms times 16 is a
+power of two, because successive orders then collide in the same cache sets;
+and a \emph{small} block of colatitudes per call beats one large one by
+1.7--2$\times$ while wanting eighty times less workspace, since a strided
+write over a few hundred bytes stays inside a couple of cache lines and one
+over tens of kilobytes does not.
 
 \paragraph{The GEMM is real, and that is a gift.}  $D$ is real while the
 data are complex, so there is no standard complex-times-real BLAS call ---

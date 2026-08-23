@@ -562,6 +562,138 @@ class GaussLegendreGrid
                           Batch::One(fieldSize), policy);
   }
 
+  // -- The matrix kernel's Fourier stage (core-plan.md section 11, step M2).
+  //
+  // How many longitudinal Fourier coefficients a field of this scalar type
+  // has: nPhi for a complex field, nPhi / 2 + 1 for a real one, whose
+  // negative orders are the conjugates of its positive ones.
+  template <RealOrComplexFloatingPoint Scalar>
+  auto FourierSize() const {
+    const auto nPhi = static_cast<Int>(this->NumberOfLongitudes());
+    return static_cast<Int>(
+        FFTWpp::DataSize<Scalar, Complex>(nPhi).second);
+  }
+
+  // The size of buffer ForwardFourierStage fills for `count` fields.
+  template <RealOrComplexFloatingPoint Scalar>
+  auto ForwardFourierStageSize(Int count) const {
+    return FourierSize<Scalar>() *
+           static_cast<Int>(this->NumberOfCoLatitudes()) * count;
+  }
+
+  // The longitudinal DFT of `count` fields of a batch, starting at field
+  // `first`, written m-major:
+  //
+  //     out[m * (nTheta * count) + iTheta * count + k]
+  //
+  // so that for one order m the (theta, k) block is contiguous with k
+  // fastest. That block is what the per-order matrix product of step M3
+  // multiplies: a complex (nTheta x count) matrix, which -- because
+  // std::complex stores its parts adjacently -- is also a real
+  // (nTheta x 2 count) one, and so can go to dgemm with N = 2 count.
+  //
+  // The loop kernel interleaves this stage with the Legendre stage, one
+  // colatitude at a time, because that keeps its working set to a single row.
+  // A per-order product cannot: it needs every colatitude of one order at
+  // once, so all the FFTs have to run first. That is the trade section 11.3
+  // prices, and it is why this is a separate entry point rather than a change
+  // to the loop kernel, which [C12] keeps exactly as it is.
+  //
+  // -- No scaling is applied here. The quadrature weight and the 2 pi / nPhi
+  // both belong to the Legendre stage, which is where the loop kernel applies
+  // them too, so the two kernels can be compared value by value at this seam.
+  //
+  // -- `thetaBlock` is how many colatitudes are transformed per FFTW call, and
+  // zero asks the library to choose. It is a hint in the sense Chunking is:
+  // the library rounds it to something it will not regret, and section 11's
+  // M2 records the measurements behind both the default and the rounding.
+  //
+  // Section 12 of the reference note says the transpose is free, on the
+  // grounds that one plan_many with output stride howMany and output distance
+  // 1 lands the data in the order above at no cost, exactly as tier-1
+  // batching landed it in [m][k] order (P6). **Measured, that is true only
+  // away from one specific hazard, and false at it.** The output write has
+  // stride `howMany` complex doubles, so when `howMany * 16` is a power of two
+  // the writes for successive orders collide in the same cache sets, and the
+  // FFT costs four to eight times what it costs at howMany plus or minus two.
+  // Measured directly at nPhi = 520, per transform: 0.80 at howMany = 62,
+  // 2.96 at 64, 0.83 at 66; 0.90 at 254, 7.32 at 256, 0.88 at 258; 1.76 at
+  // 2046, 8.53 at 2048, 1.65 at 2050.
+  //
+  // This is the hypothesis field-algebra-plan.md section 17.7 raised for
+  // RadialMajor and **rejected**, because its tiling already handled it. Here
+  // nothing tiles: FFTW writes straight through, so the same hazard bites.
+  // The guard is to shrink the block until the product is not a power of two,
+  // which costs nothing and also reduces the workspace.
+  //
+  // Blocking also bounds the FFT buffers, which `out` does not: at
+  // lMax = 256 with eight fields a full-height call wants two of about 16 MB
+  // each, per thread, while a block of three wants 0.4 MB. Section 11.3
+  // priced the intermediate at 17 MB and missed that there is a second buffer
+  // of the same size on the input side.
+  //
+  // The cost of blocking is one contiguous copy per order per block -- a
+  // memcpy, not a gather, since both sides are contiguous in (theta, k) -- and
+  // it is measured at under a fifth of the stage.
+  template <std::ranges::input_range InRange>
+  void ForwardFourierStage(InRange&& in, Batch inBatch, Int first, Int count,
+                           std::span<Complex> out, Int thetaBlock = 0) const {
+    using Scalar = std::ranges::range_value_t<InRange>;
+    static_assert(RealOrComplexFloatingPoint<Scalar>);
+
+    const auto nPhi = static_cast<Int>(this->NumberOfLongitudes());
+    const auto nTheta = static_cast<Int>(this->NumberOfCoLatitudes());
+    const auto nFourier = FourierSize<Scalar>();
+
+    if (count < 1) {
+      throw std::invalid_argument("Field count must be positive");
+    }
+    if (first < 0 || first + count > inBatch.Count()) {
+      throw std::invalid_argument(
+          "Requested fields lie outside the batch");
+    }
+    CheckSpan(std::ranges::size(in),
+              inBatch.Span(static_cast<Int>(this->FieldSize())), "field");
+    if (static_cast<Int>(out.size()) !=
+        ForwardFourierStageSize<Scalar>(count)) {
+      throw std::invalid_argument(
+          "Fourier stage output has the wrong size");
+    }
+
+    const auto block = ChooseThetaBlock(thetaBlock, count, nTheta);
+    auto inFirst = std::ranges::begin(in);
+
+    for (auto theta0 = Int{0}; theta0 < nTheta; theta0 += block) {
+      const auto rows = std::min(block, nTheta - theta0);
+      auto& work = GetWorkspace<Scalar, true>(nPhi, rows * count, _impl->flag);
+
+      // Pack (theta, k) rows in that order, so the FFT's own transform index
+      // runs theta-major with k fastest -- which is precisely the order the
+      // output block wants.
+      for (auto iRow = Int{0}; iRow < rows; iRow++) {
+        for (auto k = Int{0}; k < count; k++) {
+          PackRow(std::next(inFirst, inBatch.Offset((theta0 + iRow) * nPhi,
+                                                    first + k)),
+                  nPhi, inBatch.Stride(),
+                  std::next(work.in.begin(), (iRow * count + k) * nPhi));
+        }
+      }
+      work.plan.Execute();
+
+      // One contiguous run per order. The workspace holds
+      // [m][thetaLocal][k] and the target holds [m][theta][k], so the run for
+      // order m starts at m * rows * count in one and at
+      // m * nTheta * count + theta0 * count in the other, and has the same
+      // length in both.
+      const auto run = rows * count;
+      for (auto m = Int{0}; m < nFourier; m++) {
+        const auto* source = work.out.data() + m * run;
+        std::copy_n(source, run,
+                    out.begin() + m * nTheta * count + theta0 * count);
+      }
+    }
+  }
+
  private:
   // Exactly one level threads. A transform asked to run in parallel from
   // inside an existing parallel region runs sequentially instead, so that a
@@ -573,6 +705,37 @@ class GaussLegendreGrid
 
   static int ThreadCount(Execution policy) {
     return policy.Threads() > 0 ? policy.Threads() : omp_get_max_threads();
+  }
+
+  // How many colatitudes ForwardFourierStage transforms per FFTW call.
+  //
+  // The default is small, which is the opposite of what section 12 of the
+  // reference note assumes and is what measurement says: at lMax = 256 with
+  // eight fields the stage costs 3.1 ms at a block of three against 6.0 ms
+  // with every colatitude in one call, and wants 0.4 MB of workspace rather
+  // than 33 MB. A strided write over a few hundred bytes stays inside a
+  // couple of cache lines; one over tens of kilobytes does not.
+  //
+  // Then the guard: shrink while the output stride in bytes is a power of two,
+  // which is the cache-set collision measured at the call site above. Only
+  // ever downwards, so it terminates and never asks for more memory than was
+  // requested. A caller who forces a block gets it rounded the same way, since
+  // the rounding costs nothing and the alternative is a silent factor of two.
+  //
+  // The final partial block takes whatever colatitudes are left and is not
+  // adjusted -- it cannot be, since the remainder is what it is. It is at most
+  // one block out of many.
+  static Int ChooseThetaBlock(Int requested, Int count, Int nTheta) {
+    constexpr auto defaultBlock = Int{3};
+    auto block = requested > 0 ? std::min(requested, nTheta)
+                               : std::min(defaultBlock, nTheta);
+    const auto aliases = [count](Int rows) {
+      const auto bytes =
+          rows * count * static_cast<Int>(sizeof(Complex));
+      return bytes >= 512 && (bytes & (bytes - 1)) == 0;
+    };
+    while (block > 1 && aliases(block)) block--;
+    return block;
   }
 
   // A per-thread accumulator for the forward transform's partial sums, kept
