@@ -2152,6 +2152,49 @@ when the operand is tangential — the first line of §1's split — and that th
 radial part of that same `SurfaceGradient` is `−T` with the slot replaced,
 which is the second.
 
+*Done*, in `GSHTrans/src/Expansion/IntrinsicDerivative.h`. Rank `q` in, rank
+`q + 1` out, tangential on both sides, `NoSymmetry` on the result and the
+operand's reality kept — the same two choices `SurfaceGradient` makes and for
+the same reasons.
+
+**It is written as its own loop rather than routed through
+`ContravariantDetails::FillComponent`, deliberately.** Sharing that function
+would have been three lines shorter and would have made the test a tautology:
+the whole content of §18.3's acceptance criterion is that two independently
+computed things agree, and they cannot if one calls the other. What is shared
+is only what carries no risk — `Omega`, `DropFirst`, `Term` and
+`ComponentOfArray`.
+
+**Both perturbations bite, which is what says the test is worth having.**
+Multiplying by `√2` — that is, adopting ð's normalisation instead of D&T's
+`Ω`, the choice [D11] says is forced — fails it, and so does flipping which
+sign of `sourceN` goes with `σ = −1`. Restored, it passes. So [D11] is pinned
+by a test rather than by a paragraph.
+
+**[D6] pays off a second time, and here it removes a branch rather than a
+buffer.** `FillComponent` needs a pinned-imaginary case, because a component
+the reality condition pins stores the real field whose `i`-multiple it is.
+This operator cannot need one: its result is tangential, of rank at least
+one, and carries no symmetry, so negation has no fixed point among its
+multi-indices and nothing is pinned. That is a `static_assert` in the body
+rather than a comment.
+
+*Not built, and not needed yet:* a layered `IntrinsicDerivative`. The layered
+gradient exists because a three-dimensional gradient needs the radial seam;
+`D` has no radial part to seam, so the layered form would be this operator
+applied at each radius with an `r^{-1}`, which is the `scale` argument the
+flat code already takes. §18.3 does not ask for it and nothing does yet.
+
+*Tests:* three, at 248. Rank one against the embedded operand, rank two where
+a shift can leave the alphabet from either slot and two radial slots at once
+must give nothing, and closure — the result is tangential, so the operator
+applies twice, and it refuses a general operand.
+
+*The embedding in those tests is done by hand*, because T4 is what makes it a
+node. That is the right order — the operator's correctness does not depend on
+the bridge — but it means T4 should replace the test's `CopyBlock` with
+`Embed` when it lands, rather than leaving two ways to say the same thing.
+
 **T4 — projection and injection.** `Tangential(T)` from a general tensor and
 `Embed(T)` back ([D12]). Both are pure index maps and neither needs storage:
 the projection drops components, and the injection **declines to represent**

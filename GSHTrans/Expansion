@@ -7,5 +7,6 @@
 #include "src/Expansion/Eth.h"
 #include "src/Expansion/TensorExpansion.h"
 #include "src/Expansion/ContravariantDerivative.h"
+#include "src/Expansion/IntrinsicDerivative.h"
 
 #endif

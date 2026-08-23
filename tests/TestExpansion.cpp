@@ -917,3 +917,169 @@ TEST(ContravariantDerivative, TakesNoTangentialOperand) {
   static_assert(!Differentiable<Tangential>);
   SUCCEED();
 }
+
+//--------------------------------------------------------------------------//
+//                        The intrinsic derivative                           //
+//--------------------------------------------------------------------------//
+
+namespace {
+
+// Embed a tangential expansion in the general bundle by hand. T4 will make
+// this a node; until then the test does what the node will do -- carry the
+// tangential components across and leave every component with a radial slot
+// at zero, which is what the buffer already holds.
+const auto CopyBlock = [](auto&& to, const auto& from) {
+  for (auto l : to.Degrees()) {
+    for (auto m : to.Orders(l)) {
+      to[l, m] = from[l, m];
+    }
+  }
+};
+
+template <typename E>
+concept IntrinsicallyDifferentiable =
+    requires(const E& e) { IntrinsicDerivative(e); };
+
+}  // namespace
+
+// The test that earns the operator, and it is not that it agrees with eth --
+// which is how it is implemented -- but that it is the tangential block of
+// the surface gradient of the same field embedded. The two are computed by
+// different code down different paths, so agreement is a cross-check and not
+// a tautology.
+//
+// The other half of the same split is checked here too: the block of that
+// surface gradient with a radial slot is minus the field with the slot
+// replaced, which is the extrinsic curvature of the unit sphere.
+TEST(IntrinsicDerivative, IsTheTangentialBlockOfTheSurfaceGradient) {
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  auto t = TensorExpansion<1, NoSymmetry<1>, ComplexTensor, Grid,
+                           TangentialSlots>(grid, lMax);
+  for (auto i = Int{0}; i < t.Size(); i++) {
+    t.Data()[i] = Complex{std::cos(0.23 * i), std::sin(0.41 * i)};
+  }
+
+  auto g = TensorExpansion<1, NoSymmetry<1>, ComplexTensor, Grid>(grid, lMax);
+  const auto& tangential = t;
+  CopyBlock(g.Component<-1>(), tangential.Component<-1>());
+  CopyBlock(g.Component<1>(), tangential.Component<1>());
+
+  const auto intrinsic = IntrinsicDerivative(tangential);
+  const auto& embedded = g;
+  const auto ambient = SurfaceGradient(embedded);
+
+  static_assert(decltype(intrinsic)::Rank == 2);
+  static_assert(std::same_as<decltype(intrinsic)::SlotSet, TangentialSlots>);
+
+  const auto compare = [&]<Int S, Int A>() {
+    for (auto l = Int{0}; l <= lMax; l++) {
+      for (auto m = -l; m <= l; m++) {
+        const auto got = intrinsic.Coefficient<S, A>(l, m);
+        const auto expected = ambient.Coefficient<S, A>(l, m);
+        EXPECT_NEAR(got.real(), expected.real(), 1.0e-12)
+            << "(" << S << "," << A << ") at l = " << l << ", m = " << m;
+        EXPECT_NEAR(got.imag(), expected.imag(), 1.0e-12)
+            << "(" << S << "," << A << ") at l = " << l << ", m = " << m;
+      }
+    }
+  };
+  compare.template operator()<-1, -1>();
+  compare.template operator()<-1, 1>();
+  compare.template operator()<1, -1>();
+  compare.template operator()<1, 1>();
+
+  // And the second line of the split: the radial slot carries minus the
+  // operand with that slot replaced by sigma.
+  const auto curvature = [&]<Int S>() {
+    for (auto l = Int{0}; l <= lMax; l++) {
+      for (auto m = -l; m <= l; m++) {
+        const auto got = ambient.Coefficient<S, 0>(l, m);
+        const auto expected = -tangential.Coefficient<S>(l, m);
+        EXPECT_NEAR(got.real(), expected.real(), 1.0e-12)
+            << "(" << S << ",0) at l = " << l << ", m = " << m;
+        EXPECT_NEAR(got.imag(), expected.imag(), 1.0e-12)
+            << "(" << S << ",0) at l = " << l << ", m = " << m;
+      }
+    }
+  };
+  curvature.template operator()<-1>();
+  curvature.template operator()<1>();
+}
+
+// Rank two, where a shift can leave the alphabet from either slot and where
+// two radial slots at once must give nothing at all.
+TEST(IntrinsicDerivative, HoldsAtRankTwoWithBothSlotsToShift) {
+  constexpr auto lMax = Int{5};
+  auto grid = Grid(lMax, 3, FFTWpp::Estimate);
+
+  auto t = TensorExpansion<2, NoSymmetry<2>, ComplexTensor, Grid,
+                           TangentialSlots>(grid, lMax);
+  for (auto i = Int{0}; i < t.Size(); i++) {
+    t.Data()[i] = Complex{0.5 + std::cos(0.19 * i), std::sin(0.29 * i)};
+  }
+
+  auto g = TensorExpansion<2, NoSymmetry<2>, ComplexTensor, Grid>(grid, lMax);
+  const auto& tangential = t;
+  CopyBlock(g.Component<-1, -1>(), tangential.Component<-1, -1>());
+  CopyBlock(g.Component<-1, 1>(), tangential.Component<-1, 1>());
+  CopyBlock(g.Component<1, -1>(), tangential.Component<1, -1>());
+  CopyBlock(g.Component<1, 1>(), tangential.Component<1, 1>());
+
+  const auto intrinsic = IntrinsicDerivative(tangential);
+  const auto& embedded = g;
+  const auto ambient = SurfaceGradient(embedded);
+
+  const auto agrees = [&](Complex got, Complex expected, const char* what,
+                          Int l, Int m) {
+    EXPECT_NEAR(got.real(), expected.real(), 1.0e-12)
+        << what << " at l = " << l << ", m = " << m;
+    EXPECT_NEAR(got.imag(), expected.imag(), 1.0e-12)
+        << what << " at l = " << l << ", m = " << m;
+  };
+
+  for (auto l = Int{0}; l <= lMax; l++) {
+    for (auto m = -l; m <= l; m++) {
+      // The tangential block is the intrinsic derivative.
+      agrees((intrinsic.Coefficient<1, -1, 1>(l, m)),
+             (ambient.Coefficient<1, -1, 1>(l, m)), "tangential", l, m);
+      agrees((intrinsic.Coefficient<-1, 1, 1>(l, m)),
+             (ambient.Coefficient<-1, 1, 1>(l, m)), "tangential", l, m);
+
+      // One radial slot: minus the operand with that slot replaced by sigma.
+      agrees((ambient.Coefficient<1, 0, -1>(l, m)),
+             -(tangential.Coefficient<1, -1>(l, m)), "first slot radial", l, m);
+      agrees((ambient.Coefficient<-1, 1, 0>(l, m)),
+             -(tangential.Coefficient<1, -1>(l, m)), "second slot radial", l,
+             m);
+
+      // Two radial slots: the Omega term dies on the operand and every shift
+      // leaves one behind, so there is nothing left.
+      agrees((ambient.Coefficient<1, 0, 0>(l, m)), Complex{}, "both radial", l,
+             m);
+    }
+  }
+}
+
+// It is closed, which is the whole reason it has a name of its own: the
+// result is tangential, so it can be differentiated again. And it takes no
+// general operand -- grad_1 is the operator for those.
+TEST(IntrinsicDerivative, IsClosedOnTheTangentialBundle) {
+  constexpr auto lMax = Int{4};
+  auto grid = Grid(lMax, 3, FFTWpp::Estimate);
+
+  auto t = TensorExpansion<1, NoSymmetry<1>, ComplexTensor, Grid,
+                           TangentialSlots>(grid, lMax);
+  const auto& tangential = t;
+  const auto second = IntrinsicDerivative(IntrinsicDerivative(tangential));
+  static_assert(decltype(second)::Rank == 3);
+  static_assert(std::same_as<decltype(second)::SlotSet, TangentialSlots>);
+
+  using Tangential =
+      TensorExpansion<1, NoSymmetry<1>, ComplexTensor, Grid, TangentialSlots>;
+  using General = TensorExpansion<1, NoSymmetry<1>, ComplexTensor, Grid>;
+  static_assert(IntrinsicallyDifferentiable<Tangential>);
+  static_assert(!IntrinsicallyDifferentiable<General>);
+  SUCCEED();
+}

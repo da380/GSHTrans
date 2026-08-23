@@ -91,6 +91,7 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/Expansion/Eth.h
   GSHTrans/src/Expansion/TensorExpansion.h
   GSHTrans/src/Expansion/ContravariantDerivative.h
+  GSHTrans/src/Expansion/IntrinsicDerivative.h
   GSHTrans/src/Layered/RadialGrid.h
   GSHTrans/src/Layered/LayeredSpinField.h
   GSHTrans/Core
