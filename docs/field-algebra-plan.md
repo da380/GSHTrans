@@ -2336,3 +2336,186 @@ The transform, the grid, the Wigner machinery and the reality reduction's
 own upper index, and the only thing that changes is which multi-indices exist.
 That is the measure of whether phases 2 to 4 got the separation right, and on
 this evidence they did.
+
+---
+
+## 19. Radial operators, in detail
+
+Written 2026-08-23, when `thoughts.md` §8A was picked up. That section is the
+assessment — how three-dimensional the three-dimensional fields are, and where
+the seam is — and is not repeated. This is the work order and the questions it
+turns on.
+
+### 19.1 What is being built, and what is not
+
+**A small library of ready-made `RadialOperator`s, offered and not imposed.**
+The seam stays exactly where §17.2 put it: the library applies what it is
+given along the radial axis and owns no discretisation. What changes is that a
+caller no longer has to write a differentiation matrix before `Gradient` will
+run — which today they do, and which the tests work around by reaching for a
+hand-written `PowerDerivative` so that they have something to pass.
+
+The pre-built operators are a *model* as much as a convenience: each is
+nothing but a type satisfying `RadialOperator`, in a header nothing in the
+core includes, so a caller who reads one and writes their own has an example
+rather than a framework.
+
+**Not being built:** any radial discretisation the library owns, any
+connectivity beyond §8B's element partition, and — for now — interpolation to
+new radii. The three-dimensional fields stay data wrappers that facilitate
+transforms and algebra.
+
+### 19.2 The seam's contract, which has to be stated first
+
+`ApplyRadially` calls `op(in, out)` once per line, from inside an OpenMP
+region, through a `const Op&`. Two obligations follow that no pre-built
+operator can be written without, and neither is written down today:
+
+- **An operator must be safe to call concurrently through a const reference.**
+  Any scratch it needs is therefore `thread_local` or per-call, never a mutable
+  member. This is not tidiness: a spline-based derivative has to solve a system
+  per line, so it *needs* scratch, and where that scratch lives is decided
+  here.
+- **It is called `SliceSize()` times per field** — `nθ · nφ`, about 133,000 at
+  `lMax = 256`, or one per coefficient in the spectral domain. So anything
+  depending only on the nodes is computed once, at construction, and a
+  per-call allocation is a defect rather than a cost.
+
+Stating these is step 1, and it is a prerequisite rather than documentation.
+
+### 19.3 The operators
+
+1. **`FiniteDifferenceDerivative(radii, order)`** — Fornberg weights on
+   arbitrary spacing, one-sided at the ends, banded. No dependency, cheap, and
+   the one to reach for by default.
+2. **`LagrangeDerivative(radii)`** — the dense differentiation matrix
+   `D[j][i] = ℓ_i'(r_j)`, built once at construction from
+   `Interpolation::LagrangeBasis::Evaluate<1>`. Exact for polynomials through
+   degree `nR − 1`, which makes it right on a few nodes and wrong on many.
+3. **`SplineDerivative(radii)`** — a cubic or Akima spline fitted to each line
+   and differentiated. Needs `Interpolation`, and needs the scratch §19.2
+   settles.
+4. **`ElementDerivative(radii, elements)`** — deferred with §8B, which is where
+   the element partition lands. Named here so that the set reads as incomplete
+   on purpose.
+
+### 19.4 What was checked rather than assumed
+
+- **The interpolators take complex ordinates.** `InterpolationRanges` requires
+  the ordinates to be `RealOrComplexRange`, so a radial line of coefficients
+  goes in directly and no real/imaginary split is needed. Verified by
+  compiling `CubicSpline` and `AkimaSpline` over `std::complex<double>`.
+- **GCC 13.2 compiles current `main`**, so the deployment target is not an
+  obstacle. Verified the same way. `thoughts.md` §7 checked this against the
+  `refactor` branch; `main` has moved since and still holds.
+- **`Interpolation` depends on `NumericConcepts` and nothing else**, which
+  GSHTrans already has. So it adds no transitive dependency at all.
+- **GSHTrans already needs CMake 3.24 while declaring 3.20.**
+  `FetchContent_Declare(... FIND_PACKAGE_ARGS)` is a 3.24 feature and all three
+  existing dependencies use it. Pre-existing, unrelated to this work, and a
+  one-line fix — recorded because it removes the obvious argument for making
+  `Interpolation` optional, which was that it would raise the floor. It does
+  not.
+
+### 19.5 Decisions taken
+
+**[R1] `Interpolation` is an optional dependency, default on.** A
+`GSHTRANS_WITH_INTERPOLATION` option, fetched-or-found in the same pattern as
+the three siblings. Nothing in the angular core includes it, which is
+`thoughts.md` §7's recommendation and still right: the transform should not
+acquire a dependency the layered half alone uses.
+
+**[R2] It tracks `main`, like the siblings.** `NumericConcepts`, `GaussQuad`
+and `FFTWpp` are all declared with `GIT_TAG main` here and they move together.
+Interpolation's own README asks consumers to pin a reviewed commit, which is
+the right advice for a stranger and the wrong one for four libraries with the
+same author and the same release cadence. Recorded so the deviation from that
+advice is deliberate.
+
+**[R3] The first pass is three derivative operators and a resampler.**
+Finite-difference, Lagrange and spline cover the banded, dense and fitted
+shapes, so each kind of operator a caller might write is exemplified. The
+resampler is a fourth thing rather than a fourth operator, and §19.6 says why.
+
+**[R4] The derivative operators are self-contained, and `Resample` is what
+uses `Interpolation`.** This is not the split that was expected when [R1] was
+taken, and the reason is a cost, measured against the interface rather than
+guessed:
+
+> `Interpolation::CubicSpline` computes its coefficients at construction and
+> holds them in a `std::vector`, so constructing one costs about four
+> allocations. A radial operator is called once per line — `nθ · nφ` in the
+> spatial domain, or about 66,000 coefficients at `lMax = 256` in the spectral
+> one — so a spline built per line is of order 10 ms of allocation per
+> application, against a batched transform of about 2 ms per field. In the
+> inner loop of the matrix-free solver §17.1 describes, that is not a cost
+> worth paying.
+
+The way out is not to reach into `Interpolation::Detail`, where the
+tridiagonal solver lives, but to notice **what a derivative operator actually
+is: a factorisation that depends on the nodes alone.** The natural-spline
+system's three diagonals are functions of the radii and nothing else, so they
+are built once at construction, and a line costs one Thomas solve into
+`thread_local` scratch. That is §19.2's rule applied rather than worked
+around, and it is a thing upstream's interface cannot express, so it is not
+duplication.
+
+`Resample` is the other case and it inverts: remeshing is not an inner-loop
+operation, so per-line construction is fine there, and using `Interpolation`
+directly buys its whole menu — `Linear`, `CubicSpline`, `AkimaSpline` — for
+the price of a policy argument.
+
+**So the split is better than the one [R1] anticipated**: without the
+dependency a caller has all three derivative operators, and with it they
+additionally have resampling with a choice of scheme. `Interpolation` also
+serves as the *oracle* for `SplineDerivative` in the tests, which is the
+strongest check available — an independent implementation of the same spline.
+
+### 19.6 The steps
+
+**S1 — the seam's contract.** §19.2's two obligations, written on the
+`RadialOperator` concept and pinned by a test that applies an operator with
+`thread_local` scratch from many threads and checks the answer.
+
+**S2 — the dependency.** The CMake option and the fetch-or-find block. Nothing
+uses it yet.
+
+**S3 — `FiniteDifferenceDerivative` and `LagrangeDerivative`.** Fornberg
+weights on arbitrary spacing, one-sided at the ends; and the barycentric
+differentiation matrix. Neither needs `Interpolation`. Both are exact on
+polynomials up to a known degree, which is the test: a polynomial in `r` of
+that degree differentiates exactly, and one degree higher does not.
+
+*S1 and S3 are done*, in `GSHTrans/src/Layered/RadialDerivatives.h`, with the
+contract written on the concept in `RadialOperator.h` and pinned by a test
+that shares one operator across threads. The headline is that
+`LayeredGradient.RunsWithAReadyMadeRadialDerivative` exists at all: the
+Laplacian identity now runs with an operator the library supplies, where every
+gradient test before it reached for a hand-written `PowerDerivative` because
+there was nothing else to pass. It is checked at `r^2`, where a three-point
+rule and a three-node matrix are both exact, so the answer is machine
+precision rather than a truncation error to be tolerated.
+
+*One claim in the first draft was too strong, and the correction is worth
+keeping.* The differentiation matrix's diagonal is imposed as minus the row
+sum — the negative-sum trick — and the header said that made a constant
+differentiate to *exactly* zero. It does not: applying the matrix sums in a
+different order from the one the diagonal was formed in, so the answer is a
+few epsilon. What the trick actually buys is that the error in differentiating
+a constant is the rounding of one sum rather than the accuracy of a closed
+form for the diagonal, which is the thing that would otherwise grow with the
+number of nodes. The test asserts the tolerance and the header says which
+statement is true.
+
+**S4 — `SplineDerivative`.** The precomputed tridiagonal system, the
+`thread_local` solve, and agreement with `Interpolation::CubicSpline` to
+rounding where the dependency is present.
+
+**S5 — `Resample`.** Not a `RadialOperator`: it changes `nR`, so it does not
+map a stack to one of the same shape and cannot use `ApplyRadially`. It needs
+a second seam and one small addition to the stack types — a way to ask for the
+same shape on a *different* radial grid, next to the `SameShape()` that
+already exists.
+
+**S6 — `ElementDerivative`** waits for §8B's element partition, and is named
+here so the set reads as incomplete on purpose.

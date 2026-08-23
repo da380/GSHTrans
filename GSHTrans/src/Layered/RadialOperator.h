@@ -41,6 +41,23 @@ namespace GSHTrans {
 //
 // A radial operator maps one radial line to another. Both spans have length
 // nR, and it must not assume they alias or that they do not.
+//
+// Two obligations come with that signature, and they are obligations rather
+// than advice because ApplyRadially below calls the operator the way it does.
+//
+// **It must be safe to call concurrently through a const reference.** The
+// call sits inside an OpenMP region, once per line, on one shared operator.
+// Any scratch an operator needs is therefore thread_local or per-call, never a
+// mutable member. This is not a tidiness rule: an operator that fits
+// something to each line -- a spline, say -- *needs* scratch, and this is
+// what decides where it lives.
+//
+// **It is called SliceSize() times per application**, which is nTheta * nPhi
+// in the spatial domain and one per coefficient in the spectral one -- of
+// order 66,000 at lMax = 256. So anything depending only on the nodes is
+// computed once, when the operator is built, and an allocation inside the
+// call is a defect rather than a cost. RadialDerivatives.h is written to that
+// rule and is the worked example of it.
 template <typename Op, typename Scalar>
 concept RadialOperator =
     requires(const Op& op, std::span<const Scalar> in, std::span<Scalar> out) {

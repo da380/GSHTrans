@@ -10,5 +10,6 @@
 #include "src/Layered/RadialGrid.h"
 #include "src/Layered/RadialMajor.h"
 #include "src/Layered/RadialOperator.h"
+#include "src/Layered/RadialDerivatives.h"
 
 #endif

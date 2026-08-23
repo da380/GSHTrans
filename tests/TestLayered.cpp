@@ -867,3 +867,221 @@ TEST(LayeredGradient, TakesNoTangentialOperand) {
   static_assert(!SurfaceDifferentiable<Tangential>);
   SUCCEED();
 }
+
+//--------------------------------------------------------------------------//
+//                         Ready-made radial derivatives                     //
+//--------------------------------------------------------------------------//
+
+namespace {
+
+// Deliberately unequally spaced, and not close to uniform: a rule that
+// happened to assume equal spacing would pass on a uniform grid and fail
+// here, which is the point of choosing these.
+const auto UnevenRadii =
+    std::vector<Real>{0.40, 0.55, 0.70, 1.00, 1.30, 1.45};
+
+Real Monomial(Real r, Int degree) { return std::pow(r, degree); }
+Real MonomialSlope(Real r, Int degree) {
+  return degree == 0 ? Real{0} : degree * std::pow(r, degree - 1);
+}
+
+// Apply an operator to one line, which is what a radial operator is.
+template <typename Op>
+auto Line(const Op& op, const std::vector<Real>& in) {
+  auto out = std::vector<Real>(in.size());
+  op(std::span<const Real>(in), std::span<Real>(out));
+  return out;
+}
+
+}  // namespace
+
+// The property that makes a finite-difference rule what it is: exact for
+// polynomials up to its order, at *every* node including the ends, where the
+// stencil is one-sided. A rule that was only centred would have nothing to
+// say at the first and last radii -- which are exactly the radii a boundary
+// condition is applied at.
+TEST(RadialDerivatives, FiniteDifferencesAreExactToTheirOrder) {
+  auto radial = RadialGrid<Real>(UnevenRadii);
+
+  for (auto order : {Int{1}, Int{2}, Int{3}, Int{4}}) {
+    const auto d = FiniteDifferenceDerivative<Real>(radial, order);
+    EXPECT_EQ(d.Order(), order);
+
+    for (auto degree = Int{0}; degree <= order; degree++) {
+      auto values = std::vector<Real>{};
+      for (auto r : UnevenRadii) values.push_back(Monomial(r, degree));
+      const auto got = Line(d, values);
+      for (std::size_t i = 0; i < UnevenRadii.size(); i++) {
+        EXPECT_NEAR(got[i], MonomialSlope(UnevenRadii[i], degree), 1.0e-11)
+            << "order " << order << ", degree " << degree << ", node " << i;
+      }
+    }
+
+    // And one degree higher is not exact, which is what says the order means
+    // something rather than the test being satisfied by any weights at all.
+    auto tooHigh = std::vector<Real>{};
+    for (auto r : UnevenRadii) tooHigh.push_back(Monomial(r, order + 1));
+    const auto got = Line(d, tooHigh);
+    auto worst = Real{0};
+    for (std::size_t i = 0; i < UnevenRadii.size(); i++) {
+      worst = std::max(worst, std::abs(got[i] - MonomialSlope(UnevenRadii[i],
+                                                              order + 1)));
+    }
+    EXPECT_GT(worst, 1.0e-9) << "order " << order;
+  }
+}
+
+TEST(RadialDerivatives, FiniteDifferencesRefuseWhatTheyCannotDo) {
+  auto radial = RadialGrid<Real>(UnevenRadii);
+  EXPECT_THROW((FiniteDifferenceDerivative<Real>(radial, 0)),
+               std::invalid_argument);
+  // A stencil wider than the grid.
+  EXPECT_THROW((FiniteDifferenceDerivative<Real>(radial, 6)),
+               std::invalid_argument);
+  EXPECT_NO_THROW((FiniteDifferenceDerivative<Real>(radial, 5)));
+}
+
+// The differentiation matrix is exact to the highest degree any operator on
+// these nodes could be, which is one less than their number.
+TEST(RadialDerivatives, TheDifferentiationMatrixIsExactToTheNodeCount) {
+  auto radial = RadialGrid<Real>(UnevenRadii);
+  const auto d = LagrangeDerivative<Real>(radial);
+  const auto n = static_cast<Int>(UnevenRadii.size());
+
+  for (auto degree = Int{0}; degree < n; degree++) {
+    auto values = std::vector<Real>{};
+    for (auto r : UnevenRadii) values.push_back(Monomial(r, degree));
+    const auto got = Line(d, values);
+    for (std::size_t i = 0; i < UnevenRadii.size(); i++) {
+      EXPECT_NEAR(got[i], MonomialSlope(UnevenRadii[i], degree), 1.0e-10)
+          << "degree " << degree << ", node " << i;
+    }
+  }
+
+  // A constant differentiates to zero to rounding, and the diagonal is what
+  // makes that so: it is imposed as minus the row sum rather than evaluated
+  // from the formula, which is the negative-sum trick. What it buys is that
+  // the error here is the rounding of *this* sum -- a few epsilon, and the
+  // summation order is why it is not identically zero -- rather than the
+  // accuracy of a closed form for the diagonal, which is what would otherwise
+  // grow with the number of nodes.
+  auto ones = std::vector<Real>(UnevenRadii.size(), Real{1});
+  const auto zero = Line(d, ones);
+  for (auto value : zero) EXPECT_NEAR(value, Real{0}, 1.0e-14);
+}
+
+// Radial lines are complex in the spectral domain, which is where the model
+// application does its radial work, so an operator that only took real lines
+// would be useless where it is most wanted.
+TEST(RadialDerivatives, ActOnComplexLinesAsReadilyAsRealOnes) {
+  auto radial = RadialGrid<Real>(UnevenRadii);
+  const auto fd = FiniteDifferenceDerivative<Real>(radial, 2);
+  const auto lagrange = LagrangeDerivative<Real>(radial);
+
+  auto values = std::vector<Complex>{};
+  for (auto r : UnevenRadii) values.push_back(Complex{r * r, 3.0 * r});
+
+  for (const auto& apply : {std::function<void(std::span<const Complex>,
+                                               std::span<Complex>)>(
+                                [&](auto in, auto out) { fd(in, out); }),
+                            std::function<void(std::span<const Complex>,
+                                               std::span<Complex>)>(
+                                [&](auto in, auto out) { lagrange(in, out); })}) {
+    auto got = std::vector<Complex>(values.size());
+    apply(std::span<const Complex>(values), std::span<Complex>(got));
+    for (std::size_t i = 0; i < UnevenRadii.size(); i++) {
+      EXPECT_NEAR(got[i].real(), 2.0 * UnevenRadii[i], 1.0e-10) << i;
+      EXPECT_NEAR(got[i].imag(), 3.0, 1.0e-10) << i;
+    }
+  }
+}
+
+// The contract of RadialOperator.h: one operator, shared const, called from
+// every thread, with whatever scratch it needs in thread_local storage. This
+// is the pattern the pre-built operators are written to and that a caller
+// writing their own has to follow, so it is pinned rather than described.
+TEST(RadialOperator, OneOperatorServesEveryThread) {
+  constexpr auto lMax = Int{8};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = RadialGrid<Real>(UnevenRadii);
+
+  // An operator that genuinely needs scratch, so that a mutable member would
+  // be visibly wrong rather than accidentally right.
+  struct ScratchOperator {
+    void operator()(std::span<const Complex> in,
+                    std::span<Complex> out) const {
+      thread_local auto work = std::vector<Complex>{};
+      if (work.size() < in.size()) work.resize(in.size());
+      for (std::size_t i = 0; i < in.size(); i++) {
+        work[i] = in[i] * Complex{0.0, 1.0};
+      }
+      for (std::size_t i = 0; i < in.size(); i++) {
+        out[i] = work[in.size() - 1 - i];
+      }
+    }
+  };
+
+  auto f = LayeredSpinField<0, Grid, ComplexValued>(radial, grid);
+  for (Int i = 0; i < f.NumberOfRadii() * f.SliceSize(); i++) {
+    f.Data()[i] = Complex{std::cos(0.03 * i), std::sin(0.07 * i)};
+  }
+
+  const auto op = ScratchOperator{};
+  const auto sequential = ApplyRadially(f, op, Execution::Sequential());
+  const auto threaded = ApplyRadially(f, op, Execution::Parallel());
+
+  ASSERT_EQ(sequential.Data().size(), threaded.Data().size());
+  for (std::size_t i = 0; i < sequential.Data().size(); i++) {
+    EXPECT_EQ(sequential.Data()[i], threaded.Data()[i]) << "at " << i;
+  }
+
+  // And the ready-made ones are usable the same way, which is the point.
+  const auto d = FiniteDifferenceDerivative<Real>(radial, 2);
+  const auto one = ApplyRadially(f, d, Execution::Sequential());
+  const auto many = ApplyRadially(f, d, Execution::Parallel());
+  for (std::size_t i = 0; i < one.Data().size(); i++) {
+    EXPECT_EQ(one.Data()[i], many.Data()[i]) << "at " << i;
+  }
+}
+
+// What the whole exercise is for: Gradient now runs without the caller
+// writing a differentiation matrix first. The identity is the Laplacian one,
+// at a power both operators integrate exactly -- r^2 is degree two, and both
+// a three-point rule and a three-node matrix are exact there, so the answer
+// is machine precision rather than a truncation error to be tolerated.
+TEST(LayeredGradient, RunsWithAReadyMadeRadialDerivative) {
+  constexpr auto lMax = Int{8};
+  constexpr auto l = Int{3};
+  constexpr auto m = Int{-2};
+  const auto a = Real{2};
+
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = RadialGrid<Real>(TestRadii);
+
+  auto f = LayeredScalarExpansion<Grid, ComplexTensor>(radial, grid, lMax);
+  for (auto i : radial.RadiusIndices()) {
+    f.ComponentStack<>()[i, l, m] = std::pow(TestRadii[i], a);
+  }
+
+  const auto fd = FiniteDifferenceDerivative<Real>(radial, 2);
+  const auto lagrange = LagrangeDerivative<Real>(radial);
+
+  const auto check = [&](const auto& op, const char* what) {
+    auto g = Gradient(f, op);
+    auto h = Gradient(g, op);
+    for (auto i : radial.RadiusIndices()) {
+      // `template`, because inside a generic lambda `h` is dependent.
+      const auto trace = h.template Coefficient<0, 0>(i, l, m) -
+                         h.template Coefficient<1, -1>(i, l, m) -
+                         h.template Coefficient<-1, 1>(i, l, m);
+      const auto expected =
+          (a * (a + 1) - l * (l + 1.0)) * std::pow(TestRadii[i], a - 2);
+      EXPECT_NEAR(trace.real(), expected, 1.0e-10 * (1 + std::abs(expected)))
+          << what << " at r = " << TestRadii[i];
+      EXPECT_NEAR(trace.imag(), 0.0, 1.0e-10) << what;
+    }
+  };
+
+  check(fd, "finite differences");
+  check(lagrange, "the differentiation matrix");
+}
