@@ -436,3 +436,110 @@ TEST(TensorAlgebra, ElasticTensorAppliedToAStrain) {
   EXPECT_EQ((materialised.Component<1, 1>()[1, 1]),
             (stress.Component<1, 1>()[1, 1]));
 }
+
+//--------------------------------------------------------------------------//
+//                            Tangential tensors                             //
+//--------------------------------------------------------------------------//
+
+namespace {
+
+using Tangential2 = TensorField<2, NoSymmetry<2>, ComplexTensor, Grid,
+                                ComponentMajor, TangentialSlots>;
+using Tangential1 = TensorField<1, NoSymmetry<1>, ComplexTensor, Grid,
+                                ComponentMajor, TangentialSlots>;
+using General2 = TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>;
+
+// Asked as a concept rather than as a bare requires-expression, for the same
+// reason the component accessors are: in a non-template context GCC reports
+// "no matching function" instead of an unsatisfied requirement.
+template <typename L, typename R>
+concept Multipliable =
+    requires(const L& left, const R& right) { TensorProduct(left, right); };
+
+}  // namespace
+
+TEST(TensorAlgebra, TangentialTensorsAreTensorExpressions) {
+  static_assert(TensorExpr<Tangential2>);
+  static_assert(IsTerminal<Tangential2>);
+  static_assert(std::same_as<Tangential2::SlotSet, TangentialSlots>);
+
+  auto grid = TestGrid();
+  auto t = Tangential2(grid);
+  Fill<Tangential2, -1, 1>(t, 1.0);
+
+  // Permutation is a relabelling and knows nothing about the alphabet.
+  const auto& tensor = t;
+  auto transposed = Transpose(tensor);
+  static_assert(std::same_as<decltype(transposed)::SlotSet, TangentialSlots>);
+  EXPECT_EQ((transposed.Component<1, -1>()[2, 2]),
+            (tensor.Component<-1, 1>()[2, 2]));
+
+  // And a slot the tangential bundle does not have is not a component of the
+  // permuted tensor either.
+  static_assert(!decltype(transposed)::Represents<0, 1>);
+}
+
+// The metric contraction runs over the alphabet's letters, so on a tangential
+// tensor it is the induced metric of the sphere: the radial term is absent
+// because there is no radial slot to contribute one.
+TEST(TensorAlgebra, TheTangentialTraceHasNoRadialTerm) {
+  auto grid = TestGrid();
+  auto t = Tangential2(grid);
+  Fill<Tangential2, -1, 1>(t, 1.0);
+  Fill<Tangential2, 1, -1>(t, 3.0);
+  Fill<Tangential2, -1, -1>(t, 5.0);
+  Fill<Tangential2, 1, 1>(t, 7.0);
+
+  const auto& tensor = t;
+  auto trace = Trace(tensor);
+  static_assert(decltype(trace)::UpperIndex == 0);
+
+  const auto expected =
+      -tensor.Component<-1, 1>()[2, 2] - tensor.Component<1, -1>()[2, 2];
+  EXPECT_EQ((trace[2, 2]), expected);
+}
+
+// Crossing bundles is done by embedding at the call site and never
+// implicitly, so a product of operands from different alphabets does not
+// compile (field-algebra-plan.md section 18.2 [D10]).
+TEST(TensorAlgebra, ProductsRejectOperandsFromDifferentBundles) {
+  static_assert(Multipliable<Tangential1, Tangential1>);
+  static_assert(Multipliable<General2, General2>);
+  static_assert(!Multipliable<Tangential1, General2>);
+  static_assert(!Multipliable<General2, Tangential1>);
+
+  auto grid = TestGrid();
+  auto u = Tangential1(grid);
+  Fill<Tangential1, -1>(u, 1.0);
+  Fill<Tangential1, 1>(u, 2.0);
+
+  const auto& vector = u;
+  auto product = TensorProduct(vector, vector);
+  static_assert(decltype(product)::Rank == 2);
+  static_assert(std::same_as<decltype(product)::SlotSet, TangentialSlots>);
+  static_assert(!decltype(product)::Represents<0, 1>);
+  EXPECT_EQ((product.Component<-1, 1>()[2, 2]),
+            (vector.Component<-1>()[2, 2] * vector.Component<1>()[2, 2]));
+}
+
+// Materialising cannot move a tensor between bundles: the field it produces
+// is over the expression's own alphabet.
+TEST(TensorAlgebra, MaterialiseKeepsTheOperandsAlphabet) {
+  auto grid = TestGrid();
+  auto t = Tangential2(grid);
+  Fill<Tangential2, -1, 1>(t, 1.0);
+  Fill<Tangential2, 1, -1>(t, 3.0);
+
+  const auto& tensor = t;
+  auto symmetrised = Symmetrise<Symmetric<2>>(tensor);
+  auto field = Materialise<Symmetric<2>>(symmetrised);
+
+  static_assert(std::same_as<decltype(field)::SlotSet, TangentialSlots>);
+  static_assert(decltype(field)::Components == 4);
+  static_assert(decltype(field)::StoredComponents == 3);
+
+  const auto expected = 0.5 * (tensor.Component<-1, 1>()[2, 2] +
+                               tensor.Component<1, -1>()[2, 2]);
+  EXPECT_EQ((field.Component<-1, 1>()[2, 2]), expected);
+  EXPECT_EQ((field.Component<1, -1>()[2, 2]), expected);
+}

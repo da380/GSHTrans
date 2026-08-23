@@ -1888,7 +1888,8 @@ that is not a defect to design around.** The ambient gradient leaves the
 tangent plane, by the Gauss formula, and the escaping part is the extrinsic
 curvature of the sphere. A type that hid it would be lying about the geometry.
 The honest signature is the one that says so, and a caller who wants the
-closed operator asks for the closed operator.
+closed operator asks for the closed operator. *Refined by [D9]: the signature
+takes no tangential overload, and `Embed` is what makes using it free.*
 
 **[D4] The intrinsic derivative gets a name of its own.** `IntrinsicDerivative`
 on a tangential tensor: `Ω` multiplication component by component, which is
@@ -1896,7 +1897,8 @@ on a tangential tensor: `Ω` multiplication component by component, which is
 `Eth.h` already carries the argument, and `thoughts.md` §1 records that both
 lines of the split were checked against `SurfaceGradient` and hold *exactly*,
 to `0.000e+00`. What is new is that there is now a type on which it is closed,
-so it can be offered as an operator rather than as a fact about `ð`.
+so it can be offered as an operator rather than as a fact about `ð`. *[D11]
+settles the normalisation, and it turns out to be forced rather than chosen.*
 
 **[D5] The upper-index constraint is not enforced anywhere.** For a tangential
 rank-`p` tensor `N ≡ p (mod 2)` and `|N| ≤ p`, so a tangential rank-2 tensor
@@ -1922,6 +1924,82 @@ has two real degrees of freedom and that tracelessness is a linear constraint
 rather than an orbit of a group acting on indices. `Orbits.h` cannot produce
 it and should not be extended to try. A caller subtracts the trace.
 
+**[D8] The alphabet is the index space, not a mask over the general one.**
+The alternative, raised after T1 had landed, was to keep every tensor on
+`{-1, 0, +1}` and mark the components with a radial slot as *not represented* —
+which the library can already express, since `Represents`/`Vanishes` do exactly
+that for the identically-zero components of an antisymmetric tensor. That
+route costs nothing downstream: no `Slots` parameter would reach `TensorExpr`,
+`TensorExpansion` or the layered types at all, and mixed objects would come for
+free.
+
+It is rejected on the mathematics rather than on the mechanics. *A tangential
+tensor field lives in another bundle, so it is another object.* There is an
+embedding into the larger one, and that map is named and defined ([D9]); what
+there is not is a general tensor that happens to be zero in some directions
+wearing the name of a tangential one. Route A also puts the storage argument
+where it can be read off — `MultiIndex<p, TangentialSlots>::Size` is `2^p`
+because there are `2^p` components — and makes `Component<0, 1>()` on a
+tangential tensor a thing that does not exist rather than a thing that is zero.
+
+**The rejected mechanism is nevertheless the answer to [D2].** A mixed object
+such as D&T's `T^{rΩ}` is *a general tensor with zero components in certain
+directions*, which is precisely a general tensor whose `Represents` declines
+those components. So mixed tensors are not a gap in this design; they are a
+different construction on the general bundle, expressible with the machinery
+[D9] already introduces and needing no per-slot alphabet. The uniform alphabet
+of [D2] stands, and the deferral costs no expressiveness.
+
+**[D9] `SurfaceGradient` gains no tangential overload, and `Embed` is a lazy
+node rather than a zero-fill.** The argument for an overload — letting `∇₁`
+take a tangential operand directly, its shifted-index lookup consulting the
+operand's alphabet — was a cost argument: otherwise a caller materialises a
+`3^q` copy of a `2^q` tensor before differentiating, which throws the storage
+saving away in the operation the three-dimensional applications spend their
+time in. That argument evaporates once `Embed(T)` is a node whose
+`Represents<α…>` is false wherever a slot is radial, since then nothing is
+allocated and no zero is ever written or read. What remains is the clean
+statement: `∇₁` is an operator on sections of the general bundle, and a
+tangential tensor is embedded and then differentiated, in that order, visibly.
+
+Recorded and deliberately not exploited: for a tangential rank-`q` operand,
+`∇₁T` is nonzero only on components with **at most one radial slot among the
+inherited `q`** — if two are radial the `Ω` term dies on the operand and every
+shift term leaves one behind. That is 6 of 9 components at rank 1 and 16 of 27
+at rank 2. The structure is real and is lost on materialisation into a general
+`TensorField`; nothing here chases it.
+
+**[D10] The tensor product requires matching alphabets, and `TensorExpr` grows
+`SlotSet`.** A caller crossing bundles embeds explicitly, by the same principle
+as [D9]. `Contract` and `Symmetrise` need no rule: contracting two tangential
+slots against `g_{αβ} = (−1)^α δ_{α+β,0}` restricted to `α, β ∈ {±1}` *is* the
+induced surface metric, and the result stays tangential at rank `p − 2`. That
+is a test rather than a decision. The concept has to expose `SlotSet` —
+defaulted to `AllSlots` on every existing node — because that is what the
+product's constraint and the contraction's result type read.
+
+**[D11] `IntrinsicDerivative` carries `Ω`, and that is forced rather than
+chosen.** [D4] describes it as "`ð` up to `√2`", which leaves a normalisation
+apparently open. It is not open. The Gauss formula makes `∇₁ = D + ` a term in
+the second fundamental form, which for the unit sphere is normal-valued, so
+`D` *is* the tangential block of `∇₁` — exactly, with D&T's `Ω^{∓N}_l`.
+Adopting ð's normalisation instead would make the operator differ by `√2` from
+the operator it is defined to be. The `√2` stays where it belongs, as a fact
+about ð.
+
+**[D12] The tangential types are named `Tangential…`, and the projection is
+built.** The prefix matches `TangentialSlots` and D&T's own vocabulary, so the
+type name says which bundle its object lives in:
+`TangentialVectorField<Reality, Grid>`,
+`TangentialTensorField<Rank, Symmetry, Reality, Grid>`,
+`TangentialSymmetricField<Reality, Grid>`, alongside the existing
+`VectorField`, `Rank2TensorField` and `ElasticTensorField`. And T4 builds
+`Tangential(T)` as well as `Embed(T)`: the projection is how a caller gets `D`
+from `∇₁` and how surface strain is extracted from a three-dimensional strain
+tensor, and it is a pure index map that drops components rather than computing
+anything. The identity it makes writable — and therefore testable — is
+`Tangential(SurfaceGradient(Embed(T))) == IntrinsicDerivative(T)`.
+
 ### 18.3 The steps
 
 **T1 — the alphabet.** `MultiIndex<Rank, Slots>` and `OrbitTable<Rank, Slots>`,
@@ -1933,26 +2011,103 @@ New tests are D6's two counts, D5's constraint, and the round trip
 *Safe to land ahead of the rest*, because no public spelling changes and no
 behaviour does.
 
-**T2 — the field and the expansion carry it.** `TensorField`, `TensorExpr`,
-`TensorExpansion` and the layered forms gain the `Slots` parameter, defaulted
-the same way. A tangential field exists, stores `2^p` components, transforms,
-and takes part in the algebra. This is the step that widens the public surface
-and is the one to agree before starting.
+*Done.* The tests carry [D6]'s two counts as `static_assert`s — tangential
+`NoSymmetry` gives 1, 2, 4, 8 stored and **no pinned components at all** at
+ranks 1 to 4, and symmetric tangential rank 2 gives 2 stored, 1 pinned, three
+reals a point — so the claim that the orbit walk generalises unaided is tested
+rather than asserted.
 
-**T3 — `IntrinsicDerivative`.** Nearly free, per D4. The test that earns it is
-not that it agrees with `ð`, which is how it is implemented, but that it agrees
-with `SurfaceGradient` on the tangential part of the output when the operand is
-tangential — the first line of §1's split — and that the radial part of that
-same `SurfaceGradient` is `−T` with the slot replaced, which is the second.
+**T2 — the field and the expansion carry it.** `TensorField`, `TensorExpr`,
+`TensorExpansion` and the layered forms gain the `Slots` parameter, appended
+last and defaulted to `AllSlots`, so that no existing spelling moves. A
+tangential field exists, stores `2^p` components, transforms, and takes part in
+the algebra. This is the step that widens the public surface. It is nineteen
+sites across five headers, plus `SlotSet` on the `TensorExpr` concept ([D10]),
+and it goes in three commits rather than one — each green, and the middle one
+is where the empty real buffer below first bites.
+
+- **T2a — the flat field and the algebra.** `TensorField` and `TensorExpr`.
+- **T2b — the spectral side.** `TensorExpansion` and the transform bridge.
+- **T2c — the layered forms.** `LayeredTensorField`, `LayeredTensorExpansion`
+  and `LayeredGradient`, whose four `MultiIndex<Rank + 1>` sites are the ones
+  that have to decide the *result's* alphabet — and by [D9] it is always
+  `AllSlots`, since `∇₁` lands in the general bundle.
+
+*T2a is done.* `TensorField` and every node in `TensorExpr.h` carry `SlotSet`,
+the concept requires it, `TensorProduct` requires its operands to agree on it,
+and `Materialise` produces a field over the expression's own alphabet. The
+existing tests passed **untouched**, which is the check §18.1 asked for; the
+suite went from 226 to 235, green in Debug, in Release, and under ASan and
+UBSan.
+
+**§18.1's claim was very slightly too strong, and the exception is worth
+naming.** It said everything downstream of `MultiIndex` is generic over
+whatever indices exist, and listed the orbit walk, the symmetry policies and
+the storage — all three of which were. The metric contraction was not. It
+summed three named terms, `-T^{-+} + T^{00} - T^{+-}`, with the metric's
+signs written out by hand, and that is the only arithmetic anywhere in the
+layer that knew how many letters a slot has. It is now a fold over
+`SlotSet::Alphabet` with the sign taken from `(-1)^a`, which on a tangential
+tensor leaves `-T^{-+} - T^{+-}` — the induced metric of the sphere, with the
+radial term absent because there is no radial slot to contribute one, and not
+because anything subtracted it.
+
+**The letter check is load-bearing, checked by removing it.** With the guard
+taken out, `TestTensorField.cpp` does not merely lose its negative
+assertions — it **fails to compile**, with `expression '<throw-expression>' is
+not a constant expression` at `MultiIndex.h`, exactly as predicted. So the
+assertions are not vacuous, and the failure mode is the one recorded above
+rather than a silently-true `static_assert`.
+
+**The empty real buffer needed no work here, which was not the expectation.**
+Phase 4 already guarded both transform directions with
+`if constexpr (RealComponents > 0)`, so a real tangential tensor with no
+pinned components transforms with the guards it already had. Its round trip is
+now a test. Whether `TensorExpansion` is equally well guarded is T2b's
+question and is still open.
+
+*Two things for whoever writes it, both found by looking rather than by
+running into them.*
+
+**A letter outside the alphabet is a hard error, not a constraint failure, and
+a `requires`-expression does not see it.** `MultiIndex`'s constructor throws,
+which in a constant expression makes the use ill-formed at the point of use
+rather than SFINAE-friendly at the point of asking. Verified on GCC:
+`requires { FlatOf<0, 1>; }` over `TangentialSlots` is **`true`**, and the
+subsequent use fails to compile inside the constructor. So `RepresentsFn` must
+check the letters *before* forming the multi-index, in exactly the `if
+constexpr` shape §12.4 already uses for the pack size — or
+`static_assert(!requires { t.Component<0, 1>(); })` is vacuous and asking a
+tangential tensor for a radial component is an error inside `std::array`. This
+is the same lesson as §12.4's, arriving a second time by a second route, and
+the comment should say so.
+
+**The real buffer can be empty, and never has been.** [D6]'s payoff is that a
+tangential real tensor with no permutation symmetry has no pinned components,
+so `RealComponents == 0` and the real buffer is zero-length — in `TensorField`,
+in `TensorExpansion`, and in both layered forms. The transform bridge must skip
+that group rather than batch zero fields. Phase 4 has never run with it empty.
+
+**T3 — `IntrinsicDerivative`.** Nearly free, per [D4] and [D11]. The test
+that earns it is not that it agrees with `ð`, which is how it is implemented,
+but that it agrees with `SurfaceGradient` on the tangential part of the output
+when the operand is tangential — the first line of §1's split — and that the
+radial part of that same `SurfaceGradient` is `−T` with the slot replaced,
+which is the second.
 
 **T4 — projection and injection.** `Tangential(T)` from a general tensor and
-`Embed(T)` back. Both are pure index maps and neither needs storage: the
-projection drops components, the injection zero-fills them. The pair is what
-makes `SurfaceGradient`'s honest signature usable.
+`Embed(T)` back ([D12]). Both are pure index maps and neither needs storage:
+the projection drops components, and the injection **declines to represent**
+them rather than zero-filling them ([D9]) — which is what makes
+`SurfaceGradient`'s honest signature cost nothing to use. The pair is what
+makes the identity
+`Tangential(SurfaceGradient(Embed(T))) == IntrinsicDerivative(T)` writable, and
+that identity is T3's test rather than an aspiration.
 
 **T5 — specialisations.** `thoughts.md` §3, done in the same pass so that the
 tangential forms are named alongside the general ones rather than bolted on
-afterwards.
+afterwards. The names are [D12]'s: `TangentialVectorField`,
+`TangentialTensorField`, `TangentialSymmetricField`.
 
 ### 18.4 What this does not touch
 

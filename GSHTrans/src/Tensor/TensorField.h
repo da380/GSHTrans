@@ -61,7 +61,8 @@ concept TensorLayout =
 // reduction; it arrives here already, because antisymmetry has it too.
 template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
           TensorReality _Reality, AngularGrid _Grid,
-          TensorLayout _Layout = ComponentMajor>
+          TensorLayout _Layout = ComponentMajor,
+          SlotAlphabet _Slots = AllSlots>
 class TensorField {
  public:
   using Int = std::ptrdiff_t;
@@ -71,6 +72,19 @@ class TensorField {
   using Reality = _Reality;
   using GridType = _Grid;
   using LayoutPolicy = _Layout;
+
+  // Which slots this tensor's indices are drawn from, and the multi-index
+  // over them. AllSlots is the ordinary canonical tensor; TangentialSlots is
+  // one with no radial slot, whose components number 2^Rank rather than
+  // 3^Rank (field-algebra-plan.md section 18). The parameter is appended last
+  // and defaulted so that no existing spelling of this template moves.
+  //
+  // Nothing below knows which alphabet it has. Everything is written against
+  // Index and against the orbit table built over it, which is the whole of
+  // why the generalisation is additive: the storage groups by the slot sum,
+  // and the slot sum does not care how many values a slot can take.
+  using SlotSet = _Slots;
+  using Index = MultiIndex<Rank, SlotSet>;
 
   static constexpr bool IsComponentMajor =
       std::same_as<_Layout, ComponentMajor>;
@@ -82,8 +96,9 @@ class TensorField {
   // Orbits.h, where the switch lives.
   using Scalar = Complex;
 
-  static constexpr auto& Orbits = TensorOrbits<Rank, Symmetry, Reality>;
-  static constexpr Int Components = MultiIndex<Rank>::Size;
+  static constexpr auto& Orbits =
+      TensorOrbits<Rank, Symmetry, Reality, SlotSet>;
+  static constexpr Int Components = Index::Size;
   static constexpr Int StoredComponents = Orbits.storedCount;
 
   // The buffer's component order, which is **by upper index** and not by flat
@@ -117,9 +132,10 @@ class TensorField {
   // the real buffer is one transform group rather than several.
   //
   // The arithmetic comes out exactly right: two reals per complex component
-  // and one per constrained one is 3^p, the real degrees of freedom of a real
-  // rank-p tensor. Nine for rank 2, six symmetric, three antisymmetric, ten
-  // for symmetric rank 3.
+  // and one per constrained one is Base^p, the real degrees of freedom of a
+  // real rank-p tensor. Nine for rank 2, six symmetric, three antisymmetric,
+  // ten for symmetric rank 3 -- and four for a tangential rank 2, which has
+  // no constrained component at all to contribute the odd one.
   struct Layout {
     std::array<Int, StoredComponents> flatOfSlot{};
     std::array<Int, StoredComponents> upperIndexOfSlot{};
@@ -144,7 +160,7 @@ class TensorField {
       for (auto i = Int{0}; i < StoredComponents; i++) {
         const auto flat = Orbits.stored[i];
         if (constrained(flat)) continue;
-        if (MultiIndex<Rank>::FromFlat(flat).UpperIndex() != n) continue;
+        if (Index::FromFlat(flat).UpperIndex() != n) continue;
         layout.flatOfSlot[slot] = flat;
         layout.upperIndexOfSlot[slot] = n;
         layout.realOfSlot[slot] = false;
@@ -173,7 +189,7 @@ class TensorField {
   static constexpr Int RealsPerPoint = 2 * ComplexComponents + RealComponents;
 
   static constexpr Int UpperIndexOfFlat(Int flat) {
-    return MultiIndex<Rank>::FromFlat(flat).UpperIndex();
+    return Index::FromFlat(flat).UpperIndex();
   }
 
   // Where a stored component sits in the buffer, by flat multi-index.
@@ -186,14 +202,13 @@ class TensorField {
 
   // The flat component index of a multi-index given as template arguments.
   template <Int... Alphas>
-  static constexpr Int FlatOf =
-      MultiIndex<Rank>(std::array<Int, Rank>{Alphas...}).Flat();
+  static constexpr Int FlatOf = Index(std::array<Int, Rank>{Alphas...}).Flat();
 
   // The upper index a component carries, which is the spin weight of its
   // field and so a compile-time quantity (eq:N).
   template <Int... Alphas>
   static constexpr Int UpperIndexOf =
-      MultiIndex<Rank>(std::array<Int, Rank>{Alphas...}).UpperIndex();
+      Index(std::array<Int, Rank>{Alphas...}).UpperIndex();
 
   // Whether a component vanishes identically, which happens when a
   // permutation maps it to itself with a sign of -1. Exposed so that a
@@ -207,13 +222,25 @@ class TensorField {
   // a requires-clause: an assertion inside the body is a hard error that no
   // requires-expression can see, which makes the negative test vacuous.
   //
-  // The wrong number of indices has to be rejected *before* the multi-index is
-  // formed, or the failure is a hard error inside std::array rather than an
-  // unsatisfied constraint -- so the pack size is checked with `if constexpr`
-  // and the discarded branch never forms one.
+  // Neither the wrong number of indices nor a letter outside the alphabet may
+  // reach the multi-index, or the failure is a hard error -- inside std::array
+  // for the first and inside the constructor's throw for the second -- rather
+  // than an unsatisfied constraint. Both are therefore checked with
+  // `if constexpr`, whose discarded branch never forms one. See IsSlotLetter
+  // in MultiIndex.h for why the second is not something a requires-expression
+  // could catch on its own.
+  template <Int... Alphas>
+  static constexpr bool WellFormedFn() {
+    if constexpr (sizeof...(Alphas) != Rank) {
+      return false;
+    } else {
+      return AreSlotLetters<SlotSet, Alphas...>();
+    }
+  }
+
   template <Int... Alphas>
   static constexpr bool VanishesFn() {
-    if constexpr (sizeof...(Alphas) != Rank) {
+    if constexpr (!WellFormedFn<Alphas...>()) {
       return false;
     } else {
       return Orbits.constraint[FlatOf<Alphas...>] == ComponentConstraint::Zero;
@@ -222,7 +249,7 @@ class TensorField {
 
   template <Int... Alphas>
   static constexpr bool RepresentsFn() {
-    if constexpr (sizeof...(Alphas) != Rank) {
+    if constexpr (!WellFormedFn<Alphas...>()) {
       return false;
     } else {
       return not VanishesFn<Alphas...>();
@@ -231,7 +258,7 @@ class TensorField {
 
   template <Int... Alphas>
   static constexpr bool WritableFn() {
-    if constexpr (sizeof...(Alphas) != Rank) {
+    if constexpr (!WellFormedFn<Alphas...>()) {
       return false;
     } else {
       return RepresentsFn<Alphas...>() and

@@ -33,20 +33,28 @@ namespace GSHTrans {
 // component of an antisymmetric tensor does not exist -- so there is no single
 // instantiation every tensor must provide. It requires the parts that are
 // universal, and `Represents` is what a caller consults before asking.
+// SlotSet is part of the concept because two operations read it: the tensor
+// product, which requires its operands to be drawn from the same alphabet
+// ([D10]), and the contraction, whose sum runs over that alphabet's letters
+// rather than over a fixed {-1, 0, +1}.
 template <typename T>
 concept TensorExpr = requires {
   requires std::same_as<std::remove_cv_t<decltype(T::Rank)>, std::ptrdiff_t>;
   requires T::Rank >= 0;
   typename T::GridType;
   requires AngularGrid<typename T::GridType>;
+  typename T::SlotSet;
+  requires SlotAlphabet<typename T::SlotSet>;
   { T::template Represents<> } -> std::convertible_to<bool>;
 } and requires(const T& tensor) {
   { tensor.Grid() } -> std::convertible_to<const typename T::GridType&>;
 };
 
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
-          TensorReality Reality, AngularGrid Grid, TensorLayout Layout>
-struct IsTerminalTrait<TensorField<Rank, Symmetry, Reality, Grid, Layout>>
+          TensorReality Reality, AngularGrid Grid, TensorLayout Layout,
+          SlotAlphabet Slots>
+struct IsTerminalTrait<
+    TensorField<Rank, Symmetry, Reality, Grid, Layout, Slots>>
     : std::true_type {};
 
 namespace TensorDetails {
@@ -186,6 +194,7 @@ class PermuteNode {
 
   static constexpr Int Rank = OperandType::Rank;
   using GridType = typename OperandType::GridType;
+  using SlotSet = typename OperandType::SlotSet;
 
   static_assert(Image.size() == static_cast<std::size_t>(Rank),
                 "A slot permutation needs one image per tensor slot");
@@ -199,12 +208,27 @@ class PermuteNode {
   // convention MultiIndex::Permuted uses.
   template <Int... Alphas>
   static constexpr auto Source =
-      MultiIndex<Rank>(std::array<Int, Rank>{Alphas...}).Permuted(Image).Slots();
+      MultiIndex<Rank, SlotSet>(std::array<Int, Rank>{Alphas...})
+          .Permuted(Image)
+          .Slots();
+
+  // The two checks come before the multi-index is formed rather than beside
+  // it, for the reason IsSlotLetter gives: a `and` short-circuits evaluation
+  // but is not a promise about instantiation, and forming Source with a
+  // letter the alphabet does not have is a hard error.
+  template <Int... Alphas>
+  static constexpr bool RepresentsFn() {
+    if constexpr (sizeof...(Alphas) != static_cast<std::size_t>(Rank)) {
+      return false;
+    } else if constexpr (!AreSlotLetters<SlotSet, Alphas...>()) {
+      return false;
+    } else {
+      return TensorDetails::Represents<Source<Alphas...>, OperandType>();
+    }
+  }
 
   template <Int... Alphas>
-  static constexpr bool Represents =
-      sizeof...(Alphas) == static_cast<std::size_t>(Rank) and
-      TensorDetails::Represents<Source<Alphas...>, OperandType>();
+  static constexpr bool Represents = RepresentsFn<Alphas...>();
 
   template <Int... Alphas>
   requires Represents<Alphas...>
@@ -252,10 +276,21 @@ class TensorProductNode {
 
   static constexpr Int Rank = Left::Rank + Right::Rank;
   using GridType = typename Left::GridType;
+  using SlotSet = typename Left::SlotSet;
 
   static_assert(std::same_as<GridType, typename Right::GridType>,
                 "A tensor product needs both operands on the same kind of "
                 "grid");
+
+  // A tangential tensor lives in a different bundle from a general one, so
+  // the product of the two is not a tensor over either alphabet. Crossing
+  // bundles is done by Embed at the call site and never implicitly
+  // (field-algebra-plan.md section 18.2 [D10]). The constraint is on the free
+  // function below, where it is a clean overload-resolution failure; this is
+  // the backstop for anyone building the node directly.
+  static_assert(std::same_as<SlotSet, typename Right::SlotSet>,
+                "A tensor product needs both operands drawn from the same "
+                "slot alphabet; embed one of them first");
 
   TensorProductNode(LeftOperand&& left, RightOperand&& right)
       : _left{std::forward<LeftOperand>(left)},
@@ -285,6 +320,8 @@ class TensorProductNode {
   static constexpr bool RepresentsFn() {
     if constexpr (sizeof...(Alphas) != static_cast<std::size_t>(Rank)) {
       return false;
+    } else if constexpr (!AreSlotLetters<SlotSet, Alphas...>()) {
+      return false;
     } else {
       return TensorDetails::Represents<LeftIndices<Alphas...>, Left>() and
              TensorDetails::Represents<RightIndices<Alphas...>, Right>();
@@ -307,7 +344,10 @@ class TensorProductNode {
 };
 
 template <typename L, typename R>
-requires TensorExpr<std::remove_cvref_t<L>> && TensorExpr<std::remove_cvref_t<R>>
+requires TensorExpr<std::remove_cvref_t<L>> &&
+         TensorExpr<std::remove_cvref_t<R>> &&
+         std::same_as<typename std::remove_cvref_t<L>::SlotSet,
+                      typename std::remove_cvref_t<R>::SlotSet>
 auto TensorProduct(L&& left, R&& right) {
   return TensorProductNode<L, R>(std::forward<L>(left), std::forward<R>(right));
 }
@@ -321,8 +361,15 @@ auto TensorProduct(L&& left, R&& right) {
 //   (tr_{JK} T)^{...} = sum_{ab} g_{ab} T^{... a ... b ...}
 //                     = sum_a (-1)^a T^{... a ... -a ...},
 //
-// which for the three values of a is -T^{-+} + T^{00} - T^{+-} in the
-// contracted pair.
+// which for an ordinary tensor's three values of a is
+// -T^{-+} + T^{00} - T^{+-} in the contracted pair.
+//
+// The sum runs over the *alphabet's* letters, not over a fixed {-1, 0, +1}.
+// For a tangential tensor that leaves -T^{-+} - T^{+-}, which is the metric
+// of the sphere induced on the tangent plane -- the same expression with the
+// radial term absent because there is no radial slot to contribute one. The
+// result stays in the same bundle, at rank p - 2, and nothing here has to
+// arrange that either.
 //
 // The result lands at the right upper index by construction rather than by
 // arrangement: the contracted pair contributes a + (-a) = 0 whatever a is, so
@@ -336,6 +383,11 @@ class ContractionNode {
 
   static constexpr Int Rank = OperandType::Rank - 2;
   using GridType = typename OperandType::GridType;
+  using SlotSet = typename OperandType::SlotSet;
+  using Real = typename GridType::Real;
+
+  static constexpr auto& Alphabet = SlotSet::Alphabet;
+  static constexpr auto Letters = Alphabet.size();
 
   static_assert(J != K, "A contraction needs two different slots");
   static_assert(J >= 0 && K >= 0 && J < OperandType::Rank &&
@@ -357,13 +409,17 @@ class ContractionNode {
   static constexpr bool RepresentsFn() {
     if constexpr (sizeof...(Alphas) != static_cast<std::size_t>(Rank)) {
       return false;
+    } else if constexpr (!AreSlotLetters<SlotSet, Alphas...>()) {
+      return false;
     } else {
       // Every term of the sum has to exist, since they are added. A tensor
       // with a vanishing component in the middle of a contraction is not
       // something this layer tries to be clever about.
-      return TensorDetails::Represents<Source<-1, Alphas...>, OperandType>() and
-             TensorDetails::Represents<Source<0, Alphas...>, OperandType>() and
-             TensorDetails::Represents<Source<1, Alphas...>, OperandType>();
+      return [&]<std::size_t... A>(std::index_sequence<A...>) {
+        return (TensorDetails::Represents<Source<Alphabet[A], Alphas...>,
+                                          OperandType>() and
+                ...);
+      }(std::make_index_sequence<Letters>{});
     }
   }
 
@@ -373,13 +429,22 @@ class ContractionNode {
   template <Int... Alphas>
   requires Represents<Alphas...>
   auto Component() const {
-    return -TensorDetails::ComponentOf<Source<-1, Alphas...>>(_operand) +
-           TensorDetails::ComponentOf<Source<0, Alphas...>>(_operand) -
-           TensorDetails::ComponentOf<Source<1, Alphas...>>(_operand);
+    return Sum<Alphas...>(std::make_index_sequence<Letters>{});
   }
 
  private:
   OperandStorage<Operand> _operand;
+
+  // The metric's (-1)^a, folded over the alphabet. Written as a scalar
+  // multiplication rather than as unary minus so that one expression covers
+  // both alphabets; the factor is exactly +-1, so no arithmetic is added.
+  template <Int... Alphas, std::size_t... A>
+  auto Sum(std::index_sequence<A...>) const {
+    return ((MinusOneToPower<Real>(Alphabet[A]) *
+             TensorDetails::ComponentOf<Source<Alphabet[A], Alphas...>>(
+                 _operand)) +
+            ...);
+  }
 };
 
 template <std::ptrdiff_t J, std::ptrdiff_t K, typename T>
@@ -417,6 +482,7 @@ class SymmetriseNode {
 
   static constexpr Int Rank = OperandType::Rank;
   using GridType = typename OperandType::GridType;
+  using SlotSet = typename OperandType::SlotSet;
   using Real = typename GridType::Real;
 
   static constexpr auto Group = TensorDetails::GroupElements<Rank, Symmetry>();
@@ -429,13 +495,15 @@ class SymmetriseNode {
 
   template <std::size_t Element, Int... Alphas>
   static constexpr auto Source =
-      MultiIndex<Rank>(std::array<Int, Rank>{Alphas...})
+      MultiIndex<Rank, SlotSet>(std::array<Int, Rank>{Alphas...})
           .Permuted(Group.first[Element].image)
           .Slots();
 
   template <Int... Alphas>
   static constexpr bool RepresentsFn() {
     if constexpr (sizeof...(Alphas) != static_cast<std::size_t>(Rank)) {
+      return false;
+    } else if constexpr (!AreSlotLetters<SlotSet, Alphas...>()) {
       return false;
     } else {
       return [&]<std::size_t... E>(std::index_sequence<E...>) {
@@ -498,7 +566,8 @@ void AssignComponent(Field& field, const Expr& expr, std::index_sequence<I...>) 
   using Target = std::remove_cvref_t<decltype(target)>;
   using Source = std::remove_cvref_t<decltype(source)>;
 
-  constexpr auto flat = MultiIndex<Field::Rank>(Indices).Flat();
+  constexpr auto flat =
+      MultiIndex<Field::Rank, typename Field::SlotSet>(Indices).Flat();
   constexpr auto constraint = Field::Orbits.constraint[flat];
   constexpr bool narrowing =
       std::same_as<typename Target::Value, RealValued> and
@@ -528,7 +597,8 @@ void AssignComponent(Field& field, const Expr& expr, std::index_sequence<I...>) 
 template <typename Field, typename Expr, std::size_t Slot>
 void AssignSlot(Field& field, const Expr& expr) {
   constexpr auto flat = Field::ComponentLayout.flatOfSlot[Slot];
-  constexpr auto indices = MultiIndex<Field::Rank>::FromFlat(flat).Slots();
+  constexpr auto indices =
+      MultiIndex<Field::Rank, typename Field::SlotSet>::FromFlat(flat).Slots();
   if constexpr (Represents<indices, std::remove_cvref_t<Expr>>()) {
     AssignComponent<indices>(field, expr,
                              std::make_index_sequence<Field::Rank>{});
@@ -555,7 +625,11 @@ auto Materialise(const Expr& expr) {
   using Chosen =
       std::conditional_t<std::same_as<Symmetry, void>, NoSymmetry<E::Rank>,
                          Symmetry>;
-  using Field = TensorField<E::Rank, Chosen, Reality, typename E::GridType>;
+  // The alphabet is the expression's, not a choice: materialising cannot move
+  // a tensor between bundles. Layout is named explicitly only because SlotSet
+  // sits behind it in the parameter list.
+  using Field = TensorField<E::Rank, Chosen, Reality, typename E::GridType,
+                            ComponentMajor, typename E::SlotSet>;
 
   auto field = Field(expr.Grid());
   [&]<std::size_t... Slot>(std::index_sequence<Slot...>) {

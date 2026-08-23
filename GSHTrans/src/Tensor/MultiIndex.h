@@ -57,6 +57,31 @@ concept SlotAlphabet = requires {
   requires S::Alphabet.size() > 0;
 };
 
+// Whether a value is one of the alphabet's letters, and whether every letter
+// of a candidate multi-index is.
+//
+// This has to be askable *before* a multi-index is formed. The constructor
+// throws on a letter it does not recognise, and a throw in a constant
+// expression is a hard error at the point of use rather than something a
+// requires-expression can see: over TangentialSlots, `requires { Flat<0, 1>; }`
+// is **true** and the use then fails to compile. So every accessor taking a
+// component's letters as template arguments asks this first, in the same
+// `if constexpr` shape the pack-size check uses (field-algebra-plan.md
+// section 12.4). That is the same lesson arriving a second time by a second
+// route, which is why it is written down here rather than at one call site.
+template <SlotAlphabet Slots>
+constexpr bool IsSlotLetter(std::ptrdiff_t alpha) {
+  for (auto letter : Slots::Alphabet) {
+    if (letter == alpha) return true;
+  }
+  return false;
+}
+
+template <SlotAlphabet Slots, std::ptrdiff_t... Alphas>
+constexpr bool AreSlotLetters() {
+  return (IsSlotLetter<Slots>(Alphas) and ...);
+}
+
 //--------------------------------------------------------------------------//
 //                              The multi-index                              //
 //--------------------------------------------------------------------------//

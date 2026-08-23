@@ -557,3 +557,159 @@ TEST(TensorField, BothLayoutsTransformToTheSameCoefficients) {
     }
   }
 }
+
+//--------------------------------------------------------------------------//
+//                            Tangential tensors                             //
+//--------------------------------------------------------------------------//
+
+// A tangential tensor has no radial slot: its indices are drawn from {-1, +1}
+// and it has 2^Rank components rather than 3^Rank. It is another object in
+// another bundle, not a general tensor that happens to vanish in some
+// directions (field-algebra-plan.md section 18.2 [D8]).
+//
+// Nothing below is a special case inside the library. Every count comes out of
+// the same orbit walk over whichever multi-indices exist, which is the check
+// that the alphabet is a generalisation rather than a second implementation.
+namespace {
+
+using Tangential2 = TensorField<2, NoSymmetry<2>, ComplexTensor, Grid,
+                                ComponentMajor, TangentialSlots>;
+using RealTangential2 = TensorField<2, NoSymmetry<2>, RealTensor, Grid,
+                                    ComponentMajor, TangentialSlots>;
+using RealTangentialSym2 = TensorField<2, Symmetric<2>, RealTensor, Grid,
+                                       ComponentMajor, TangentialSlots>;
+
+}  // namespace
+
+TEST(TensorField, ATangentialTensorHasTwoLettersPerSlot) {
+  static_assert(std::same_as<Tangential2::SlotSet, TangentialSlots>);
+  static_assert(Tangential2::Components == 4);
+  static_assert(Tangential2::StoredComponents == 4);
+  static_assert(Tangential2::RealComponents == 0);
+  static_assert(Tangential2::RealsPerPoint == 8);
+
+  // The upper index is still the signed sum, so it has the parity of the rank
+  // and there is no component at an odd one.
+  static_assert(Tangential2::UpperIndexOf<-1, -1> == -2);
+  static_assert(Tangential2::UpperIndexOf<-1, 1> == 0);
+  static_assert(Tangential2::UpperIndexOf<1, -1> == 0);
+  static_assert(Tangential2::UpperIndexOf<1, 1> == 2);
+
+  // And the default is unchanged, which is what makes the parameter additive.
+  using General2 = TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>;
+  static_assert(std::same_as<General2::SlotSet, AllSlots>);
+  static_assert(General2::Components == 9);
+  SUCCEED();
+}
+
+// The negative case the letter check exists for. Without it, asking a
+// tangential tensor for a radial component is a hard error inside the
+// multi-index constructor rather than an unsatisfied constraint -- and every
+// assertion below would be vacuous, because a requires-expression cannot see
+// a throw in a constant expression (see IsSlotLetter in MultiIndex.h).
+TEST(TensorField, ARadialComponentOfATangentialTensorIsNotAComponent) {
+  static_assert(Tangential2::Represents<-1, 1>);
+  static_assert(!Tangential2::Represents<0, 1>);
+  static_assert(!Tangential2::Represents<1, 0>);
+  static_assert(!Tangential2::Represents<0, 0>);
+  static_assert(!Tangential2::Writable<0, 1>);
+
+  // Not vanishing: a vanishing component is one the tensor has and that is
+  // identically zero, which is a different thing from one it does not have.
+  static_assert(!Tangential2::Vanishes<0, 1>);
+
+  static_assert(Readable<Tangential2, -1, 1>);
+  static_assert(!Readable<Tangential2, 0, 1>);
+  static_assert(!Assignable<Tangential2, 0, 1>);
+
+  // The wrong number of indices is rejected as before, and for the same
+  // reason it always was.
+  static_assert(!Readable<Tangential2, -1>);
+  static_assert(!Readable<Tangential2, -1, 1, 1>);
+  SUCCEED();
+}
+
+// The payoff of the alphabet, and the thing phase 4 could not do: negation
+// has no fixed point when there is no zero letter, so every orbit has size
+// two, nothing is pinned, and the second buffer is empty
+// (field-algebra-plan.md section 18.2 [D6]).
+TEST(TensorField, ARealTangentialTensorHasNoPinnedComponents) {
+  static_assert(RealTangential2::StoredComponents == 2);
+  static_assert(RealTangential2::ComplexComponents == 2);
+  static_assert(RealTangential2::RealComponents == 0);
+  static_assert(RealTangential2::RealsPerPoint == 4);
+
+  auto grid = TestGrid();
+  auto t = RealTangential2(grid);
+  EXPECT_EQ(t.RealSize(), 0);
+  EXPECT_EQ(t.Size(), 2 * t.FieldSize());
+
+  // The stored components are the two representatives; their partners are
+  // derived by T^{-alpha} = (-1)^N conj(T^{alpha}), which at N = -2 and at
+  // N = 0 is plain conjugation.
+  static_assert(RealTangential2::Writable<-1, -1>);
+  static_assert(RealTangential2::Writable<-1, 1>);
+  static_assert(!RealTangential2::Writable<1, 1>);
+  static_assert(!RealTangential2::Writable<1, -1>);
+
+  t.Component<-1, -1>()[1, 2] = Complex{3.0, -4.0};
+  t.Component<-1, 1>()[1, 2] = Complex{5.0, 6.0};
+
+  const auto& tensor = t;
+  EXPECT_EQ((tensor.Component<1, 1>()[1, 2]), (Complex{3.0, 4.0}));
+  EXPECT_EQ((tensor.Component<1, -1>()[1, 2]), (Complex{5.0, -6.0}));
+}
+
+// Under a permutation symmetry a self-paired component can still appear, and
+// the orbit walk has to find that unaided: negation maps (-+) to (+-) and the
+// symmetry maps it back, so that component is pinned real. One complex plus
+// one real is three reals a point, which is a real symmetric 2x2 matrix.
+TEST(TensorField, ASymmetricRealTangentialTensorIsARealSymmetricTwoByTwo) {
+  static_assert(RealTangentialSym2::StoredComponents == 2);
+  static_assert(RealTangentialSym2::ComplexComponents == 1);
+  static_assert(RealTangentialSym2::RealComponents == 1);
+  static_assert(RealTangentialSym2::RealsPerPoint == 3);
+
+  auto grid = TestGrid();
+  auto t = RealTangentialSym2(grid);
+  EXPECT_EQ(t.RealSize(), t.FieldSize());
+
+  // The pinned component is a real-valued field, and it is at upper index
+  // zero -- which it has to be, since permutation preserves the slot sum and
+  // negation reverses it.
+  auto pinned = t.Component<-1, 1>();
+  static_assert(std::same_as<decltype(pinned)::Value, RealValued>);
+  static_assert(decltype(pinned)::UpperIndex == 0);
+
+  pinned[1, 2] = 7.0;
+  const auto& tensor = t;
+  EXPECT_EQ((tensor.Component<1, -1>()[1, 2]), 7.0);
+}
+
+// The transform with an empty real buffer, which nothing has exercised before:
+// phase 4 introduced that buffer and no tensor until now has had none of it.
+TEST(TensorField, ARealTangentialTensorRoundTripsWithNoRealBuffer) {
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto t = RealTangential2(grid);
+
+  const auto size = t.CoefficientSize(lMax);
+  // Two complex blocks and no real one: the stored components sit at upper
+  // index -2 and 0, and a block's length depends on its upper index.
+  EXPECT_EQ(size, static_cast<Int>(grid.CoefficientSize(lMax, -2)) +
+                      static_cast<Int>(grid.CoefficientSize(lMax, 0)));
+
+  auto coefficients = std::vector<Complex>(size);
+  for (auto i = std::size_t{0}; i < coefficients.size(); i++) {
+    coefficients[i] = Complex{std::cos(0.31 * i), std::sin(0.17 * i)};
+  }
+  t.InverseTransformation(lMax, coefficients);
+
+  auto back = std::vector<Complex>(coefficients.size());
+  t.ForwardTransformation(lMax, back);
+
+  for (auto i = std::size_t{0}; i < coefficients.size(); i++) {
+    EXPECT_NEAR(back[i].real(), coefficients[i].real(), 1.0e-11) << "at " << i;
+    EXPECT_NEAR(back[i].imag(), coefficients[i].imag(), 1.0e-11) << "at " << i;
+  }
+}
