@@ -93,7 +93,8 @@ using Stacks = typename StacksImpl<
 //--------------------------------------------------------------------------//
 
 template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
-          TensorReality _Reality, AngularGrid _Grid>
+          TensorReality _Reality, AngularGrid _Grid,
+          SlotAlphabet _Slots = AllSlots>
 class LayeredTensorField {
  public:
   using Int = std::ptrdiff_t;
@@ -105,11 +106,17 @@ class LayeredTensorField {
   using Real = typename _Grid::Real;
   using Complex = std::complex<Real>;
   using RadialGridType = RadialGrid<Real>;
+  using SlotSet = _Slots;
 
   // The flat tensor of the same shape, which owns the combinatorics: the
   // orbits, the slot layout and the conditions on the accessors. This type
-  // adds a radial axis and nothing else, so it defines none of that itself.
-  using Flat = TensorField<Rank, Symmetry, Reality, GridType>;
+  // adds a radial axis and nothing else, so it defines none of that itself --
+  // including which multi-indices exist, which is why the alphabet is passed
+  // through rather than consulted here. The accessors inherit the letter
+  // check with everything else, since they are conditioned on Flat's
+  // Represents and Writable.
+  using Flat =
+      TensorField<Rank, Symmetry, Reality, GridType, ComponentMajor, SlotSet>;
 
   static constexpr auto& Orbits = Flat::Orbits;
   static constexpr auto& ComponentLayout = Flat::ComponentLayout;
@@ -229,7 +236,8 @@ class LayeredTensorField {
 //--------------------------------------------------------------------------//
 
 template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
-          TensorReality _Reality, AngularGrid _Grid>
+          TensorReality _Reality, AngularGrid _Grid,
+          SlotAlphabet _Slots = AllSlots>
 class LayeredTensorExpansion {
  public:
   using Int = std::ptrdiff_t;
@@ -241,9 +249,12 @@ class LayeredTensorExpansion {
   using Real = typename _Grid::Real;
   using Complex = std::complex<Real>;
   using RadialGridType = RadialGrid<Real>;
+  using SlotSet = _Slots;
 
-  using Flat = TensorField<Rank, Symmetry, Reality, GridType>;
-  using FieldType = LayeredTensorField<Rank, Symmetry, Reality, GridType>;
+  using Flat =
+      TensorField<Rank, Symmetry, Reality, GridType, ComponentMajor, SlotSet>;
+  using FieldType =
+      LayeredTensorField<Rank, Symmetry, Reality, GridType, SlotSet>;
 
   static constexpr auto& Orbits = Flat::Orbits;
   static constexpr auto& ComponentLayout = Flat::ComponentLayout;
@@ -396,11 +407,12 @@ void EvaluateOne(Result& result, const Expansion& expansion, Execution policy,
 // One batched transform per stored component: nR fields at a time, rather than
 // one field at a time as a loop over radii and components would give.
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
-          TensorReality Reality, AngularGrid Grid>
-auto Expand(const LayeredTensorField<Rank, Symmetry, Reality, Grid>& field,
-            std::ptrdiff_t lMax,
-            Execution policy = Execution::Sequential()) {
-  using Result = LayeredTensorExpansion<Rank, Symmetry, Reality, Grid>;
+          TensorReality Reality, AngularGrid Grid, SlotAlphabet SlotSet>
+auto Expand(
+    const LayeredTensorField<Rank, Symmetry, Reality, Grid, SlotSet>& field,
+    std::ptrdiff_t lMax, Execution policy = Execution::Sequential()) {
+  using Result =
+      LayeredTensorExpansion<Rank, Symmetry, Reality, Grid, SlotSet>;
   using Flat = typename Result::Flat;
 
   auto result = Result(field.Radial(), field.Grid(), lMax);
@@ -408,7 +420,8 @@ auto Expand(const LayeredTensorField<Rank, Symmetry, Reality, Grid>& field,
     (
         [&] {
           constexpr auto flat = Flat::ComponentLayout.flatOfSlot[Slots];
-          constexpr auto indices = MultiIndex<Rank>::FromFlat(flat).Slots();
+          constexpr auto indices =
+              MultiIndex<Rank, SlotSet>::FromFlat(flat).Slots();
           LayeredDetails::ExpandOne<indices>(
               result, field, lMax, policy,
               std::make_index_sequence<static_cast<std::size_t>(Rank)>{});
@@ -420,11 +433,12 @@ auto Expand(const LayeredTensorField<Rank, Symmetry, Reality, Grid>& field,
 }
 
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
-          TensorReality Reality, AngularGrid Grid>
+          TensorReality Reality, AngularGrid Grid, SlotAlphabet SlotSet>
 auto Evaluate(
-    const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid>& expansion,
+    const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid, SlotSet>&
+        expansion,
     Execution policy = Execution::Sequential()) {
-  using Result = LayeredTensorField<Rank, Symmetry, Reality, Grid>;
+  using Result = LayeredTensorField<Rank, Symmetry, Reality, Grid, SlotSet>;
   using Flat = typename Result::Flat;
 
   auto result = Result(expansion.Radial(), expansion.Grid());
@@ -432,7 +446,8 @@ auto Evaluate(
     (
         [&] {
           constexpr auto flat = Flat::ComponentLayout.flatOfSlot[Slots];
-          constexpr auto indices = MultiIndex<Rank>::FromFlat(flat).Slots();
+          constexpr auto indices =
+              MultiIndex<Rank, SlotSet>::FromFlat(flat).Slots();
           LayeredDetails::EvaluateOne<indices>(
               result, expansion, policy,
               std::make_index_sequence<static_cast<std::size_t>(Rank)>{});

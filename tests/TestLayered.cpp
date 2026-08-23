@@ -763,3 +763,107 @@ TEST(RadialMajor, RefillsWithoutAllocating) {
   auto other = LayeredSpinExpansion<0, Grid>(Radii(nR + 2), grid, lMax);
   EXPECT_THROW(major.CopyFrom(other), std::invalid_argument);
 }
+
+//--------------------------------------------------------------------------//
+//                        Tangential layered tensors                         //
+//--------------------------------------------------------------------------//
+
+namespace {
+
+template <typename Reality>
+using TangentialLayered =
+    LayeredTensorField<2, NoSymmetry<2>, Reality, Grid, TangentialSlots>;
+
+template <typename Reality>
+using TangentialLayeredExpansion =
+    LayeredTensorExpansion<2, NoSymmetry<2>, Reality, Grid, TangentialSlots>;
+
+// Whether the layered gradient will take an operand at all, asked as a
+// concept so the negative case is an unsatisfied requirement.
+template <typename E>
+concept SurfaceDifferentiable = requires(const E& e) { SurfaceGradient(e); };
+
+}  // namespace
+
+// The layered type adds a radial axis and nothing else, so the alphabet only
+// has to be passed through: which components exist is the flat type's
+// question, and the counts here are the flat ones.
+TEST(LayeredTensorField, ATangentialStackHasOneStackPerTangentialComponent) {
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = RadialGrid<Real>(TestRadii);
+
+  using T = TangentialLayered<RealTensor>;
+  static_assert(std::same_as<T::SlotSet, TangentialSlots>);
+  static_assert(T::Components == 4);
+  static_assert(T::StoredComponents == 2);
+
+  auto t = T(radial, grid);
+  auto& stack = t.ComponentStack<-1, 1>();
+  EXPECT_EQ(stack.NumberOfRadii(), 3);
+  EXPECT_EQ(stack.FieldSize(), grid.FieldSize());
+
+  // Writing through a slice writes the tensor, as on the general type.
+  auto slice = t.Component<-1, 1>(1);
+  slice.Data()[0] = Complex{2.5, -1.5};
+  EXPECT_EQ(stack.Slice(1).Data()[0], (Complex{2.5, -1.5}));
+
+  // And a radial index is refused here too, the accessors being conditioned
+  // on the flat type's Represents.
+  static_assert(!T::Represents<0, 1>);
+  static_assert(!T::Writable<0, 1>);
+}
+
+// Both bridges, over a tangential alphabet: one batched transform per stored
+// component, and the coefficients come back as they went in.
+TEST(LayeredTensorField, ATangentialStackRoundTripsThroughBothBridges) {
+  constexpr auto lMax = Int{8};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = RadialGrid<Real>(TestRadii);
+
+  auto e = TangentialLayeredExpansion<RealTensor>(radial, grid, lMax);
+  const auto fill = [&](auto&& stack, Real tag) {
+    for (auto i : e.RadiusIndices()) {
+      for (auto l : stack.Degrees()) {
+        for (auto m : stack.Orders(l)) {
+          stack[i, l, m] = Complex{tag + std::cos(0.3 * l), 0.1 * m - tag};
+        }
+      }
+    }
+  };
+  fill(e.ComponentStack<-1, -1>(), 1.0);
+  fill(e.ComponentStack<-1, 1>(), 2.0);
+
+  auto field = Evaluate(e);
+  static_assert(std::same_as<decltype(field)::SlotSet, TangentialSlots>);
+  auto back = Expand(field, lMax);
+  static_assert(std::same_as<decltype(back)::SlotSet, TangentialSlots>);
+
+  const auto compare = [&](auto&& was, auto&& is) {
+    for (auto i : e.RadiusIndices()) {
+      for (auto l : was.Degrees()) {
+        for (auto m : was.Orders(l)) {
+          // Named first: a multi-argument subscript inside a macro reads as
+          // three macro arguments.
+          const auto before = was[i, l, m];
+          const auto after = is[i, l, m];
+          EXPECT_NEAR(after.real(), before.real(), 1.0e-11);
+          EXPECT_NEAR(after.imag(), before.imag(), 1.0e-11);
+        }
+      }
+    }
+  };
+  compare(e.ComponentStack<-1, -1>(), back.ComponentStack<-1, -1>());
+  compare(e.ComponentStack<-1, 1>(), back.ComponentStack<-1, 1>());
+}
+
+// [D9] again, on the layered side: grad_1 moves slots between e_0 and e_+-,
+// so it does not close on the tangential bundle and takes no operand from it.
+TEST(LayeredGradient, TakesNoTangentialOperand) {
+  using General = LayeredTensorExpansion<2, NoSymmetry<2>, ComplexTensor, Grid>;
+  using Tangential = TangentialLayeredExpansion<ComplexTensor>;
+
+  static_assert(SurfaceDifferentiable<General>);
+  static_assert(!SurfaceDifferentiable<Tangential>);
+  SUCCEED();
+}

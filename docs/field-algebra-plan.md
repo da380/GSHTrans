@@ -2098,6 +2098,31 @@ and the difference between a decision and an accident is whether anything
 records it. The header says why at the signature and `TestExpansion.cpp`
 pins it.
 
+*T2c is done, and with it T2.* `LayeredTensorField` and
+`LayeredTensorExpansion` take the parameter and pass it to their `Flat`, and
+both layered bridges carry it. **The layered types needed nothing else**,
+which is the strongest evidence in this step that phases 2 to 4 got the
+separation right: they add a radial axis and defer every question about which
+components exist to the flat type, so their accessors inherited the letter
+check along with `Represents` and `Writable` and no accessor in either class
+had to be touched.
+
+The four `MultiIndex<Rank + 1>` sites this document expected to be the awkward
+ones were not awkward at all. By [D9] the layered gradient takes a general
+operand exactly as the flat one does, so those sites are over `AllSlots` by
+right rather than by oversight, and the change was a comment saying so and a
+test that the deduction refuses a tangential operand.
+
+*One collision worth knowing about, since it will recur.* The layered bridges
+already use `Slots` as the name of the pack of **buffer slot indices** in
+their inner lambdas, which is a different thing from the slot alphabet.
+Naming the new template parameter `Slots` there shadows it and the error is
+about shadowing rather than about the alphabet. The parameter is called
+`SlotSet` in those two functions, matching the member alias.
+
+**T2's suite:** 226 before, 245 after — nine at T2a, seven at T2b, three at
+T2c — green in Debug, in Release, and under ASan and UBSan. T3 is next.
+
 *Two things for whoever writes it, both found by looking rather than by
 running into them.*
 
