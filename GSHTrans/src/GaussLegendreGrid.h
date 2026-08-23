@@ -458,6 +458,15 @@ class GaussLegendreGrid
     const auto nPhi = static_cast<Int>(this->NumberOfLongitudes());
     const auto nTheta = static_cast<Int>(this->NumberOfCoLatitudes());
 
+#ifdef GSHTRANS_HAVE_BLAS
+    if constexpr (BlasDetails::BlasReal<Real>)
+    if (_impl->kernel.IsMatrix()) {
+      InverseMatrixKernel<Scalar>(lMax, n, inFirst, inBatch, out, outBatch,
+                                  count, nPhi, nTheta, policy);
+      return;
+    }
+#endif
+
     // One colatitude, synthesised into its own row of each field. Unlike the
     // forward transform, the colatitudes here write disjoint output and share
     // only read-only input, so threading over them needs no reduction.
@@ -712,6 +721,71 @@ class GaussLegendreGrid
         const auto* source = work.out.data() + m * run;
         std::copy_n(source, run,
                     out.begin() + m * nTheta * count + theta0 * count);
+      }
+    }
+  }
+
+  // The inverse of ForwardFourierStage: an m-major intermediate in, `count`
+  // fields of a batch out, starting at field `first`.
+  //
+  //     in[m * (nTheta * count) + iTheta * count + k]
+  //
+  // The caller owns the intermediate and must have set **every** order it
+  // holds, including the ones no coefficient reaches: the transform is over
+  // nPhi orders whatever the degree, and the band between lMax and
+  // nPhi - lMax carries no coefficient but is still read. The matrix kernel
+  // zeroes exactly that band; the loop kernel zeroes its whole row buffer for
+  // the same reason.
+  //
+  // Blocked and guarded exactly as the forward stage is, and for the same
+  // reasons -- see there, including the power-of-two hazard, which is a
+  // property of the strided *read* here rather than the strided write.
+  template <typename OutRange>
+  void InverseFourierStage(std::span<const Complex> in, OutRange& out,
+                           Batch outBatch, Int first, Int count,
+                           Int thetaBlock = 0) const {
+    using Scalar = std::ranges::range_value_t<OutRange>;
+    static_assert(RealOrComplexFloatingPoint<Scalar>);
+
+    const auto nPhi = static_cast<Int>(this->NumberOfLongitudes());
+    const auto nTheta = static_cast<Int>(this->NumberOfCoLatitudes());
+    const auto nFourier = FourierSize<Scalar>();
+
+    if (count < 1) {
+      throw std::invalid_argument("Field count must be positive");
+    }
+    if (first < 0 || first + count > outBatch.Count()) {
+      throw std::invalid_argument("Requested fields lie outside the batch");
+    }
+    CheckSpan(std::ranges::size(out),
+              outBatch.Span(static_cast<Int>(this->FieldSize())), "field");
+    if (static_cast<Int>(in.size()) !=
+        ForwardFourierStageSize<Scalar>(count)) {
+      throw std::invalid_argument("Fourier stage input has the wrong size");
+    }
+
+    const auto block = ChooseThetaBlock(thetaBlock, count, nTheta);
+    auto outFirst = std::ranges::begin(out);
+
+    for (auto theta0 = Int{0}; theta0 < nTheta; theta0 += block) {
+      const auto rows = std::min(block, nTheta - theta0);
+      auto& work = GetWorkspace<Scalar, false>(nPhi, rows * count, _impl->flag);
+
+      const auto run = rows * count;
+      for (auto m = Int{0}; m < nFourier; m++) {
+        std::copy_n(in.begin() + m * nTheta * count + theta0 * count, run,
+                    work.in.begin() + m * run);
+      }
+      work.plan.Execute();
+
+      for (auto iRow = Int{0}; iRow < rows; iRow++) {
+        for (auto k = Int{0}; k < count; k++) {
+          UnpackRow(std::next(work.out.begin(), (iRow * count + k) * nPhi),
+                    nPhi,
+                    std::next(outFirst, outBatch.Offset(
+                                            (theta0 + iRow) * nPhi, first + k)),
+                    outBatch.Stride());
+        }
       }
     }
   }
@@ -1065,6 +1139,89 @@ class GaussLegendreGrid
           }
         }
       }
+    }
+  }
+
+  // The inverse transform, the same matrices read the other way (step M3b).
+  //
+  //     F_m(theta_i) = sum_l D^(n,m)_{li} f^n_{lm}
+  //
+  // which is D transposed applied to the coefficients, so **one stored matrix
+  // serves both directions** and the transpose flag is the whole of the
+  // difference. Nothing is copied and no second table exists.
+  //
+  // No quadrature weight here, which is why it could not have been folded
+  // into the matrix in the forward direction.
+  template <RealOrComplexFloatingPoint Scalar, typename InIterator,
+            std::ranges::range OutRange>
+  void InverseMatrixKernel(Int lMax, Int n, InIterator inFirst, Batch inBatch,
+                           OutRange& out, Batch outBatch, Int count, Int nPhi,
+                           Int nTheta, Execution policy) const {
+    using MRangeForScalar =
+        std::conditional_t<RealFloatingPoint<Scalar>, NonNegative, All>;
+
+    const auto& matrices = *_impl->wignerMatrices;
+    const auto indices = GSHIndices<MRangeForScalar>(lMax, lMax, n);
+    const auto coefficientSize = static_cast<Int>(indices.Size());
+    const auto nFourier = FourierSize<Scalar>();
+    const auto minOrder = RealFloatingPoint<Scalar> ? Int{0} : -lMax;
+
+    const auto chunk = InverseChunkSize(coefficientSize);
+
+    for (auto first = Int{0}; first < count; first += chunk) {
+      const auto c = std::min(chunk, count - first);
+
+      auto& stage =
+          MatrixScratch(static_cast<std::size_t>(nFourier * nTheta * c));
+
+      // Only the orders a coefficient reaches are written by the products
+      // below; the band between them carries nothing and has to be zeroed,
+      // because the FFT reads every order whatever the degree, and because
+      // this buffer is kept between calls and so holds whatever the last one
+      // left there. A transform below the grid's degree leaves the widest
+      // band and is where removing this shows up first.
+      //
+      // The band alone, not the whole intermediate: at lMax = 256 the whole
+      // is 16 MiB and this is the part of it no product touches.
+      const auto zeroFrom = lMax + 1;
+      const auto zeroTo =
+          RealFloatingPoint<Scalar> ? nFourier : nPhi - lMax;
+      for (auto m = zeroFrom; m < zeroTo; m++) {
+        std::fill_n(stage.data() + m * nTheta * c, nTheta * c, Complex{0, 0});
+      }
+
+      auto& gathered = OrderScratch(static_cast<std::size_t>((lMax + 1) * c));
+
+      for (auto m = minOrder; m <= lMax; m++) {
+        const auto lMin = std::max(std::abs(n), std::abs(m));
+        const auto rows = lMax - lMin + 1;
+        const auto mFourier = m >= 0 ? m : nPhi + m;
+
+        // Gather this order's coefficients out of the caller's storage. The
+        // block is triangular, so this is the mirror of the forward
+        // direction's scatter and is unavoidable for the same reason.
+        for (auto l = lMin; l <= lMax; l++) {
+          const auto j = indices.Index(l, m);
+          for (auto k = Int{0}; k < c; k++) {
+            gathered[(l - lMin) * c + k] = inFirst[inBatch.Offset(j, first + k)];
+          }
+        }
+
+        const auto* a = matrices[n, m].data();
+        const auto* b = reinterpret_cast<const Real*>(gathered.data());
+        auto* target =
+            reinterpret_cast<Real*>(stage.data() + mFourier * nTheta * c);
+
+        BlasDetails::RowMajorGemmTransposed(
+            static_cast<int>(nTheta), static_cast<int>(2 * c),
+            static_cast<int>(rows), Real{1}, a, static_cast<int>(nTheta), b,
+            static_cast<int>(2 * c), Real{0}, target,
+            static_cast<int>(2 * c));
+      }
+
+      auto stageSpan = std::span<const Complex>(
+          stage.data(), static_cast<std::size_t>(nFourier * nTheta * c));
+      InverseFourierStage(stageSpan, out, outBatch, first, c);
     }
   }
 #endif

@@ -2344,6 +2344,71 @@ GSHTrans threads.**
 *One caveat on all of the above.* Run to run these move by 10–15%, which is
 this laptop's noise floor and is smaller than every difference quoted.
 
+#### M3b, done, and with it M3
+
+`InverseFourierStage` and `InverseMatrixKernel`. **One stored matrix serves
+both directions**, which was the layout's central claim and is now code: the
+forward multiplies by `D` and the inverse by `Dᵀ`, and the difference is the
+transpose flag in the BLAS call. Nothing is copied and there is no second
+table.
+
+Twelve cross-kernel tests now, six each way, plus a round trip on a matrix
+grid — which the cross-kernel tests cannot supply, since two kernels wrong in
+the same way would agree with each other.
+
+**The inverse has a hazard the forward does not, and it is the band of orders
+no coefficient reaches.** The transform is over `nPhi` orders whatever the
+degree, so the orders between `lMax` and `nPhi − lMax` are read by the FFT and
+written by nothing, and the intermediate is kept between calls — so they hold
+whatever the last call left. Zeroing that band is what the loop kernel is
+doing when it clears its whole row buffer. Removing it fails two tests, both
+of them the ones at a degree below the grid's, where the band is widest; the
+full-degree cases pass without it by the accident of the buffer being zero
+already, which is exactly why the truncated cases are in the suite.
+
+#### The inverse gains less than the forward, and the shape says why
+
+Inverse, complex, `n = 2`, one thread:
+
+| lMax | k | loop | matrix | speedup |
+|-----:|--:|-----:|-------:|--------:|
+|   64 | 1 | 0.19 ms | 0.05 ms | 3.8× |
+|   64 | 8 | 0.66 ms | 0.24 ms | 2.8× |
+|  128 | 1 | 1.96 ms | 1.34 ms | 1.5× |
+|  128 | 8 | 5.36 ms | 2.98 ms | 1.8× |
+|  256 | 1 | 13.91 ms | 6.32 ms | 2.2× |
+|  256 | 8 | 44.14 ms | 30.06 ms | **1.5×** |
+
+Against the forward's 2.0× to 3.3×, and worst exactly where the forward was
+best. **The likely cause is structural rather than incidental, and it is not
+in §12 at all.** The two directions have the same matrices and opposite
+shapes:
+
+    forward:   (n_L × n_θ) · (n_θ × 2k)     M = n_L,  K = n_θ,  N = 2k
+    inverse:   (n_θ × n_L) · (n_L × 2k)     M = n_θ,  K = n_L,  N = 2k
+
+A GEMM amortises its operand loads over the inner dimension, so `K` is what
+decides how well it does. Forward, `K = n_θ` is a few hundred at every order.
+Inverse, `K = n_L` **falls linearly in `|m|` and reaches one**, so half the
+products have almost no inner dimension to amortise over and the call is
+nearly all overhead. §12 records the two shapes and does not notice that this
+follows from them.
+
+*Stated as the likely cause and not the established one.* The other candidates
+were priced and are too small: the zero band is 7 orders of 230 KB at
+`lMax = 256`, and the coefficient gather is the mirror of the forward's
+scatter and so cannot explain a difference between them. Confirming it wants
+the per-order products timed against their own `K`, which is M5's work and not
+a reason to hold M3.
+
+*If it is confirmed, the answer is a batched BLAS call* — one invocation for
+the whole set of orders rather than 513 — which §12 already names as the right
+shape and not universally available. That is M6's neighbourhood, not this
+step's.
+
+**Suite 314 to 320 with BLAS, 308 without.** Green in Debug, in Release, and
+under ASan and UBSan.
+
 **M4 — threading over orders.** Products at different `m` write disjoint
 outputs, so there is no accumulator and no reduction in either direction —
 which is how this subsumes [C11], by deleting the thing [C11] was a question

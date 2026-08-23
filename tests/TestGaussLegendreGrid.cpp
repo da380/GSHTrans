@@ -1786,3 +1786,131 @@ TEST(MatrixKernel, RefusesWhatItCannotDo) {
                            WignerValues::Stored(), TransformKernel::Loop()));
 }
 #endif  // GSHTRANS_HAVE_BLAS
+
+#ifdef GSHTRANS_HAVE_BLAS
+namespace {
+
+template <typename Grid, typename Scalar>
+void CheckKernelsAgreeInverse(std::ptrdiff_t lMax, std::ptrdiff_t gridDegree,
+                              std::ptrdiff_t n, std::ptrdiff_t count,
+                              double tolerance) {
+  auto loop = Grid(gridDegree, std::abs(n), FFTWpp::Estimate);
+  auto matrix = Grid(gridDegree, std::abs(n), FFTWpp::Estimate,
+                     Chunking::Automatic(), WignerValues::Stored(),
+                     TransformKernel::Matrix());
+
+  const auto fieldSize = static_cast<std::ptrdiff_t>(loop.FieldSize());
+  const auto coefficientSize = static_cast<std::ptrdiff_t>(
+      std::is_same_v<Scalar, double> ? loop.RealCoefficientSize(lMax)
+                                     : loop.CoefficientSize(lMax, n));
+
+  // Coefficients rather than a field, so that the inverse is exercised on its
+  // own rather than only as the right inverse of the forward.
+  auto coefficients = std::vector<std::complex<double>>(count * coefficientSize);
+  for (std::size_t i = 0; i < coefficients.size(); i++) {
+    coefficients[i] = std::complex<double>{
+        std::cos(0.23 * static_cast<double>(i)),
+        std::sin(0.41 * static_cast<double>(i))};
+  }
+
+  auto fromLoop = std::vector<Scalar>(count * fieldSize);
+  auto fromMatrix = std::vector<Scalar>(count * fieldSize);
+  const auto coeffBatch = Batch::Contiguous(count, coefficientSize);
+  const auto fieldBatch = Batch::Contiguous(count, fieldSize);
+
+  loop.InverseTransformation(lMax, n, coefficients, coeffBatch, fromLoop,
+                             fieldBatch);
+  matrix.InverseTransformation(lMax, n, coefficients, coeffBatch, fromMatrix,
+                               fieldBatch);
+
+  double scale = 0;
+  for (const auto& v : fromLoop) scale = std::max(scale, std::abs(v));
+  ASSERT_GT(scale, 0.0);
+
+  for (std::size_t i = 0; i < fromLoop.size(); i++) {
+    if constexpr (std::is_same_v<Scalar, double>) {
+      EXPECT_NEAR(fromMatrix[i], fromLoop[i], tolerance * scale) << "at " << i;
+    } else {
+      EXPECT_NEAR(fromMatrix[i].real(), fromLoop[i].real(), tolerance * scale)
+          << "at " << i;
+      EXPECT_NEAR(fromMatrix[i].imag(), fromLoop[i].imag(), tolerance * scale)
+          << "at " << i;
+    }
+  }
+}
+
+}  // namespace
+
+TEST(MatrixKernel, InverseAgreesWithTheLoopKernel) {
+  using Grid = GaussLegendreGrid<double, All, All>;
+  CheckKernelsAgreeInverse<Grid, std::complex<double>>(8, 8, 0, 1, 1e-13);
+  CheckKernelsAgreeInverse<Grid, std::complex<double>>(8, 8, 2, 1, 1e-13);
+  CheckKernelsAgreeInverse<Grid, std::complex<double>>(8, 8, -2, 1, 1e-13);
+}
+
+TEST(MatrixKernel, InverseAgreesOverABatch) {
+  using Grid = GaussLegendreGrid<double, All, All>;
+  CheckKernelsAgreeInverse<Grid, std::complex<double>>(10, 10, 1, 5, 1e-13);
+  CheckKernelsAgreeInverse<Grid, std::complex<double>>(16, 16, 2, 8, 1e-13);
+}
+
+// Below the grid's degree the orders between lMax and nPhi - lMax carry no
+// coefficient at all and must still be zero when the FFT reads them. The
+// forward direction has no such band, so this is the inverse's own hazard.
+TEST(MatrixKernel, InverseAgreesBelowTheGridDegree) {
+  using Grid = GaussLegendreGrid<double, All, All>;
+  CheckKernelsAgreeInverse<Grid, std::complex<double>>(6, 12, 1, 3, 1e-13);
+  CheckKernelsAgreeInverse<Grid, std::complex<double>>(2, 16, 0, 2, 1e-13);
+  CheckKernelsAgreeInverse<Grid, std::complex<double>>(1, 20, 1, 1, 1e-13);
+}
+
+TEST(MatrixKernel, InverseAgreesForARealField) {
+  using Grid = GaussLegendreGrid<double, All, All>;
+  CheckKernelsAgreeInverse<Grid, double>(8, 8, 0, 1, 1e-13);
+  CheckKernelsAgreeInverse<Grid, double>(12, 12, 0, 4, 1e-13);
+  CheckKernelsAgreeInverse<Grid, double>(5, 14, 0, 2, 1e-13);
+}
+
+TEST(MatrixKernel, InverseAgreesOnAScalarGrid) {
+  using Grid = GaussLegendreGrid<double, NonNegative, All>;
+  CheckKernelsAgreeInverse<Grid, double>(8, 8, 0, 1, 1e-13);
+  CheckKernelsAgreeInverse<Grid, double>(9, 13, 0, 3, 1e-13);
+}
+
+// The round trip on a matrix grid, which the cross-kernel tests cannot see:
+// they would both agree on a wrong answer if the two kernels were wrong the
+// same way, and transforming a band-limited field there and back is an
+// absolute check rather than a relative one.
+TEST(MatrixKernel, RoundTripsOnItsOwn) {
+  using Grid = GaussLegendreGrid<double, All, All>;
+  constexpr auto lMax = std::ptrdiff_t{12};
+  constexpr auto n = std::ptrdiff_t{1};
+  constexpr auto count = std::ptrdiff_t{3};
+
+  auto grid = Grid(lMax, std::abs(n), FFTWpp::Estimate, Chunking::Automatic(),
+                   WignerValues::Stored(), TransformKernel::Matrix());
+  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto coefficientSize =
+      static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
+
+  auto coefficients = std::vector<std::complex<double>>(count * coefficientSize);
+  for (std::size_t i = 0; i < coefficients.size(); i++) {
+    coefficients[i] = std::complex<double>{
+        std::cos(0.19 * static_cast<double>(i)),
+        std::sin(0.53 * static_cast<double>(i))};
+  }
+
+  auto field = std::vector<std::complex<double>>(count * fieldSize);
+  auto back = std::vector<std::complex<double>>(count * coefficientSize);
+  const auto cb = Batch::Contiguous(count, coefficientSize);
+  const auto fb = Batch::Contiguous(count, fieldSize);
+
+  grid.InverseTransformation(lMax, n, coefficients, cb, field, fb);
+  grid.ForwardTransformation(lMax, n, field, fb, back, cb);
+
+  for (std::size_t i = 0; i < coefficients.size(); i++) {
+    EXPECT_NEAR(back[i].real(), coefficients[i].real(), 1e-12) << "at " << i;
+    EXPECT_NEAR(back[i].imag(), coefficients[i].imag(), 1e-12) << "at " << i;
+  }
+}
+#endif  // GSHTRANS_HAVE_BLAS
