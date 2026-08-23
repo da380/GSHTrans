@@ -19,10 +19,11 @@ them, including the ones that turned out to be wrong.
 * **`docs/core-plan.md`** — the numerical core: `GaussLegendreGrid`, `Wigner`,
   `Indexing`, `Views`. Steps A–H are landed, with the batched transform, the
   plan cache, threading, and Wigner values generated on the fly as a
-  construction-time policy. What remains is the transform-major restructure —
-  planned in §11, where the matrix kernel joins the loop kernel as a second
-  construction-time path rather than replacing it — and polar truncation,
-  which stays separate from it.
+  construction-time policy. §11's transform-major restructure is built through
+  M5: `TransformKernel::Matrix()` is a second construction-time kernel beside
+  the loop one, worth 2–4× where it is worth anything, with the loop kernel
+  kept as its oracle. What remains is the reflection symmetry (§11, M6,
+  assessed and not built) and polar truncation.
 * **`docs/field-algebra-plan.md`** — the field layer, and everything built on
   it:
 
@@ -116,7 +117,8 @@ shared immutable implementation: copying one is a pointer copy, and two grids
 are the same grid when `Identity()` matches. It owns the quadrature, the Wigner
 table, and a per-thread cache of FFTW plans and their work buffers.
 
-* `GaussLegendreGrid(lMax, nMax, flag, chunking)` — a grid of that resolution.
+* `GaussLegendreGrid(lMax, nMax, flag, chunking, values, kernel)` — a grid of
+  that resolution.
 * `Grid::ForBand(lBand, nMax, oversampling)` — a grid for fields of band
   `lBand` with quadrature headroom to degree `oversampling * lBand`. The 3/2
   dealiasing rule is `oversampling = 1.5`; `2.0` is exact for a single product.
@@ -149,6 +151,30 @@ grid.ForwardTransformation(lMax, n, in, out);   // the k = 1 wrapper
 
 Real-valued fields, with their reduced `m ≥ 0` coefficient storage, exist only
 at `n = 0`; a real transform at `n ≠ 0` throws.
+
+**Two Legendre kernels, chosen at construction and both kept.**
+`TransformKernel::Loop()` is the default and is what the library has always
+done. `TransformKernel::Matrix()` is the transform-major restructure of
+`core-plan.md` §11: every FFT first, then one `dgemm` per order against a
+table laid out `[n][m][l][θ]`. It needs a BLAS — `GSHTRANS_WITH_BLAS`, which
+is `AUTO` by default and found rather than fetched — and a build without one
+does not offer it at all.
+
+It is worth **2.9× to 4.1×** batched at `lMax = 256` on eight threads, and
+1.1–1.5× unbatched there, where the loop kernel is already at the memory roof
+and nothing is available. Products at different orders write disjoint output,
+so it carries no accumulator and no reduction in either direction, which is
+where the forward transform's threading used to lose.
+
+The pair is kept rather than one replacing the other, so that the loop kernel
+is the matrix kernel's oracle — the same inputs through two independent
+arrangements of the same sum — and so that which kernel suits a machine is a
+question that machine can answer. `benchmarks/TransformBenchmark kernels` is
+that question.
+
+A BLAS with a thread pool of its own must be told to use one thread: these
+products are skinny and threading them loses. A BLAS on the same OpenMP
+runtime needs nothing, since every GEMM here is issued from inside a region.
 
 ## The Wigner functions
 
