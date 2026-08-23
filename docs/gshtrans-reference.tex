@@ -1364,26 +1364,44 @@ warned would trade bandwidth for an irregular access pattern in the
 \emph{current} loop; inside a GEMM the same reduction is a clean halving of
 $K$, so the objection does not carry over.
 
-\paragraph{It fights on-the-fly generation.}  The recursion runs up degrees
-at fixed $(n,\theta)$, which produces values in exactly the order the
-\emph{present} layout stores them and exactly the wrong order for
-$[n][m][l][\theta]$.  A generating supplier feeding a GEMM would have to
-transpose, which is the traffic it exists to avoid.  Since the generated
-path measured slower anyway (\S\ref{sec:storage}), that is not a conflict
-to resolve so much as a reason the two were never going to be combined.
+\paragraph{It fights on-the-fly generation, and not merely by ordering.}
+The recursion runs up degrees at fixed $(n,\theta)$, producing values in
+exactly the order the \emph{present} layout stores them and exactly the
+wrong order for $[n][m][l][\theta]$.  It would be easy to read that as an
+inconvenience with a transpose as its price.  It is not.  The recursion's
+output for one $(n,\theta)$ spans \emph{every order at once}, so isolating
+the single $(n,m)$ block that a per-order product wants means either keeping
+all of it --- which is the table, and not having one is the entire purpose of
+generation --- or re-running the recursion once per order, $2l_{\max}+1$
+times over.  There is no third way, so the two are not combinable rather than
+merely awkward to combine, and \code{core-plan.md} [C17] refuses the pair at
+grid construction.  Since the generated path measured slower anyway
+(\S\ref{sec:storage}), nothing is lost.
 
-\paragraph{It costs the exact-equality tests.}  A GEMM sums in whatever
-order its kernel chooses, so a GEMM path cannot be bit-compared against the
-current one; the batched-against-unbatched tests, which presently demand
-exact equality precisely because tier 1 does \emph{not} reorder any sum,
-would have to become tolerance comparisons for that path.  That is a real
-loss of test strength and should be a deliberate trade rather than a
-discovery.
+\paragraph{It costs the exact-equality tests, and buys a better one.}  A
+GEMM sums in whatever order its kernel chooses, so a GEMM path cannot be
+bit-compared against the current one; the batched-against-unbatched tests,
+which presently demand exact equality precisely because tier 1 does
+\emph{not} reorder any sum, become tolerance comparisons on that path.
+\code{core-plan.md} [C12] turns that trade around by keeping \emph{both}
+kernels permanently: the loop path is then an oracle for the matrix path on
+identical inputs, which checks the layout, the indexing, the FFT ordering
+and the accumulation together, and which does not exist today.  The two are
+not independent in the $d$ values, since both read the same recursion ---
+but that half is pinned separately, against the $l=1$ table and against
+\code{std::sph\_legendre}.
 
-\paragraph{Which BLAS.}  Eigen is already a dependency and has a competent
-GEMM; an external OpenBLAS or MKL would likely beat it on this shape, at
-the cost of a hard dependency.  Starting with Eigen and measuring against
-a linked BLAS is the cheap order.
+\paragraph{Which BLAS.}  An earlier draft of this paragraph said Eigen was
+already a dependency and could supply the kernel.  It is not: Eigen left the
+tree when GaussQuad dropped it, and nothing in the library names it now.  So
+there is no free GEMM to start from, and \code{core-plan.md} [C14] takes the
+decision rather than defaulting into one --- an optional BLAS, found and not
+fetched, under \code{GSHTRANS\_WITH\_BLAS}, in the pattern the optional
+\code{Interpolation} dependency established.  A build without it does not
+offer the matrix kernel, exactly as a build without \code{Interpolation}
+does not offer \code{SplineDerivative}.  It would be this library's first
+non-header-only dependency, which is why it is an option and not a
+requirement.
 
 \section{What has not been done, and why}
 \label{sec:whatnext}

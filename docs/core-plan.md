@@ -1844,3 +1844,379 @@ Three consequences for this document, none of which change its conclusions.
   small and mostly editorial. So the balance has genuinely shifted towards
   item 3 — which should be started from the server numbers rather than from
   the laptop ones.
+
+### And what happened after that, the same day
+
+*Item 2 is no longer a gate, and item 3 is planned.* The clause above —
+"started from the server numbers rather than the laptop ones" — is
+**superseded**: `earth-tunya` is waiting on an IT update with no date on it,
+and blocking the largest remaining piece of work on an unschedulable
+dependency costs more than starting without it.
+
+§11 is the plan. Its central decision is that **both kernels are kept**, so
+the loop path and the matrix path coexist as a construction-time policy
+rather than one replacing the other — which turns the single server
+comparison this document has been waiting for into a comparison available on
+any machine, and turns §12's loss of the bit-exact tests into a cross-kernel
+oracle. Item 4, polar truncation, stays where it is and stays separate
+([C16]).
+
+---
+
+## 11. The transform-major restructure, in detail
+
+Written 2026-08-23, when §10's item 3 was picked up. `gshtrans-reference.tex`
+§12 is the mathematics and the arithmetic argument — the matrix form, the
+free transpose at the FFT, the real-GEMM-on-complex-data trick, and the
+honest estimate — and is not repeated here. This is the work order and the
+decisions.
+
+**Two things changed before anything was written**, and both come from the
+author rather than from the analysis.
+
+### 11.1 The gate is dropped, and the shape changes with it
+
+§10 item 2 made the target-machine run a prerequisite: start the restructure
+from the server numbers rather than the laptop ones. **That gate is removed.**
+`earth-tunya` is waiting on an IT update with no date on it, the numbers have
+been outstanding across several sessions, and blocking the largest remaining
+piece of work on an unschedulable dependency is worse than starting without
+it. The measurement is still wanted and §11.6 still asks for it; it is no
+longer a precondition.
+
+What replaces it is better than what it replaced. **Both kernels are retained
+permanently** ([C12]), so the comparison this document has wanted from a
+single server run becomes a comparison anyone can make on any machine at any
+time, including this one, today. A gate on one measurement becomes a
+mechanism for many.
+
+### 11.2 Decisions taken
+
+**[C12] Both paths are retained, selected at construction by a policy value.**
+Not a migration and not a flag day: the loop kernel of steps F and H stays
+exactly as it is, and the matrix kernel is a second path beside it. The
+precedent is exact — [C10] made stored-versus-generated Wigner values a
+construction-time policy for the same reason, that a per-call choice would
+forfeit the storage saving and a template parameter would infect every
+downstream type with a decision about one object's storage.
+
+Three consequences, and the second is the one worth the most.
+
+- **The layout stops being a change and becomes a choice.** The table is
+  built once, in whichever layout the grid was asked for, and the two are
+  mutually exclusive per grid — 648 MB at `lMax = 256, nMax = 2` is not a
+  thing to hold twice.
+- **The loop path becomes the matrix path's oracle**, which inverts §12's
+  "it costs the exact-equality tests". That paragraph is right that a GEMM
+  sums in an order its kernel chooses, so the batched-against-unbatched tests
+  cannot demand bit-exactness *on the matrix path*. But with both kernels
+  present there is a comparison that does not exist today: the same inputs
+  through two independent implementations of the whole Legendre stage, to a
+  tolerance. That covers the layout, the indexing, the FFT ordering, the
+  accumulation and the threading decomposition — which is very nearly
+  everything this work can get wrong.
+
+  *Stated precisely, because overclaiming it would be easy.* The two paths are
+  not independent in the `d` values: both read the same recursion, so a wrong
+  value is wrong in both. That half is already pinned elsewhere, by
+  `CheckWignerConvention.h` against the `l = 1` table and `CheckLegendre.h`
+  against `std::sph_legendre`. What the cross-kernel check adds is everything
+  built *on* those values, and that is the part being written here.
+- **The cost is two Legendre kernels to maintain**, and it should be named
+  rather than absorbed. The inner loop is the thing being duplicated, in both
+  directions, with the real and complex cases in each. That is the price of
+  the option, it is paid every time either is touched, and it is accepted
+  because §11.1's argument needs both to exist at once.
+
+**[C13] The policy is `TransformKernel`, and it names the kernel rather than
+the layout.** `TransformKernel::Loop()` and `TransformKernel::Matrix()`,
+appended to the grid's constructor and to `ForBand` after `WignerValues`,
+defaulted to `Loop()` so that nothing existing moves.
+
+It governs the layout too, since neither kernel works with the other's, and
+naming it for the kernel is what makes that legible: the caller chooses an
+algorithm and inherits a storage order, not the reverse. It also makes the
+one incompatibility statable in one sentence instead of reading as two
+storage policies disagreeing —
+
+```cpp
+auto grid = Grid(lMax, nMax, flag, chunking,
+                 WignerValues::Stored(), TransformKernel::Matrix());
+
+// Refused at construction, and the message says why:
+auto bad = Grid(lMax, nMax, flag, chunking,
+                WignerValues::Generated(), TransformKernel::Matrix());
+```
+
+**`Matrix` and `Generated` are incompatible**, which is a fact about the
+recursion rather than an unimplemented case. [C17] states why and says what
+happens when a caller asks for both.
+
+**[C14] The GEMM comes from an optional BLAS, found and not fetched.**
+`GSHTRANS_WITH_BLAS`, in the pattern `field-algebra-plan.md` §19.5 [R1]
+established and §21 exercised: a build without it compiles, links nothing
+extra, and simply does not offer `TransformKernel::Matrix()` — the way a build
+without `Interpolation` does not offer `SplineDerivative`.
+
+*The first draft of this paragraph ended "the refusal is at construction and
+names the option", which contradicts the sentence before it.* If the factory
+does not exist there is nothing left to refuse at construction. The two are
+different mechanisms for different failures and [C17] separates them.
+
+*This corrects `gshtrans-reference.tex` §12, which is stale.* It says "Eigen
+is already a dependency and has a competent GEMM; starting with Eigen and
+measuring against a linked BLAS is the cheap order." Eigen left the tree when
+GaussQuad dropped it, and nothing in the library names it now. So there is no
+free GEMM to start from and the choice had to be made rather than defaulted
+into.
+
+Found rather than fetched, unlike the four siblings, because BLAS is not
+header-only and not ours: a system OpenBLAS, MKL or Accelerate is what a
+caller on a real machine already has, and fetching and building one would be
+this library taking on a responsibility it has declined for every other
+dependency.
+
+**It is the first non-header-only dependency**, which is a real deviation from
+`thoughts.md` §5's stated preference, and it is why the option exists rather
+than the dependency. Everything the library does today stays available without
+it.
+
+*And the honest caveat, which §12 already states and this decision does not
+escape.* Skinny-`N` is the shape general BLAS kernels handle worst, `N = 2k`
+is between 2 and 16, and the 513 products per upper index are individually
+small enough that call overhead is not negligible. A batched BLAS interface is
+the right shape and is not universally available. So a linked BLAS is expected
+to be *better* than a hand-written kernel on this shape, not good at it.
+
+**[C17] Two refusals, by two mechanisms, because they are two failures.**
+[C13] and [C14] each produce a way for a caller to ask for something they
+cannot have, and the first draft of this section treated them as one. They are
+not alike: one is a build that cannot do what was asked, the other is two
+supported choices that do not compose.
+
+***No BLAS in the build: the factory does not exist.*** `TransformKernel`
+carries no `Matrix()` in that configuration, so the failure is a compile error
+at the call site rather than a throw at grid construction.
+
+The deciding argument is that the choice is reversible in only one direction.
+Adding the factory back later with a runtime throw is strictly widening and
+breaks no existing caller; going the other way — removing a factory people
+have written against — is not. So the tighter option is the one to start from,
+and if the looser one is ever wanted it is available without cost.
+
+Two supporting reasons. The precedent is exact and is already visible in the
+test count: a build without `Interpolation` runs 270 tests against 282 because
+the spline tests are *not built*, rather than built and skipped. And the
+library reaches for this instinct repeatedly — `field-algebra-plan.md` [D8]
+chose `Component<0, 1>()` on a tangential tensor being **absent** over being
+zero, for exactly the same reason.
+
+*The cost is real and the usual escape hatch does not work here.* A caller
+taking their kernel from a configuration file needs their own `#ifdef`. The
+obvious remedy — a `constexpr bool` to branch on with `if constexpr` — **does
+not rescue it**, because in a non-template function the discarded branch is
+still parsed, so a `TransformKernel::Matrix()` sitting in the dead arm still
+fails to compile. That caller does not exist yet, and the library code that
+does need the branch — the tests, the benchmark, and any later wisdom
+mechanism — is one place each. Recorded so that the day it bites, the fix is
+known to be a widening one.
+
+***`Matrix` with `Generated`: the grid throws.*** Both are supported by the
+build and neither is wrong on its own, so there is nothing to remove; the
+combination has to be refused where the two values meet.
+
+**The reason is stronger than §12's, which undersells it.** That section says
+generation produces values "in exactly the wrong order" and a supplier feeding
+a GEMM would have to transpose. The sharper statement: **the recursion's
+output for one `(n, θ)` spans every order at once.** So isolating the single
+`(n, m)` block a per-order product wants means either keeping all of it — which
+*is* the table, and not having one is the whole purpose of `Generated` — or
+re-running the recursion once per order, `2·lMax + 1` times over. It is not an
+ordering inconvenience with a transpose as its price; there is no way to
+generate what the GEMM needs without paying one of those two.
+
+**Neither silent substitution is available, and it is worth saying which
+breaks what.**
+
+- *Honouring `Matrix` and ignoring `Generated`* — building the table anyway —
+  can exhaust memory on a caller who chose `Generated` precisely because they
+  cannot afford 648 MB at `lMax = 256`, or 5.4 GB at 512.
+- *Honouring `Generated` and ignoring `Matrix`* — quietly using the loop —
+  lies to the benchmark. That is fatal **specifically under [C12]**: the entire
+  justification for carrying two kernels is being able to compare them, and a
+  policy that reports the other kernel's numbers under this one's name destroys
+  the mechanism this section is built on. A warning does not repair it, because
+  warnings go to stderr and no benchmark harness reads stderr.
+
+The second argument also disposes of "fall back to `Loop` with a warning" as a
+general answer, and it is worth noting that it is not fastidiousness about
+error handling. It is a consequence of [C12] specifically: this library
+tolerates a silent substitution less than most, because measurement is what
+the design is for.
+
+**[C15] The reflection symmetry is part of this work but not part of its first
+measurement.** D&T (C.118) relates the matrices at `±m` by reversing the
+colatitude and a sign alternating with `l`, so splitting the input into even
+and odd parts about `θ = π/2` halves both the stored table and the arithmetic.
+Inside a GEMM that is a clean halving of `K`, which is why P4's objection —
+that the same reduction trades bandwidth for irregular access — does not carry
+over from the loop.
+
+It is nevertheless M6 and not M3. Landing it in the same change as the kernel
+would confound the one measurement the whole restructure exists to produce:
+the GEMM against the loop, on the same table size, same arithmetic, same
+everything but the kernel. Halve the arithmetic in the same commit and there
+is no longer a number that says whether the restructure was worth doing.
+
+**[C16] Polar truncation is not part of this.** §10 item 4 remains its own
+piece of work. It is independent of the layout, it applies to both kernels,
+and folding it in would make the A/B unreadable for the same reason [C15]
+defers the reflection.
+
+### 11.3 What has to change, and one cost §12 understates
+
+The reference note's §12 lists three changes: the Wigner layout, the FFT
+output landing in `m`-major order, and the real-GEMM trick. All three stand.
+One of them carries a cost that section does not price.
+
+**The intermediate is larger than §12's figure suggests.** It says the
+intermediate is `nφ × nθ × k` complex, "which is just the field, 2.1 MB at
+`lMax = 256` and `k = 1`". True, and `k = 1` is the case that does not matter:
+the matrix kernel exists for the batched regime, and at `k = 8` the same
+intermediate is 17 MB — the whole of this laptop's L3, and it is live at the
+same time as the table stream and the output block.
+
+That is a genuine tension with the present design rather than a detail. The
+loop kernel FFTs one colatitude at a time *precisely* to keep the intermediate
+small; the matrix kernel must run all the FFTs first, because a per-`m`
+product needs a contiguous `(θ, κ)` block. So the restructure trades a small
+working set for a large one, and the chunk rule that `Chunking` applies may
+well want a different constant on this path — possibly a smaller optimum `k`,
+which cuts against the GEMM's preference for a wider `N`.
+
+**This is a measurement, not an objection**, and it is the first thing M5
+should look at. It is recorded here because it is the most likely way for the
+restructure to underperform its estimate, and because finding it in the
+numbers without having predicted it would waste a session.
+
+### 11.4 The steps
+
+Ordered so that each is separately testable and the one measurement that
+matters is not confounded.
+
+**M1 — the layout.** `Wigner` gains `[n][m][l][θ]` as a construction option,
+alongside the present `[n][θ][(l,m)]`. Total size is unchanged — summing
+`n_L(m)·nθ` over `m` gives the same `66,045 × 257` doubles per upper index at
+`lMax = 256`. The existing `Storage` tag orders the `(n, θ)` axes only and is
+a different and coarser thing; this does not replace it.
+
+*The test is a walk.* Build both layouts on the same grid and require every
+`(n, m, l, θ)` value to be present in each and bit-identical. That is a
+complete check of the layout in isolation, it needs no transform, and it is
+what makes a later disagreement between the kernels attributable to the kernel.
+
+**M2 — the FFT restructure.** All FFTs before the Legendre stage, landing
+`m`-major. One `plan_many` over `nθ k` rows with output stride `nθ k` and
+output distance 1 writes `[m][θ][κ]` directly, so the transpose is free for
+the same reason it was free at tier 1 (P6).
+
+*Separately testable, which is why it is its own step:* it produces the same
+numbers as the interleaved path in a different order, so it can be checked
+against the current FFT stage before any matrix exists. §11.3's working-set
+question is measurable here too, ahead of the kernel.
+
+**M3 — the matrix kernel.** Per-order `dgemm` with `N = 2k`, one stored matrix
+serving both directions through a transpose flag. `TransformKernel::Matrix()`,
+`GSHTRANS_WITH_BLAS`, and the construction-time refusals of [C13] and [C14].
+
+*The test is [C12]'s oracle:* the same inputs through both kernels, forward
+and inverse, real and complex, batched and unbatched, agreeing to a tolerance.
+Plus the existing round-trip and analytic tests run on a matrix grid, which
+costs nothing to add and covers what the cross-kernel check cannot.
+
+**M4 — threading over orders.** Products at different `m` write disjoint
+outputs, so there is no accumulator and no reduction in either direction —
+which is how this subsumes [C11], by deleting the thing [C11] was a question
+about rather than by answering it.
+
+Two cautions from §12, both to be built in rather than discovered. The work
+per order is not constant: `n_L(m)` falls linearly in `|m|`, so a static split
+over orders is about twice as unbalanced as it looks and the schedule must
+divide work rather than count orders. And a thread's share of the table is a
+set of whole `(n, m)` blocks, so first touch during the table build can be
+made to match the split exactly — which the current colatitude split cannot,
+and which is the better NUMA story this path has to offer.
+
+**M5 — measure.** Both kernels, both directions, batched and unbatched, over
+the `lMax` range the `transforms` and `batching` sections already walk, as a
+new named benchmark section. §11.3's working set first.
+
+*What the numbers have to be read against.* §12's estimate is a factor of two
+or three in the **batched** regime and **nothing at all unbatched**, where the
+stage is already at 39–40 GB/s against a roof near 42. A run at `k = 1`
+showing no gain is the prediction coming true, not the restructure failing.
+
+**So the reporting is part of the step, not a presentational afterthought.**
+Three requirements, each guarding against a specific way this measurement can
+be misread or can mislead.
+
+- **Two tables, batched and unbatched, not one table with `k` as a row.**
+  A single table puts a column of `1.0×` at `k = 1` next to the gains at
+  `k = 8`, and the null result reads as failure to anyone scanning it — which
+  will include whoever reads it a year from now.
+- **Carry achieved GB/s against the roof the `stream` section already
+  measures.** This is the requirement that does the real work, and it is a
+  column the existing tables in this document do not have. A caption asserting
+  that no gain is expected unbatched is something a reader must take on trust;
+  a row showing 40 GB/s against a 42 GB/s roof **demonstrates** that the null
+  result is the ceiling. That is the same move §17.5 of
+  `field-algebra-plan.md` made when it explained the batched forward's
+  collapse to 1.12× by the chunk arithmetic rather than filing it under
+  bandwidth — the number that explains the number.
+- **Run each kernel in its own process invocation.** This is a hazard in the
+  A/B rather than in its presentation. The policy is construction-time, so
+  comparing kernels means two grids, and at `lMax = 256` that is 648 MB of
+  table each: both live costs 1.3 GB, while building them in sequence leaves
+  the second starting on a cold cache with different first-touch placement.
+  §17.7 has already been caught by exactly this, where allocating a buffer
+  inside the timed loop made a measurement 3–5× worse and never win — and it
+  took the numbers looking wrong to notice. The section-name mechanism already
+  supports one kernel per invocation, so this costs nothing. Failing that,
+  run both orders and say so if they disagree.
+
+**M6 — the reflection**, per [C15], if M5 says the path is worth deepening.
+
+### 11.5 What this does to the wisdom question
+
+`thoughts.md` §10 proposed a wisdom mechanism and gave it one customer,
+`Chunking::Tuned`, with the note that the case would be better made after a
+target-machine run. **[C12] gives it a second customer and a better argument
+than the server run would have.**
+
+The mechanism's premise is that these choices cannot be settled by reasoning
+and vary by machine. `TransformKernel` is now exactly such a choice, it is
+made once at construction where a measurement is cheap against building the
+table beside it, and — unlike every other knob — it has *two complete
+implementations that produce the same answer*, so timing both on the actual
+problem is a well-posed thing to do rather than a heuristic.
+
+Nothing here builds it. It is recorded because §10's ordering advice —
+`Chunking::Tuned` alone, and wait for the server — was written before this
+existed, and the second half of that advice is now spent.
+
+### 11.6 The target-machine run, reframed
+
+Still wanted, no longer gating. What it settles is unchanged and is worth
+restating so that dropping the gate does not read as dropping the question:
+
+- whether the loop kernel's forward accumulator collapse at `lMax = 256` on
+  eight threads (§17.5 of `field-algebra-plan.md`) gets worse at 64, which is
+  the strongest single argument for this restructure;
+- whether `Chunking`'s single-shared-L3 assumption survives eight CCDs, where
+  the inverse's one shared copy is really one per cache domain;
+- and whether the generated path, which lost on this laptop in every
+  configuration, wins on a machine with sixteen times the aggregate L3.
+
+When the machine arrives, the benchmark to run is M5's section and the
+existing `server` one. Until then the laptop's numbers are real numbers about
+a real machine, and two kernels that both exist can be compared on any third.

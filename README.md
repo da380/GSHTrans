@@ -19,9 +19,10 @@ them, including the ones that turned out to be wrong.
 * **`docs/core-plan.md`** — the numerical core: `GaussLegendreGrid`, `Wigner`,
   `Indexing`, `Views`. Steps A–H are landed, with the batched transform, the
   plan cache, threading, and Wigner values generated on the fly as a
-  construction-time policy. What remains is the transform-major restructure
-  (step G with step F tier 2) and polar truncation, both gated on measurements
-  from a target machine rather than on design.
+  construction-time policy. What remains is the transform-major restructure —
+  planned in §11, where the matrix kernel joins the loop kernel as a second
+  construction-time path rather than replacing it — and polar truncation,
+  which stays separate from it.
 * **`docs/field-algebra-plan.md`** — the field layer, and everything built on
   it:
 

@@ -11,8 +11,10 @@ the authorities on the numerical core and the field algebra respectively, and
 decision already taken, it says so rather than quietly overriding it.
 
 **Status, 2026-08-23.** Sections 1 to 6 were the original set and 7 to 10 were
-raised later. Only three are still open, and two of those are waiting on a
-machine rather than on a decision.
+raised later. Three are still open, and — as of this date — **none of them is
+waiting on a machine.** The `earth-tunya` gate was dropped when
+`core-plan.md` §11 was written; §11.1 says why, and §10 below gained an
+argument in the process.
 
 | | subject | status |
 |---|---|---|
@@ -25,7 +27,7 @@ machine rather than on a decision.
 | 7 | the `Interpolation` library | **done** -- adopted as an optional dependency, §19.5 [R1]; it answered the hand-over note and §21 records what that changed |
 | 8 | how three-dimensional the 3-D fields are | **done** -- §8A is §19, §8B is §20 |
 | 9 | interpolating a field, as a callable | **open** in the angular variables; the radial half is §19's `Resample` |
-| 10 | a wisdom mechanism for the computational options | **open**, and better argued after a target-machine run |
+| 10 | a wisdom mechanism for the computational options | **open**, and better argued since `core-plan.md` §11 gave it a second customer |
 
 **What is left of §3.** `Deviatoric` needs the metric as a tensor *expression*,
 and there is no constant-tensor node -- the metric's components are numbers
@@ -984,6 +986,24 @@ Three properties it must have, each of which is a way it could go wrong:
   One dimension at a time, in a fixed order, is enough and is honest about
   being a heuristic.
 
+### A second customer, added 2026-08-23
+
+`core-plan.md` §11 [C12] keeps **both** transform kernels — the present loop
+and the GEMM — as a construction-time `TransformKernel` policy rather than
+one replacing the other. That makes the mechanism's case better than this
+section could, and better than the server run would have.
+
+Every other knob here is a setting whose right value must be *guessed* from a
+model of the machine. This one has **two complete implementations that compute
+the same answer**, so timing both on the caller's actual problem is a
+well-posed measurement rather than a heuristic — and it is made once, at grid
+construction, where a few timed transforms are cheap against building the
+Wigner table beside them.
+
+It does not displace `Chunking::Tuned` as the first thing to build; it means
+the mechanism has a second customer before the first one exists, which is the
+evidence this section was short of.
+
 ### Where to start, and it is small
 
 **`Chunking::Tuned(...)`, and nothing else at first.** It is the knob that has
@@ -1005,11 +1025,13 @@ space of plans it generates itself; this would time a handful of named
 alternatives. The name "wisdom" is worth borrowing for the *persistence* — the
 idea that a machine's answer is worth writing down — and not for the search.
 
-And the caveat that applies to the whole idea: none of it substitutes for the
-target-machine run that `core-plan.md` §10 item 2 is waiting on. A tuner
-measures which of the options we have is best on a given machine. It does not
-tell us whether the option set is the right one, and three of the open
-performance questions are of the second kind.
+And the caveat that applies to the whole idea: a tuner measures which of the
+options we have is best on a given machine. It does not tell us whether the
+option set is the right one, and three of the open performance questions are
+of the second kind. *This paragraph used to add that none of it substitutes
+for the target-machine run `core-plan.md` §10 item 2 was waiting on. That run
+is no longer a gate on anything (§11.1), and the reasoning above is now the
+stronger half of the case rather than a placeholder for it.*
 
 ---
 
@@ -1047,9 +1069,12 @@ and things that are waiting.
   wrap and the exact polar rows -- and `Scheme::Spectral()`, which needs
   nothing and should be built first as the reference the cheap schemes are
   measured against.
-- **The wisdom mechanism** (§10) waits on nothing technically, but its first
-  customer should be `Chunking::Tuned` alone, and the case for the wider
-  mechanism is better made after the target-machine run than before it.
+- **The wisdom mechanism** (§10) waits on nothing technically, and its first
+  customer should still be `Chunking::Tuned` alone. *The rest of this entry
+  used to say the wider case was better made after the target-machine run.*
+  It is better made by `core-plan.md` §11 [C12], which gives the mechanism a
+  second customer whose two alternatives both exist and compute the same
+  answer — so timing them is a measurement rather than a heuristic.
 
 **Independent of all of it:** the **3-j work** (§6), whose priority depends
 entirely on when coupling coefficients are actually wanted. If it is wanted at
@@ -1058,9 +1083,11 @@ reference implementation, and it turns an unknown boundary into a known one.
 There are still two Wigner 3-j codes in this repository and neither is
 exercised by the suite.
 
-**Not on the list, and deliberately:** `core-plan.md` §10's efficiency work --
-the transform-major GEMM restructure and polar truncation. Those are the
-subject of that document's own ordering, they are gated on measurements from
-`earth-tunya`, and §10's standing judgement is that the field layer's own
-problems are worth more per unit effort than another factor of two on the
-transform.
+**Not on the list, and deliberately:** `core-plan.md`'s efficiency work — the
+transform-major GEMM restructure and polar truncation. Those are the subject
+of that document's own ordering. *Two things about them changed on
+2026-08-23 and this paragraph used to say otherwise.* They are **no longer
+gated on `earth-tunya`** (§11.1), and §10's standing judgement — that the
+field layer's own problems were worth more per unit effort — has been
+overtaken by those problems being solved, so the restructure is now planned
+in §11 rather than deferred.
