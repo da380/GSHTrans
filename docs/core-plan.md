@@ -2115,6 +2115,60 @@ a different and coarser thing; this does not replace it.
 complete check of the layout in isolation, it needs no transform, and it is
 what makes a later disagreement between the kernels attributable to the kernel.
 
+*Done*, as `GSHTrans/src/WignerMatrices.h`. A class of its own rather than a
+layout flag on `Wigner`, because the two have unrelated interfaces — `Wigner`
+hands out a `(l, m)` block for one `(n, θ)` through `ConstGSHView`, this hands
+out an `(l, θ)` matrix for one `(n, m)` as a span a BLAS call can take — and a
+single class serving both would have to branch in the accessor the inner loop
+calls. The grid already holds its table in an `optional`, empty on a
+generating grid, so a second one beside it is the shape that was already
+there.
+
+**The values are generated, never transposed.** Building a `Wigner` table and
+transposing it would need both live at once — 1.3 GB at `lMax = 256, nMax = 2`
+to end with 648 MB. So the recursion runs into per-thread scratch one
+`(n, θ)` block at a time, through `WignerDetails::ComputeBlock` with the same
+arguments the stored path passes, and is scattered into place. Same recursion,
+same seeds, same evaluation order, same orthonormalisation — so bit-identity
+is a property of the construction rather than a hope about it.
+
+*The five tests are not vacuous, and that was checked rather than assumed.*
+Perturbing the scatter from row-major to column-major — the single most likely
+way to get this wrong — fails four of the five. The fifth is the one asserting
+that a matrix's height falls linearly in `|m|`, which is a shape property and
+correctly does not notice. Restored, all five pass. The suite goes from 296 to
+301, green in Debug and Release.
+
+**The measurement M1 owes, and it is the one cost this step has.** A block
+computed for one `(n, θ)` scatters across every matrix at stride `nθ` in the
+degree, so nearly every value written touches its own cache line. Both layouts
+built on the same angles, eight threads, this laptop:
+
+| lMax | nMax | block layout | matrix layout | ratio | size |
+|-----:|-----:|-------------:|--------------:|------:|-----:|
+|   64 |    2 |       3.9 ms |        1.8 ms | 0.45× |   10.5 MiB |
+|  128 |    2 |      20.4 ms |       24.0 ms | 1.17× |   81.9 MiB |
+|  256 |    2 |     156.0 ms |      297.2 ms | 1.90× |  647.5 MiB |
+
+So the scatter costs up to **1.9×** on construction at operator sizes, and the
+penalty grows with `lMax` as the write set leaves cache — which is the shape
+the argument predicts. It is paid once per grid, it is 140 ms in absolute
+terms, and **it is not being fixed**: blocking the scatter over colatitudes so
+that a cache line is filled by consecutive `θ` is the known lever, and taking
+it now would mean tuning an access pattern before M2 and M3 have had their say
+about what it should be. Recorded so that if grid construction ever becomes
+the complaint, the answer is already written down.
+
+*The size column also settles a claim this section makes twice*: 647.5 MiB at
+`lMax = 256, nMax = 2` in the matrix layout, against the 648 MB the document
+quotes for the block one. The transposed triangle really is the same triangle.
+
+*One piece of documentation drift found on the way.* The suite stood at **296**
+before this step, not the 282 that `field-algebra-plan.md` §21.3 records. That
+number has been overtaken — the three examples of the last commit are part of
+it and not all of it — and is left for whoever next touches that section to
+correct at its source.
+
 **M2 — the FFT restructure.** All FFTs before the Legendre stage, landing
 `m`-major. One `plan_many` over `nθ k` rows with output stride `nθ k` and
 output distance 1 writes `[m][θ][κ]` directly, so the transpose is free for
@@ -2146,6 +2200,49 @@ divide work rather than count orders. And a thread's share of the table is a
 set of whole `(n, m)` blocks, so first touch during the table build can be
 made to match the split exactly — which the current colatitude split cannot,
 and which is the better NUMA story this path has to offer.
+
+*A third, which M1 created and which is not in §12 at all.* `WignerMatrices`
+builds in parallel over `(n, θ)`, because that is the axis the recursion runs
+on, and **scatters** into the `(n, m)` blocks. So first touch is by colatitude
+and does not match the split M4 wants, exactly as it does not today. The fix
+is cheap and known — a first-touch pass parallel over `(n, m)` before the fill
+— and it belongs here rather than in M1, since M4 is where the split is
+decided and a first-touch pass that matches no split is worth nothing.
+
+**A fourth obligation, on the BLAS rather than on this code, and it has to be
+written on the seam.** M4 threads over orders with OpenMP and calls the GEMM
+from inside that region. A BLAS with a thread pool of its own then multiplies
+the two: eight OpenMP threads each entering a call that wants eight threads
+asks for sixty-four on eight cores. That is precisely what `Execution`'s "both
+at once is worse than either" rule exists to prevent, and the library's
+`omp_in_parallel()` guard cannot see it, because the second pool is not
+OpenMP's.
+
+So: **GSHTrans threads over orders and requires the BLAS to be single-threaded
+when it does.** A BLAS built on the same OpenMP runtime satisfies this for
+free — `libgomp` defaults to one active level, so the inner region runs serial
+precisely because the outer one is open — and one built on its own pthreads
+does not, and needs `OPENBLAS_NUM_THREADS=1` or its equivalent from the
+caller. This is the same kind of obligation `field-algebra-plan.md` §19.2
+wrote onto `RadialOperator`: something no caller can honour without being
+told.
+
+*Checked on the development machine rather than assumed, and it was not what
+installing the package suggested.* Ubuntu ships OpenBLAS in pthread, OpenMP
+and serial builds as alternatives of one library. Installing
+`libopenblas-openmp-dev` **does not select it**: pthread carries priority 100
+against OpenMP's 95, both alternatives sit in auto mode, and the link resolves
+to pthread as before. Both the runtime and the link-time symlink have to be
+set explicitly. Worth recording because the failure is silent — the build
+succeeds, the answers are right, and only the timings are wrong.
+
+**The road not taken, recorded so the choice reads as one.** The alternative
+is to let a threaded BLAS parallelise each product and not thread over orders
+at all. It is rejected because the 513 products per upper index are
+individually skinny — `N = 2k` is between 2 and 16 — which is the shape BLAS
+threading handles worst, and because threading over orders is what gives this
+path the NUMA story above. Neither reason would survive a much larger `k`, and
+neither is likely to meet one.
 
 **M5 — measure.** Both kernels, both directions, batched and unbatched, over
 the `lMax` range the `transforms` and `batching` sections already walk, as a

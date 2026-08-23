@@ -78,6 +78,7 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/Version.h
   GSHTrans/src/Views.h
   GSHTrans/src/Wigner.h
+  GSHTrans/src/WignerMatrices.h
   GSHTrans/src/SpinField/SpinWeighted.h
   GSHTrans/src/SpinField/SpinField.h
   GSHTrans/src/SpinField/SpinFieldNodes.h

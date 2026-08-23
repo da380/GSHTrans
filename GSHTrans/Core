@@ -13,5 +13,6 @@
 #include "src/Utility.h"
 #include "src/Views.h"
 #include "src/Wigner.h"
+#include "src/WignerMatrices.h"
 
 #endif

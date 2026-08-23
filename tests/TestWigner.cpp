@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
+#include <cstddef>
+#include <vector>
 
 #include "CheckAdditionTheorem.h"
 #include "CheckLegendre.h"
@@ -94,4 +97,135 @@ TEST(Wigner, SingleNegativeUpperIndexAccess) {
 TEST(Wigner, SingleMaximumUpperIndexAccess) {
   CheckSingleUpperIndexAccess(5);
   CheckSingleUpperIndexAccess(-5);
+}
+
+// -- The transform-major layout (core-plan.md section 11, step M1).
+//
+// The claim M1 has to establish is that [n][m][l][theta] holds the same values
+// as [n][theta][(l, m)], value for value and bit for bit. Bit-identity is the
+// right standard rather than a tolerance: both layouts run the same recursion
+// through WignerDetails::ComputeBlock with the same seeds and the same
+// evaluation order, so any difference at all would be a layout fault rather
+// than an arithmetic one -- and the whole purpose of the layout is that it
+// changes nothing about the values.
+//
+// The test computes the index into the matrix itself instead of asking the
+// class for it, so that it checks the documented layout rather than agreeing
+// with an accessor that could be wrong the same way twice.
+namespace {
+
+template <typename Real, typename MRange, typename NRange>
+void CheckTransformMajorAgreesWithWigner(std::ptrdiff_t lMax,
+                                         std::ptrdiff_t mMax,
+                                         std::ptrdiff_t nMax) {
+  using namespace GSHTrans;
+  using Int = std::ptrdiff_t;
+
+  // Angles chosen away from the poles and unevenly, so that no accidental
+  // symmetry of the sample points can hide an index that is transposed.
+  auto angles = std::vector<Real>{};
+  const auto nTheta = Int{7};
+  for (auto i = Int{0}; i < nTheta; i++) {
+    angles.push_back(static_cast<Real>(0.17) +
+                     static_cast<Real>(i) * static_cast<Real>(0.39));
+  }
+
+  const auto table =
+      Wigner<Real, MRange, NRange, Multiple, ColumnMajor>(lMax, mMax, nMax,
+                                                          angles);
+  const auto matrices = WignerMatrices<Real, MRange, NRange>(lMax, mMax, nMax,
+                                                             angles);
+
+  ASSERT_EQ(matrices.NumberOfAngles(), nTheta);
+  ASSERT_EQ(matrices.MaxDegree(), lMax);
+  ASSERT_EQ(matrices.MaxOrder(), mMax);
+
+  // Every value the matrix layout holds is present in the block layout, and
+  // equal. Walked from the matrix side, since that is the new thing.
+  auto matrixValues = std::size_t{0};
+  for (auto n : matrices.UpperIndices()) {
+    for (auto m : matrices.Orders()) {
+      const auto block = matrices[n, m];
+      const auto lMin = matrices.MinDegree(n, m);
+      EXPECT_EQ(block.size(), static_cast<std::size_t>(
+                                  matrices.NumberOfDegrees(n, m) * nTheta));
+
+      for (auto l : matrices.Degrees(n, m)) {
+        for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
+          const auto fromMatrix = block[(l - lMin) * nTheta + iTheta];
+          const auto fromTable = table[n, iTheta][l][m];
+          EXPECT_EQ(fromMatrix, fromTable)
+              << "n = " << n << ", m = " << m << ", l = " << l
+              << ", iTheta = " << iTheta;
+          matrixValues++;
+        }
+      }
+    }
+  }
+
+  // And nothing is missing: the two layouts hold the same number of values.
+  // This is the half the walk above cannot see, and it is the statement that
+  // the transposed triangle really is the same triangle.
+  auto tableValues = std::size_t{0};
+  for (auto n : table.UpperIndices()) {
+    for (auto iTheta : table.AngleIndices()) {
+      tableValues += static_cast<std::size_t>(
+          GSHIndices<MRange>(lMax, mMax, n).Size());
+    }
+  }
+  EXPECT_EQ(matrixValues, tableValues);
+}
+
+}  // namespace
+
+TEST(WignerMatrices, AgreesWithTheBlockLayout) {
+  using namespace GSHTrans;
+  CheckTransformMajorAgreesWithWigner<double, All, All>(8, 8, 2);
+}
+
+TEST(WignerMatrices, AgreesWithTheBlockLayoutLongDouble) {
+  using namespace GSHTrans;
+  CheckTransformMajorAgreesWithWigner<long double, All, All>(6, 6, 2);
+}
+
+// mMax below lMax truncates the orders, which changes both layouts' shapes in
+// different places -- the block loses columns at high degree, the matrix set
+// loses whole matrices. That they still agree is the check that the identity
+// is not an artefact of the square case.
+TEST(WignerMatrices, AgreesWhenOrdersAreTruncated) {
+  using namespace GSHTrans;
+  CheckTransformMajorAgreesWithWigner<double, All, All>(9, 4, 3);
+}
+
+// The reduced m >= 0 storage of a real scalar grid, which is the one case
+// where MinOrder() is zero rather than -mMax.
+TEST(WignerMatrices, AgreesForNonNegativeOrders) {
+  using namespace GSHTrans;
+  CheckTransformMajorAgreesWithWigner<double, NonNegative, All>(7, 7, 0);
+}
+
+// The matrix at (n, m) starts at degree max(|n|, |m|) and its height falls
+// linearly in |m|. That is the load imbalance step M4 has to divide work for,
+// so it is worth pinning as a property rather than leaving it implied by the
+// agreement test.
+TEST(WignerMatrices, MatrixHeightFallsWithOrder) {
+  using namespace GSHTrans;
+  using Int = std::ptrdiff_t;
+
+  constexpr Int lMax = 10;
+  const auto angles = std::vector<double>{0.3, 0.9, 1.7};
+  const auto matrices = WignerMatrices<double, All, All>(lMax, lMax, 2, angles);
+
+  for (auto n : matrices.UpperIndices()) {
+    for (auto m : matrices.Orders()) {
+      EXPECT_EQ(matrices.MinDegree(n, m), std::max(std::abs(n), std::abs(m)));
+      EXPECT_EQ(matrices.NumberOfDegrees(n, m),
+                lMax - std::max(std::abs(n), std::abs(m)) + 1);
+    }
+  }
+
+  // The tallest matrix is at m = 0 and the shortest at |m| = mMax.
+  EXPECT_EQ(matrices.NumberOfDegrees(0, 0), lMax + 1);
+  EXPECT_EQ(matrices.NumberOfDegrees(0, lMax), 1);
+  EXPECT_EQ(matrices.NumberOfDegrees(0, -lMax), 1);
 }
