@@ -20,10 +20,10 @@ them, including the ones that turned out to be wrong.
   `Indexing`, `Views`. Steps A–H are landed, with the batched transform, the
   plan cache, threading, and Wigner values generated on the fly as a
   construction-time policy. §11's transform-major restructure is built through
-  M5: `TransformKernel::Matrix()` is a second construction-time kernel beside
-  the loop one, worth 2–4× where it is worth anything, with the loop kernel
-  kept as its oracle. What remains is the reflection symmetry (§11, M6,
-  assessed and not built) and polar truncation.
+  M6, all of it: `TransformKernel::Matrix()` is a second construction-time
+  kernel beside the loop one, worth 3–6× where it is worth anything and
+  storing half the table, with the loop kernel kept as its oracle. What
+  remains is polar truncation.
 * **`docs/field-algebra-plan.md`** — the field layer, and everything built on
   it:
 
@@ -160,11 +160,14 @@ table laid out `[n][m][l][θ]`. It needs a BLAS — `GSHTRANS_WITH_BLAS`, which
 is `AUTO` by default and found rather than fetched — and a build without one
 does not offer it at all.
 
-It is worth **2.9× to 4.1×** batched at `lMax = 256` on eight threads, and
-1.1–1.5× unbatched there, where the loop kernel is already at the memory roof
-and nothing is available. Products at different orders write disjoint output,
-so it carries no accumulator and no reduction in either direction, which is
-where the forward transform's threading used to lose.
+It is worth **5.8–6.0× forward and 2.9–3.2× inverse** batched at `lMax = 256`
+on eight threads, and little unbatched there, where the loop kernel is already
+at the memory roof and nothing is available. Products at different orders
+write disjoint output, so it carries no accumulator and no reduction in either
+direction, which is where the forward transform's threading used to lose. It
+also stores **half** the Wigner values — 325 MB against 648 at `lMax = 256`,
+2.6 GB against 5.2 at 512 — the negative orders coming from
+`d^l_{nm}(π − θ) = (−1)^{l+n} d^l_{n,−m}(θ)`.
 
 The pair is kept rather than one replacing the other, so that the loop kernel
 is the matrix kernel's oracle — the same inputs through two independent
