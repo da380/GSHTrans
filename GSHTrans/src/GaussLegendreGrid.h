@@ -668,7 +668,8 @@ class GaussLegendreGrid
   // it is measured at under a fifth of the stage.
   template <std::ranges::input_range InRange>
   void ForwardFourierStage(InRange&& in, Batch inBatch, Int first, Int count,
-                           std::span<Complex> out, Int thetaBlock = 0) const {
+                           std::span<Complex> out, Int thetaBlock = 0,
+                           Execution policy = Execution::Sequential()) const {
     using Scalar = std::ranges::range_value_t<InRange>;
     static_assert(RealOrComplexFloatingPoint<Scalar>);
 
@@ -694,7 +695,21 @@ class GaussLegendreGrid
     const auto block = ChooseThetaBlock(thetaBlock, count, nTheta);
     auto inFirst = std::ranges::begin(in);
 
-    for (auto theta0 = Int{0}; theta0 < nTheta; theta0 += block) {
+    // Threaded over blocks (step M4). Each block reads its own colatitudes of
+    // the caller's fields and writes its own run within every order's output,
+    // so the blocks are disjoint on both sides; the workspace and its plan are
+    // thread_local already, so a thread finds or makes its own.
+    //
+    // Left sequential in M2, which made it a 29 per cent Amdahl term as soon
+    // as the Legendre stage threaded -- and the matrix kernel stopped scaling
+    // past two threads because of it.
+    const auto blocks = (nTheta + block - 1) / block;
+    const bool parallel = RunInParallel(policy);
+
+#pragma omp parallel for schedule(static) num_threads(ThreadCount(policy)) \
+    if (parallel)
+    for (Int b = 0; b < blocks; b++) {
+      const auto theta0 = b * block;
       const auto rows = std::min(block, nTheta - theta0);
       auto& work = GetWorkspace<Scalar, true>(nPhi, rows * count, _impl->flag);
 
@@ -743,7 +758,8 @@ class GaussLegendreGrid
   template <typename OutRange>
   void InverseFourierStage(std::span<const Complex> in, OutRange& out,
                            Batch outBatch, Int first, Int count,
-                           Int thetaBlock = 0) const {
+                           Int thetaBlock = 0,
+                           Execution policy = Execution::Sequential()) const {
     using Scalar = std::ranges::range_value_t<OutRange>;
     static_assert(RealOrComplexFloatingPoint<Scalar>);
 
@@ -767,7 +783,14 @@ class GaussLegendreGrid
     const auto block = ChooseThetaBlock(thetaBlock, count, nTheta);
     auto outFirst = std::ranges::begin(out);
 
-    for (auto theta0 = Int{0}; theta0 < nTheta; theta0 += block) {
+    // Threaded over blocks, as the forward stage is and for the same reason.
+    const auto blocks = (nTheta + block - 1) / block;
+    const bool parallel = RunInParallel(policy);
+
+#pragma omp parallel for schedule(static) num_threads(ThreadCount(policy)) \
+    if (parallel)
+    for (Int b = 0; b < blocks; b++) {
+      const auto theta0 = b * block;
       const auto rows = std::min(block, nTheta - theta0);
       auto& work = GetWorkspace<Scalar, false>(nPhi, rows * count, _impl->flag);
 
@@ -1047,6 +1070,48 @@ class GaussLegendreGrid
     return buffer;
   }
 
+  // Run `body(m, scratch)` for every order from minOrder to lMax, threaded or
+  // not (step M4).
+  //
+  // **schedule(dynamic), and the reason is that the obvious static split is
+  // wrong twice over.** Section 12 of the reference note warns once: the work
+  // per order is not constant, since n_L(m) falls linearly in |m|, so counting
+  // orders is about twice as unbalanced as it looks and the schedule has to
+  // divide work instead. M3b found the second and sharper reason. A static
+  // split weighted by n_L would assume time proportional to n_L -- but the
+  // inverse's inner dimension *is* n_L, and a GEMM's efficiency falls with its
+  // inner dimension, so time is superlinear in n_L and a linear model
+  // mis-splits in the same direction it was correcting. Dynamic needs no model
+  // and so cannot hold a wrong one.
+  //
+  // Determinism is unaffected: the orders write disjoint output, so the answer
+  // does not depend on which thread took which or in what sequence.
+  //
+  // The scratch is per thread and is taken *inside* the region for that
+  // reason. Anything shared -- the table, the intermediate -- is captured by
+  // reference from outside it, and must be: OrderScratch and MatrixScratch are
+  // both thread_local, so a buffer filled before the region is the master
+  // thread's and reaching for it again inside would find an empty one.
+  template <typename Body>
+  void OverOrders(Int minOrder, Int lMax, Int c, Execution policy,
+                  Body&& body) const {
+    const auto scratchSize = static_cast<std::size_t>((lMax + 1) * c);
+    const auto orders = lMax - minOrder + 1;
+
+    if (!RunInParallel(policy)) {
+      auto& scratch = OrderScratch(scratchSize);
+      for (auto i = Int{0}; i < orders; i++) body(minOrder + i, scratch.data());
+      return;
+    }
+
+#pragma omp parallel num_threads(ThreadCount(policy))
+    {
+      auto& scratch = OrderScratch(scratchSize);
+#pragma omp for schedule(dynamic)
+      for (Int i = 0; i < orders; i++) body(minOrder + i, scratch.data());
+    }
+  }
+
   // The forward transform as one matrix product per order (step M3).
   //
   // Reordered so that the sum over colatitudes is innermost, the Legendre
@@ -1092,41 +1157,46 @@ class GaussLegendreGrid
       auto stageSpan = std::span<Complex>(stage.data(),
                                           static_cast<std::size_t>(
                                               nFourier * nTheta * c));
-      ForwardFourierStage(in, inBatch, first, c, stageSpan);
+      ForwardFourierStage(in, inBatch, first, c, stageSpan, 0, policy);
 
-      // The quadrature weight and the 2 pi / nPhi, applied once to the whole
-      // intermediate rather than folded into the matrix. They cannot be
-      // folded: the same matrix serves the inverse transform, which carries
-      // no weight, and one stored matrix serving both directions is the whole
-      // reason the layout is worth having.
-      for (auto m = Int{0}; m < nFourier; m++) {
-        auto* row = stage.data() + m * nTheta * c;
-        for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
-          const auto w = _impl->quad.W(iTheta) * scaleFactor;
-          for (auto k = Int{0}; k < c; k++) row[iTheta * c + k] *= w;
-        }
-      }
-
-      auto& result = OrderScratch(static_cast<std::size_t>((lMax + 1) * c));
-
-      for (auto m = minOrder; m <= lMax; m++) {
+      // Everything one order needs, and nothing another order touches. That
+      // disjointness is the whole of the threading argument (step M4): the
+      // products at different orders read a shared, read-only table and a
+      // shared, read-only intermediate, and write coefficients no other order
+      // writes. **No accumulator and no reduction, in either direction** --
+      // which is the forward loop kernel's weak point deleted rather than
+      // tuned, and is why this restructure subsumes [C11].
+      auto DoOrder = [&](Int m, Complex* result) {
         const auto lMin = std::max(std::abs(n), std::abs(m));
-        if (lMin > lMax) continue;
         const auto rows = lMax - lMin + 1;
 
         // Negative orders live at the top of the FFT output, which is what
         // the loop kernel's own indexing says too.
         const auto mFourier = m >= 0 ? m : nPhi + m;
+        auto* block = stage.data() + mFourier * nTheta * c;
 
-        const auto* a = matrices[n, m].data();
-        const auto* b = reinterpret_cast<const Real*>(stage.data() +
-                                                      mFourier * nTheta * c);
-        auto* out = reinterpret_cast<Real*>(result.data());
+        // The quadrature weight and the 2 pi / nPhi. Applied here, to this
+        // order's block alone, rather than in a pass over the whole
+        // intermediate: each block is read by exactly one product, so the
+        // scaling is disjoint in the same way the product is, and doing it
+        // immediately before the read is one less pass over 16 MiB.
+        //
+        // Not folded into the matrix, which would be cheaper still and is not
+        // available: the same matrix serves the inverse transform, which
+        // carries no weight, and one stored matrix serving both directions is
+        // the whole reason the layout is worth having.
+        for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
+          const auto w = _impl->quad.W(iTheta) * scaleFactor;
+          for (auto k = Int{0}; k < c; k++) block[iTheta * c + k] *= w;
+        }
 
         BlasDetails::RowMajorGemm(
             static_cast<int>(rows), static_cast<int>(2 * c),
-            static_cast<int>(nTheta), Real{1}, a, static_cast<int>(nTheta), b,
-            static_cast<int>(2 * c), Real{0}, out, static_cast<int>(2 * c));
+            static_cast<int>(nTheta), Real{1}, matrices[n, m].data(),
+            static_cast<int>(nTheta),
+            reinterpret_cast<const Real*>(block), static_cast<int>(2 * c),
+            Real{0}, reinterpret_cast<Real*>(result),
+            static_cast<int>(2 * c));
 
         // Scatter: the coefficient block is triangular, so the stride between
         // consecutive degrees at one order is not constant and the product
@@ -1138,7 +1208,9 @@ class GaussLegendreGrid
                 result[(l - lMin) * c + k];
           }
         }
-      }
+      };
+
+      OverOrders(minOrder, lMax, c, policy, DoOrder);
     }
   }
 
@@ -1190,9 +1262,10 @@ class GaussLegendreGrid
         std::fill_n(stage.data() + m * nTheta * c, nTheta * c, Complex{0, 0});
       }
 
-      auto& gathered = OrderScratch(static_cast<std::size_t>((lMax + 1) * c));
-
-      for (auto m = minOrder; m <= lMax; m++) {
+      // Disjoint in the same way the forward direction is, and for the same
+      // reason: each order reads coefficients no other order reads and writes
+      // the one block of the intermediate that its own FFT order occupies.
+      auto DoOrder = [&](Int m, Complex* gathered) {
         const auto lMin = std::max(std::abs(n), std::abs(m));
         const auto rows = lMax - lMin + 1;
         const auto mFourier = m >= 0 ? m : nPhi + m;
@@ -1207,21 +1280,21 @@ class GaussLegendreGrid
           }
         }
 
-        const auto* a = matrices[n, m].data();
-        const auto* b = reinterpret_cast<const Real*>(gathered.data());
-        auto* target =
-            reinterpret_cast<Real*>(stage.data() + mFourier * nTheta * c);
-
         BlasDetails::RowMajorGemmTransposed(
             static_cast<int>(nTheta), static_cast<int>(2 * c),
-            static_cast<int>(rows), Real{1}, a, static_cast<int>(nTheta), b,
-            static_cast<int>(2 * c), Real{0}, target,
+            static_cast<int>(rows), Real{1}, matrices[n, m].data(),
+            static_cast<int>(nTheta),
+            reinterpret_cast<const Real*>(gathered), static_cast<int>(2 * c),
+            Real{0},
+            reinterpret_cast<Real*>(stage.data() + mFourier * nTheta * c),
             static_cast<int>(2 * c));
-      }
+      };
+
+      OverOrders(minOrder, lMax, c, policy, DoOrder);
 
       auto stageSpan = std::span<const Complex>(
           stage.data(), static_cast<std::size_t>(nFourier * nTheta * c));
-      InverseFourierStage(stageSpan, out, outBatch, first, c);
+      InverseFourierStage(stageSpan, out, outBatch, first, c, 0, policy);
     }
   }
 #endif

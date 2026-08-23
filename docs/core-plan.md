@@ -2430,6 +2430,18 @@ is cheap and known — a first-touch pass parallel over `(n, m)` before the fill
 — and it belongs here rather than in M1, since M4 is where the split is
 decided and a first-touch pass that matches no split is worth nothing.
 
+*And M4's answer to it is that the two wants are in conflict, which is the
+part worth carrying to the target machine.* The schedule chosen below is
+`dynamic`, because no static work model survives contact with what M3b found.
+But a dynamic schedule has **no fixed thread-to-order mapping**, so there is
+nothing for a first-touch pass to match, and the NUMA story §12 offers is not
+available while it is in use. The alternative — a static schedule over orders
+dealt round-robin after sorting by height, which is both work-balanced and
+fixed — is buildable and is not built, because its whole benefit is on a
+machine with more than one memory domain and this laptop has one. **The
+schedule question and the NUMA question are one question, and it is a
+target-machine question.**
+
 **A fourth obligation, on the BLAS rather than on this code, and it has to be
 written on the seam.** M4 threads over orders with OpenMP and calls the GEMM
 from inside that region. A BLAS with a thread pool of its own then multiplies
@@ -2464,6 +2476,75 @@ individually skinny — `N = 2k` is between 2 and 16 — which is the shape BLAS
 threading handles worst, and because threading over orders is what gives this
 path the NUMA story above. Neither reason would survive a much larger `k`, and
 neither is likely to meet one.
+
+#### M4, done
+
+`OverOrders` runs the per-order body threaded or not, and both kernels are
+written against it. The orders read a shared, read-only table and a shared,
+read-only intermediate and write output no other order writes, so there is
+**no accumulator and no reduction in either direction** — [C11]'s question
+deleted rather than answered, which is what §10 item 3 meant by subsuming it.
+
+**`schedule(dynamic)`, because the obvious static split is wrong twice over.**
+§12 warns once: `n_L(m)` falls linearly in `|m|`, so counting orders is about
+twice as unbalanced as it looks. M3b found the second and sharper reason. A
+static split weighted by `n_L` assumes time proportional to `n_L` — but the
+inverse's inner dimension *is* `n_L`, and a GEMM's efficiency falls with its
+inner dimension, so time is superlinear in `n_L` and a linear model mis-splits
+in the direction it was correcting. Dynamic holds no model and so cannot hold
+a wrong one. Determinism is unaffected, since the orders write disjoint
+output, and a test asserts the threaded answer is **bit-identical** to the
+sequential one — which is the right standard within one kernel even though it
+is not available across two.
+
+**The scratch is per thread and taken inside the region; anything shared is
+captured from outside it, and must be.** `OrderScratch` and `MatrixScratch`
+are both `thread_local`, so a buffer filled before the region belongs to the
+master thread and reaching for it again inside would find an empty one. That
+is a trap the shape of this code sets and the comment says so.
+
+**The Fourier stage had to thread too, which M2 did not anticipate.** M2 left
+it sequential and measured it at six per cent of the transform — true, and
+true only while the Legendre stage was sequential as well. Once the orders
+threaded it became a **29 per cent Amdahl term**, and the matrix kernel
+stopped scaling past two threads. Threading it over colatitude blocks is five
+lines, since the blocks are disjoint on both sides and the workspace and its
+plan are already `thread_local`. What that changed, `lMax = 256, k = 8`,
+eight threads: forward 3.23× to **4.59×**, inverse 1.40× to **1.92×**.
+
+#### What M4 measured, and it settles §12's open prediction
+
+Forward and inverse, complex, `n = 2`, speedup of matrix over loop:
+
+| lMax | k | 1 thread | 2 | 4 | 8 |
+|-----:|--:|---------:|--:|--:|--:|
+| 128 | 1 | 2.79× / 2.25× | 2.71× / 2.23× | 4.11× / 2.72× | 3.93× / 2.65× |
+| 128 | 8 | 3.01× / 1.83× | 2.45× / 2.20× | 3.50× / 2.66× | **4.27× / 3.07×** |
+| 256 | 1 | 3.16× / 1.90× | 2.19× / 1.55× | 1.40× / 1.17× | **1.20× / 1.10×** |
+| 256 | 8 | 3.02× / 1.64× | 4.10× / 1.78× | 5.18× / 2.08× | **4.59× / 1.92×** |
+
+**§12's prediction is confirmed, and precisely.** It says the restructure
+"buys nothing at all in the regime where the stage is bandwidth-bound — which
+it is, unbatched, on eight threads". At `lMax = 256, k = 1` on eight threads
+the answer is **1.20× and 1.10×**, which is nothing, and it is the only cell
+in the table where that is true. M3a's contrary-looking sequential result was
+never a contradiction and this is why.
+
+**The forward exceeds §12's estimate, and the reason is [C11] rather than the
+GEMM.** That section's honest expectation was "a factor of two or three in the
+batched regime". Sequentially the forward gives 3.02×, inside it. Threaded it
+gives **4.59×**, outside it — and the extra is not the matrix kernel getting
+better but the loop kernel getting worse: at `lMax = 256, k = 8` the loop
+forward scales only 1.48× from one thread to eight, which is exactly
+`field-algebra-plan.md` §17.5's collapse, eight private accumulators of 8.4 MB
+in a 16 MB cache. The matrix kernel has no accumulator to collapse and scales
+2.24×. So the threaded comparison measures the GEMM *and* the deletion of
+[C11]'s problem together, and the plan said it would.
+
+**The inverse still lags, consistently with M3b.** 1.92× against the forward's
+4.59× at the operator size, and the gap is the same one M3b attributed to the
+inner dimension falling to one. Nothing here contradicts that and nothing here
+confirms it either; it is still M5's to settle.
 
 **M5 — measure.** Both kernels, both directions, batched and unbatched, over
 the `lMax` range the `transforms` and `batching` sections already walk, as a

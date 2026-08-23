@@ -1914,3 +1914,100 @@ TEST(MatrixKernel, RoundTripsOnItsOwn) {
   }
 }
 #endif  // GSHTRANS_HAVE_BLAS
+
+#ifdef GSHTRANS_HAVE_BLAS
+// Threading over orders (core-plan.md section 11, step M4).
+//
+// The orders write disjoint output, so a threaded run must give the *same*
+// answer as a sequential one -- not a close one. Bit-exact is the right
+// standard here even though the cross-kernel comparison is not: within one
+// kernel nothing about the arithmetic changes, only which thread does it, and
+// each order's product is a single BLAS call either way.
+TEST(MatrixKernel, ThreadingChangesNothing) {
+  using Grid = GaussLegendreGrid<double, All, All>;
+  constexpr auto lMax = std::ptrdiff_t{20};
+  constexpr auto n = std::ptrdiff_t{2};
+  constexpr auto count = std::ptrdiff_t{4};
+
+  auto grid = Grid(lMax, n, FFTWpp::Estimate, Chunking::Automatic(),
+                   WignerValues::Stored(), TransformKernel::Matrix());
+  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto coefficientSize =
+      static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
+
+  auto fields = std::vector<std::complex<double>>(count * fieldSize);
+  for (std::size_t i = 0; i < fields.size(); i++) {
+    fields[i] = std::complex<double>{std::cos(0.31 * static_cast<double>(i)),
+                                     std::sin(0.17 * static_cast<double>(i))};
+  }
+  const auto fb = Batch::Contiguous(count, fieldSize);
+  const auto cb = Batch::Contiguous(count, coefficientSize);
+
+  auto sequential = std::vector<std::complex<double>>(count * coefficientSize);
+  auto threaded = std::vector<std::complex<double>>(count * coefficientSize);
+  grid.ForwardTransformation(lMax, n, fields, fb, sequential, cb,
+                             Execution::Sequential());
+  grid.ForwardTransformation(lMax, n, fields, fb, threaded, cb,
+                             Execution::Parallel(4));
+  for (std::size_t i = 0; i < sequential.size(); i++) {
+    ASSERT_EQ(threaded[i], sequential[i]) << "forward, at " << i;
+  }
+
+  auto backSequential = std::vector<std::complex<double>>(count * fieldSize);
+  auto backThreaded = std::vector<std::complex<double>>(count * fieldSize);
+  grid.InverseTransformation(lMax, n, sequential, cb, backSequential, fb,
+                             Execution::Sequential());
+  grid.InverseTransformation(lMax, n, sequential, cb, backThreaded, fb,
+                             Execution::Parallel(4));
+  for (std::size_t i = 0; i < backSequential.size(); i++) {
+    ASSERT_EQ(backThreaded[i], backSequential[i]) << "inverse, at " << i;
+  }
+}
+
+// Exactly one level threads: a transform asked to run in parallel from inside
+// an existing parallel region runs sequentially instead. The matrix kernel
+// has to keep that rule like everything else, and it is worth a test because
+// its region is a new one.
+TEST(MatrixKernel, DoesNotNestItsThreading) {
+  using Grid = GaussLegendreGrid<double, All, All>;
+  constexpr auto lMax = std::ptrdiff_t{12};
+  constexpr auto n = std::ptrdiff_t{1};
+
+  auto grid = Grid(lMax, n, FFTWpp::Estimate, Chunking::Automatic(),
+                   WignerValues::Stored(), TransformKernel::Matrix());
+  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto coefficientSize =
+      static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
+
+  constexpr auto slices = std::ptrdiff_t{4};
+  auto fields = std::vector<std::complex<double>>(slices * fieldSize);
+  for (std::size_t i = 0; i < fields.size(); i++) {
+    fields[i] = std::complex<double>{std::cos(0.07 * static_cast<double>(i)),
+                                     std::sin(0.29 * static_cast<double>(i))};
+  }
+  auto outer = std::vector<std::complex<double>>(slices * coefficientSize);
+  auto inner = std::vector<std::complex<double>>(slices * coefficientSize);
+
+  // A caller threading over slices, each slice transforming "in parallel".
+#pragma omp parallel for num_threads(4)
+  for (std::ptrdiff_t s = 0; s < slices; s++) {
+    auto one = std::span<const std::complex<double>>(
+        fields.data() + s * fieldSize, fieldSize);
+    auto target = std::span<std::complex<double>>(
+        outer.data() + s * coefficientSize, coefficientSize);
+    grid.ForwardTransformation(lMax, n, one, target, Execution::Parallel(4));
+  }
+
+  for (std::ptrdiff_t s = 0; s < slices; s++) {
+    auto one = std::span<const std::complex<double>>(
+        fields.data() + s * fieldSize, fieldSize);
+    auto target = std::span<std::complex<double>>(
+        inner.data() + s * coefficientSize, coefficientSize);
+    grid.ForwardTransformation(lMax, n, one, target, Execution::Sequential());
+  }
+
+  for (std::size_t i = 0; i < outer.size(); i++) {
+    ASSERT_EQ(outer[i], inner[i]) << "at " << i;
+  }
+}
+#endif  // GSHTRANS_HAVE_BLAS
