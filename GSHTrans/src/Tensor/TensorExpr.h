@@ -48,7 +48,20 @@ concept TensorExpr = requires {
   { T::template Represents<> } -> std::convertible_to<bool>;
 } and requires(const T& tensor) {
   { tensor.Grid() } -> std::convertible_to<const typename T::GridType&>;
-};
+}
+// And it is a *spatial* tensor, which has to be said because a spectral one
+// answers every question above: TensorExpansion carries a rank, a grid, a slot
+// alphabet and a Represents, so without this it satisfies the concept and
+// Permute, the tensor product, Materialise and the bundle maps all accept one.
+// They would then compose the wrong Component -- a view over coefficients
+// rather than a spin-weighted node -- and the first symptom is an overload of
+// Tangential resolving to the spatial node for a spectral operand, which is
+// how this was found.
+//
+// The discriminator is the truncation degree, and it is the real difference
+// rather than a convenient one: an expansion is defined up to a degree and a
+// field is not.
+and not requires(const T& tensor) { tensor.MaxDegree(); };
 
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
           TensorReality Reality, AngularGrid Grid, TensorLayout Layout,

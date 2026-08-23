@@ -8,5 +8,6 @@
 #include "src/Expansion/TensorExpansion.h"
 #include "src/Expansion/ContravariantDerivative.h"
 #include "src/Expansion/IntrinsicDerivative.h"
+#include "src/Expansion/BundleMaps.h"
 
 #endif

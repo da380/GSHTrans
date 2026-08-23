@@ -1987,6 +1987,41 @@ Adopting ð's normalisation instead would make the operator differ by `√2` fro
 the operator it is defined to be. The `√2` stays where it belongs, as a fact
 about ð.
 
+**[D13] The bundle maps are lazy in the spatial domain and materialising in
+the spectral one.** This amends the second half of [D9], which said flatly that
+`Embed` is a lazy node, and it is worth recording as a change of mind rather
+than as a detail of how T4 came out.
+
+*Spatially, [D9] holds in full.* The expression layer exists, `Embed(T)` is a
+node whose `Represents<α…>` is false wherever a slot is radial, and `⊗`,
+`Contract`, `Materialise` and every compile-time traversal handle that with no
+new code. Nothing is allocated and no zero is written or read. That is what
+makes [D10] usable at all: crossing bundles for a product costs a node.
+
+*Spectrally, it does not, for three reasons that only became visible against
+the code.* First, **there are no lazy nodes on that side at all**, and by
+design: §15.4 records that a derived component is not offered in the spectral
+domain because deriving one reverses the order index. Adding one here means
+inventing a spectral expression concept, which is a layer this document has
+twice declined to build. Second, **`SurfaceGradient` would have to be re-signed
+against that concept**, and the concept could not carry the one member that
+distinguishes the flat expansion from the layered one — `Coefficient` is a
+template whose pack depends on the rank, so a concept cannot require it, for
+exactly the reason `TensorExpr` already documents. `LayeredTensorExpansion`
+satisfies everything such a concept *could* check while its own `Coefficient`
+takes a radius index, so the two `SurfaceGradient` overloads would collide at
+instantiation rather than at overload resolution. Third, and decisively,
+**the saving is small there.** [D9]'s cost argument was about spatial storage,
+where the embedded tensor is `3^q` against the operand's `2^q` and laziness
+saves all of it. In the spectral domain `SurfaceGradient` allocates a
+rank-`(q+1)` result of `3^{q+1}` blocks whatever its operand is, so an
+embedded operand that copies `2^q` blocks into `3^q` is about a third of what
+the call allocates regardless.
+
+So the spectral pair copies, and says so. If a spectral expression layer is
+ever built for other reasons, this is one of the things that should move onto
+it.
+
 **[D12] The tangential types are named `Tangential…`, and the projection is
 built.** The prefix matches `TangentialSlots` and D&T's own vocabulary, so the
 type name says which bundle its object lives in:
@@ -2203,6 +2238,38 @@ them rather than zero-filling them ([D9]) — which is what makes
 makes the identity
 `Tangential(SurfaceGradient(Embed(T))) == IntrinsicDerivative(T)` writable, and
 that identity is T3's test rather than an aspiration.
+
+*Done*, as `GSHTrans/src/Tensor/BundleMaps.h` and
+`GSHTrans/src/Expansion/BundleMaps.h` — one pair per domain, lazy spatially
+and copying spectrally, per [D13]. The identity above is now a test and passes
+to `1e-12`, and the T3 tests dropped their hand-rolled `CopyBlock` for the
+real `Embed`, which reproduces it exactly.
+
+**The step turned up a defect that predates it, and that is the part worth
+keeping.** `TensorExpansion` satisfied `TensorExpr`. It answers every question
+the concept asks — a rank, a grid, a slot alphabet, a `Represents`, a `Grid()`
+— so `Permute`, the tensor product, `Symmetrise` and `Materialise` all
+accepted a spectral operand and would have composed the wrong `Component`: a
+view over coefficients rather than a spin-weighted node. Nothing had noticed,
+because nothing had tried.
+
+What made it bite is worth recording too, since it is a trap rather than a
+mistake: `Tangential(SurfaceGradient(Embed(t)))` resolved to the **spatial**
+projection for a spectral operand, because the spatial overload takes a
+forwarding reference and the spectral one a `const&`, and a forwarding
+reference binds a prvalue better. Partial ordering never got a chance. The
+symptom was that the resulting node had no `Coefficient`.
+
+*The concept now excludes spectral types, and the discriminator is the
+truncation degree* — `MaxDegree()`, which every expansion has and no field
+does. That is the real difference rather than a convenient one: an expansion
+is defined up to a degree and a field is not. A test asserts both halves,
+because the whole hazard was that the negative case had never been stated.
+
+*Tests:* eight, at 257 — five on the spatial pair, including that projecting
+an embedded tensor gives it back and that embedding is how a product crosses
+bundles ([D10] as code); three on the spectral pair, including the closing
+identity and that symmetry and reality survive the crossing.
 
 **T5 — specialisations.** `thoughts.md` §3, done in the same pass so that the
 tangential forms are named alongside the general ones rather than bolted on

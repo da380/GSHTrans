@@ -87,11 +87,13 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/Tensor/Orbits.h
   GSHTrans/src/Tensor/TensorField.h
   GSHTrans/src/Tensor/TensorExpr.h
+  GSHTrans/src/Tensor/BundleMaps.h
   GSHTrans/src/Expansion/SpinExpansion.h
   GSHTrans/src/Expansion/Eth.h
   GSHTrans/src/Expansion/TensorExpansion.h
   GSHTrans/src/Expansion/ContravariantDerivative.h
   GSHTrans/src/Expansion/IntrinsicDerivative.h
+  GSHTrans/src/Expansion/BundleMaps.h
   GSHTrans/src/Layered/RadialGrid.h
   GSHTrans/src/Layered/LayeredSpinField.h
   GSHTrans/Core

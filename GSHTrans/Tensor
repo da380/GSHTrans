@@ -8,5 +8,6 @@
 #include "src/Tensor/Orbits.h"
 #include "src/Tensor/TensorField.h"
 #include "src/Tensor/TensorExpr.h"
+#include "src/Tensor/BundleMaps.h"
 
 #endif

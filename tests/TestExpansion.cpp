@@ -924,18 +924,6 @@ TEST(ContravariantDerivative, TakesNoTangentialOperand) {
 
 namespace {
 
-// Embed a tangential expansion in the general bundle by hand. T4 will make
-// this a node; until then the test does what the node will do -- carry the
-// tangential components across and leave every component with a radial slot
-// at zero, which is what the buffer already holds.
-const auto CopyBlock = [](auto&& to, const auto& from) {
-  for (auto l : to.Degrees()) {
-    for (auto m : to.Orders(l)) {
-      to[l, m] = from[l, m];
-    }
-  }
-};
-
 template <typename E>
 concept IntrinsicallyDifferentiable =
     requires(const E& e) { IntrinsicDerivative(e); };
@@ -961,13 +949,9 @@ TEST(IntrinsicDerivative, IsTheTangentialBlockOfTheSurfaceGradient) {
     t.Data()[i] = Complex{std::cos(0.23 * i), std::sin(0.41 * i)};
   }
 
-  auto g = TensorExpansion<1, NoSymmetry<1>, ComplexTensor, Grid>(grid, lMax);
   const auto& tangential = t;
-  CopyBlock(g.Component<-1>(), tangential.Component<-1>());
-  CopyBlock(g.Component<1>(), tangential.Component<1>());
-
   const auto intrinsic = IntrinsicDerivative(tangential);
-  const auto& embedded = g;
+  const auto embedded = Embed(tangential);
   const auto ambient = SurfaceGradient(embedded);
 
   static_assert(decltype(intrinsic)::Rank == 2);
@@ -1020,15 +1004,9 @@ TEST(IntrinsicDerivative, HoldsAtRankTwoWithBothSlotsToShift) {
     t.Data()[i] = Complex{0.5 + std::cos(0.19 * i), std::sin(0.29 * i)};
   }
 
-  auto g = TensorExpansion<2, NoSymmetry<2>, ComplexTensor, Grid>(grid, lMax);
   const auto& tangential = t;
-  CopyBlock(g.Component<-1, -1>(), tangential.Component<-1, -1>());
-  CopyBlock(g.Component<-1, 1>(), tangential.Component<-1, 1>());
-  CopyBlock(g.Component<1, -1>(), tangential.Component<1, -1>());
-  CopyBlock(g.Component<1, 1>(), tangential.Component<1, 1>());
-
   const auto intrinsic = IntrinsicDerivative(tangential);
-  const auto& embedded = g;
+  const auto embedded = Embed(tangential);
   const auto ambient = SurfaceGradient(embedded);
 
   const auto agrees = [&](Complex got, Complex expected, const char* what,
@@ -1082,4 +1060,125 @@ TEST(IntrinsicDerivative, IsClosedOnTheTangentialBundle) {
   static_assert(IntrinsicallyDifferentiable<Tangential>);
   static_assert(!IntrinsicallyDifferentiable<General>);
   SUCCEED();
+}
+//--------------------------------------------------------------------------//
+//                    The bundle maps, in the spectral domain                //
+//--------------------------------------------------------------------------//
+
+// The identity the pair exists for, and the one that closes §1's split: the
+// intrinsic derivative *is* the tangential block of the ambient one. Written
+// as a single line of code, which is what having both maps buys.
+TEST(BundleMaps, TheIntrinsicDerivativeIsTheTangentialAmbientOne) {
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  auto t = TensorExpansion<1, NoSymmetry<1>, ComplexTensor, Grid,
+                           TangentialSlots>(grid, lMax);
+  for (auto i = Int{0}; i < t.Size(); i++) {
+    t.Data()[i] = Complex{std::cos(0.17 * i), std::sin(0.37 * i)};
+  }
+
+  const auto& tangential = t;
+  const auto viaAmbient = Tangential(SurfaceGradient(Embed(tangential)));
+  const auto direct = IntrinsicDerivative(tangential);
+
+  static_assert(std::same_as<decltype(viaAmbient)::SlotSet, TangentialSlots>);
+  static_assert(decltype(viaAmbient)::Rank == decltype(direct)::Rank);
+
+  const auto compare = [&]<Int S, Int A>() {
+    for (auto l = Int{0}; l <= lMax; l++) {
+      for (auto m = -l; m <= l; m++) {
+        const auto got = viaAmbient.Coefficient<S, A>(l, m);
+        const auto expected = direct.Coefficient<S, A>(l, m);
+        EXPECT_NEAR(got.real(), expected.real(), 1.0e-12)
+            << "(" << S << "," << A << ") at l = " << l << ", m = " << m;
+        EXPECT_NEAR(got.imag(), expected.imag(), 1.0e-12)
+            << "(" << S << "," << A << ") at l = " << l << ", m = " << m;
+      }
+    }
+  };
+  compare.template operator()<-1, -1>();
+  compare.template operator()<-1, 1>();
+  compare.template operator()<1, -1>();
+  compare.template operator()<1, 1>();
+}
+
+// Embed carries the tangential components across unchanged and leaves the
+// rest at zero, which is what the embedded tensor has there.
+TEST(BundleMaps, EmbedIsTheInclusionAndTangentialItsAdjoint) {
+  constexpr auto lMax = Int{5};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  auto t = TensorExpansion<2, NoSymmetry<2>, ComplexTensor, Grid,
+                           TangentialSlots>(grid, lMax);
+  for (auto i = Int{0}; i < t.Size(); i++) {
+    t.Data()[i] = Complex{0.5 + std::cos(0.11 * i), std::sin(0.23 * i)};
+  }
+
+  const auto& tangential = t;
+  const auto general = Embed(tangential);
+  static_assert(std::same_as<decltype(general)::SlotSet, AllSlots>);
+  static_assert(decltype(general)::StoredComponents == 9);
+
+  for (auto l = Int{0}; l <= lMax; l++) {
+    for (auto m = -l; m <= l; m++) {
+      EXPECT_EQ((general.Coefficient<-1, 1>(l, m)),
+                (tangential.Coefficient<-1, 1>(l, m)));
+      EXPECT_EQ((general.Coefficient<1, 1>(l, m)),
+                (tangential.Coefficient<1, 1>(l, m)));
+      // Nothing was written where the embedded tensor has nothing.
+      EXPECT_EQ((general.Coefficient<0, 1>(l, m)), Complex{});
+      EXPECT_EQ((general.Coefficient<-1, 0>(l, m)), Complex{});
+      EXPECT_EQ((general.Coefficient<0, 0>(l, m)), Complex{});
+    }
+  }
+
+  // And the projection takes it back, exactly.
+  const auto back = Tangential(general);
+  static_assert(std::same_as<decltype(back)::SlotSet, TangentialSlots>);
+  ASSERT_EQ(back.Size(), t.Size());
+  for (auto i = Int{0}; i < t.Size(); i++) {
+    EXPECT_EQ(back.Data()[i], t.Data()[i]) << "at " << i;
+  }
+}
+
+// Symmetry and reality survive the crossing, which they must: a permutation
+// preserves the slot sum and maps radial slots to radial slots, so an
+// embedded symmetric tensor is symmetric and an embedded real one is real.
+TEST(BundleMaps, SymmetryAndRealitySurviveTheCrossing) {
+  constexpr auto lMax = Int{5};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  auto t = TensorExpansion<2, Symmetric<2>, RealTensor, Grid, TangentialSlots>(
+      grid, lMax);
+  for (auto i = Int{0}; i < t.Size(); i++) {
+    t.Data()[i] = Complex{std::cos(0.19 * i), std::sin(0.29 * i)};
+  }
+
+  const auto& tangential = t;
+  const auto general = Embed(tangential);
+  static_assert(std::same_as<decltype(general)::Symmetry, Symmetric<2>>);
+  static_assert(std::same_as<decltype(general)::Reality, RealTensor>);
+
+  // The tangential tensor's pinned component is pinned in the general bundle
+  // too -- the same orbit, since neither permutation nor negation moves a
+  // component in or out of the tangential set.
+  using Tangential2 =
+      TensorExpansion<2, Symmetric<2>, RealTensor, Grid, TangentialSlots>;
+  using General2 = TensorExpansion<2, Symmetric<2>, RealTensor, Grid>;
+  static_assert(Tangential2::RealComponents == 1);
+  static_assert(General2::RealComponents == 2);
+
+  for (auto l = Int{0}; l <= lMax; l++) {
+    for (auto m = -l; m <= l; m++) {
+      EXPECT_NEAR(std::abs(general.Coefficient<-1, 1>(l, m) -
+                           tangential.Coefficient<-1, 1>(l, m)),
+                  0.0, 1.0e-14)
+          << "at l = " << l << ", m = " << m;
+      EXPECT_NEAR(std::abs(general.Coefficient<1, 1>(l, m) -
+                           tangential.Coefficient<1, 1>(l, m)),
+                  0.0, 1.0e-14)
+          << "at l = " << l << ", m = " << m;
+    }
+  }
 }

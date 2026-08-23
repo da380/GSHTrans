@@ -543,3 +543,173 @@ TEST(TensorAlgebra, MaterialiseKeepsTheOperandsAlphabet) {
   EXPECT_EQ((field.Component<-1, 1>()[2, 2]), expected);
   EXPECT_EQ((field.Component<1, -1>()[2, 2]), expected);
 }
+
+//--------------------------------------------------------------------------//
+//                       The maps between the bundles                        //
+//--------------------------------------------------------------------------//
+
+namespace {
+
+template <typename T, Int... Alphas>
+concept ReadableComponent =
+    requires(const T& t) { t.template Component<Alphas...>(); };
+
+template <typename T>
+concept Materialisable = requires(const T& t) { Materialise(t); };
+
+template <typename T>
+concept Embeddable = requires(const T& t) { Embed(t); };
+
+template <typename T>
+concept Projectable = requires(const T& t) { Tangential(t); };
+
+}  // namespace
+
+// Embed widens the alphabet and nothing else. The components with a radial
+// slot are ones the embedded tensor does not have, rather than components it
+// has and that are zero -- which is the same statement the orbit table makes
+// about a component an antisymmetry annihilates, and it is why nothing is
+// allocated.
+TEST(TensorAlgebra, EmbedWidensTheAlphabetWithoutStoringAnything) {
+  auto grid = TestGrid();
+  auto t = Tangential2(grid);
+  Fill<Tangential2, -1, 1>(t, 1.0);
+  Fill<Tangential2, 1, -1>(t, 3.0);
+
+  const auto& tensor = t;
+  auto embedded = Embed(tensor);
+  static_assert(TensorExpr<decltype(embedded)>);
+  static_assert(std::same_as<decltype(embedded)::SlotSet, AllSlots>);
+  static_assert(decltype(embedded)::Rank == 2);
+
+  // The tangential components come through unchanged...
+  static_assert(decltype(embedded)::Represents<-1, 1>);
+  EXPECT_EQ((embedded.Component<-1, 1>()[2, 2]),
+            (tensor.Component<-1, 1>()[2, 2]));
+
+  // ...and the ones with a radial slot are not represented at all.
+  static_assert(!decltype(embedded)::Represents<0, 1>);
+  static_assert(!decltype(embedded)::Represents<1, 0>);
+  static_assert(!decltype(embedded)::Represents<0, 0>);
+  static_assert(ReadableComponent<decltype(embedded), -1, 1>);
+  static_assert(!ReadableComponent<decltype(embedded), 0, 1>);
+
+  // A general tensor is already where Embed would send it, so it is refused.
+  static_assert(Embeddable<Tangential2>);
+  static_assert(!Embeddable<General2>);
+}
+
+// The projection is the adjoint: it drops exactly those components.
+TEST(TensorAlgebra, TangentialDropsTheComponentsWithARadialSlot) {
+  auto grid = TestGrid();
+  auto t = General2(grid);
+  Fill<General2, -1, 1>(t, 1.0);
+  Fill<General2, 0, 1>(t, 2.0);
+  Fill<General2, 1, -1>(t, 3.0);
+
+  const auto& tensor = t;
+  auto projected = Tangential(tensor);
+  static_assert(TensorExpr<decltype(projected)>);
+  static_assert(std::same_as<decltype(projected)::SlotSet, TangentialSlots>);
+
+  EXPECT_EQ((projected.Component<-1, 1>()[2, 2]),
+            (tensor.Component<-1, 1>()[2, 2]));
+  static_assert(!decltype(projected)::Represents<0, 1>);
+
+  static_assert(Projectable<General2>);
+  static_assert(!Projectable<Tangential2>);
+}
+
+// Projecting an embedded tensor is the identity, which is what says the two
+// maps are the pair they claim to be.
+TEST(TensorAlgebra, ProjectingAnEmbeddedTensorGivesItBack) {
+  auto grid = TestGrid();
+  auto t = Tangential2(grid);
+  Fill<Tangential2, -1, -1>(t, 1.0);
+  Fill<Tangential2, -1, 1>(t, 2.0);
+  Fill<Tangential2, 1, -1>(t, 3.0);
+  Fill<Tangential2, 1, 1>(t, 4.0);
+
+  const auto& tensor = t;
+  auto round = Tangential(Embed(tensor));
+  static_assert(std::same_as<decltype(round)::SlotSet, TangentialSlots>);
+
+  const auto same = [&]<Int A, Int B>() {
+    EXPECT_EQ((round.Component<A, B>()[2, 2]),
+              (tensor.Component<A, B>()[2, 2]));
+  };
+  same.template operator()<-1, -1>();
+  same.template operator()<-1, 1>();
+  same.template operator()<1, -1>();
+  same.template operator()<1, 1>();
+}
+
+// What the pair is for: [D10] says a product across bundles is written by
+// embedding at the call site, and this is that sentence as code.
+TEST(TensorAlgebra, EmbeddingIsHowAProductCrossesBundles) {
+  auto grid = TestGrid();
+  auto u = Tangential1(grid);
+  Fill<Tangential1, -1>(u, 1.0);
+  Fill<Tangential1, 1>(u, 2.0);
+
+  auto v = TensorField<1, NoSymmetry<1>, ComplexTensor, Grid>(grid);
+  Fill<decltype(v), -1>(v, 3.0);
+  Fill<decltype(v), 0>(v, 4.0);
+  Fill<decltype(v), 1>(v, 5.0);
+
+  const auto& tangential = u;
+  const auto& general = v;
+  static_assert(!Multipliable<Tangential1, decltype(v)>);
+
+  auto product = TensorProduct(Embed(tangential), general);
+  static_assert(decltype(product)::Rank == 2);
+  static_assert(std::same_as<decltype(product)::SlotSet, AllSlots>);
+
+  EXPECT_EQ((product.Component<-1, 0>()[2, 2]),
+            (tangential.Component<-1>()[2, 2] * general.Component<0>()[2, 2]));
+
+  // The half of the product that the embedded factor does not reach is not
+  // represented, so a traversal skips it rather than evaluating a zero.
+  static_assert(!decltype(product)::Represents<0, 0>);
+  static_assert(decltype(product)::Represents<1, 0>);
+}
+
+// Materialising through the maps lands in the bundle the expression is in,
+// and the storage is the smaller one on the way down.
+TEST(TensorAlgebra, MaterialisingAProjectionStoresTheTangentialSet) {
+  auto grid = TestGrid();
+  auto t = General2(grid);
+  Fill<General2, -1, 1>(t, 1.0);
+  Fill<General2, 1, -1>(t, 3.0);
+
+  const auto& tensor = t;
+  auto field = Materialise(Tangential(tensor));
+  static_assert(std::same_as<decltype(field)::SlotSet, TangentialSlots>);
+  static_assert(decltype(field)::StoredComponents == 4);
+  EXPECT_EQ((field.Component<-1, 1>()[2, 2]),
+            (tensor.Component<-1, 1>()[2, 2]));
+}
+
+// A spectral tensor is not a tensor expression, and that has to be asserted
+// rather than assumed. TensorExpansion answers every other question the
+// concept asks -- it has a rank, a grid, a slot alphabet and a Represents --
+// so without the truncation-degree discriminator it satisfies TensorExpr, and
+// Permute, the tensor product, Materialise and the bundle maps all accept one
+// while composing the wrong Component: a view over coefficients rather than a
+// spin-weighted node.
+//
+// Found the way these things are found. Tangential(SurfaceGradient(Embed(t)))
+// resolved to the *spatial* projection for a spectral operand, because a
+// forwarding reference binds a prvalue better than a const reference does, and
+// the error was that the resulting node had no Coefficient.
+TEST(TensorAlgebra, ASpectralTensorIsNotATensorExpression) {
+  using Field = TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>;
+  using Expansion = TensorExpansion<2, NoSymmetry<2>, ComplexTensor, Grid>;
+
+  static_assert(TensorExpr<Field>);
+  static_assert(!TensorExpr<Expansion>);
+
+  static_assert(Materialisable<Field>);
+  static_assert(!Materialisable<Expansion>);
+  SUCCEED();
+}
