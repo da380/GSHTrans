@@ -2695,6 +2695,75 @@ threads and above, so it is not worth chasing.
 
 **M6 — the reflection**, per [C15], if M5 says the path is worth deepening.
 
+#### M6 assessed, and the assessment changes what it is for
+
+[C15] made this step conditional on M5, so M5's numbers get a say before any
+of it is built. Two things were established first.
+
+**The relation holds, exactly, in this library's convention.** D&T (C.118) in
+the stored values reads
+
+    d^l_{nm}(π − θ) = (−1)^{l+n} d^l_{n,−m}(θ)
+
+and it is verified rather than assumed: worst absolute difference **3.8e-15**
+on values of order one, over every `(n, m, l, θ)` at `lMax = 12, nMax = 2`.
+
+**But it relates different orders, not one order at mirrored colatitudes, and
+that changes the arithmetic argument.** For a scalar field it is the familiar
+same-`m` symmetry that halves the colatitude sum. At `n ≠ 0` it maps `(n, m)`
+to `(n, −m)`, so what it gives is that **the matrix at −m is the matrix at +m
+with its columns reversed and an `l`-alternating sign**. Working the forward
+sum through,
+
+    f^n_{l,−m} = (−1)^{l+n} Σ_j w_j D^(n,m)_{lj} F_{−m}(θ_{j̄})
+
+— the same matrix, applied to the `−m` Fourier data in reversed colatitude
+order, with a sign flip on the output rows.
+
+*So §12's summary of the saving is half right.* It says the reduction halves
+"both the stored table and the arithmetic". **The table halves; the arithmetic
+does not.** The same `2·lMax + 1` products are still done, of the same shapes.
+What is saved is the table, in size and in traffic.
+
+**What is gained instead is better than what was claimed, and M5 is why.** The
+pair at `±m` can go in **one** GEMM rather than two, with the two right-hand
+sides side by side — which doubles `N` from `2k` to `4k`. M5's per-order table
+is what makes that interesting: efficiency there runs at 55–95 Gflop/s, far
+below peak, and `N = 2k` between 2 and 16 is the skinniest dimension in the
+problem and the one §12 already names as what general BLAS kernels handle
+worst. Doubling it attacks exactly the limit M5 measured.
+
+**The regime argument, from M5's roof column.**
+
+- *Unbatched, many threads:* the matrix kernel is **at the roof** (41.0 GB/s
+  against 41.0). Halving table traffic is the only lever that can help there,
+  and it could give up to another 2×.
+- *Batched, many threads:* a third of the roof, so traffic is not the
+  constraint and halving it buys little. The `N`-doubling is what would help
+  here, and it is unmeasured.
+- *Memory:* 648 MB to 324 MB at `lMax = 256, nMax = 2`, and 5.4 GB to 2.7 GB
+  at `lMax = 512`. This is regime-independent and is the clearest benefit of
+  the three.
+
+**The recommendation, and it is a decision rather than work.** M6 is worth
+doing, but for **memory and for `N`**, not for the arithmetic halving [C15]
+recorded — and the case is weakest in exactly the regime phases 2–5 run in.
+Against it: this is the numerically delicate step, [C15] and step G both say
+so, and it touches every part of M1 to M4 at once — a second table layout,
+both kernels pairing orders, a colatitude-reversed right-hand side, and a
+sign pass on half the output.
+
+*What makes it safe to attempt whenever it is wanted* is that the oracle
+already exists. [C12]'s cross-kernel comparison would catch any sign or
+index error immediately, which is the argument for having kept both kernels
+and is worth noting as it paying off a second time.
+
+**Not built here.** The condition [C15] set — that M5 say the path is worth
+deepening — is answered by the numbers above rather than by a judgement, and
+what they say is *worth deepening for two reasons, neither of which is the one
+originally given*. Restating the case correctly is what M6 needed before it
+could be built, and that is what this section is.
+
 ### 11.5 What this does to the wisdom question
 
 `thoughts.md` §10 proposed a wisdom mechanism and gave it one customer,
