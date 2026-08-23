@@ -38,7 +38,8 @@ namespace GSHTrans {
 // rather than nine here too, and each pinned one costs about half what a
 // complex one of the same degree would.
 template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
-          TensorReality _Reality, AngularGrid _Grid>
+          TensorReality _Reality, AngularGrid _Grid,
+          SlotAlphabet _Slots = AllSlots>
 class TensorExpansion {
  public:
   using Int = std::ptrdiff_t;
@@ -50,7 +51,14 @@ class TensorExpansion {
   using Real = typename _Grid::Real;
   using Complex = std::complex<Real>;
 
-  using FieldType = TensorField<Rank, Symmetry, Reality, GridType>;
+  // The alphabet the slots are drawn from, appended last and defaulted as it
+  // is on the field. The mirror holds here too: which components exist is the
+  // field's question, and this side takes the answer rather than deciding it
+  // again.
+  using SlotSet = _Slots;
+
+  using FieldType =
+      TensorField<Rank, Symmetry, Reality, GridType, ComponentMajor, SlotSet>;
 
   static constexpr auto& Orbits = FieldType::Orbits;
   static constexpr auto& ComponentLayout = FieldType::ComponentLayout;
@@ -147,8 +155,16 @@ class TensorExpansion {
   // node must have a type and there is nothing to give it. Here the answer is
   // a value, and zero is the right one; the surface gradient reads shifted
   // components that may vanish and would otherwise have to special-case them.
+  // A letter the alphabet does not have is refused rather than answered with
+  // zero, which is the one place this accessor's permissiveness stops. A
+  // vanishing orbit is a component the tensor *has* and that is identically
+  // zero, so zero is the right answer; a radial index on a tangential tensor
+  // is not a component at all, and saying zero would be answering a question
+  // about a different bundle (field-algebra-plan.md section 18.2 [D8]). The
+  // check is also what stops the multi-index being formed from a letter that
+  // would make its constructor throw.
   template <Int... Alphas>
-  requires(sizeof...(Alphas) == Rank)
+  requires(sizeof...(Alphas) == Rank and AreSlotLetters<_Slots, Alphas...>())
   Complex Coefficient(Int l, Int m) const {
     constexpr auto flat = FieldType::template FlatOf<Alphas...>;
     constexpr auto n = FieldType::template UpperIndexOf<Alphas...>;
@@ -243,23 +259,30 @@ class TensorExpansion {
 // Between the two domains, arranging the batched transform the tensor field
 // already knows how to make.
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
-          TensorReality Reality, AngularGrid Grid, TensorLayout Layout>
-auto Expand(const TensorField<Rank, Symmetry, Reality, Grid, Layout>& tensor,
-            std::ptrdiff_t lMax,
-            Execution policy = Execution::Sequential()) {
+          TensorReality Reality, AngularGrid Grid, TensorLayout Layout,
+          SlotAlphabet Slots>
+auto Expand(
+    const TensorField<Rank, Symmetry, Reality, Grid, Layout, Slots>& tensor,
+    std::ptrdiff_t lMax, Execution policy = Execution::Sequential()) {
   auto expansion =
-      TensorExpansion<Rank, Symmetry, Reality, Grid>(tensor.Grid(), lMax);
+      TensorExpansion<Rank, Symmetry, Reality, Grid, Slots>(tensor.Grid(),
+                                                            lMax);
   tensor.ForwardTransformation(lMax, expansion.Data(), policy);
   return expansion;
 }
 
+// Slots is deduced from the expansion and Layout is not, so Layout keeps its
+// old position and its default: naming a point-major result still takes the
+// same five arguments it always did.
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
           TensorReality Reality, AngularGrid Grid,
-          TensorLayout Layout = ComponentMajor>
-auto Evaluate(const TensorExpansion<Rank, Symmetry, Reality, Grid>& expansion,
-              Execution policy = Execution::Sequential()) {
-  auto tensor =
-      TensorField<Rank, Symmetry, Reality, Grid, Layout>(expansion.Grid());
+          TensorLayout Layout = ComponentMajor,
+          SlotAlphabet Slots = AllSlots>
+auto Evaluate(
+    const TensorExpansion<Rank, Symmetry, Reality, Grid, Slots>& expansion,
+    Execution policy = Execution::Sequential()) {
+  auto tensor = TensorField<Rank, Symmetry, Reality, Grid, Layout, Slots>(
+      expansion.Grid());
   tensor.InverseTransformation(expansion.MaxDegree(), expansion.Data(), policy);
   return tensor;
 }

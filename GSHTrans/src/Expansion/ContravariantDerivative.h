@@ -190,6 +190,15 @@ void FillComponent(Result& result, const Expansion& operand,
 // symmetric in the new slot against the old ones, and inferring a symmetry
 // from an operator is the problem Materialise declined to solve. It keeps the
 // operand's reality, since the gradient of a real tensor is real.
+//
+// And it takes a general tensor, deliberately. grad_1 is an operator on
+// sections of the general bundle: it moves slots between e_0 and e_+-, so it
+// does not close on a tangential tensor and no signature over that alphabet
+// would be honest. A tangential operand is embedded first and then
+// differentiated, in that order and visibly, which is why the deduction below
+// simply does not match one (field-algebra-plan.md section 18.2 [D9]). What
+// *is* closed on a tangential tensor is the intrinsic derivative, and that
+// has a name of its own.
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
           TensorReality Reality, AngularGrid Grid>
 auto SurfaceGradient(

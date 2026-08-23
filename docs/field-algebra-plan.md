@@ -2066,6 +2066,38 @@ pinned components transforms with the guards it already had. Its round trip is
 now a test. Whether `TensorExpansion` is equally well guarded is T2b's
 question and is still open.
 
+*T2b is done, and the question it was raised to answer dissolves.*
+`TensorExpansion` carries `SlotSet`, and both bridges carry it through, so a
+tangential tensor expands and evaluates like any other. **The empty real block
+needs no guarding here because there is no second buffer to guard.** §15.1
+already recorded that the spectral side is one complex buffer throughout, with
+blocks of differing lengths — so "no pinned component" is simply a block total
+with no real term in it, and nothing branches on the count. The risk this step
+was flagged for was a spatial-side risk that does not have a spectral
+counterpart, and it is worth saying so rather than leaving the flag standing.
+
+Three things settled while doing it.
+
+**`Coefficient` refuses a letter the alphabet does not have, and that is the
+one place its permissiveness stops.** The accessor deliberately answers zero
+for a component whose orbit vanishes and for degrees below a component's own
+`|N|`, because those are components the tensor *has*. A radial index on a
+tangential tensor is not a component at all, and answering zero would be
+answering a question about a different bundle. So it is a `requires`-clause,
+which is also what keeps the multi-index from being formed from a letter that
+would make its constructor throw.
+
+**`Evaluate` keeps `Layout` in its old position.** `Slots` is deduced from the
+expansion and `Layout` is not, so appending `Slots` last leaves the existing
+five-argument spelling of a point-major result working unchanged. Checked by
+compiling that spelling, not by reasoning about it.
+
+**`SurfaceGradient` refuses a tangential operand, and there is now a test that
+says so.** [D9] made this a decision; the deduction was always going to fail,
+and the difference between a decision and an accident is whether anything
+records it. The header says why at the signature and `TestExpansion.cpp`
+pins it.
+
 *Two things for whoever writes it, both found by looking rather than by
 running into them.*
 

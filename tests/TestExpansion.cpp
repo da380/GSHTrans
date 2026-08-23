@@ -718,3 +718,202 @@ TEST(ContravariantDerivative, AgreesOnARealTensorAndItsWidening) {
   // Half the storage, as the reduction promises.
   EXPECT_LT(reduced.Size(), full.Size());
 }
+
+//--------------------------------------------------------------------------//
+//                       Tangential tensors, spectrally                      //
+//--------------------------------------------------------------------------//
+
+namespace {
+
+template <typename Symmetry, typename Reality>
+using TangentialField =
+    TensorField<2, Symmetry, Reality, Grid, ComponentMajor, TangentialSlots>;
+
+template <typename Symmetry, typename Reality>
+using TangentialExpansion =
+    TensorExpansion<2, Symmetry, Reality, Grid, TangentialSlots>;
+
+// Whether a coefficient can be asked for at all, as a concept so that the
+// negative case is an unsatisfied requirement rather than a hard error.
+template <typename E, std::ptrdiff_t... Alphas>
+concept HasCoefficient = requires(const E& e) {
+  e.template Coefficient<Alphas...>(0, 0);
+};
+
+template <typename E>
+concept Differentiable = requires(const E& e) { SurfaceGradient(e); };
+
+}  // namespace
+
+// The mirror holds over the smaller alphabet: same stored set as the field,
+// one buffer, blocks sized by their own upper index.
+TEST(TensorExpansion, ATangentialExpansionMirrorsItsField) {
+  constexpr auto lMax = Int{5};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  using Field = TangentialField<NoSymmetry<2>, ComplexTensor>;
+  using Expansion = TangentialExpansion<NoSymmetry<2>, ComplexTensor>;
+
+  static_assert(Expansion::StoredComponents == Field::StoredComponents);
+  static_assert(Expansion::StoredComponents == 4);
+  static_assert(Expansion::RealComponents == 0);
+
+  auto field = Field(grid);
+  auto e = Expansion(grid, lMax);
+  EXPECT_EQ(e.Size(), field.CoefficientSize(lMax));
+
+  // A tangential rank-2 tensor has upper indices -2, 0, 0, +2 and nothing at
+  // an odd one, so the blocks come in two lengths and not three.
+  static_assert(decltype(e.Component<-1, -1>())::UpperIndex == -2);
+  static_assert(decltype(e.Component<-1, 1>())::UpperIndex == 0);
+  EXPECT_EQ((e.Component<-1, -1>().MinDegree()), 2);
+  EXPECT_EQ((e.Component<-1, 1>().MinDegree()), 0);
+}
+
+// The question T2b was written to answer. On the spatial side an empty real
+// buffer needed guarding; here there is only one buffer, so a tensor with no
+// pinned component needs nothing special -- the block total is a sum over
+// whatever is stored, and no term of it is real.
+TEST(TensorExpansion, ARealTangentialExpansionHasNoRealBlock) {
+  constexpr auto lMax = Int{5};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  using Expansion = TangentialExpansion<NoSymmetry<2>, RealTensor>;
+  static_assert(Expansion::StoredComponents == 2);
+  static_assert(Expansion::RealComponents == 0);
+
+  auto e = Expansion(grid, lMax);
+  EXPECT_EQ(e.Size(), static_cast<Int>(grid.CoefficientSize(lMax, -2)) +
+                          static_cast<Int>(grid.CoefficientSize(lMax, 0)));
+}
+
+// Under a symmetry the pinned component comes back, and with it the reduced
+// m >= 0 block -- which is the same saving here as the real buffer is on the
+// spatial side.
+TEST(TensorExpansion, ASymmetricRealTangentialExpansionKeepsItsReducedBlock) {
+  constexpr auto lMax = Int{5};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  using Expansion = TangentialExpansion<Symmetric<2>, RealTensor>;
+  static_assert(Expansion::StoredComponents == 2);
+  static_assert(Expansion::RealComponents == 1);
+
+  auto e = Expansion(grid, lMax);
+  auto pinned = e.Component<-1, 1>();
+  static_assert(std::same_as<decltype(pinned)::Value, RealValued>);
+  EXPECT_EQ(pinned.Size(), static_cast<Int>(grid.RealCoefficientSize(lMax)));
+  EXPECT_LT(pinned.Size(), static_cast<Int>(grid.CoefficientSize(lMax, 0)));
+}
+
+// A radial index is refused rather than answered with zero. The accessor is
+// permissive about components that vanish, because those are components the
+// tensor has; one drawn from another alphabet is not.
+TEST(TensorExpansion, ARadialCoefficientOfATangentialExpansionIsRefused) {
+  using E = TangentialExpansion<NoSymmetry<2>, ComplexTensor>;
+  static_assert(HasCoefficient<E, -1, 1>);
+  static_assert(!HasCoefficient<E, 0, 1>);
+  static_assert(!HasCoefficient<E, 0, 0>);
+  static_assert(!HasCoefficient<E, -1>);
+
+  static_assert(!E::Writable<0, 1>);
+  static_assert(!E::Represents<0, 1>);
+
+  // The general expansion is unaffected, which is what the default is for.
+  using G = TensorExpansion<2, NoSymmetry<2>, ComplexTensor, Grid>;
+  static_assert(HasCoefficient<G, 0, 1>);
+  SUCCEED();
+}
+
+// Every component readable, checked against the widened tensor rather than
+// against the relation it was derived from -- the same oracle the general
+// case uses, over the four components a tangential rank-2 tensor has.
+TEST(TensorExpansion, ATangentialRealTensorDerivesItsOtherComponents) {
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  auto t = TangentialField<NoSymmetry<2>, RealTensor>(grid);
+  const auto write = [&](auto&& u, Real tag) {
+    for (auto iTheta : grid.CoLatitudeIndices()) {
+      for (auto iPhi : grid.LongitudeIndices()) {
+        u[iTheta, iPhi] = Complex{tag + std::cos(0.3 * iTheta),
+                                  std::sin(0.2 * iPhi) - tag};
+      }
+    }
+  };
+  write(t.Component<-1, -1>(), 1.0);
+  write(t.Component<-1, 1>(), 2.0);
+
+  const auto& tensor = t;
+  auto reduced = Expand(tensor, lMax);
+  static_assert(std::same_as<decltype(reduced)::SlotSet, TangentialSlots>);
+
+  auto widened =
+      Materialise<NoSymmetry<2>, ComplexTensor>(tensor);
+  static_assert(std::same_as<decltype(widened)::SlotSet, TangentialSlots>);
+  auto full = Expand(widened, lMax);
+
+  const auto compare = [&]<Int A, Int B>() {
+    for (auto l = Int{0}; l <= lMax; l++) {
+      for (auto m = -l; m <= l; m++) {
+        const auto got = reduced.Coefficient<A, B>(l, m);
+        const auto expected = full.Coefficient<A, B>(l, m);
+        EXPECT_NEAR(got.real(), expected.real(), 1.0e-11)
+            << "component (" << A << "," << B << ") at l = " << l
+            << ", m = " << m;
+        EXPECT_NEAR(got.imag(), expected.imag(), 1.0e-11)
+            << "component (" << A << "," << B << ") at l = " << l
+            << ", m = " << m;
+      }
+    }
+  };
+
+  compare.template operator()<-1, -1>();
+  compare.template operator()<-1, 1>();
+  compare.template operator()<1, -1>();  // derived by reality
+  compare.template operator()<1, 1>();   // derived
+}
+
+// And the round trip through both bridges, which is what says the batched
+// transform is reached with the right groups when one of them is missing.
+//
+// Started from the spectral side rather than the spatial one: arbitrary
+// samples are not band-limited, so a field taken through the transform and
+// back is a projection and not a round trip, whereas arbitrary coefficients
+// are legal coefficients and come back exactly.
+TEST(TensorExpansion, ATangentialTensorRoundTripsThroughBothBridges) {
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  auto e = TangentialExpansion<NoSymmetry<2>, RealTensor>(grid, lMax);
+  for (auto i = Int{0}; i < e.Size(); i++) {
+    e.Data()[i] = Complex{std::cos(0.13 * i), std::sin(0.19 * i)};
+  }
+
+  const auto& expansion = e;
+  auto field = Evaluate(expansion);
+  static_assert(std::same_as<decltype(field)::SlotSet, TangentialSlots>);
+  EXPECT_EQ(field.RealSize(), 0);
+
+  const auto& tensor = field;
+  auto back = Expand(tensor, lMax);
+  static_assert(std::same_as<decltype(back)::SlotSet, TangentialSlots>);
+
+  ASSERT_EQ(back.Size(), e.Size());
+  for (auto i = Int{0}; i < e.Size(); i++) {
+    EXPECT_NEAR(back.Data()[i].real(), e.Data()[i].real(), 1.0e-11) << i;
+    EXPECT_NEAR(back.Data()[i].imag(), e.Data()[i].imag(), 1.0e-11) << i;
+  }
+}
+
+// [D9]: grad_1 is an operator on the general bundle, so there is no overload
+// taking a tangential operand. A caller embeds and then differentiates. This
+// pins that as a decision rather than leaving it to be discovered as a
+// compile error nobody wrote down.
+TEST(ContravariantDerivative, TakesNoTangentialOperand) {
+  using General = TensorExpansion<2, NoSymmetry<2>, ComplexTensor, Grid>;
+  using Tangential = TangentialExpansion<NoSymmetry<2>, ComplexTensor>;
+
+  static_assert(Differentiable<General>);
+  static_assert(!Differentiable<Tangential>);
+  SUCCEED();
+}
