@@ -3185,6 +3185,19 @@ not observable in a result — *and that it shares `Identity()` with its parent,
 so a field built on one is usable on the other.* The second is the one that
 would be missed and the one §12.2 rests on.
 
+*Done*, at 348. **One consequence this section did not price, caught by an
+existing test rather than by reading:** the handle grows. It was exactly a
+`shared_ptr`, and `TestGaussLegendreGrid` asserted so — `sizeof(Grid) ==
+sizeof(shared_ptr<void>)`, pinning F9's "152 bytes to 16". Two more members
+break that assertion while changing nothing about what it is for, since F9 is
+about a copy not carrying a 648 MB table and not about a handle being one
+word. The assertion is now a bound rather than an equality, and says why.
+
+*And a third test the plan did not name*, which is that `With` really moves
+the policy rather than returning a copy of the default. Without it the other
+two would pass on a `With` that did nothing at all — a chunk is not
+observable in a result, which is exactly what makes the no-op invisible.
+
 **W2 — the timing core.** A function that times a candidate on the caller's
 actual problem: several windows, the best taken, the spread reported, and
 [C22]'s margin applied. Nothing persistent, nothing keyed.

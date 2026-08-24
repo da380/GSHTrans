@@ -75,8 +75,11 @@ class GaussLegendreGrid
                     Chunking chunking = Chunking::Automatic(),
                     WignerValues values = WignerValues::Stored(),
                     TransformKernel kernel = TransformKernel::Loop())
-      : _impl{std::make_shared<const Impl>(lMax, nMax, flag, chunking, values,
-                                           kernel)} {}
+      : _impl{std::make_shared<const Impl>(lMax, nMax, values, kernel)},
+        _chunking{chunking},
+        _flag{flag} {
+    assert(flag != FFTWpp::WisdomOnly);
+  }
 
   // A grid for working with fields of maximum degree lBand, with quadrature
   // headroom for degree oversampling * lBand.
@@ -121,6 +124,39 @@ class GaussLegendreGrid
   // and treating them as interchangeable would make a node's operands
   // silently disagree about the buffers they index.
   auto Identity() const { return _impl.get(); }
+
+  // The same grid with a different chunking policy, or a different planner
+  // flag: a pointer copy and a scalar, sharing one table ([C18]).
+  //
+  // Offered for these two and for nothing else. WignerValues and
+  // TransformKernel each decide what the table *is*, so changing one means a
+  // different table -- which is a different grid, and the constructor is
+  // where you say so.
+  //
+  // **The result shares Identity() with its parent, and that is correct
+  // rather than a leak.** Identity is the field layer's test that two
+  // operands index the same buffers, and they do: same points, same degrees,
+  // same table, fields interchangeable. A chunk is how the inner loop
+  // schedules itself and is not observable in any result -- the batched tests
+  // demand exact equality against unbatched calls, which is the standing
+  // check that it is not. Sharing identity is also what makes this useful,
+  // since a tuned grid has to stay compatible with fields already built on
+  // the untuned one.
+  auto With(Chunking chunking) const {
+    auto grid = *this;
+    grid._chunking = chunking;
+    return grid;
+  }
+
+  auto With(FFTWpp::Flag flag) const {
+    assert(flag != FFTWpp::WisdomOnly);
+    auto grid = *this;
+    grid._flag = flag;
+    return grid;
+  }
+
+  auto ChunkingPolicy() const { return _chunking; }
+  auto PlannerFlag() const { return _flag; }
 
   //------------------------------------------------//
   //    Methods needed to inherit from GridBase     //
@@ -322,7 +358,7 @@ class GaussLegendreGrid
       const auto scratchSize = static_cast<std::size_t>(coefficientSize * c);
 
       if (!RunInParallel(policy)) {
-        auto& work = GetWorkspace<Scalar, true>(nPhi, c, _impl->flag);
+        auto& work = GetWorkspace<Scalar, true>(nPhi, c, _flag);
         auto& scratch = CoefficientScratch(scratchSize);
         std::fill_n(scratch.begin(), scratchSize, Complex{});
         for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
@@ -359,7 +395,7 @@ class GaussLegendreGrid
       {
         const auto thread = static_cast<Int>(omp_get_thread_num());
         const auto threads = static_cast<Int>(omp_get_num_threads());
-        auto& work = GetWorkspace<Scalar, true>(nPhi, c, _impl->flag);
+        auto& work = GetWorkspace<Scalar, true>(nPhi, c, _flag);
         auto& partial = Accumulator(scratchSize);
         std::fill_n(partial.begin(), scratchSize, Complex{});
         partials[thread] = partial.data();
@@ -553,7 +589,7 @@ class GaussLegendreGrid
       const auto* gathered = scratch.data();
 
       if (!RunInParallel(policy)) {
-        auto& work = GetWorkspace<Scalar, false>(nPhi, c, _impl->flag);
+        auto& work = GetWorkspace<Scalar, false>(nPhi, c, _flag);
         for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
           SynthesiseRow(iTheta, first, c, gathered, work);
         }
@@ -562,7 +598,7 @@ class GaussLegendreGrid
 
 #pragma omp parallel num_threads(ThreadCount(policy))
       {
-        auto& work = GetWorkspace<Scalar, false>(nPhi, c, _impl->flag);
+        auto& work = GetWorkspace<Scalar, false>(nPhi, c, _flag);
 #pragma omp for schedule(static)
         for (Int iTheta = 0; iTheta < nTheta; iTheta++) {
           SynthesiseRow(iTheta, first, c, gathered, work);
@@ -711,7 +747,7 @@ class GaussLegendreGrid
     for (Int b = 0; b < blocks; b++) {
       const auto theta0 = b * block;
       const auto rows = std::min(block, nTheta - theta0);
-      auto& work = GetWorkspace<Scalar, true>(nPhi, rows * count, _impl->flag);
+      auto& work = GetWorkspace<Scalar, true>(nPhi, rows * count, _flag);
 
       // Pack (theta, k) rows in that order, so the FFT's own transform index
       // runs theta-major with k fastest -- which is precisely the order the
@@ -792,7 +828,7 @@ class GaussLegendreGrid
     for (Int b = 0; b < blocks; b++) {
       const auto theta0 = b * block;
       const auto rows = std::min(block, nTheta - theta0);
-      auto& work = GetWorkspace<Scalar, false>(nPhi, rows * count, _impl->flag);
+      auto& work = GetWorkspace<Scalar, false>(nPhi, rows * count, _flag);
 
       const auto run = rows * count;
       for (auto m = Int{0}; m < nFourier; m++) {
@@ -1044,12 +1080,12 @@ class GaussLegendreGrid
   // region is already open, since that is what the call will really run on.
   Int ForwardChunkSize(Int coefficientSize, Execution policy) const {
     const auto threads = RunInParallel(policy) ? ThreadCount(policy) : 1;
-    return _impl->chunking.Count(
+    return _chunking.Count(
         coefficientSize * static_cast<Int>(sizeof(Complex)), threads);
   }
 
   Int InverseChunkSize(Int coefficientSize) const {
-    return _impl->chunking.Count(
+    return _chunking.Count(
         coefficientSize * static_cast<Int>(sizeof(Complex)), 1);
   }
 
@@ -1543,23 +1579,27 @@ class GaussLegendreGrid
     }
   }
 
-  // Everything a grid owns, built once and never mutated afterwards. Shared
-  // by every copy of the handle, which is what makes copying cheap and what
-  // makes concurrent use safe: an immutable object behind a shared_ptr needs
-  // no synchronisation. Step E's plan cache belongs here, and will be the one
-  // mutable member, with its own lock.
+  // Everything a grid owns *that decides its table*, built once and never
+  // mutated afterwards. Shared by every copy of the handle, which is what
+  // makes copying cheap and what makes concurrent use safe: an immutable
+  // object behind a shared_ptr needs no synchronisation.
+  //
+  // The planner flag and the chunking policy are deliberately **not** here,
+  // and that is [C18]. They are read per call and neither decides the table,
+  // so keeping them beside a 648 MB object meant that changing either
+  // rebuilt it -- and sweeping four candidate chunks, which is what a tuner
+  // and the benchmark harness both do, built four tables to choose an
+  // integer. They live on the handle instead, where With() can change one
+  // for the price of a pointer copy.
   struct Impl {
-    Impl(Int lMaxIn, Int nMaxIn, FFTWpp::Flag flagIn, Chunking chunkingIn,
-         WignerValues valuesIn, TransformKernel kernelIn)
+    Impl(Int lMaxIn, Int nMaxIn, WignerValues valuesIn,
+         TransformKernel kernelIn)
         : lMax{lMaxIn},
           nMax{nMaxIn},
-          flag{flagIn},
-          chunking{chunkingIn},
           values{valuesIn},
           kernel{kernelIn} {
       assert(lMax >= 0);
       assert(std::abs(nMax) <= lMax);
-      assert(flag != FFTWpp::WisdomOnly);
 
       // An MRange = NonNegative grid stores only m >= 0, so it cannot serve a
       // complex-valued transform at all, and its real-valued transforms exist
@@ -1645,8 +1685,6 @@ class GaussLegendreGrid
 
     Int lMax;
     Int nMax;
-    FFTWpp::Flag flag;
-    Chunking chunking;
     WignerValues values;
     TransformKernel kernel;
     GaussQuad::Quadrature1D<Real> quad;
@@ -1665,6 +1703,18 @@ class GaussLegendreGrid
   };
 
   std::shared_ptr<const Impl> _impl;
+
+  // Read per call and shared with nothing. See [C18] at Impl above for why
+  // they sit here rather than in it.
+  //
+  // The flag is what an uncached plan shape is planned with. It was once
+  // followed by the constructor generating wisdom and then setting
+  // WisdomOnly, which meant that any shape the constructor had not
+  // anticipated -- every batched shape, in particular -- would fail to plan
+  // rather than fall back (core-plan.md P7). Shapes are now planned on first
+  // use and cached, so there is nothing to anticipate.
+  Chunking _chunking;
+  FFTWpp::Flag _flag;
 };
 
 }  // namespace GSHTrans

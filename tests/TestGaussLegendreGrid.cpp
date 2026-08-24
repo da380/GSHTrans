@@ -485,8 +485,16 @@ TEST(GaussLegendreGrid, IsAValueSemanticHandle) {
   static_assert(std::copy_constructible<Grid>);
   static_assert(std::is_copy_assignable_v<Grid>);
   static_assert(std::is_nothrow_move_constructible_v<Grid>);
-  static_assert(sizeof(Grid) == sizeof(std::shared_ptr<void>),
-                "a grid should be the size of its handle and nothing more");
+  // Small and trivially cheap to copy, which is the property F9 is about:
+  // copying a grid used to copy hundreds of megabytes of Wigner table.
+  //
+  // It used to be exactly a shared_ptr. [C18] added the chunking policy and
+  // the planner flag beside it -- read per call, deciding nothing about the
+  // table -- so that changing either is a pointer copy rather than a table
+  // rebuild. That grows the handle by a few words and changes nothing about
+  // what the assertion is for, so the bound is stated as a bound.
+  static_assert(sizeof(Grid) <= 4 * sizeof(std::shared_ptr<void>),
+                "a grid should be a handle and a few scalars, never a table");
 
   auto grid = Grid(8, 2, FFTWpp::Estimate);
   auto copy = grid;
@@ -814,6 +822,73 @@ auto BatchField(std::ptrdiff_t size, std::ptrdiff_t k) {
 }
 
 }  // namespace
+
+// [C18]: the chunking policy and the planner flag live on the handle, not
+// beside the table, so a grid with a different chunk is a pointer copy and
+// shares one table. Two properties make that safe, and both are asserted
+// rather than argued.
+//
+// The first is that a chunk is not observable in a result. It is how the
+// inner loop schedules itself; changing it must change nothing, exactly, in
+// either direction and batched or not.
+TEST(BatchedTransform, ChunkingIsNotObservableInAnyResult) {
+  constexpr auto lMax = std::ptrdiff_t{6};
+  constexpr auto n = std::ptrdiff_t{2};
+  constexpr auto count = std::ptrdiff_t{5};
+
+  auto grid = BatchGrid(lMax, n, FFTWpp::Estimate);
+  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto coefficientSize =
+      static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
+
+  auto fields = FFTWpp::vector<BatchComplex>(count * fieldSize);
+  for (auto k = std::ptrdiff_t{0}; k < count; k++) {
+    const auto one = BatchField(fieldSize, k);
+    std::copy(one.begin(), one.end(), fields.begin() + k * fieldSize);
+  }
+
+  const auto Forward = [&](const auto& g) {
+    auto out = FFTWpp::vector<BatchComplex>(count * coefficientSize);
+    g.ForwardTransformation(lMax, n, fields,
+                            Batch::Contiguous(count, fieldSize), out,
+                            Batch::Contiguous(count, coefficientSize));
+    return out;
+  };
+  const auto Inverse = [&](const auto& g, const auto& coefficients) {
+    auto out = FFTWpp::vector<BatchComplex>(count * fieldSize);
+    g.InverseTransformation(lMax, n, coefficients,
+                            Batch::Contiguous(count, coefficientSize), out,
+                            Batch::Contiguous(count, fieldSize));
+    return out;
+  };
+
+  const auto reference = Forward(grid);
+  const auto back = Inverse(grid, reference);
+
+  for (auto chunk : {std::ptrdiff_t{1}, std::ptrdiff_t{2}, std::ptrdiff_t{5},
+                     std::ptrdiff_t{16}}) {
+    const auto tuned = grid.With(Chunking::Fixed(chunk));
+
+    // The second property: a differently chunked grid is the *same* grid, so
+    // fields and coefficients built on one are usable on the other. That is
+    // what lets a tuned grid be substituted for an untuned one.
+    EXPECT_EQ(tuned.Identity(), grid.Identity()) << "chunk " << chunk;
+
+    const auto got = Forward(tuned);
+    for (auto j = std::size_t{0}; j < got.size(); ++j) {
+      EXPECT_EQ(got[j], reference[j]) << "chunk " << chunk << ", forward " << j;
+    }
+    const auto gotBack = Inverse(tuned, reference);
+    for (auto j = std::size_t{0}; j < gotBack.size(); ++j) {
+      EXPECT_EQ(gotBack[j], back[j]) << "chunk " << chunk << ", inverse " << j;
+    }
+  }
+
+  // And it really is the policy that moved, not a copy of the default.
+  EXPECT_EQ(grid.With(Chunking::Fixed(3)).ChunkingPolicy(),
+            Chunking::Fixed(3));
+  EXPECT_EQ(grid.ChunkingPolicy(), Chunking::Automatic());
+}
 
 TEST(BatchedTransform, ContiguousBatchMatchesSeparateCalls) {
   constexpr auto lMax = std::ptrdiff_t{6};
