@@ -1,0 +1,186 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Three compilers, both build types. Clang carries its own package list
+  # because it needs an OpenMP runtime of its own -- libomp rather than the
+  # libgomp the GCC entries get for free -- which is also why it took a while
+  # to be gated on: no clang OpenMP runtime is installed on the development
+  # machine, so this leg was advisory until it had been seen to pass here.
+  build:
+    name: ${{ matrix.compiler.cxx }} / ${{ matrix.build_type }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - {cxx: g++-13, packages: g++-13}
+          - {cxx: g++-14, packages: g++-14}
+          - {cxx: clang++-18, packages: clang-18 libomp-18-dev}
+        build_type: [Debug, Release]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfftw3-dev ninja-build \
+            ${{ matrix.compiler.packages }}
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_CXX_COMPILER=${{ matrix.compiler.cxx }} \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      # The examples are registered as tests, so this runs them as well as the
+      # suite. That is the point: they were compile-only once and six of them
+      # were aborting.
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # Both optional dependencies off, which is a supported configuration and
+  # therefore one that has to be run rather than asserted. The library
+  # *withdraws* facilities there rather than disabling them -- no
+  # Scheme::Bicubic(), no TransformKernel::Matrix(), no
+  # RadialSplineDerivative.h -- so a mistake shows up as a build failure in
+  # code that should not have been compiled, which the default build cannot
+  # see. It is also the cheapest job here: nothing is fetched and no BLAS is
+  # linked.
+  minimal:
+    name: no optional dependencies
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfftw3-dev ninja-build g++-14
+
+      - name: Configure, build and test
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DGSHTRANS_WITH_INTERPOLATION=OFF \
+            -DGSHTRANS_WITH_BLAS=OFF
+          cmake --build build --parallel
+          ctest --test-dir build --output-on-failure
+
+  sanitizers:
+    name: ${{ matrix.sanitizer }} sanitizer
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, undefined]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfftw3-dev
+
+      - name: Run the sanitized test suite
+        run: ./scripts/test_sanitized.sh ${{ matrix.sanitizer }}
+
+  # The tree is clang-format clean against the checked-in .clang-format, and
+  # this is what keeps it so. A one-off run decays the moment the next commit
+  # lands; the check is what makes it a property. The umbrella headers have no
+  # extension, so clang-format has to be told what language they are.
+  format:
+    name: clang-format
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+
+      - name: Check the formatting
+        run: |
+          git ls-files '*.h' '*.cpp' \
+            | xargs clang-format-18 --dry-run --Werror
+          for f in GSHTrans/All GSHTrans/Core GSHTrans/Expansion \
+                   GSHTrans/Field GSHTrans/Layered GSHTrans/Tensor; do
+            clang-format-18 --dry-run --Werror \
+              -assume-filename=umbrella.h < "$f"
+          done
+
+  # The documentation is written rather than inferred: EXTRACT_ALL is off and
+  # WARN_IF_UNDOCUMENTED is on, so an undocumented public entity is a doxygen
+  # warning and WARN_AS_ERROR makes it fail here. The library is fully
+  # covered, so what this leg catches is a regression rather than a backlog.
+  docs:
+    name: documentation
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfftw3-dev ninja-build doxygen
+
+      - name: Configure and build the documentation
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DGSHTRANS_BUILD_TESTS=OFF \
+            -DGSHTRANS_BUILD_EXAMPLES=OFF \
+            -DGSHTRANS_BUILD_BENCHMARKS=OFF
+          cmake --build build --target docs
+
+      - name: Show the warnings
+        if: always()
+        run: cat build/docs/doxygen-warnings.log
+
+  package:
+    name: install and find_package
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfftw3-dev ninja-build
+
+      - name: Build and install
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/prefix" \
+            -DGSHTRANS_BUILD_TESTS=OFF \
+            -DGSHTRANS_BUILD_EXAMPLES=OFF \
+            -DGSHTRANS_BUILD_BENCHMARKS=OFF
+          cmake --build build --parallel
+          cmake --install build
+
+      # The point of the install rules is that a separate project can consume
+      # them, so consume them from a separate project. This is also what would
+      # have caught the stale FindFFTW.cmake that stopped this library
+      # configuring at all against a current FFTWpp.
+      - name: Consume the installed package
+        run: |
+          cmake -S tests/package -B build-package -G Ninja \
+            -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/prefix"
+          cmake --build build-package --parallel
+          ctest --test-dir build-package --output-on-failure

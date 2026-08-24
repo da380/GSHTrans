@@ -1,0 +1,1632 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\newcommand{\ebasis}[1]{\mathbf{e}_{#1}}
+\newcommand{\conj}[1]{\overline{#1}}
+\newcommand{\dOmega}{\,\mathrm{d}\Omega}
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{GSHTrans: mathematics and numerical methods\\
+\large A reference for what the library does, and why}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This is a record rather than a plan.  Part~I collects the definitions,
+conventions and relations the library rests on, in the form it actually
+uses them, with a translation table for the three sources whose notations
+differ.  Part~II explains the numerical methods: what the algorithms are,
+why they were chosen, and the handful of places where the reasoning is
+subtle enough to be worth writing down.  Neither part is a derivation.
+The companion note \code{canonical-components.tex} carries the
+mathematical arguments; the headers themselves carry the design decisions
+and the measurements behind them, and \code{lessons.md} carries the
+handful worth not learning twice.
+
+Statements here are either verified by a test in the library or read
+directly from a cited source.  The two places where a convention remains
+genuinely open are marked as such.
+\end{abstract}
+
+\tableofcontents
+
+\part{Mathematics}
+
+\section{Conventions}
+\label{sec:conventions}
+
+\subsection{The canonical basis}
+
+At each point of the sphere, with $\hat{\mathbf{r}},
+\hat{\boldsymbol{\theta}}, \hat{\boldsymbol{\phi}}$ the usual orthonormal
+spherical polar frame,
+\begin{equation}
+  \ebasis{\pm} = \mp \tfrac{1}{\sqrt{2}}
+    \left( \hat{\boldsymbol{\theta}} \pm i \hat{\boldsymbol{\phi}} \right),
+  \qquad
+  \ebasis{0} = \hat{\mathbf{r}},
+  \qquad \alpha \in \{-1,0,+1\}.
+  \label{eq:basis}
+\end{equation}
+Two consequences are used everywhere:
+\begin{equation}
+  \conj{\ebasis{\alpha}} = (-1)^{\alpha} \ebasis{-\alpha},
+  \qquad
+  g_{\alpha\beta} = \ebasis{\alpha}\cdot\ebasis{\beta}
+                  = (-1)^{\alpha}\delta_{\alpha+\beta,0}.
+  \label{eq:basisconj}
+\end{equation}
+So $g_{+-}=g_{-+}=-1$, $g_{00}=1$, and $g$ is its own inverse.  The
+library works with contravariant components throughout and applies $g$
+explicitly wherever a contraction is taken; index position is not tracked.
+
+Under a rotation of the tangent frame through $\psi$ about
+$\hat{\mathbf{r}}$, $\ebasis{\pm}\mapsto e^{\mp i\psi}\ebasis{\pm}$.
+
+\subsection{What the library stores, exactly}
+
+The single most useful statement for reading the code:
+
+\begin{quote}
+  \code{Wigner}'s stored value at upper index $N$, degree $l$ and order
+  $m$ is
+  \begin{equation}
+    \left(\frac{2l+1}{4\pi}\right)^{1/2} d^{l}_{Nm}(\theta)
+      \;=\; X^{N}_{lm}(\theta),
+    \label{eq:stored}
+  \end{equation}
+  which is exactly the scalar harmonic $X^N_{lm}$ of Dahlen \& Tromp
+  (1998), their (C.117), built on their generalized Legendre function
+  $P^N_{lm} = d^l_{Nm}$ --- \emph{upper index first}.
+\end{quote}
+
+This is verified rather than assumed.  \code{tests/CheckWignerConvention.h}
+compares all nine $l=1$ values against D\&T (C.115); the check
+discriminates, because the four entries with $N-m$ odd distinguish
+$d^l_{Nm}$ from $d^l_{mN}$, which differ by $(-1)^{N-m}$.  Two further
+facts corroborate it: the recursion seed evaluates to D\&T (C.125), and
+\code{tests/CheckLegendre.h} pins the $N=0$ row against
+\code{std::sph\_legendre}, fixing the orthonormal scaling and the
+Condon--Shortley phase.
+
+\subsection{Translation table}
+
+The three standard sources use different notations, and two of them differ
+from this library in normalisation.  Everything in this table is read
+directly from the cited equations.
+
+\begin{center}
+\begin{tabular}{llll}
+  \toprule
+  & harmonic & colatitudinal part & normalised? \\
+  \midrule
+  GSHTrans
+    & $Y^{N}_{lm} = X^{N}_{lm} e^{im\phi}$
+    & $X^{N}_{lm} = \left(\tfrac{2l+1}{4\pi}\right)^{1/2} d^{l}_{Nm}$
+    & yes \\
+  Dahlen \& Tromp (C.117)
+    & $Y^{N}_{lm} = X^{N}_{lm} e^{im\phi}$
+    & $X^{N}_{lm} = \left(\tfrac{2l+1}{4\pi}\right)^{1/2} P^{N}_{lm}$
+    & yes \\
+  Woodhouse \& Deuss [41]
+    & $Y^{Nm}_{l} = P^{Nm}_{l} e^{im\phi}$
+    & $P^{Nm}_{l} = d^{(l)}_{Nm}$
+    & \textbf{no} \\
+  Phinney \& Burridge (1.5)
+    & $X^{Nm} = P^{Nm}_{l} e^{im\phi}$
+    & $P^{Nm}_{l}$, their Appendix A
+    & \textbf{no} \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+Three things to take from it.
+
+\paragraph{The index order is the same in all four.}  D\&T write
+$P^{N}_{lm}$, Woodhouse and P\&B write $P^{Nm}_{l}$, and this library
+writes $d^{l}_{Nm}$; all mean the same function with the upper index
+first.  D\&T state that they follow P\&B in the definition.
+
+\paragraph{The normalisation is not.}  D\&T and this library carry the
+$[(2l+1)/4\pi]^{1/2}$; Woodhouse and P\&B do not.  A formula taken from
+Woodhouse or P\&B therefore needs that factor supplied, and a formula
+taken from D\&T does not.
+
+\paragraph{The transposed function is a different thing.}  D\&T (C.118)
+gives $P^{m}_{lN} = (-1)^{m+N} P^{N}_{lm}$, so getting the index order
+wrong costs a sign whenever $m-N$ is odd, and nothing when it is even ---
+which is exactly the kind of error that survives half a test suite.
+
+\subsection{What remains a convention}
+\label{sec:remains}
+
+This document used to list two statements as unsettled: the sign $\mp$
+in \eqref{eq:basis}, since some authors use
+$\ebasis{\pm}=\pm(\hat{\boldsymbol{\theta}}\pm
+i\hat{\boldsymbol{\phi}})/\sqrt{2}$, which flips every odd-rank reality
+phase; and the overall signs of $\eth$ and $\conj{\eth}$
+(\S\ref{sec:eth}).  Each was said to be unobservable, and each was, for
+the same reason: everything the library computed stayed in canonical
+components from end to end, and a convention that is never read back
+into the physical frame cannot be seen.
+
+They are now pinned, jointly, by reading a gradient back into the
+physical frame and requiring it to be the gradient.  Inverting
+\eqref{eq:basis} for a vector $\mathbf{v}=v^{\alpha}\ebasis{\alpha}$,
+\begin{equation}
+  v_{\theta} = \frac{v^{-}-v^{+}}{\sqrt{2}},
+  \qquad
+  v_{\phi} = -i\,\frac{v^{+}+v^{-}}{\sqrt{2}},
+  \qquad
+  v_{r} = v^{0},
+  \label{eq:physical}
+\end{equation}
+and \code{tests/TestConventions.cpp} requires that for a scalar $f$ the
+surface gradient satisfies
+$\mathbf{v}=\hat{\boldsymbol{\theta}}\,\partial_{\theta}f
++\hat{\boldsymbol{\phi}}\,(\sin\theta)^{-1}\partial_{\phi}f$ pointwise,
+and that the metric trace of the surface gradient of a tangential vector
+field is its surface divergence.  Both hold to $10^{-13}$, and both fail
+by an $O(1)$ amount if either sign is flipped alone.
+
+What is left is genuinely a convention and nothing more: flipping
+\eqref{eq:basis} \emph{and} the sign of the $\eth$ pair together is a
+relabelling of which component is called $+1$, and \eqref{eq:physical}
+flips with it.  So there is one convention here rather than two unknowns,
+this document states it, and a test observes it.
+
+\paragraph{A trap worth recording.}  A tangential field written as
+$a(\theta,\phi)\,\hat{\boldsymbol{\theta}}$ is almost never smooth, because
+$\hat{\boldsymbol{\theta}}$ is not: at a pole its direction depends on the
+azimuth from which the pole is approached.  The innocuous-looking
+$a=\sin\theta\cos\phi$ is not differentiable there, its spin-weighted
+expansion does not converge, and the divergence check above came out wrong
+by $0.18$ at every truncation from $l_{\max}=8$ to $128$.  That is what a
+non-convergent expansion looks like, and it is easily mistaken for a bug in
+the operator.  The test fields are built as
+$\nabla_1 f + \hat{\mathbf{r}}\times\nabla_1 g$ from smooth scalars, which
+is smooth by construction.
+
+\section{Canonical components}
+\label{sec:components}
+
+A rank-$p$ tensor field has $3^p$ scalar components, each labelled by a
+multi-index $(\alpha_1\ldots\alpha_p)\in\{-1,0,1\}^p$.  Under the frame
+rotation, the component $T^{\alpha_1\ldots\alpha_p}$ acquires the phase
+$e^{-iN\psi}$ with
+\begin{equation}
+  N = \sum_{i=1}^{p} \alpha_i,
+  \label{eq:N}
+\end{equation}
+and it is this $N$ --- not the multi-index --- that is the upper index of
+the component's harmonic expansion.
+
+\paragraph{The multi-index is not the upper index.}  For a vector they
+coincide, $N=\alpha$, which is the coincidence that misleads.  For
+$p\geq 2$ distinct components share an upper index: a rank-2 tensor has
+three at $N=0$, namely $(-+)$, $(00)$ and $(+-)$.  A collection of
+components labelled only by $N$ therefore does not determine a tensor.
+The number carrying a given $N$ is the trinomial coefficient; for $p=2$
+these are $1,2,3,2,1$ across $N=-2\ldots 2$.
+
+\paragraph{Products and contractions.}  Concatenating multi-indices adds
+upper indices by \eqref{eq:N}, which is the statement ``upper indices add
+under pointwise multiplication''.  Contracting slots $j$ and $k$ against
+the metric gives
+\begin{equation}
+  \left(\mathrm{tr}_{jk} T\right)^{\ldots}
+    = \sum_{\alpha}(-1)^{\alpha}\,T^{\ldots\,\alpha\,\ldots\,-\alpha\,\ldots}
+    = -T^{\ldots -\ldots +\ldots} + T^{\ldots 0\ldots 0\ldots}
+      - T^{\ldots +\ldots -\ldots},
+  \label{eq:contract}
+\end{equation}
+the contracted pair contributing $\alpha+(-\alpha)=0$, so the result
+carries the upper index of the surviving slots.
+
+\section{Generalized spherical harmonics}
+\label{sec:gsh}
+
+A field $f$ of upper index $N$ expands as
+\begin{equation}
+  f(\theta,\phi) = \sum_{l\geq|N|}\sum_{m=-l}^{l} f^{N}_{lm} Y^{N}_{lm},
+  \qquad
+  f^{N}_{lm} = \int_{S^2}\conj{Y^{N}_{lm}}\, f \dOmega,
+  \label{eq:expansion}
+\end{equation}
+with
+\begin{equation}
+  Y^{N}_{lm}(\theta,\phi)
+    = \left(\frac{2l+1}{4\pi}\right)^{1/2} d^{l}_{Nm}(\theta)\, e^{im\phi}.
+  \label{eq:gsh}
+\end{equation}
+These are orthonormal, $\int \conj{Y^N_{lm}} Y^N_{l'm'} \dOmega =
+\delta_{ll'}\delta_{mm'}$.  The sum starts at $l=|N|$ because $d^l_{Nm}$
+vanishes identically below it: there is no harmonic of that upper index
+at lower degree, and correspondingly no coefficient to store.  This is
+the single fact most likely to look like a bug on first contact --- see
+\S\ref{sec:projection}.
+
+\paragraph{The normalisation is pinned by the code.}  Taking $f$ constant,
+\eqref{eq:expansion} gives $f^0_{00} = 2\sqrt{\pi}f$, and
+\code{GaussLegendreGrid} implements exactly that on its one-point grid.
+
+\paragraph{Conjugation.}  Using $d^l_{-m,-N}=(-1)^{m-N}d^l_{mN}$ and the
+reality of $d$, equation \eqref{eq:gsh} gives D\&T (C.109),
+\begin{equation}
+  \conj{Y^{N}_{lm}} = (-1)^{m+N} Y^{-N}_{l,-m},
+  \label{eq:Yconj}
+\end{equation}
+from which follow the two spectral reality relations of
+\S\ref{sec:reality}.
+
+\section{The generalized Legendre functions}
+\label{sec:legendre}
+
+$P^N_{lm}(\mu)=d^l_{Nm}(\theta)$, $\mu=\cos\theta$, is the regular
+solution of the generalized Legendre equation, normalised as D\&T (C.112)
+so that the addition theorem below holds.  It does \emph{not} reduce to
+the associated Legendre function at $N=0$; D\&T (C.113) relates them.
+
+\subsection{Symmetries}
+
+D\&T (C.118), in full, since the library uses two of them and could use
+two more:
+\begin{align}
+  P^{N}_{l,-m}(\mu) &= (-1)^{l+N} P^{N}_{lm}(-\mu), &
+  P^{-N}_{lm}(\mu)  &= (-1)^{l+m} P^{N}_{lm}(-\mu), \notag \\
+  P^{-N}_{l,-m}(\mu) &= (-1)^{m+N} P^{N}_{lm}(\mu), &
+  P^{m}_{lN}(\mu)   &= (-1)^{m+N} P^{N}_{lm}(\mu),
+  \label{eq:symmetries}\\
+  P^{-m}_{l,-N}(\mu) &= P^{N}_{lm}(\mu). \notag
+\end{align}
+The third is the $(m,N)\mapsto(-m,-N)$ involution; the second is the
+$\theta\mapsto\pi-\theta$ reflection, which maps the Gauss--Legendre node
+set to itself exactly, since those nodes are symmetric about $\pi/2$.
+Composed, the two generate a group of order four acting on
+$(N,m,\theta)$, so the table of stored values could in principle be
+reduced fourfold.  Neither reduction is implemented; \S\ref{sec:whatnext}
+says why.  The fourth relation is the transposition that the convention
+check discriminates against.
+
+\subsection{Boundary values}
+
+The values at the extreme orders have closed forms, D\&T (C.123) and
+(C.125), and these are precisely the library's
+\code{WignerMinOrder} and \code{WignerMaxOrder}:
+\begin{align}
+  P^{N}_{l,-l} &= \left[\frac{(2l)!}{(l+N)!(l-N)!}\right]^{1/2}
+                  \left(\sin\tfrac{\theta}{2}\right)^{l+N}
+                  \left(\cos\tfrac{\theta}{2}\right)^{l-N},
+  \label{eq:minorder}\\
+  P^{N}_{ll}   &= (-1)^{l+N} P^{N}_{l,-l}\big|_{N\to-N}.
+  \label{eq:maxorder}
+\end{align}
+They are the seeds of D\&T's recursion in $m$, and the boundary terms of
+the library's recursion in $l$ (\S\ref{sec:recursion}).
+
+\subsection{The addition theorem}
+
+D\&T (C.127),
+\begin{equation}
+  \sum_{m=-l}^{l} P^{N}_{lm}(\mu)\, P^{N'}_{lm}(\mu) = \delta_{NN'}.
+  \label{eq:addition}
+\end{equation}
+This is the strongest available check on a computed table, and
+\code{tests/CheckAdditionTheorem.h} is it.  Because the library stores
+$X^N_{lm}$ rather than $P^N_{lm}$, the right-hand side there is
+$\delta_{NN'}(2l+1)/4\pi$.
+
+\section{Reality}
+\label{sec:reality}
+
+For a real tensor field, applying \eqref{eq:basisconj} to each factor
+gives
+\begin{equation}
+  T^{-\alpha_1\ldots-\alpha_p} = (-1)^{N}\,
+    \conj{T^{\alpha_1\ldots\alpha_p}}.
+  \label{eq:reality}
+\end{equation}
+For a vector this reads $u^0=\conj{u^0}$ and $u^-=-\conj{u^+}$: the radial
+component is a real field and the two transverse components are not
+independent.
+
+\paragraph{Which components must be stored.}  \eqref{eq:reality} pairs
+each multi-index with its negation, and one representative of each orbit
+suffices.  The only fixed point is the all-zero index, which is therefore
+a real-valued field; every other orbit has size two.  With a permutation
+symmetry present the orbits are those of the group generated by the
+permutations \emph{together with} the negation, and a component whose
+orbit contains its own negation is pinned to a single real number ---
+real, or purely imaginary when a permutation sign intervenes.  Such
+self-paired components always sit at $N=0$: permutation preserves the slot
+sum and negation reverses it, so a component fixed by the combination
+satisfies $N=-N$.
+
+The resulting counts, computed by the library rather than tabulated by
+hand, are the independent real degrees of freedom in every case:
+
+\begin{center}
+\begin{tabular}{lrrr}
+  \toprule
+  & complex components & pinned & reals per point \\
+  \midrule
+  rank 1                & 1  & 1 & 3 \\
+  rank 2                & 4  & 1 & 9 \\
+  rank 2, symmetric     & 2  & 2 & 6 \\
+  rank 2, antisymmetric & 1  & 1 & 3 \\
+  rank 3, symmetric     & 4  & 2 & 10 \\
+  rank 4                & 40 & 1 & 81 \\
+  rank 4, elastic       & 8  & 5 & 21 \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+The last row is worth noting: nothing in the machinery knows about
+elasticity, and $c_{ijkl}=c_{jikl}=c_{ijlk}=c_{klij}$ comes out at the
+familiar 21.
+
+\paragraph{In the spectral domain} the same relation takes two distinct
+forms, and it is worth keeping them apart.  For \emph{any} field $f$ of
+upper index $N$, \eqref{eq:Yconj} gives the coefficients of $\conj{f}$,
+which has upper index $-N$:
+\begin{equation}
+  \left(\conj{f}\right)^{-N}_{l,-m} = (-1)^{m-N}\conj{f^{N}_{lm}}.
+  \label{eq:basiclevel}
+\end{equation}
+For a negation-paired component of a \emph{real tensor}, \eqref{eq:reality}
+supplies a further $(-1)^N$ and the two combine to
+\begin{equation}
+  T^{-N}_{l,-m} = (-1)^{m}\conj{T^{N}_{lm}},
+  \label{eq:complevel}
+\end{equation}
+which at $N=0$ is the familiar condition on a real scalar field, and is
+what the reduced $m\geq 0$ coefficient storage implements.
+
+\section{Raising and lowering}
+\label{sec:eth}
+
+$\eth$ and $\conj{\eth}$ change the upper index by one.  On a basis
+function,
+\begin{equation}
+  \eth\, Y^{N}_{lm} = -\sqrt{(l-N)(l+N+1)}\; Y^{N+1}_{lm},
+  \qquad
+  \conj{\eth}\, Y^{N}_{lm} = +\sqrt{(l+N)(l-N+1)}\; Y^{N-1}_{lm},
+  \label{eq:eth}
+\end{equation}
+so in the spectral domain each is a multiplication by an $l$-dependent
+factor, with no coupling between different $(l,m)$.  They are the
+operations that connect different upper indices, and they are diagonal in
+$(l,m)$ rather than local in $(\theta,\phi)$ --- which is why the library
+has two representations rather than one, and why an expression such as
+``the gradient of a product'' is necessarily evaluated in both.
+
+The surface gradient of a scalar has canonical components proportional to
+$\eth f$ and $\conj{\eth} f$, at upper index $+1$ and $-1$, with vanishing
+radial component.
+
+\paragraph{Two identities, and a third that pins the rest.}  Composing
+the factors,
+\begin{equation}
+  \conj{\eth}\eth\big|_{N=0} = -l(l+1),
+  \qquad
+  [\eth,\conj{\eth}] = -2N.
+  \label{eq:ethidentities}
+\end{equation}
+The first says $\conj{\eth}\eth$ is the surface Laplacian on a scalar; it
+pins the relative sign of the two operators and both magnitudes.  The
+second is structural.  Both are tested, and both survive flipping the sign
+of the pair --- which is why this document long carried the overall sign
+as an open question for Phinney \& Burridge.
+
+It does not need one.  P\&B do not use $\eth$ as such, and the sign is not
+theirs to settle; what has to be right is that gradients of functions come
+out as gradients, which is checkable here.  Requiring exactly that, in the
+physical frame, fixes the overall sign in \eqref{eq:eth} against the sign
+in \eqref{eq:basis}: see \S\ref{sec:remains}.  The two are one convention,
+stated in this document and observed by
+\code{tests/TestConventions.cpp}.
+
+\paragraph{The degree ranges look after themselves.}  Raising a field at
+$N\geq 0$ produces one starting at $l=N+1$, and the factor at $l=N$ is
+$\sqrt{0}=0$: the coefficient with nowhere to go was going to vanish.
+Lowering produces a field starting at a lower degree, whose extra
+coefficient has no source and is zero, which is what having no content
+there means.
+
+\section{The contravariant derivative, and how it differs}
+\label{sec:contravariant}
+
+Phinney \& Burridge, and Dahlen \& Tromp following them, work not with
+$\eth$ but with a \emph{contravariant derivative} $\partial^\sigma$,
+$\sigma\in\{-,0,+\}$, which takes the expansion coefficients of a rank-$q$
+tensor to those of the rank-$(q+1)$ tensor $\nabla\mathbf{T}$.  It is
+closely related to $\eth$ and it is not the same operator, and the
+difference matters for anyone using this library on tensors.
+
+\subsection{The definition}
+
+With D\&T (C.146),
+\begin{equation}
+  \Omega^{\pm N}_{l} = \sqrt{\tfrac{1}{2}(l \pm N)(l \mp N + 1)},
+  \label{eq:omega}
+\end{equation}
+their (C.151)--(C.153) read
+\begin{align}
+  \partial^{-} T^{\alpha_1\ldots\alpha_q}_{lm}
+    &= r^{-1}\Big[\Omega^{+N}_{l}\, T^{\alpha_1\alpha_2\ldots\alpha_q}_{lm}
+      - T^{(\alpha_1-1)\alpha_2\ldots\alpha_q}_{lm}
+      - \cdots
+      - T^{\alpha_1\alpha_2\ldots(\alpha_q-1)}_{lm}\Big],
+    \label{eq:dminus}\\
+  \partial^{0} T^{\alpha_1\ldots\alpha_q}_{lm}
+    &= \frac{d\,T^{\alpha_1\ldots\alpha_q}_{lm}}{dr},
+    \label{eq:dzero}\\
+  \partial^{+} T^{\alpha_1\ldots\alpha_q}_{lm}
+    &= r^{-1}\Big[\Omega^{-N}_{l}\, T^{\alpha_1\alpha_2\ldots\alpha_q}_{lm}
+      - T^{(\alpha_1+1)\alpha_2\ldots\alpha_q}_{lm}
+      - \cdots
+      - T^{\alpha_1\alpha_2\ldots(\alpha_q+1)}_{lm}\Big],
+    \label{eq:dplus}
+\end{align}
+with the stipulation that any coefficient whose shifted index leaves
+$\{-1,0,1\}$ is zero.  The components of the gradient are
+$(\nabla\mathbf{T})^{\sigma\alpha_1\ldots\alpha_q} = \partial^{\sigma}
+T^{\alpha_1\ldots\alpha_q}$: the operator \emph{prepends a slot}, and the
+result carries upper index $\sigma + N$, which is \eqref{eq:N} applied to
+the lengthened multi-index.
+
+\subsection{Two differences, one benign and one not}
+
+\paragraph{A factor of $\sqrt2$, which is only the basis normalisation.}
+Comparing \eqref{eq:omega} with \eqref{eq:eth},
+\begin{equation}
+  \left|\text{raising factor}\right| = \sqrt{(l-N)(l+N+1)}
+    = \sqrt{2}\,\Omega^{-N}_{l},
+  \qquad
+  \left|\text{lowering factor}\right| = \sqrt{2}\,\Omega^{+N}_{l}.
+  \label{eq:ethomega}
+\end{equation}
+The $\sqrt2$ is exactly the $1/\sqrt2$ in $\ebasis{\pm} = \mp(
+\hat{\boldsymbol{\theta}} \pm i\hat{\boldsymbol{\phi}})/\sqrt2$, which
+appears explicitly in D\&T's surface gradient (C.144).  So on the unit
+sphere, up to that factor and to the sign convention of
+\S\ref{sec:eth}, $\partial^{+}$ is $\eth$ and $\partial^{-}$ is
+$\conj{\eth}$ --- \emph{for a scalar}.
+
+\paragraph{Connection terms, which are not benign.}  For $q\geq 1$ the
+bracket in \eqref{eq:dminus} and \eqref{eq:dplus} is not a multiplication.
+It subtracts the components with one slot index shifted, once per slot.
+Those terms are the connection: the canonical basis vectors themselves
+vary over the sphere,
+\begin{equation}
+  \left[\pm\partial_\theta + i(\sin\theta)^{-1}\partial_\phi\right]
+    \ebasis{\alpha}
+    = \alpha\cot\theta\,\ebasis{\alpha} - \sqrt{2}\,\ebasis{\alpha\pm1},
+  \label{eq:basisderiv}
+\end{equation}
+so differentiating a tensor field differentiates its basis too.  A scalar
+has no slots and therefore no connection terms, which is why the two
+operators coincide there and only there.
+
+\subsection{The consequence for this library}
+
+\begin{quote}
+  \textbf{Applying $\eth$ to each component of a tensor does not give the
+  gradient of the tensor.}  Use \code{SurfaceGradient}.  It gives the $\eth$ of each component as a
+  spin-weighted function, which for $q\geq 1$ is not a component of
+  $\nabla\mathbf{T}$ and in general is not a component of anything.
+\end{quote}
+
+This is a trap rather than a limitation: \code{Raise} and \code{Lower} are
+correct for what they claim --- a single spin-weighted function --- and are
+correct for the surface gradient of a scalar, which is the case most people
+reach for first.  They are simply not the \emph{ambient} tensor operator, and
+nothing in their types says so, because a tensor expansion's components are
+ordinary spin expansions.
+
+\subsection{The intrinsic derivative, where \texorpdfstring{$\eth$}{eth} is
+exactly right}
+\label{sec:intrinsic}
+
+The paragraph above must not be read as forbidding component-wise $\eth$
+altogether, because there is a case in which it is precisely the correct
+operator.
+
+There are two derivatives on the sphere.  $\partial^\sigma$ is the
+\emph{ambient} one: it differentiates the tensor and its basis, and the basis
+leaves the tangent plane.  The \emph{intrinsic} covariant derivative --- the
+Levi-Civita connection of the induced metric, which is what surface
+differential geometry means by differentiation --- is closed on
+\emph{tangential} tensors, those whose every slot is $\pm1$ with no radial
+index.
+
+On such a tensor the connection terms vanish identically.  Every shift
+$\alpha_i + \sigma$ with $\alpha_i,\sigma \in \{\pm1\}$ lands on $-2$, $0$ or
+$+2$; the outer two leave the alphabet, and $0$ names a component with a
+radial slot, which a tangential tensor does not have.  What is left is pure
+$\Omega$ multiplication.  Splitting $\nabla_1 T$ by whether the inherited slot
+is radial,
+\begin{align}
+  (\nabla_1 T)^{\sigma \alpha_1\ldots\alpha_q}
+    &= \Omega^{\mp N}_{l}\, T^{\alpha_1\ldots\alpha_q},
+    &&\text{all } \alpha_i \text{ tangential},
+    \label{eq:intrinsicpart}\\
+  (\nabla_1 T)^{\sigma \alpha_1\ldots 0_j \ldots\alpha_q}
+    &= -\,T^{\alpha_1\ldots \sigma_j \ldots\alpha_q},
+    &&\text{one slot radial}.
+    \label{eq:curvature}
+\end{align}
+Both hold \emph{exactly}, and are checked as such against
+\code{SurfaceGradient} applied to a rank-1 tensor with its radial component
+set to zero.
+
+\eqref{eq:curvature} is the extrinsic curvature: on a unit sphere the normal
+part of $\nabla_a v_b$ is exactly $-v$.  \eqref{eq:intrinsicpart} says
+
+\begin{quote}
+  \textbf{On a tangential tensor the intrinsic covariant derivative is $\eth$
+  applied component by component, up to $\sqrt2$, and it is closed.}
+\end{quote}
+
+So the two operators differ by an algebraic term, not a differential one, and
+$\eth$ is not a poor relation of $\partial^\sigma$: it is the intrinsic
+derivative, exact on exactly the objects --- tangential, spin-weighted --- that
+it was invented for.  Which of the two a caller wants depends on whether the
+radial directions are part of the problem.
+
+\subsection{What is implemented}
+
+\code{SurfaceGradient} is $\nabla_1$: \eqref{eq:dminus} and
+\eqref{eq:dplus} without the $r^{-1}$, taking a rank-$q$ tensor expansion
+to a rank-$(q+1)$ one.
+
+\paragraph{No radial part.}  $\partial^0$ is $\partial/\partial r$, which
+an angular library cannot supply; but the \emph{surface} gradient has no
+$\ebasis{0}$ component at all (D\&T C.145), so the operator is complete
+without it and the radial derivative is the user's to provide.  What that
+means for the result is that its $\sigma=0$ block is stored and zero: a
+rank-$(q+1)$ tensor whose $\ebasis{0}$ slot vanishes is an ordinary
+tensor, and keeping it as one leaves the result composable with
+contraction, further gradients and the transform, for a third of the
+storage.
+
+\paragraph{The result has no symmetry and keeps the operand's reality.}
+$\nabla_1$ of a symmetric tensor is not symmetric in the new slot against
+the old ones, and inferring a symmetry from an operator is the problem
+\code{Materialise} declined to solve.  $\nabla_1$ of a real tensor is
+real, so only the reduced set is computed.
+
+\paragraph{It needed one thing the spectral side had left out.}  Every term is a
+coefficient of some component at fixed $(l,m)$, and the shifted components
+need not be stored.  \code{TensorExpansion::Coefficient} now answers for
+\emph{any} representable component, resolving the stored case, a
+permutation relative, a reality relative by \eqref{eq:complevel}, a real
+block's reduced $m\geq 0$ storage, a pinning as imaginary, and a vanishing
+orbit.  It is the spectral counterpart of phase~4's component accessor and
+closes the asymmetry noted above.
+
+\paragraph{What the tests pin.}  On a scalar the operator is $\eth$ up to
+$\sqrt2$, which checks the $\Omega$ factors and nothing else.  The metric
+trace of the \emph{second} gradient of a scalar is the surface Laplacian,
+$-l(l+1)$ --- and that runs through the connection terms, since
+$\partial^-$ of the $+1$ component subtracts the $0$ component, so the
+identity fails outright if the operator is $\eth$ applied component-wise.
+The chain rule \eqref{eq:leibniz} is checked at rank one, in the spatial
+domain.  And the gradient of a real tensor is checked against the same
+field widened to a complex one, which exercises reading derived components
+and writing pinned ones.
+
+\paragraph{Divergence and curl} are contractions of the gradient (D\&T
+C.6.2).  Contraction is pointwise, so a caller evaluates the gradient and
+contracts with the machinery of \S\ref{sec:types}; there is no separate
+operator.
+
+\paragraph{One further property worth knowing.}  $\partial^{\sigma}$
+preserves the chain rule as an operator on fields, D\&T (C.154)--(C.155):
+$\nabla(\mathbf{T}\mathbf{P}) = (\nabla\mathbf{T})\mathbf{P} +
+\mathbf{T}(\nabla\mathbf{P})$ gives
+\begin{equation}
+  \partial^\sigma(T^{\alpha\ldots}P^{\beta\ldots}) =
+  (\partial^\sigma T^{\alpha\ldots})P^{\beta\ldots} +
+  T^{\alpha\ldots}(\partial^\sigma P^{\beta\ldots}).
+  \label{eq:leibniz}
+\end{equation}  It does \emph{not}
+hold coefficient by coefficient, because a product of fields is not a
+product of coefficients --- which is the same fact that makes ``the
+gradient of a product'' an operation in two representations.
+
+\section{Quadrature}
+\label{sec:quadrature}
+
+\paragraph{Colatitude.}  Gauss--Legendre with $n_\theta = l_{\max}+1$
+nodes, which integrates a polynomial of degree $2n_\theta-1$ in
+$\cos\theta$ exactly.  The nodes are the roots of $P_{n_\theta}$, mapped
+by $\theta = \arccos(-x)$, and are symmetric about $\pi/2$.
+
+\paragraph{Longitude.}  The trapezoid rule on $n_\phi$ equally spaced
+points, which is exact for $e^{i(m-m')\phi}$ only when $|m-m'| < n_\phi$.
+Analysing a band-$l_{\max}$ field needs $|m|,|m'|\leq l_{\max}$, hence
+\begin{equation}
+  n_\phi \geq 2 l_{\max} + 1.
+  \label{eq:nphi}
+\end{equation}
+At $n_\phi = 2l_{\max}$ the orders $m=+l_{\max}$ and $m=-l_{\max}$ are the
+same discrete mode and cannot be separated.  The library takes the
+smallest \emph{fast} FFT length at or above the bound --- restricted to
+$2^a 3^b 5^c 7^d 11^e 13^f$ with $e+f\leq 1$, the set FFTW has codelets
+for --- because the naive $2l_{\max}+2$ lands on $514 = 2\times 257$ at
+$l_{\max}=256$, and 257 is prime.  The smooth choice there is $520$, at
+about 1.5\% more FFT work, and the FFT is not the expensive stage
+(\S\ref{sec:transform}).
+
+\paragraph{Headroom.}  A product of two band-$L$ fields has band $2L$, and
+$\int|f|^2$ for band-$L$ $f$ integrates a degree-$2L$ quantity.  Both want
+a grid resolving more than the fields do.  \code{Grid::ForBand(L, nMax,
+oversampling)} expresses that distinction --- the band of the fields
+against the resolution of the grid --- rather than leaving a caller to
+compute a degree and hope; the $3/2$ dealiasing rule is
+$\text{oversampling}=1.5$ and $2$ is exact for a single product.
+
+\part{Numerical methods}
+
+\section{The transform}
+\label{sec:transform}
+
+\subsection{The algorithm}
+
+The forward transform of a field at upper index $n$ is
+\begin{equation}
+  f^{n}_{lm} = \sum_{i} w_i\, X^{n}_{lm}(\theta_i)\, F_m(\theta_i),
+  \qquad
+  F_m(\theta) = \frac{2\pi}{n_\phi}\sum_{j} f(\theta,\phi_j) e^{-im\phi_j},
+  \label{eq:forward}
+\end{equation}
+so it is an FFT in longitude at each colatitude, followed by a weighted
+sum over colatitudes against the stored $X$.  The inverse runs the same
+two stages in the other order.  Both are separable exactly because
+\eqref{eq:gsh} is a product of a function of $\theta$ and $e^{im\phi}$.
+
+\paragraph{Cost.}  The FFT stage is $O(n_\theta\, n_\phi \log n_\phi)$ and
+the Legendre stage is $O(n_\theta\, l_{\max}^2)$, and at production sizes
+the second dominates completely.  Measured at $l_{\max}=256$, $n=2$: a
+forward transform takes 19.0\,ms, of which the FFT stage is
+\textbf{0.43\,ms} and the Legendre stage \textbf{18.6\,ms} --- a factor of
+44.  Any optimisation effort that does not address the Legendre stage is
+misdirected, and this number is the reason the library's performance work
+concentrates entirely there.
+
+\paragraph{Where the Legendre stage's time actually goes} is less obvious
+than it looks.  Single-threaded it runs at about 19\% of the read
+bandwidth one core can achieve, so it is not DRAM-bound; what binds it is
+load/store throughput.  Per stored value the inner loop does one 8-byte
+read that reaches memory and then, from cache, a read of the FFT bin and a
+read-modify-write of the coefficient --- four memory operations, only one
+of which is a miss.  Three hand-optimised rewrites of the kernel (weight
+hoisted, real and imaginary parts split, raw pointers) moved it by less
+than a factor of two in either direction.
+
+\subsection{Real fields}
+
+A real-valued field exists only at $n=0$, where $f_{l,-m} = (-1)^m
+\conj{f_{lm}}$ by \eqref{eq:complevel}.  The transform then uses a
+real-to-complex FFT and stores only $m\geq 0$, halving both the FFT work
+and the coefficient count.  At $n\neq 0$ the same reduction is
+\emph{invalid}: it assumes the self-relation $f^N_{l,-m}=(-1)^{m-N}
+\conj{f^N_{lm}}$, which holds only when $f$ is its own conjugate, and a
+spin-weighted field is its own conjugate only at $N=0$.  The library
+therefore forbids real-valued fields at nonzero upper index in the type
+system, and the transform throws if asked.
+
+\subsection{Transforming is a projection}
+\label{sec:projection}
+
+A component at upper index $N$ has no content below degree $|N|$, because
+no harmonic there exists.  So the forward transform of an \emph{arbitrary}
+field discards whatever that field had at low degree, and evaluating the
+result does not reproduce the input.  It reproduces its projection onto
+the span of the harmonics that exist.
+
+This is not an error and not a loss of accuracy: it is what the expansion
+means.  Once a field is band-limited --- for instance because it came from
+an inverse transform --- the round trip is an identity to rounding.
+Example~06 shows both, and prints $5\times10^{-1}$ for the first and
+$4\times10^{-14}$ for the second.
+
+\section{Computing the \texorpdfstring{$d$}{d}-functions}
+\label{sec:recursion}
+
+This is where nearly all the arithmetic is, and where the library differs
+most from the reference texts.
+
+\subsection{Recursion in \texorpdfstring{$l$}{l}, not in \texorpdfstring{$m$}{m}}
+
+D\&T describe two schemes, both at fixed degree: their (C.121) recurs in
+$m$ at fixed $N$, and (C.122) recurs in $N$ at fixed $m$.  For stability
+they iterate (C.121) upward from $m=-l$ and downward from $m=+l$ and meet
+at $m = N\cos\theta$, seeding each end with the closed forms
+\eqref{eq:minorder}--\eqref{eq:maxorder}.
+
+The library recurs in \emph{degree}, at fixed $(N,m)$.  This is the scheme
+Woodhouse used, and the code is an evolution of his Fortran~77
+implementation; D\&T do not discuss it.  The recursion is
+\begin{equation}
+  d^{l}_{Nm} = f_1\, d^{l-1}_{Nm} - f_2\, d^{l-2}_{Nm},
+  \label{eq:lrecursion}
+\end{equation}
+with
+\begin{equation}
+  f_1 = \frac{(2l-1)\left[\,l(l-1)\cos\theta - Nm\,\right]}
+             {(l-1)\sqrt{(l^2-N^2)(l^2-m^2)}},
+  \qquad
+  f_2 = \frac{l\,\sqrt{\left((l-1)^2-N^2\right)\left((l-1)^2-m^2\right)}}
+             {(l-1)\sqrt{(l^2-N^2)(l^2-m^2)}} .
+  \label{eq:lcoefficients}
+\end{equation}
+
+\paragraph{Why this one.}  The transform consumes the values one degree at
+a time, in ascending order, for a fixed $(N,\theta)$ --- see
+\eqref{eq:forward}.  A recursion in $l$ produces them in exactly that
+order, so the same loop that fills the table can in principle feed the
+transform directly, and a truncated transform can stop early and pay for
+nothing it does not use.  A recursion in $m$ produces a whole degree at
+once and would have to be run to completion first.
+
+\paragraph{What it costs.}  Of the coefficients in
+\eqref{eq:lcoefficients}, only the $\cos\theta$ term depends on the
+colatitude; the four square roots are $\theta$-independent and are read
+from a precomputed table of $\sqrt{k}$ and $1/\sqrt{k}$ --- two vectors of
+$2l_{\max}+1$ entries, which is the whole of the auxiliary storage the
+recursion needs.  The inner loop runs over $m$ at fixed $(l,N,\theta)$
+with unit stride on three rows, which vectorises.
+
+\paragraph{The removable singularity.}  At $l = |N|+1$ the factor $1/(l-1)$
+in \eqref{eq:lcoefficients} is $1/|N|$, which is a division by zero at
+$N=0$; but $N/(l-1) = \mathrm{sign}(N)$ there, and $d^{l-2}$ does not
+exist, so that degree is taken by a separate one-term branch with the
+singular factor cancelled analytically.  The same one-term form appears at
+the ``critical degree'' $l = m_{\max}+1$, where the row stops growing.
+
+\subsection{The seed row and the boundary terms}
+
+The recursion needs starting values in two senses.
+
+\paragraph{The seed row}, at $l=|N|$, is a loop over $m$ at a single
+degree.  At $l=|N|$ the closed form reduces to
+\begin{equation}
+  P^{N}_{l,-m}\big|_{l=|N|}
+    = \sqrt{\binom{2l}{l+m}}\;
+      \left(\sin\tfrac{\theta}{2}\right)^{l-m}
+      \left(\cos\tfrac{\theta}{2}\right)^{l+m},
+  \label{eq:seedrow}
+\end{equation}
+and the binomial row is generated exactly by the standard step
+$\binom{2l}{k} = \binom{2l}{k-1}(2l-k+1)/k$.  The row is at most $2|N|+1$
+long --- five entries for a rank-2 application --- so this is not about
+cost; see \S\ref{sec:signgam}.
+
+\paragraph{The boundary terms} are the values at $m=\pm l$, needed once
+per degree as the row grows.  Evaluating \eqref{eq:minorder} directly costs
+three $\log\Gamma$ and an exponential each time, which at $l_{\max}=256$
+is about $1.3\times10^5$ transcendental evaluations per upper index per
+pass.  They obey a one-term recursion in $l$: writing $s=\sin(\theta/2)$,
+$c=\cos(\theta/2)$,
+\begin{equation}
+  \frac{P^{N}_{l,-l}}{P^{N}_{l-1,-(l-1)}}
+    = \sqrt{\frac{2l(2l-1)}{(l-N)(l+N)}}\;\; s\,c,
+  \label{eq:boundaryrecursion}
+\end{equation}
+valid for $l > |N|$, seeded at $l=|N|$ where the square root is one and
+the value is $s^{2|N|}$ for $N\geq 0$ and $c^{2|N|}$ for $N<0$.  Both
+boundaries ride on the same recursion, because the ratio depends on $N$
+only through $N^2$ and because $P^N_{ll} = (-1)^{N+l}P^{-N}_{l,-l}$.
+
+\subsection{Why the recursion is the safer form}
+
+The closed form \eqref{eq:minorder} is evaluated in logarithms, and it has
+to be: $\sqrt{(2l)!/\cdots}$ is of order $4^l$ and overflows long before
+the value it belongs to, which is bounded by one.  The recursion
+\eqref{eq:boundaryrecursion} multiplies by a factor of order $2sc =
+\sin\theta \leq 1$ at each step, so nothing large is ever formed and no
+$\log\Gamma$ is needed.  It is more robust than what it replaced, not
+less.
+
+Measured against the closed forms over $l_{\max}=128$, $|N|\leq 3$ and six
+colatitudes, the worst relative discrepancy is $2\times10^{-13}$ in double
+and $9\times10^{-17}$ in long double --- very nearly the same multiple of
+$\varepsilon$, about 1000, in both, and growing linearly in $l_{\max}$
+rather than with the number of entries compared.  That says the drift
+belongs to the \emph{closed form}, which exponentiates a logarithm of size
+$O(l\log 4)$ and loses bits in proportion.  The recursion's values are the
+better ones, and the test's tolerance is written as $20\,l_{\max}
+\varepsilon$ for that reason.
+
+\subsection{The poles, and a data race}
+\label{sec:signgam}
+
+At $\theta=0$ and $\theta=\pi$ the ratio \eqref{eq:boundaryrecursion} is
+$0\times\infty$.  No special case is needed: the seed is already the exact
+$0$ or $1$ that the closed form's boundary branches return, and the factor
+is zero thereafter, so the recursion produces the right answer unaided.
+
+The seed row \eqref{eq:seedrow} was moved off the closed form for a
+different reason.  glibc's \code{lgamma} writes the global
+\code{signgam}, and the table is filled from every thread, so the closed
+form is a data race there --- benign, since nothing reads \code{signgam},
+but the only genuine one the library contains.  Generating the binomial
+row instead removes the last $\log\Gamma$ from any threaded path, and the
+values are exact rather than merely accurate.
+
+Two things follow that are worth recording.  Grid construction is about
+8\% faster, which is what the arithmetic predicts: the boundary is two
+values per degree out of $2l+1$, so however expensive a $\log\Gamma$ is,
+it is being paid on under 1\% of the table.  And ThreadSanitizer cannot
+confirm the absence of the race, because GCC's \code{libgomp} carries no
+TSan annotations and every OpenMP region is reported as racing with
+whatever ran before it; a Clang build against a \code{libomp} compiled
+with \code{LIBOMP\_TSAN\_SUPPORT} is the only way to get a real answer.
+
+\section{Storage and access}
+\label{sec:storage}
+
+\subsection{The table}
+
+Values are held as a flat array indexed by $(N, i_\theta)$ then by
+$(l,m)$, contiguous in $(l,m)$ for each $(N,i_\theta)$ --- so a degree's
+row is a contiguous run, which is what the transform's inner loop wants.
+Offsets are closed form (\code{GSHIndices::OffsetForDegree}), not looked
+up.
+
+The table is large.  At $l_{\max}=256$ with $n_{\max}=2$ and all upper
+indices it is $5\times 257\times(257^2-N^2)$ doubles, about 648\,MB; at
+$l_{\max}=512$ it is 5.4\,GB.  This is why the grid is a value-semantic
+handle over shared immutable state: copying one is a pointer copy, and
+$\code{sizeof(Grid)}$ is 16 bytes.  Before that change, twenty copies of a
+$l_{\max}=128$ grid cost 1638\,MB; afterwards, nothing.
+
+\subsection{The row supplier}
+
+Both transform loops take the row for a degree from an accessor rather
+than walking a single iterator across the whole block.  The only thing
+either loop needs is \emph{a contiguous run of values in $(l,m)$ order for
+one $(N,i_\theta)$}, and asking for it one degree at a time costs a few
+integer operations against a loop of length $(2l+1)k$.
+
+That seam exists so the values can come from somewhere other than a table.
+A second implementation runs the recursion into per-thread scratch inside
+the transform, and a grid can be asked for it at construction.  It builds
+no table at all: construction at $l_{\max}=256$ goes from 0.248\,s and
+648\,MB to 0.015\,s and nothing.
+
+\paragraph{It is slower, and the measurement is worth keeping.}  On an
+8-core laptop the generated path is 1.4--3.2$\times$ slower than the
+stored one in every configuration measured.  Batching narrows the gap,
+since generation amortises over a chunk exactly as a table stream does,
+but \emph{threads do not}: the ratio at eight threads is the ratio at one.
+The premise that the stored path is pinned at the DRAM roof while a
+generated one scales with cores is not visible on eight cores, and the
+deployment target has more memory bandwidth per core, not less.  What
+survives is the memory saving, which is large, and a NUMA argument that
+only a two-socket machine can settle.
+
+\section{Batching, chunking and threading}
+\label{sec:batching}
+
+\subsection{The batch}
+
+The transform's primitive is ``transform $k$ fields sharing a grid, a
+degree and an upper index'', with the single field as $k=1$.  What is
+being amortised is the Wigner block for that upper index, which is why
+fields at different upper indices cannot batch together --- for a rank-2
+tensor that means batching over radii within each $N$, not across
+components.
+
+A batch is described by $(\text{count}, \text{stride}, \text{dist})$
+rather than by contiguity: element $j$ of field $k$ lives at
+$j\cdot\text{stride} + k\cdot\text{dist}$.  This is FFTW's advanced-interface
+form, and it costs nothing at the stage that actually reads the caller's
+layout, so it covers both arrangements the field layer produces:
+\begin{center}
+\begin{tabular}{lrr}
+  \toprule
+  & stride & dist \\
+  \midrule
+  components stored component by component & 1 & FieldSize \\
+  components stored point by point & $n_{\text{components}}$ & 1 \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{The descriptor's uniformity is a constraint on tensor storage},
+which was not obvious in advance.  Its members must be evenly spaced, and
+in flat multi-index order the stored components sharing one upper index
+are scattered at no fixed spacing as soon as there is any symmetry.  So a
+tensor's buffer is ordered \emph{by upper index}, which makes each group a
+contiguous run on both the field side and the coefficient side.  Ordered
+any other way, the batching the primitive exists for would be unreachable
+from the layer it was built for.
+
+\paragraph{What batching is worth.}  About $2.3\times$ at the optimum,
+not $k$.  The gain saturates because the stage is bound by per-element
+load/store work rather than by table bandwidth, and batching removes
+$(k-1)/k$ of the \emph{table} reads while leaving that untouched.  It also
+\emph{reverses} beyond an optimum: the coefficient array is $k$ times
+larger, and once it stops fitting in cache it is streamed from DRAM too.
+
+\subsection{Chunking}
+
+Because of that reversal, a batched call processes a large batch in chunks
+of an internally chosen size rather than handing the caller's $k$ straight
+to the inner loop.  The chunk is
+\begin{equation}
+  \text{chunk} \approx \frac{\text{cache}}
+    {2 \times \text{copies} \times \text{bytes per coefficient block}},
+  \label{eq:chunk}
+\end{equation}
+rounded to nearest, the factor of two being headroom for the streamed
+Wigner row and the FFT output.
+
+\paragraph{``Copies'' is not the thread count in both directions}, and
+getting that wrong cost a factor of two.  The forward transform gives every
+thread a private accumulator of $\text{chunk}\times\text{coefficientSize}$,
+so its copies are its threads; the inverse gathers one block, shared and
+read-only, so it has one copy however many threads read it.  Serving both
+with the thread count starved the inverse --- at $l_{\max}=256$, $k=8$ on
+eight threads it returned a chunk of one where the whole batch fits, and
+the correction measured $2.0\times$ on that direction.
+
+One thing the rule still cannot see: on a multi-CCD or multi-socket
+machine a shared block is pulled into each cache domain that touches it,
+so the inverse's single copy is really one per domain.
+
+\subsection{Threading}
+
+Threading is an explicit per-call policy and defaults to sequential.  The
+library creates threads because it was asked to and not because it can,
+and the rule it keeps is that \textbf{exactly one level threads}: an
+operation asked to run in parallel from inside an existing parallel region
+runs sequentially instead, so a caller parallelising over slices,
+components or realisations cannot nest with the transform, and neither can
+the table build.
+
+The decomposition is over colatitudes, and the two directions differ.  The
+inverse transform's colatitudes write disjoint rows and share only
+read-only input, so they divide with no reduction at all.  The forward
+transform's colatitudes all contribute to every coefficient, so each
+thread accumulates into a private buffer and the partial sums are added at
+the end --- partitioned rather than serialised: each thread sums every
+thread's partials for its own block of coefficients.
+
+\paragraph{Measured}, at $n=2$, complex, per call:
+\begin{center}
+\begin{tabular}{lrrrrr}
+  \toprule
+  & 1 thread & 2 & 4 & 8 & 16 \\
+  \midrule
+  $l_{\max}=128$, forward & 1.75\,ms & 1.89$\times$ & 2.98$\times$ & \textbf{4.02$\times$} & 3.13$\times$ \\
+  $l_{\max}=128$, inverse & 1.77\,ms & 1.83$\times$ & 3.07$\times$ & 4.15$\times$ & \textbf{4.57$\times$} \\
+  $l_{\max}=256$, forward & 12.16\,ms & 1.63$\times$ & 2.51$\times$ & \textbf{2.68$\times$} & 2.23$\times$ \\
+  $l_{\max}=256$, inverse & 12.54\,ms & 1.69$\times$ & 2.64$\times$ & \textbf{2.98$\times$} & 2.97$\times$ \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+Sixteen threads is not better than eight and is often worse: the machine
+has eight cores and sixteen hardware threads, and for memory-bound work
+the second thread on a core adds contention rather than throughput.
+Callers should ask for cores.
+
+At $l_{\max}=128$ on eight threads the stage reaches 39--40\,GB/s against
+a measured machine roof near 42, so it is genuinely bandwidth-bound there
+and nothing further can be won without reducing the traffic itself.
+
+\section{What the type system enforces}
+\label{sec:types}
+
+The field algebra is built so that a statement which is not mathematically
+meaningful does not compile.  What follows is the list, with the reason in
+each case.
+
+\subsection{The index algebra}
+
+Every node --- an owning field, a view, or an expression --- carries its
+upper index as a compile-time constant, and the operators enforce
+\S\ref{sec:components}:
+
+\begin{center}
+\begin{tabular}{lll}
+  \toprule
+  expression & upper index & requires \\
+  \midrule
+  $f+g$, $f-g$ & $N$ & equal upper indices \\
+  $fg$ & $N_f + N_g$ & --- \\
+  $f/g$ & $N_f$ & $N_g = 0$ \\
+  $\conj{f}$ & $-N_f$ & --- \\
+  $|f|$, $|f|^2$ & $0$ & --- \\
+  $\mathrm{Re}\,f$, $\mathrm{Im}\,f$, $F(f)$ & $0$ & $N_f = 0$ \\
+  $\int f \dOmega$ & --- & $N_f = 0$ \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+Three of these were wrong in the layer this replaced, and they are worth
+naming.  \textbf{Conjugation reverses the upper index}: a quantity
+carrying $e^{-iN\psi}$ has a conjugate carrying $e^{+iN\psi}$.
+\textbf{Real and imaginary parts exist only at $N=0$}, because for
+$N\neq 0$ the split is not preserved by a frame rotation and neither part
+is a component of anything.  \textbf{Nonlinear functions likewise}, and
+integration with them, since $\int f\dOmega$ vanishes identically unless
+$N=0$.
+
+The constraints are \code{requires}-clauses on the free operators, so an
+unlawful combination is an overload-resolution failure at the call site
+rather than an error inside a node --- which also means the negative cases
+can be tested.
+
+\subsection{Real-valuedness}
+
+A node may be real-valued \emph{only} at $N=0$.  Real-valuedness is not
+preserved by the frame rotation, so it is not a property any component of
+any tensor can have elsewhere; a library able to represent one could
+represent something that does not exist.  The constraint is closed under
+every operation in the algebra --- $\mathrm{Re}$, $\mathrm{Im}$, $|f|$,
+$|f|^2$ and $F(f)$ all land at $N=0$ precisely because that is the only
+place their results could be real --- so it is checked once, on the
+concept, and never re-derived.
+
+\subsection{Laziness, and the aliasing theorem}
+
+Operators build expression nodes; nothing is evaluated until a value is
+read.  Every node in the layer is \textbf{pointwise and index-preserving}:
+the value at $(i_\theta,i_\phi)$ reads its operands only at
+$(i_\theta,i_\phi)$.  Hence
+\begin{quote}
+  $u = \text{expr}$ is safe when $u$ occurs in $\text{expr}$, and needs no
+  temporary.
+\end{quote}
+That is a theorem about the node set rather than a property of any one
+operator, which is why the invariant is stated in the stronger
+``index-preserving'' form: a re-indexing view --- a longitude shift, a
+transpose of the grid --- would be pointwise in the loose sense and would
+break it.  Operations that are genuinely not pointwise (gradients,
+raising and lowering, radial derivatives) live in the spectral layer for
+this reason and not by accident.
+
+Operand storage follows the value category: a terminal passed as an lvalue
+is held by reference, everything else by value.  The residual hazard --- an
+lvalue terminal destroyed while an expression referring to it is alive ---
+is the same one Eigen has and is not removable in C++.
+
+\subsection{Which components a tensor stores}
+
+Both reductions of \S\ref{sec:reality} are computed by one \code{constexpr}
+walk of the group generated by the permutation symmetry together with, for
+a real tensor, the negation.  Reaching a component twice by different
+routes is the interesting case rather than a failure: equating the two
+routes produces a constraint.
+\begin{center}
+\begin{tabular}{ll}
+  \toprule
+  the two routes differ by & the orbit is \\
+  \midrule
+  a sign, same conjugation & identically zero \\
+  conjugation, signs equal & real \\
+  conjugation, signs opposite & purely imaginary \\
+  \bottomrule
+\end{tabular}
+\end{center}
+The first arises without reality at all --- it is the vanishing diagonal
+of an antisymmetric tensor.  The others are the self-paired components,
+which always sit at $N=0$, and are therefore exactly where a real-valued
+field is admissible.
+
+One consequence reaches the interface: a component accessor cannot return
+one type.  A stored component is a view, a symmetric-permutation relative
+is the same view, an antisymmetric relative is that view negated, a
+reality relative is its conjugate at the reversed upper index, and a
+vanishing orbit has nothing to return.  Traversal over all $3^p$
+components is therefore a compile-time loop, not a runtime one.
+
+\subsection{The two domains are not symmetric}
+
+On the spatial side a derived component is pointwise --- $T^{-\alpha} =
+(-1)^N\conj{T^{\alpha}}$ --- so a view plus an expression node gives it.
+On the spectral side the corresponding relation is \eqref{eq:complevel},
+$T^{-N}_{l,-m} = (-1)^m \conj{T^{N}_{lm}}$, which \emph{reverses the order
+index}.  That is not a view over anything, so a tensor expansion exposes
+only its stored components and deriving is done in the spatial domain.
+This is the one place where the mirror between field and expansion breaks.
+
+\section{Validation}
+\label{sec:validation}
+
+What each oracle actually pins, since a test suite that all passes is
+uninformative about which facts are load-bearing.
+
+\begin{center}
+\begin{tabular}{lp{9.2cm}}
+  \toprule
+  oracle & what it pins \\
+  \midrule
+  \code{CheckWignerConvention}
+    & That the stored value is $X^N_{lm}$ with the upper index first,
+      against all nine $l=1$ values of D\&T (C.115).  Discriminating:
+      the four entries with $N-m$ odd distinguish $d^l_{Nm}$ from
+      $d^l_{mN}$. \\
+  \code{CheckLegendre}
+    & The $N=0$ row against \code{std::sph\_legendre}, which fixes the
+      orthonormal scaling and the Condon--Shortley phase. \\
+  \code{CheckAdditionTheorem}
+    & \eqref{eq:addition} over all $|N|,|N'|\leq 40$ at $l_{\max}=40$, to
+      $1000\varepsilon$.  The strongest single check on the recursion:
+      boundary values feed the two-term recursion at every higher degree,
+      so an error anywhere propagates into it. \\
+  \code{CheckWignerBoundary}
+    & The boundary recursion and the binomial seed row against the closed
+      forms they replaced, to $20 l_{\max}\varepsilon$ --- a tolerance
+      argued from where the drift actually is
+      (\S\ref{sec:recursion}). \\
+  \code{CheckCoeff2Coeff}
+    & Coefficient-to-coefficient round trips. \\
+  \code{TestRealFieldSymmetry}
+    & \eqref{eq:basiclevel} at $n=2$ through complex transforms, and the
+      rejection of real transforms at nonzero upper index. \\
+  batched transform tests
+    & A batch of $k$ against $k$ separate calls, at \emph{exact}
+      equality.  Batching widens the inner loop without reordering any
+      sum, so any difference at all would mean it had been restructured
+      rather than widened. \\
+  generated-path tests
+    & The generating supplier against the stored table, again at exact
+      equality: same recursion, same order, same rounding, only the
+      storage differs. \\
+  reality tests
+    & \eqref{eq:reality} at every component of every tensor, and that the
+      stored set costs $3^p$ reals per point. \\
+  $\eth$ tests
+    & \eqref{eq:ethidentities}, both of them. \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{On measuring this library.}  The development machine's clock
+scales under load, and the noise floor between back-to-back runs of
+identical code is about 10\%.  Comparisons must interleave the two
+versions in one process; figures from different sessions are worth less
+still.  Within-run ratios --- the stage split, the batching curve --- are
+unaffected, because their terms are measured moments apart.
+
+\section{The GEMM restructure}
+\label{sec:gemm}
+
+This was the one substantial piece of performance work the library had not
+done, and it is the lever aimed at what actually binds.  \textbf{It is now
+built} --- \code{TransformKernel::Matrix()}.
+
+What follows is the argument as it was made, in enough detail to be argued
+with, because the argument is what the measurement was read against; \S12.7
+records what happened, including the two places where the prediction was
+wrong.  The conditional voice below is deliberate and is not an oversight.
+
+\subsection{The Legendre stage is a matrix product}
+
+Written as it is implemented, the forward Legendre stage loops over
+colatitudes and accumulates:
+\begin{equation}
+  f^{n}_{lm} \mathrel{+}= w_i\, X^{n}_{lm}(\theta_i)\, F_m(\theta_i)
+  \qquad\text{for each } i, l, m .
+  \label{eq:currentloop}
+\end{equation}
+Reordered so that the sum over $\theta$ is innermost, and at fixed upper
+index $n$, it is one matrix product \emph{per order}:
+\begin{equation}
+  f^{n}_{lm} = \sum_{i} D^{(n,m)}_{l i}\, b^{(m)}_{i},
+  \qquad
+  D^{(n,m)}_{l i} = X^{n}_{lm}(\theta_i),
+  \qquad
+  b^{(m)}_{i} = w_i F_m(\theta_i).
+  \label{eq:gemv}
+\end{equation}
+Over a batch of $k$ fields the right-hand side becomes a matrix and this is
+a GEMM,
+\begin{equation}
+  \underbrace{(n_L(m) \times n_\theta)}_{D^{(n,m)}}
+  \times
+  \underbrace{(n_\theta \times k)}_{\text{weighted FFT output}}
+  \;\longrightarrow\;
+  \underbrace{(n_L(m) \times k)}_{\text{coefficients}},
+  \label{eq:gemmshape}
+\end{equation}
+with $n_L(m) = l_{\max} - \max(|n|,|m|) + 1$ degrees surviving at that
+order.  The inverse transform is the same matrix applied the other way
+round, $(n_\theta \times n_L) \times (n_L \times k)$, so \emph{one stored
+matrix serves both directions} through a transpose flag.
+
+At $l_{\max}=256$ there are $2l_{\max}+1 = 513$ such products per upper
+index, of heights $n_L$ from 257 down to 1, all with $n_\theta = 257$
+columns.
+
+\subsection{Why it should be faster}
+
+Not for the reason P2 originally gave.  The stage is not short of
+arithmetic intensity against DRAM; it is short of \emph{arithmetic per
+memory operation} (\S\ref{sec:transform}).  Count them.
+
+In \eqref{eq:currentloop}, one stored value $X$ is real and one FFT bin and
+one accumulator are complex, so each visit costs, in doubles, one load of
+$X$, two of the bin, and a load and a store of the accumulator --- seven
+accesses --- for two fused multiply-adds, or four flops.  That is about
+$0.6$ flops per double touched, and no amount of rewriting the loop moves
+it, which is what the three hand-optimised variants of P1 found.
+
+A GEMM microkernel holds a tile of the output in registers and streams the
+two operands past it.  With a tile of $m_r$ rows by $n_r$ columns, each
+step of the $K$ loop loads $m_r + n_r$ doubles and performs $m_r n_r$
+fused multiply-adds:
+\begin{equation}
+  \frac{\text{flops}}{\text{double touched}}
+    = \frac{2 m_r n_r}{m_r + n_r}
+    \;\approx\; 5.3 \quad\text{at } m_r=4,\; n_r=8,
+  \label{eq:microkernel}
+\end{equation}
+and the accumulator never leaves the registers, so its traffic vanishes
+entirely rather than being counted.  That is an order of magnitude better
+than the loop it replaces, on precisely the metric that binds.
+
+\paragraph{The DRAM traffic is unchanged.}  The table is still read once
+per batch; nothing about the restructure reduces it.  So the GEMM buys
+nothing at all in the regime where the stage is bandwidth-bound --- which
+it is, unbatched, on eight threads at $l_{\max}=128$, where it already
+reaches 39--40\,GB/s against a roof near 42.  It buys everything in the
+batched regime, where the same stage runs at about a fifth of the roof and
+under a tenth of compute peak.  Since the field layer always batches, that is
+the regime that matters, but the distinction should be kept in view: a
+benchmark run unbatched will show the restructure doing nothing, and be
+right.
+
+\subsection{What has to change}
+
+\paragraph{The Wigner layout, which is the whole of step G's first option.}
+\eqref{eq:gemmshape} needs $D^{(n,m)}$ contiguous in $(l,\theta)$ for fixed
+$(n,m)$.  The table is currently contiguous in $(l,m)$ for fixed
+$(n,\theta)$, which is the transpose of what is wanted.  Storing it as
+$[n][m][l][\theta]$ makes each matrix a contiguous row-major block with
+leading dimension $n_\theta$, and the total size is unchanged --- summing
+$n_L(m)\, n_\theta$ over $m$ gives the same $66\,045 \times 257$ doubles
+per upper index.  \code{Wigner}'s existing \code{Storage} tag orders the
+$(n,\theta)$ axes only; this is a finer and different axis order, and it is
+what \code{RowMajor}'s deferred fate ([C7]) was waiting for.
+
+\paragraph{The FFT output has to land in $m$-major order}, since
+\eqref{eq:gemmshape} wants, for one $m$, a contiguous $(\theta,\kappa)$
+block.  That means all the FFTs run \emph{before} any of the Legendre
+stage, rather than interleaved per colatitude as now --- the intermediate
+is $n_\phi \times n_\theta \times k$ complex, which is just the field, 2.1\,MB
+at $l_{\max}=256$ and $k=1$.
+
+The transpose is nearly free, for the same reason it was free in tier 1
+(P6): a \code{plan\_many} with output stride equal to the number of
+transforms and output distance 1 writes the result directly in
+$[m][\theta][\kappa]$ order.  \emph{Nearly}, and this paragraph used to say
+\emph{free} and to specify a single call over all $n_\theta k$ rows.  Both
+were corrected by measurement.  The strided write
+costs four to eight times as much when the number of transforms times 16 is a
+power of two, because successive orders then collide in the same cache sets;
+and a \emph{small} block of colatitudes per call beats one large one by
+1.7--2$\times$ while wanting eighty times less workspace, since a strided
+write over a few hundred bytes stays inside a couple of cache lines and one
+over tens of kilobytes does not.
+
+\paragraph{The GEMM is real, and that is a gift.}  $D$ is real while the
+data are complex, so there is no standard complex-times-real BLAS call ---
+but there does not need to be.  A complex $(n_\theta \times k)$ block with
+$\kappa$ fastest \emph{is} a real $(n_\theta \times 2k)$ block, since
+\code{std::complex} stores its parts adjacently.  So the whole stage is
+\code{dgemm} with $N = 2k$, and the doubling helps most exactly where $k$
+is small.
+
+\subsection{What it does to threading}
+
+The products at different $m$ write disjoint outputs.  So the natural
+decomposition is over orders, and it needs \textbf{no accumulator and no
+reduction in either direction} --- which is why \S10 says this restructure
+subsumes [C11].  The forward transform's thread-private accumulators, which
+are correct at eight threads and are predicted not to survive 64--128,
+simply stop existing.
+
+Two cautions.  The work per order is not constant: $n_L(m)$ falls linearly
+in $|m|$, so a static split over orders is roughly twice as unbalanced as
+it looks, and the schedule should divide work rather than count.  And a
+thread's share of the table is a set of whole $(n,m)$ blocks, which is a
+better NUMA story than the current colatitude split --- first touch during
+the table build can be made to match the split exactly, which it currently
+cannot.
+
+\subsection{What to expect, honestly}
+
+The shape is unfavourable.  A GEMM reaches a large fraction of peak when
+all three dimensions are large; here $M = n_L$ is large only for small
+$|m|$, $K = n_\theta$ is a few hundred, and $N = 2k$ is between 2 and 16.
+Skinny-$N$ GEMMs are the case general BLAS kernels handle worst, and the
+513 products per upper index are individually small enough that call
+overhead is not negligible.  A batched BLAS interface, where one call takes
+the whole set, is the right shape and not universally available.
+
+So the honest expectation is a factor of two or three in the batched
+regime, not the order of magnitude that \eqref{eq:microkernel} suggests in
+isolation --- and the measurement is the point of doing it.
+
+\subsection{What it composes with, and what it fights}
+
+\paragraph{The reflection composes, and helps more here than it would
+now.}  D\&T (C.118) gives $P^{N}_{lm}(-\mu) = (-1)^{l+N} P^{N}_{l,-m}(\mu)$,
+so the matrices at $+m$ and $-m$ are related by reversing the colatitude
+and a sign that alternates with $l$.  Splitting the input into its
+even and odd parts about $\theta = \pi/2$ turns the pair of products at
+$\pm m$ into two products of half the height, halving both the stored
+table and the arithmetic.  This is the standard trick in production
+spherical-harmonic libraries.  It is also exactly the reduction that P4
+warned would trade bandwidth for an irregular access pattern in the
+\emph{current} loop; inside a GEMM the same reduction is a clean halving of
+$K$, so the objection does not carry over.
+
+\paragraph{It fights on-the-fly generation, and not merely by ordering.}
+The recursion runs up degrees at fixed $(n,\theta)$, producing values in
+exactly the order the \emph{present} layout stores them and exactly the
+wrong order for $[n][m][l][\theta]$.  It would be easy to read that as an
+inconvenience with a transpose as its price.  It is not.  The recursion's
+output for one $(n,\theta)$ spans \emph{every order at once}, so isolating
+the single $(n,m)$ block that a per-order product wants means either keeping
+all of it --- which is the table, and not having one is the entire purpose of
+generation --- or re-running the recursion once per order, $2l_{\max}+1$
+times over.  There is no third way, so the two are not combinable rather than
+merely awkward to combine, and the pair is refused at grid construction.  Since the generated path measured slower anyway
+(\S\ref{sec:storage}), nothing is lost.
+
+\paragraph{It costs the exact-equality tests, and buys a better one.}  A
+GEMM sums in whatever order its kernel chooses, so a GEMM path cannot be
+bit-compared against the current one; the batched-against-unbatched tests,
+which presently demand exact equality precisely because tier 1 does
+\emph{not} reorder any sum, become tolerance comparisons on that path.
+The library turns that trade around by keeping \emph{both} kernels
+permanently: the loop path is then an oracle for the matrix path on
+identical inputs, which checks the layout, the indexing, the FFT ordering
+and the accumulation together, and which does not exist today.  The two are
+not independent in the $d$ values, since both read the same recursion ---
+but that half is pinned separately, against the $l=1$ table and against
+\code{std::sph\_legendre}.
+
+\paragraph{Which BLAS.}  An earlier draft of this paragraph said Eigen was
+already a dependency and could supply the kernel.  It is not: Eigen left the
+tree when GaussQuad dropped it, and nothing in the library names it now.  So
+there is no free GEMM to start from, so the decision is taken rather than
+defaulted into --- an optional BLAS, found and not
+fetched, under \code{GSHTRANS\_WITH\_BLAS}, in the pattern the optional
+\code{Interpolation} dependency established.  A build without it does not
+offer the matrix kernel, exactly as a build without \code{Interpolation}
+does not offer \code{SplineDerivative}.  It would be this library's first
+non-header-only dependency, which is why it is an option and not a
+requirement.
+
+\subsection{What it measured, and where the argument was wrong}
+\label{sec:gemmdone}
+
+Built in six steps: the transposed
+table, the Fourier stage run first and landed order-major, the forward and
+inverse kernels, threading over orders, the measurement, and the reflection.
+Batched at $l_{\max}=256$ on eight threads it is worth \textbf{5.8 to
+6.0$\times$ forward and 2.9 to 3.2$\times$ inverse}, and it stores half the
+table.
+
+\paragraph{The honest estimate was right, and low.}  \S\ref{sec:gemm} put it
+at a factor of two or three batched.  Sequentially the forward gives
+$3.0\times$, inside that; threaded it gives $4.6\times$, outside it.  The
+excess is not the GEMM doing better but the loop kernel doing worse: at that
+size the loop forward scales only $1.5\times$ from one thread to eight,
+because eight private accumulators of 8.4\,MB compete for a 16\,MB cache.
+The matrix kernel has no accumulator to collapse.  So the threaded comparison
+measures the GEMM \emph{and} the deletion of that problem together.
+
+\paragraph{The prediction that nothing is available unbatched was confirmed,
+and refined.}  At $l_{\max}=256$, $k=1$ on eight threads the answer is
+$1.20\times$ forward and $1.10\times$ inverse, which is nothing, and it is the
+only regime in which that is true.  The refinement is the reason: this
+document said no gain was available because \emph{the loop kernel} is already
+at the roof.  Measured, the loop kernel is at 65\% of it and the matrix kernel
+at 100\%, which is why a small gain survives.  The conclusion stands and is
+now demonstrated rather than predicted.
+
+\paragraph{The reflection halves the table and not the arithmetic.}
+\S\ref{sec:gemm} says it halves both.  Only the table halves: the same
+$2l_{\max}+1$ products are still done, of the same shapes.  Converting the
+symmetry into arithmetic --- pairing $\pm m$ into one product of double the
+width, which is the natural reading --- was built and \emph{measured worse}
+sequentially, so it was taken out and only the halving kept.  What the
+reflection buys is traffic and memory, which is what this document's own DRAM
+argument should have predicted.
+
+\paragraph{And the free transpose is free only away from one hazard.}  The
+output write has stride \code{howMany} complex doubles, so when
+$16\,\code{howMany}$ is a power of two the writes for successive orders
+collide in the same cache sets, and the stage costs four to eight times what
+it costs at \code{howMany} $\pm 2$.  The Fourier stage is therefore blocked
+over a few colatitudes rather than run in one call, which is faster anyway
+and wants eighty times less workspace.
+
+\section{Interpolation}
+\label{sec:interpolation}
+
+\code{Interpolate(field, scheme)} returns a callable of $(\theta,\phi)$
+modelling \code{ScalarFunctionS2}, which is what a field constructor takes,
+so remeshing is one line.  Three schemes: \code{Scheme::Spectral()} sums the
+expansion and is exact for a band-limited field at $O(l_{\max}^2)$ a point;
+\code{Scheme::Bilinear()} and \code{Scheme::Bicubic()} are
+\code{Interpolation}'s rectilinear schemes over the samples, $O(1)$ a point
+and second and fourth order respectively.
+
+Two facts about the sphere make this more than a forwarding call.  The
+longitudes run $0,\dots,2\pi-\Delta\phi$, so the last cell has nothing to
+interpolate against; and neither pole is a grid point, so a local scheme
+extrapolates there --- exactly where $d^l_{Nm}\sim\sin^{|m|}\theta$ is most
+delicate.  Both are fixed by handing the scheme a \emph{padded} grid: a wrap
+column, which is exact since $\phi=2\pi$ is $\phi=0$, and two polar rows.
+
+The polar rows are computed rather than guessed.  At a pole all but one order
+vanishes:
+\begin{equation}
+  f(0,\phi) = e^{+iN\phi}\sum_{l} f^{N}_{l,+N}\sqrt{\tfrac{2l+1}{4\pi}},
+  \qquad
+  f(\pi,\phi) = e^{-iN\phi}\sum_{l} (-1)^{l-N} f^{N}_{l,-N}
+                 \sqrt{\tfrac{2l+1}{4\pi}} .
+  \label{eq:polerows}
+\end{equation}
+The $\phi$ dependence is the point: a spin-weighted field at a coordinate
+pole is not single-valued, because $\ebasis{\pm}$ depends on the azimuth of
+approach, so a polar row is a \emph{row} and a constant one would be wrong at
+every $N\neq 0$.  Computing it needs the expansion, which is why building a
+local interpolant costs a forward transform and why its cheapness is per
+evaluation rather than per interpolant.
+
+Measured, the padding works: the polar cells and the last longitude cell come
+out two to five times \emph{better} than the interior at every resolution, so
+the regions the padding was built for are not the weak ones.  A local scheme
+wants an oversampled grid --- bicubic carries 13\% error at the band limit,
+$7\times10^{-4}$ at four times it and $4\times10^{-5}$ at eight --- and
+\code{ForBand} is how that room is asked for.  One whole-grid remesh costs
+about what fifty spectral point evaluations cost, so past a few dozen
+scattered points the composite of the two beats either alone.
+
+\section{The 3-j symbols}
+\label{sec:threej}
+
+\code{3j.h} tabulates the whole $(m_1,m_3)$ plane at fixed degrees, with
+$m_2=-(m_1+m_3)$ fixed by the selection rule.  The table is the primitive: a
+single symbol costs one.
+
+The values come from the Schulten--Gordon recursion.  The order recurrence
+\begin{equation}
+  A(m_2)\,g(m_2) + B(m_2)\,g(m_2-1) + A(m_2-1)\,g(m_2-2) = 0
+  \label{eq:threejrec}
+\end{equation}
+has a growing and a decaying solution, with a classically allowed region
+between two forbidden ones.  Recursing \emph{inward} from a forbidden end
+follows the growing solution, so rounding error decays; outward follows the
+decaying one, so it grows exponentially.  Each row is therefore built inward
+from both ends, matched where the halves overlap, and normalised from the
+unitary property $(2l_1+1)\sum_{m_2} g(m_2)^2 = 1$.  No closed-form seed is
+needed and no factorial is ever formed.
+
+Two details make it practical.  The turning point is found by watching the
+recurrence coefficient --- while $|c_1|$ decreases the run is heading towards
+larger values and is stable, and the first increase says to come from the
+other end --- rather than by locating it analytically.  And the phase is
+\emph{tracked} through the match rather than read back from
+$g(m_{2\max})$: a near-stretched row at high degree spans a dynamic range of
+$10^{201}$, so the rescaling flushes that element to zero and the sign with
+it.
+
+This replaced two earlier schemes.  A one-directional recursion fails
+exponentially near
+\emph{stretched} triangles --- where one degree approaches the sum of the
+other two, which is the top of every coupling sum rather than an exotic
+corner --- and Racah's closed form covers exactly that region and no more.
+Together they still left a band uncovered; Schulten--Gordon covers all of it,
+at 1.1 to 1.3 times the cost.
+
+\paragraph{What checks it.}  Not the completeness relation, which the
+algorithm normalises by and which therefore holds by construction; and not the
+recurrence residual alone, which is homogeneous and so blind to an overall
+scale or sign.  The check that sees everything is invariance under a cyclic
+permutation of the columns, which runs the recursion along entirely different
+lines: it agrees to $10^{-16}$ at $(200,200,200)$ and $10^{-15}$ at
+$(1000,1000,1999)$.  Racah is kept in the test tree as an independent formula,
+restricted to entries where its alternating sum is short and it is exact.
+\eqref{eq:threejrec} is checked at run time, so a table that has gone wrong is
+refused rather than returned.
+
+\section{Choosing a policy by measurement}
+\label{sec:tuning}
+
+Several of the library's choices are properties of the machine rather than of
+the mathematics, and cannot be settled by reasoning.  \code{Tuning.h} times
+the alternatives on the caller's
+own problem and returns \emph{values} --- never a configured grid, so nothing
+is substituted silently, which matters most for the piece of machinery most
+likely to do so.
+
+The chunking policy and the planner flag were moved off the shared
+implementation onto the handle, since neither decides the table; \code{With()}
+changes either for a pointer copy, and the result shares \code{Identity()}
+with its parent, so fields are interchangeable between them.  Without that a
+sweep of four candidate chunks rebuilt the table four times to choose an
+integer.
+
+Measured on one laptop: the kernel choice is worth 1.9 to $5.8\times$ and
+picks the matrix kernel in every configuration tried, while the chunk is worth
+at most $1.28\times$ and nothing at all in thirteen of eighteen.  Both are
+cheap enough to run at start-up, which is why no persistence layer was built:
+the measurement is cheaper than remembering it.  That reverses at around
+$l_{\max}=512$, where building the tables stops being cheap.  A candidate
+must beat the
+incumbent by ten per cent to displace it, that being the measured noise floor.
+
+\section{What has not been done, and why}
+\label{sec:whatnext}
+
+Recorded so that the absences read as decisions.
+
+\paragraph{The symmetry reductions of \S\ref{sec:legendre}} would cut the
+table fourfold.  They are not implemented because in the regime that
+matters they would buy little: batched, with a chunk that fits, the
+Legendre stage runs at about a fifth of the memory roof and under a tenth
+of compute peak, so halving the traffic addresses neither binding
+constraint.  Unbatched they would be worth roughly $2\times$; batching
+already took that.
+
+\paragraph{Reduced-precision storage} is in the same position, and for the
+same reason.  It also needs a tighter round-trip oracle than exists before
+the experiment would mean anything.
+
+\paragraph{Polar truncation}, skipping the $(m,\theta)$ pairs where
+$d^l_{Nm}$ is negligible --- it falls off like $\sin^{|m|}\theta$ --- is the
+one option that makes the problem smaller rather than making the machine work
+harder.  \emph{This paragraph used to add that it probably dominates both of
+the reductions above.  Measured, it does not.}  It prices at about
+$1.15\times$ at $l_{\max}=256$ for the rectangular trim a
+GEMM can take, and $1.40\times$ at $l_{\max}=1024$ for the triangular ceiling
+--- against the $1.5$ to $2\times$ that was assumed.  The decay is real but
+slower to a useful tolerance than the argument suggests: at $10^{-15}$,
+$\sin^{256}\theta$ is still above threshold over a third of the range.  It is
+dropped rather than deferred.
+
+\paragraph{The wisdom store} of \S\ref{sec:tuning} --- a keyed,
+fingerprinted file remembering what was measured --- is not built.  Both
+tuners are cheap enough to run at start-up, so there is nothing expensive
+enough to be worth remembering; FFTW's wisdom is worth persisting because
+planning can take minutes, and this takes about a second.
+
+\paragraph{Generating the $d$-values inside the transform} exists
+(\S\ref{sec:storage}) and its deeper forms do not.  Fusing the recursion with
+the consumer, and blocking it over colatitudes, would halve its arithmetic;
+they are not built because the first rung already measured slower than the
+stored path on every configuration of the development machine, and halving
+the arithmetic cannot close that gap.  What the path is for is memory, and
+that it delivers.
+
+\paragraph{The 6-j symbols} are not implemented.  The path is known and is
+the same one: Schulten and Gordon give the 6-j recursion in the same paper as
+the 3-j one, and \S\ref{sec:threej}'s machinery --- inward from both ends,
+match, normalise from a unitary property --- transfers directly.
+
+\paragraph{The conventions of \S\ref{sec:remains}} were open when this
+document was first written and are now closed, jointly, by reading a gradient
+back into the physical frame.  What is left there is one convention rather
+than two unknowns, and a test observes it.
+
+\end{document}

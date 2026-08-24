@@ -1,9 +1,11 @@
 #ifndef GSH_TRANS_ALL_MODULE_H
 #define GSH_TRANS_ALL_MODULE_H
 
-// Header files to include for use of GHSTrans library
+// Header files to include for use of the GSHTrans library
 #include "Core"
 #include "Expansion"
 #include "Field"
+#include "Layered"
+#include "Tensor"
 
 #endif

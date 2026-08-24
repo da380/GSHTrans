@@ -9,47 +9,32 @@
 #include <limits>
 #include <memory>
 #include <numbers>
-#include <random>
 
-#include "NumericConcepts/NumericConcepts.hpp"
+#include "TestRandom.h"
 
 using namespace GSHTrans;
 
 using Int = std::ptrdiff_t;
 
-Int RandomDegree(Int lMin, Int lMax) {
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_int_distribution<Int> d(lMin, lMax);
-  return d(gen);
-}
-
-template <IndexRange NRange>
-Int RandomUpperIndex(Int nMax) {
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  if constexpr (std::same_as<NRange, All>) {
-    std::uniform_int_distribution<Int> d(-nMax, nMax);
-    return d(gen);
-  } else {
-    std::uniform_int_distribution<Int> d(0, nMax);
-    return d(gen);
-  }
-}
-
+// Round trip: random coefficients -> field -> coefficients. Returns true on
+// failure. The generator is supplied by the caller so that a failing run can
+// be reproduced from the seed it reports.
 template <RealOrComplexFloatingPoint Scalar, OrderIndexRange MRange,
           IndexRange NRange>
-auto Coeff2Coeff() {
-  using Real = NumericConcepts::RemoveComplex<Scalar>;
+auto Coeff2Coeff(GSHTransTest::Generator& gen) {
+  using Real = RemoveComplex<Scalar>;
   using Complex = std::complex<Real>;
   using Grid = GaussLegendreGrid<Real, MRange, NRange>;
 
-  auto lMaxGrid = RandomDegree(4, 256);
-  auto lMax = RandomDegree(4, lMaxGrid);
+  auto lMaxGrid = GSHTransTest::RandomDegree(gen, 4, 256);
+  auto lMax = GSHTransTest::RandomDegree(gen, 4, lMaxGrid);
   auto nMax = std::min(lMax, Int(4));
   auto grid = Grid(lMaxGrid, nMax);
 
-  auto n = RandomUpperIndex<NRange>(nMax);
+  // Real-valued fields exist only at upper index zero.
+  auto n = RealFloatingPoint<Scalar>
+               ? Int{0}
+               : GSHTransTest::RandomUpperIndex<NRange>(gen, nMax);
 
   auto getSize = [](Int lMax, Int n) {
     if constexpr (RealFloatingPoint<Scalar>) {
@@ -63,9 +48,9 @@ auto Coeff2Coeff() {
   auto flm = FFTWpp::vector<Complex>(size);
 
   if constexpr (ComplexFloatingPoint<Scalar>) {
-    grid.RandomComplexCoefficient(lMax, n, flm);
+    GSHTransTest::RandomComplexCoefficient(grid, lMax, n, flm, gen);
   } else {
-    grid.RandomRealCoefficient(lMax, n, flm);
+    GSHTransTest::RandomRealCoefficient(grid, lMax, flm, gen);
   }
 
   auto f = FFTWpp::vector<Scalar>(grid.FieldSize());

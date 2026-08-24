@@ -1,20 +1,14 @@
 #ifndef GSH_TRANS_EXPANSION_MODULE_H
 #define GSH_TRANS_EXPANSION_MODULE_H
 
-// Base file.
-#include "src/ExpansionBase.h"
+// The spectral side: a field's coefficients as an object rather than a raw
+// buffer, and the operators that connect different upper indices.
+#include "src/Expansion/BundleMaps.h"
+#include "src/Expansion/ContravariantDerivative.h"
+#include "src/Expansion/Eth.h"
+#include "src/Expansion/Interpolate.h"
+#include "src/Expansion/IntrinsicDerivative.h"
+#include "src/Expansion/SpinExpansion.h"
+#include "src/Expansion/TensorExpansion.h"
 
-// Canonical Component expansions
-#include "src/CanonicalComponentExpansion/CanonicalComponentExpansion.h"
-#include "src/CanonicalComponentExpansion/CanonicalComponentExpansionBase.h"
-
-// Scalar Expansion files.
-/*
-#include "src/ScalarFieldExpansion/ScalarFieldExpansion.h"
-#include "src/ScalarFieldExpansion/ScalarFieldExpansionBase.h"
-#include "src/ScalarFieldExpansion/ScalarFieldExpansionBinary.h"
-#include "src/ScalarFieldExpansion/ScalarFieldExpansionBinaryWithScalar.h"
-#include "src/ScalarFieldExpansion/ScalarFieldExpansionOverloads.h"
-#include "src/ScalarFieldExpansion/ScalarFieldExpansionUnary.h"
-*/
 #endif

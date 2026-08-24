@@ -1,0 +1,13 @@
+#ifndef GSH_TRANS_TENSOR_MODULE_H
+#define GSH_TRANS_TENSOR_MODULE_H
+
+// Tensor fields: canonical components addressed by multi-index, and the
+// storage that follows from their symmetries. Built on the spin fields of
+// GSHTrans/Field, which are what a single component is.
+#include "src/Tensor/BundleMaps.h"
+#include "src/Tensor/MultiIndex.h"
+#include "src/Tensor/Orbits.h"
+#include "src/Tensor/TensorExpr.h"
+#include "src/Tensor/TensorField.h"
+
+#endif

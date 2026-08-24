@@ -1,0 +1,24 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# Every dependency of the exported target must be findable here, because the
+# target file below refers to them by their imported names and CMake will not
+# invent them. All three of the header-only ones now ship packages of their
+# own; that they did not is what kept this file from existing.
+find_dependency(NumericConcepts)
+find_dependency(GaussQuad)
+find_dependency(FFTWpp)
+find_dependency(OpenMP)
+
+# Optional, and only when this build had it: the exported target names
+# Interpolation::Interpolation only in that case, so looking for it
+# unconditionally would fail a consumer who does not need it.
+set(GSHTRANS_WITH_INTERPOLATION @GSHTRANS_WITH_INTERPOLATION@)
+if(GSHTRANS_WITH_INTERPOLATION)
+  find_dependency(Interpolation)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/GSHTransTargets.cmake")
+
+check_required_components(GSHTrans)

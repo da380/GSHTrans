@@ -1,3 +1,32 @@
 **/build
+**/build-*
 **/*~
 **/.vscode
+
+# Emacs autosaves (#file#) and lock files (.#file). An empty docs/#wi2.f#
+# was tracked for a while: it slipped past docs/*.f below, because an
+# autosave's name ends in # rather than in the extension it shadows.
+**/#*#
+**/.#*
+
+# LaTeX build artefacts
+docs/*.aux
+docs/*.log
+docs/*.out
+docs/*.toc
+docs/*.fdb_latexmk
+docs/*.fls
+
+# Local reference material: papers kept in docs/ while the documentation is
+# written. Not ours to redistribute, and not wanted in the history. Papers
+# are ignored by default and our own two documents are opted in, so one
+# dropped into docs/ later is caught without anyone remembering to.
+docs/*.pdf
+!docs/canonical-components.pdf
+!docs/gshtrans-reference.pdf
+
+# The same, for reference *source*: Fortran routines read while the 3-j
+# recursion was implemented. Not ours, and the library derives nothing from
+# them beyond the algorithm, which is the paper's.
+docs/*.f
+docs/*.f90

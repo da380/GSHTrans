@@ -1,14 +1,19 @@
 #ifndef GSH_TRANS_CORE_MODULE_H
 #define GSH_TRANS_CORE_MODULE_H
 
-// Header files to include for use of GHSTrans library
+// Header files to include for use of the GSHTrans library
 #include "src/3j.h"
+#include "src/Blas.h"
 #include "src/Concepts.h"
 #include "src/GaussLegendreGrid.h"
-#include "src/GridBase.h"
 #include "src/Indexing.h"
+#include "src/Policies.h"
+#include "src/SphericalGrid.h"
+#include "src/Tuning.h"
 #include "src/Utility.h"
+#include "src/Version.h"
 #include "src/Views.h"
 #include "src/Wigner.h"
+#include "src/WignerMatrices.h"
 
 #endif
