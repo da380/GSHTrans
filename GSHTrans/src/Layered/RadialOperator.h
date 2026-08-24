@@ -57,10 +57,8 @@ namespace GSHTrans {
 // call is a defect rather than a cost. RadialDerivatives.h is written to that
 // rule and is the worked example of it.
 template <typename Op, typename Scalar>
-concept RadialOperator =
-    requires(const Op& op, std::span<const Scalar> in, std::span<Scalar> out) {
-      op(in, out);
-    };
+concept RadialOperator = requires(const Op& op, std::span<const Scalar> in,
+                                  std::span<Scalar> out) { op(in, out); };
 
 // The two stack types present the radial axis under the same names, and this
 // is all of it that a radial operator sees: nR lines, SliceSize() apart. A
@@ -92,9 +90,9 @@ concept LayeredStack = requires(const Stack& stack) {
 // and grow to fit, for the same reason the transform's work buffers are: the
 // alternative is an allocation per line.
 template <LayeredStack Stack, typename Op>
-requires RadialOperator<Op, typename std::remove_cvref_t<
-                                decltype(std::declval<Stack&>().Data())>::
-                                element_type>
+requires RadialOperator<
+    Op, typename std::remove_cvref_t<
+            decltype(std::declval<Stack&>().Data())>::element_type>
 void ApplyRadially(const Stack& in, Stack& out, const Op& op,
                    Execution policy = Execution::Sequential()) {
   using Int = std::ptrdiff_t;

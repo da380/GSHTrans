@@ -7,8 +7,8 @@
 #include <utility>
 
 #include "../Concepts.h"
-#include "../Policies.h"
 #include "../Expansion/ContravariantDerivative.h"
+#include "../Policies.h"
 #include "../Tensor/MultiIndex.h"
 #include "LayeredTensorField.h"
 #include "RadialOperator.h"
@@ -206,8 +206,8 @@ auto SurfaceGradient(
             ContravariantDetails::FillComponent<indices>(at, from, scale);
           }(),
           ...);
-    }(std::make_index_sequence<
-        static_cast<std::size_t>(Result::StoredComponents)>{});
+    }(std::make_index_sequence<static_cast<std::size_t>(
+          Result::StoredComponents)>{});
   }
   return result;
 }
@@ -221,10 +221,9 @@ auto SurfaceGradient(
 // nR, one per (component, degree, order).
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
           TensorReality Reality, AngularGrid Grid, typename Op>
-auto Gradient(const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid>&
-                  operand,
-              const Op& radialOperator,
-              Execution policy = Execution::Sequential()) {
+auto Gradient(
+    const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid>& operand,
+    const Op& radialOperator, Execution policy = Execution::Sequential()) {
   using Operand = LayeredTensorExpansion<Rank, Symmetry, Reality, Grid>;
   using OperandFlat = typename Operand::Flat;
 
@@ -233,8 +232,8 @@ auto Gradient(const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid>&
   using ResultFlat = typename Result::Flat;
 
   // d_r T, componentwise on the operand's own stored set.
-  auto derivative = Operand(operand.Radial(), operand.Grid(),
-                            operand.MaxDegree());
+  auto derivative =
+      Operand(operand.Radial(), operand.Grid(), operand.MaxDegree());
   [&]<std::size_t... Slots>(std::index_sequence<Slots...>) {
     (
         [&] {
@@ -245,8 +244,8 @@ auto Gradient(const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid>&
               std::make_index_sequence<static_cast<std::size_t>(Rank)>{});
         }(),
         ...);
-  }(std::make_index_sequence<
-      static_cast<std::size_t>(Operand::StoredComponents)>{});
+  }(std::make_index_sequence<static_cast<std::size_t>(
+        Operand::StoredComponents)>{});
 
   // and into the sigma = 0 block of the result.
   for (auto i : operand.Radial().RadiusIndices()) {
@@ -262,8 +261,8 @@ auto Gradient(const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid>&
             }
           }(),
           ...);
-    }(std::make_index_sequence<
-        static_cast<std::size_t>(Result::StoredComponents)>{});
+    }(std::make_index_sequence<static_cast<std::size_t>(
+          Result::StoredComponents)>{});
   }
   return result;
 }

@@ -25,8 +25,8 @@ int main() {
   const auto fill = [&](auto&& u, Real tag) {
     for (auto iTheta : grid.CoLatitudeIndices()) {
       for (auto iPhi : grid.LongitudeIndices()) {
-        u[iTheta, iPhi] = Complex{tag + std::cos(0.3 * iTheta),
-                                  std::sin(0.2 * iPhi) - tag};
+        u[iTheta, iPhi] =
+            Complex{tag + std::cos(0.3 * iTheta), std::sin(0.2 * iPhi) - tag};
       }
     }
   };

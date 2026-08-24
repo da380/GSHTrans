@@ -2,7 +2,6 @@
 #define GSH_TRANS_TENSOR_FIELD_GUARD_H
 
 #include <FFTWpp/Core>
-
 #include <array>
 #include <complex>
 #include <concepts>
@@ -60,8 +59,7 @@ concept TensorLayout =
 /// reduction; it arrives here already, because antisymmetry has it too.
 template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
           TensorReality _Reality, AngularGrid _Grid,
-          TensorLayout _Layout = ComponentMajor,
-          SlotAlphabet _Slots = AllSlots>
+          TensorLayout _Layout = ComponentMajor, SlotAlphabet _Slots = AllSlots>
 class TensorField {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
@@ -69,8 +67,8 @@ class TensorField {
   /** @brief The tensor rank. */
   static constexpr Int Rank = _Rank;
   using Symmetry = _Symmetry;  ///< The permutation symmetry of the slots.
-  using Reality = _Reality;  ///< Whether the tensor is real or complex.
-  using GridType = _Grid;  ///< The angular grid this is defined on.
+  using Reality = _Reality;    ///< Whether the tensor is real or complex.
+  using GridType = _Grid;      ///< The angular grid this is defined on.
   /// How the components are arranged in the buffer.
   using LayoutPolicy = _Layout;
 
@@ -91,7 +89,7 @@ class TensorField {
   /** @brief Whether the samples of one component are contiguous. */
   static constexpr bool IsComponentMajor =
       std::same_as<_Layout, ComponentMajor>;
-  using Real = typename _Grid::Real;  ///< The precision.
+  using Real = typename _Grid::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
 
   /// Every component of a complex tensor is a complex field. Reality makes
@@ -233,8 +231,8 @@ class TensorField {
   /// These are the conditions on the accessors below, named so that a
   /// compile-time traversal can ask before it asks for the component, and so
   /// that the negative cases can be tested. static_assert(!requires { ... })
-  /// is the idiom the field layer uses, and it works only when the constraint is
-  /// a requires-clause: an assertion inside the body is a hard error that no
+  /// is the idiom the field layer uses, and it works only when the constraint
+  /// is a requires-clause: an assertion inside the body is a hard error that no
   /// requires-expression can see, which makes the negative test vacuous.
   ///
   /// Neither the wrong number of indices nor a letter outside the alphabet may
@@ -315,11 +313,11 @@ class TensorField {
     // left to the first component that asks, which would fail late and name
     // the component instead of the grid.
     if (_grid.MaxUpperIndex() < Rank) {
-      throw std::invalid_argument(
-          "A rank-" + std::to_string(Rank) +
-          " tensor has components at upper index " + std::to_string(Rank) +
-          ", but this grid carries only " +
-          std::to_string(_grid.MaxUpperIndex()));
+      throw std::invalid_argument("A rank-" + std::to_string(Rank) +
+                                  " tensor has components at upper index " +
+                                  std::to_string(Rank) +
+                                  ", but this grid carries only " +
+                                  std::to_string(_grid.MaxUpperIndex()));
     }
   }
 
@@ -361,10 +359,10 @@ class TensorField {
   ///   related by reality    conj of the view, at the reversed upper index
   ///   pinned by its orbit   a real-valued view, or i times one
   ///
-  /// The reality case is the one the field layer was made to accommodate. The relation
-  /// is T^{-alpha} = (-1)^N conj(T^{alpha}) (eq:reality), and conj reverses the
-  /// upper index -- which is why getting that wrong was one of the three
-  /// reason conj must reverse the upper index. The (-1)^N is already
+  /// The reality case is the one the field layer was made to accommodate. The
+  /// relation is T^{-alpha} = (-1)^N conj(T^{alpha}) (eq:reality), and conj
+  /// reverses the upper index -- which is why getting that wrong was one of the
+  /// three reason conj must reverse the upper index. The (-1)^N is already
   /// folded into the orbit table's sign.
   ///
   /// Note what this means for a grid: the derived partner of a stored
@@ -389,8 +387,8 @@ class TensorField {
           _grid, StoredSpan<flat>(), ComponentStride);
 
       // Moved in so that the expression node owns the view rather than
-      // referring to this local one. A spin-weighted node holds an lvalue terminal
-      // by reference, which is right at a call site and wrong here.
+      // referring to this local one. A spin-weighted node holds an lvalue
+      // terminal by reference, which is right at a call site and wrong here.
       if constexpr (conjugated) {
         return scale * conj(std::move(view));
       } else if constexpr (sign == 1) {
@@ -431,8 +429,8 @@ class TensorField {
     constexpr auto N = UpperIndexOf<Alphas...>;
     constexpr auto constraint = Orbits.constraint[flat];
     if constexpr (constraint == ComponentConstraint::None) {
-      return SpinFieldView<N, GridType, ComplexValued>(_grid, StoredSpan<flat>(),
-                                                       ComponentStride);
+      return SpinFieldView<N, GridType, ComplexValued>(
+          _grid, StoredSpan<flat>(), ComponentStride);
     } else {
       return SpinFieldView<0, GridType, RealValued>(
           _grid, RealStoredSpan<flat>(), RealComponentStride);
@@ -498,8 +496,8 @@ class TensorField {
       const auto coefficientSize =
           static_cast<Int>(_grid.CoefficientSize(lMax, n));
       auto fields = FieldGroup(first, count);
-      auto block =
-          out.subspan(offset, static_cast<std::size_t>(count * coefficientSize));
+      auto block = out.subspan(
+          offset, static_cast<std::size_t>(count * coefficientSize));
       _grid.ForwardTransformation(lMax, n, fields, FieldBatch(count), block,
                                   Batch::Contiguous(count, coefficientSize),
                                   policy);
@@ -515,10 +513,9 @@ class TensorField {
       auto fields = RealFieldGroup();
       auto block = out.subspan(
           offset, static_cast<std::size_t>(RealComponents * coefficientSize));
-      _grid.ForwardTransformation(lMax, 0, fields, RealFieldBatch(), block,
-                                  Batch::Contiguous(RealComponents,
-                                                    coefficientSize),
-                                  policy);
+      _grid.ForwardTransformation(
+          lMax, 0, fields, RealFieldBatch(), block,
+          Batch::Contiguous(RealComponents, coefficientSize), policy);
     }
   }
 
@@ -554,10 +551,9 @@ class TensorField {
       auto block = in.subspan(
           offset, static_cast<std::size_t>(RealComponents * coefficientSize));
       auto fields = RealFieldGroup();
-      _grid.InverseTransformation(lMax, 0, block,
-                                  Batch::Contiguous(RealComponents,
-                                                    coefficientSize),
-                                  fields, RealFieldBatch(), policy);
+      _grid.InverseTransformation(
+          lMax, 0, block, Batch::Contiguous(RealComponents, coefficientSize),
+          fields, RealFieldBatch(), policy);
     }
   }
 
@@ -582,10 +578,9 @@ class TensorField {
       return Data().subspan(static_cast<std::size_t>(first * fieldSize),
                             static_cast<std::size_t>(count * fieldSize));
     } else {
-      return Data().subspan(
-          static_cast<std::size_t>(first),
-          static_cast<std::size_t>((fieldSize - 1) * ComplexComponents +
-                                   count));
+      return Data().subspan(static_cast<std::size_t>(first),
+                            static_cast<std::size_t>(
+                                (fieldSize - 1) * ComplexComponents + count));
     }
   }
 
@@ -595,10 +590,9 @@ class TensorField {
       return Data().subspan(static_cast<std::size_t>(first * fieldSize),
                             static_cast<std::size_t>(count * fieldSize));
     } else {
-      return Data().subspan(
-          static_cast<std::size_t>(first),
-          static_cast<std::size_t>((fieldSize - 1) * ComplexComponents +
-                                   count));
+      return Data().subspan(static_cast<std::size_t>(first),
+                            static_cast<std::size_t>(
+                                (fieldSize - 1) * ComplexComponents + count));
     }
   }
 
@@ -688,8 +682,8 @@ class TensorField {
 
   template <Int Flat>
   std::span<const Real> RealStoredSpan() const {
-    return std::span<const Real>(_real).subspan(SpanOffset<Flat, true>(),
-                                                SpanExtent(RealComponentStride));
+    return std::span<const Real>(_real).subspan(
+        SpanOffset<Flat, true>(), SpanExtent(RealComponentStride));
   }
 
   // Slots are numbered across both buffers, complex first, so a real
@@ -751,8 +745,8 @@ template <AngularGrid Grid, TensorReality Reality = RealTensor>
 using SymmetricTensorField = TensorField<2, Symmetric<2>, Reality, Grid>;
 
 template <AngularGrid Grid, TensorReality Reality = RealTensor>
-using AntisymmetricTensorField = TensorField<2, Antisymmetric<2>, Reality,
-                                             Grid>;
+using AntisymmetricTensorField =
+    TensorField<2, Antisymmetric<2>, Reality, Grid>;
 
 template <AngularGrid Grid, TensorReality Reality = RealTensor>
 using ElasticTensorField = TensorField<4, ElasticSymmetry, Reality, Grid>;
@@ -763,29 +757,25 @@ using ElasticTensorField = TensorField<4, ElasticSymmetry, Reality, Grid>;
 // know: its indices run over {-1, +1}, it has 2^p components rather than 3^p,
 // and the derivative that is closed on it is the intrinsic one.
 template <AngularGrid Grid, TensorReality Reality = RealTensor>
-using TangentialVectorField =
-    TensorField<1, NoSymmetry<1>, Reality, Grid, ComponentMajor,
-                TangentialSlots>;
+using TangentialVectorField = TensorField<1, NoSymmetry<1>, Reality, Grid,
+                                          ComponentMajor, TangentialSlots>;
 
 template <AngularGrid Grid, TensorReality Reality = RealTensor>
-using TangentialRank2Field =
-    TensorField<2, NoSymmetry<2>, Reality, Grid, ComponentMajor,
-                TangentialSlots>;
+using TangentialRank2Field = TensorField<2, NoSymmetry<2>, Reality, Grid,
+                                         ComponentMajor, TangentialSlots>;
 
 // The spin-2 object of surface geodesy and of the CMB, up to the trace that
 // `Orbits.h` cannot express and a caller subtracts. As a real tensor it
 // is three reals a point: a real symmetric 2x2 matrix, which is what it is.
 template <AngularGrid Grid, TensorReality Reality = RealTensor>
-using TangentialSymmetricField =
-    TensorField<2, Symmetric<2>, Reality, Grid, ComponentMajor,
-                TangentialSlots>;
+using TangentialSymmetricField = TensorField<2, Symmetric<2>, Reality, Grid,
+                                             ComponentMajor, TangentialSlots>;
 
 // Anything else in that bundle.
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry, AngularGrid Grid,
           TensorReality Reality = RealTensor>
 using TangentialTensorField =
-    TensorField<Rank, Symmetry, Reality, Grid, ComponentMajor,
-                TangentialSlots>;
+    TensorField<Rank, Symmetry, Reality, Grid, ComponentMajor, TangentialSlots>;
 
 }  // namespace GSHTrans
 

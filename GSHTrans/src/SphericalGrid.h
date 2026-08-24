@@ -1,18 +1,19 @@
 #ifndef GSH_TRANS_SPHERICAL_GRID_GUARD_H
 #define GSH_TRANS_SPHERICAL_GRID_GUARD_H
 
-#include <complex>
-#include <cstddef>
-#include <iterator>
 #include <omp.h>
 
 #include <FFTWpp/Core>
 #include <FFTWpp/Ranges>
+#include <NumericConcepts/Ranges.hpp>
 #include <algorithm>
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <complex>
 #include <concepts>
+#include <cstddef>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <numbers>
@@ -25,12 +26,10 @@
 #include <utility>
 #include <vector>
 
-#include <NumericConcepts/Ranges.hpp>
-
-#include "Concepts.h"
-#include "Policies.h"
-#include "Indexing.h"
 #include "Blas.h"
+#include "Concepts.h"
+#include "Indexing.h"
+#include "Policies.h"
 #include "Utility.h"
 #include "Wigner.h"
 #include "WignerMatrices.h"
@@ -64,8 +63,8 @@ template <RealFloatingPoint _Real, OrderIndexRange _MRange, IndexRange _NRange>
 class SphericalGrid {
  public:
   // Public type aliases.
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using Real = _Real;  ///< The precision.
+  using Int = std::ptrdiff_t;          ///< Signed index type used throughout.
+  using Real = _Real;                  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   /// Whether all orders are stored, or only the non-negative ones.
   using MRange = _MRange;
@@ -105,8 +104,7 @@ class SphericalGrid {
                 FFTWpp::Flag flag = FFTWpp::Measure,
                 Chunking chunking = Chunking::Automatic(),
                 WignerValues values = WignerValues::Stored(),
-                TransformKernel kernel = TransformKernel::Loop(),
-                Int nPhi = 0)
+                TransformKernel kernel = TransformKernel::Loop(), Int nPhi = 0)
       : _impl{std::make_shared<const Impl>(
             lMax, nMax, std::move(coLatitudes), std::move(coLatitudeWeights),
             nPhi > 0 ? nPhi : FastFFTSize(2 * lMax + 1), values, kernel)},
@@ -288,9 +286,7 @@ class SphericalGrid {
   }
 
   /// The same at the grid's own maximum degree.
-  auto CoefficientSize(Int n) const {
-    return CoefficientSize(MaxDegree(), n);
-  }
+  auto CoefficientSize(Int n) const { return CoefficientSize(MaxDegree(), n); }
 
   /// Number of stored coefficients of a real-valued field of degree lMax,
   /// which uses the reduced m >= 0 storage. There is no upper-index argument
@@ -301,9 +297,7 @@ class SphericalGrid {
   }
 
   /// The same at the grid's own maximum degree.
-  auto RealCoefficientSize() const {
-    return RealCoefficientSize(MaxDegree());
-  }
+  auto RealCoefficientSize() const { return RealCoefficientSize(MaxDegree()); }
 
   //-----------------------------------------------------//
   //          Forward transformation for ranges          //
@@ -397,16 +391,16 @@ class SphericalGrid {
     // constructor has already refused the combination, so the discarded
     // branch is unreachable as well as uninstantiated.
     if constexpr (BlasDetails::BlasReal<Real>)
-    if (_impl->kernel.IsMatrix()) {
-      ForwardMatrixKernel<Scalar>(lMax, n, in, inBatch, outFirst, outBatch,
-                                  count, nPhi, nTheta, scaleFactor, policy);
-      return;
-    }
+      if (_impl->kernel.IsMatrix()) {
+        ForwardMatrixKernel<Scalar>(lMax, n, in, inBatch, outFirst, outBatch,
+                                    count, nPhi, nTheta, scaleFactor, policy);
+        return;
+      }
 #endif
 
     ForwardLoopKernel<Scalar>(lMax, n, inFirst, inBatch, outFirst, outBatch,
-                              count, nPhi, nTheta, scaleFactor,
-                              coefficientSize, policy);
+                              count, nPhi, nTheta, scaleFactor, coefficientSize,
+                              policy);
   }
 
   // The single field, which is the batched primitive at count = 1.
@@ -515,11 +509,11 @@ class SphericalGrid {
 
 #ifdef GSHTRANS_HAVE_BLAS
     if constexpr (BlasDetails::BlasReal<Real>)
-    if (_impl->kernel.IsMatrix()) {
-      InverseMatrixKernel<Scalar>(lMax, n, inFirst, inBatch, out, outBatch,
-                                  count, nPhi, nTheta, policy);
-      return;
-    }
+      if (_impl->kernel.IsMatrix()) {
+        InverseMatrixKernel<Scalar>(lMax, n, inFirst, inBatch, out, outBatch,
+                                    count, nPhi, nTheta, policy);
+        return;
+      }
 #endif
 
     InverseLoopKernel<Scalar>(lMax, n, inFirst, inBatch, outFirst, outBatch,
@@ -568,8 +562,7 @@ class SphericalGrid {
   template <RealOrComplexFloatingPoint Scalar>
   auto FourierSize() const {
     const auto nPhi = static_cast<Int>(this->NumberOfLongitudes());
-    return static_cast<Int>(
-        FFTWpp::DataSize<Scalar, Complex>(nPhi).second);
+    return static_cast<Int>(FFTWpp::DataSize<Scalar, Complex>(nPhi).second);
   }
 
   /// The size of buffer ForwardFourierStage fills for `count` fields.
@@ -647,15 +640,13 @@ class SphericalGrid {
       throw std::invalid_argument("Field count must be positive");
     }
     if (first < 0 || first + count > inBatch.Count()) {
-      throw std::invalid_argument(
-          "Requested fields lie outside the batch");
+      throw std::invalid_argument("Requested fields lie outside the batch");
     }
     CheckSpan(std::ranges::size(in),
               inBatch.Span(static_cast<Int>(this->FieldSize())), "field");
     if (static_cast<Int>(out.size()) !=
         ForwardFourierStageSize<Scalar>(count)) {
-      throw std::invalid_argument(
-          "Fourier stage output has the wrong size");
+      throw std::invalid_argument("Fourier stage output has the wrong size");
     }
 
     const auto block = ChooseThetaBlock(thetaBlock, count, nTheta);
@@ -672,8 +663,8 @@ class SphericalGrid {
     const auto blocks = (nTheta + block - 1) / block;
     const bool parallel = RunInParallel(policy);
 
-#pragma omp parallel for schedule(static) num_threads(ThreadCount(policy)) \
-    if (parallel)
+#pragma omp parallel for schedule(static) \
+    num_threads(ThreadCount(policy)) if (parallel)
     for (Int b = 0; b < blocks; b++) {
       const auto theta0 = b * block;
       const auto rows = std::min(block, nTheta - theta0);
@@ -684,8 +675,8 @@ class SphericalGrid {
       // output block wants.
       for (auto iRow = Int{0}; iRow < rows; iRow++) {
         for (auto k = Int{0}; k < count; k++) {
-          PackRow(std::next(inFirst, inBatch.Offset((theta0 + iRow) * nPhi,
-                                                    first + k)),
+          PackRow(std::next(inFirst,
+                            inBatch.Offset((theta0 + iRow) * nPhi, first + k)),
                   nPhi, inBatch.Stride(),
                   std::next(work.in.begin(), (iRow * count + k) * nPhi));
         }
@@ -741,8 +732,7 @@ class SphericalGrid {
     }
     CheckSpan(std::ranges::size(out),
               outBatch.Span(static_cast<Int>(this->FieldSize())), "field");
-    if (static_cast<Int>(in.size()) !=
-        ForwardFourierStageSize<Scalar>(count)) {
+    if (static_cast<Int>(in.size()) != ForwardFourierStageSize<Scalar>(count)) {
       throw std::invalid_argument("Fourier stage input has the wrong size");
     }
 
@@ -753,8 +743,8 @@ class SphericalGrid {
     const auto blocks = (nTheta + block - 1) / block;
     const bool parallel = RunInParallel(policy);
 
-#pragma omp parallel for schedule(static) num_threads(ThreadCount(policy)) \
-    if (parallel)
+#pragma omp parallel for schedule(static) \
+    num_threads(ThreadCount(policy)) if (parallel)
     for (Int b = 0; b < blocks; b++) {
       const auto theta0 = b * block;
       const auto rows = std::min(block, nTheta - theta0);
@@ -769,11 +759,11 @@ class SphericalGrid {
 
       for (auto iRow = Int{0}; iRow < rows; iRow++) {
         for (auto k = Int{0}; k < count; k++) {
-          UnpackRow(std::next(work.out.begin(), (iRow * count + k) * nPhi),
-                    nPhi,
-                    std::next(outFirst, outBatch.Offset(
-                                            (theta0 + iRow) * nPhi, first + k)),
-                    outBatch.Stride());
+          UnpackRow(
+              std::next(work.out.begin(), (iRow * count + k) * nPhi), nPhi,
+              std::next(outFirst,
+                        outBatch.Offset((theta0 + iRow) * nPhi, first + k)),
+              outBatch.Stride());
         }
       }
     }
@@ -815,8 +805,7 @@ class SphericalGrid {
     auto block = requested > 0 ? std::min(requested, nTheta)
                                : std::min(defaultBlock, nTheta);
     const auto aliases = [count](Int rows) {
-      const auto bytes =
-          rows * count * static_cast<Int>(sizeof(Complex));
+      const auto bytes = rows * count * static_cast<Int>(sizeof(Complex));
       return bytes >= 512 && (bytes & (bytes - 1)) == 0;
     };
     while (block > 1 && aliases(block)) block--;
@@ -881,9 +870,8 @@ class SphericalGrid {
       const auto outN = std::array<int, 1>{outSize};
 
       auto inLayout =
-          IsForward
-              ? FFTWpp::Ranges::Layout(1, inN, howMany, inN, 1, inSize)
-              : FFTWpp::Ranges::Layout(1, inN, howMany, inN, howMany, 1);
+          IsForward ? FFTWpp::Ranges::Layout(1, inN, howMany, inN, 1, inSize)
+                    : FFTWpp::Ranges::Layout(1, inN, howMany, inN, howMany, 1);
       auto outLayout =
           IsForward
               ? FFTWpp::Ranges::Layout(1, outN, howMany, outN, howMany, 1)
@@ -1007,13 +995,13 @@ class SphericalGrid {
   // region is already open, since that is what the call will really run on.
   Int ForwardChunkSize(Int coefficientSize, Execution policy) const {
     const auto threads = RunInParallel(policy) ? ThreadCount(policy) : 1;
-    return _chunking.Count(
-        coefficientSize * static_cast<Int>(sizeof(Complex)), threads);
+    return _chunking.Count(coefficientSize * static_cast<Int>(sizeof(Complex)),
+                           threads);
   }
 
   Int InverseChunkSize(Int coefficientSize) const {
-    return _chunking.Count(
-        coefficientSize * static_cast<Int>(sizeof(Complex)), 1);
+    return _chunking.Count(coefficientSize * static_cast<Int>(sizeof(Complex)),
+                           1);
   }
 
   // The loop kernel of the forward transform: a colatitude at a time, over a
@@ -1049,7 +1037,9 @@ class SphericalGrid {
 
       // Get the Wigner values and quadrature weight.
       auto d = WignerBlock(n, iTheta, lMax);
-      const auto w = _impl->coLatitudeWeights[static_cast<std::size_t>(iTheta)] * scaleFactor;
+      const auto w =
+          _impl->coLatitudeWeights[static_cast<std::size_t>(iTheta)] *
+          scaleFactor;
       const auto orders = static_cast<Int>(work.out.size()) / c;
 
       // Loop over the spherical harmonic coefficients, taking the Wigner
@@ -1253,10 +1243,10 @@ class SphericalGrid {
       // plan's own buffers, then hand each row to the caller.
       work.plan.Execute();
       for (auto k = Int{0}; k < c; k++) {
-        UnpackRow(std::next(work.out.begin(), k * nPhi), nPhi,
-                  std::next(outFirst,
-                            outBatch.Offset(iTheta * nPhi, first + k)),
-                  outBatch.Stride());
+        UnpackRow(
+            std::next(work.out.begin(), k * nPhi), nPhi,
+            std::next(outFirst, outBatch.Offset(iTheta * nPhi, first + k)),
+            outBatch.Stride());
       }
     };
 
@@ -1347,8 +1337,8 @@ class SphericalGrid {
     // Room for a paired product and a paired right-hand side at once: step
     // M6 puts the orders +m and -m through one GEMM, so the widest case is
     // two columns of each, and the right-hand side is nTheta rows deep.
-    const auto scratchSize =
-        static_cast<std::size_t>(2 * c * (lMax + 1 + static_cast<Int>(this->NumberOfCoLatitudes())));
+    const auto scratchSize = static_cast<std::size_t>(
+        2 * c * (lMax + 1 + static_cast<Int>(this->NumberOfCoLatitudes())));
     const auto orders = lMax - minOrder + 1;
 
     // **A team is opened even for the sequential case, and that is the point
@@ -1398,8 +1388,8 @@ class SphericalGrid {
   // starts there and its height falls linearly in |m|. A transform at a
   // degree below the grid's takes a contiguous *prefix* of the rows, at the
   // same leading dimension, so nothing is copied for a truncated call.
-  template <RealOrComplexFloatingPoint Scalar,
-            std::ranges::input_range InRange, typename OutIterator>
+  template <RealOrComplexFloatingPoint Scalar, std::ranges::input_range InRange,
+            typename OutIterator>
   void ForwardMatrixKernel(Int lMax, Int n, InRange&& in, Batch inBatch,
                            OutIterator outFirst, Batch outBatch, Int count,
                            Int nPhi, Int nTheta, Real scaleFactor,
@@ -1422,11 +1412,10 @@ class SphericalGrid {
       const auto c = std::min(chunk, count - first);
 
       // All the FFTs, landing [m][theta][k].
-      auto& stage = MatrixScratch(
-          static_cast<std::size_t>(nFourier * nTheta * c));
-      auto stageSpan = std::span<Complex>(stage.data(),
-                                          static_cast<std::size_t>(
-                                              nFourier * nTheta * c));
+      auto& stage =
+          MatrixScratch(static_cast<std::size_t>(nFourier * nTheta * c));
+      auto stageSpan = std::span<Complex>(
+          stage.data(), static_cast<std::size_t>(nFourier * nTheta * c));
       ForwardFourierStage(in, inBatch, first, c, stageSpan, 0, policy);
 
       // Everything one order needs, and nothing another order touches. That
@@ -1465,7 +1454,9 @@ class SphericalGrid {
         // it has to be: the reflection reverses the colatitude, and no BLAS
         // takes a negative stride.
         for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
-          const auto w = _impl->coLatitudeWeights[static_cast<std::size_t>(iTheta)] * scaleFactor;
+          const auto w =
+              _impl->coLatitudeWeights[static_cast<std::size_t>(iTheta)] *
+              scaleFactor;
           for (auto k = Int{0}; k < c; k++) plus[iTheta * c + k] *= w;
         }
 
@@ -1481,7 +1472,8 @@ class SphericalGrid {
         for (auto l = lMin; l <= lMax; l++) {
           const auto j = indices.Index(l, m);
           for (auto k = Int{0}; k < c; k++) {
-            outFirst[outBatch.Offset(j, first + k)] = scratch[(l - lMin) * c + k];
+            outFirst[outBatch.Offset(j, first + k)] =
+                scratch[(l - lMin) * c + k];
           }
         }
 
@@ -1490,7 +1482,9 @@ class SphericalGrid {
         auto* rhs = scratch + rows * c;
         const auto* minus = stage.data() + (nPhi - m) * nTheta * c;
         for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
-          const auto w = _impl->coLatitudeWeights[static_cast<std::size_t>(iTheta)] * scaleFactor;
+          const auto w =
+              _impl->coLatitudeWeights[static_cast<std::size_t>(iTheta)] *
+              scaleFactor;
           const auto mirror = nTheta - 1 - iTheta;
           for (auto k = Int{0}; k < c; k++) {
             rhs[iTheta * c + k] = minus[mirror * c + k] * w;
@@ -1562,8 +1556,7 @@ class SphericalGrid {
       // The band alone, not the whole intermediate: at lMax = 256 the whole
       // is 16 MiB and this is the part of it no product touches.
       const auto zeroFrom = lMax + 1;
-      const auto zeroTo =
-          RealFloatingPoint<Scalar> ? nFourier : nPhi - lMax;
+      const auto zeroTo = RealFloatingPoint<Scalar> ? nFourier : nPhi - lMax;
       for (auto m = zeroFrom; m < zeroTo; m++) {
         std::fill_n(stage.data() + m * nTheta * c, nTheta * c, Complex{0, 0});
       }
@@ -1591,7 +1584,8 @@ class SphericalGrid {
         for (auto l = lMin; l <= lMax; l++) {
           const auto j = indices.Index(l, m);
           for (auto k = Int{0}; k < c; k++) {
-            gathered[(l - lMin) * c + k] = inFirst[inBatch.Offset(j, first + k)];
+            gathered[(l - lMin) * c + k] =
+                inFirst[inBatch.Offset(j, first + k)];
           }
         }
 
@@ -1599,8 +1593,7 @@ class SphericalGrid {
             static_cast<int>(nTheta), static_cast<int>(2 * c),
             static_cast<int>(rows), Real{1}, a, static_cast<int>(nTheta),
             reinterpret_cast<const Real*>(gathered), static_cast<int>(2 * c),
-            Real{0},
-            reinterpret_cast<Real*>(stage.data() + m * nTheta * c),
+            Real{0}, reinterpret_cast<Real*>(stage.data() + m * nTheta * c),
             static_cast<int>(2 * c));
 
         if (pairs == 1) return;
@@ -1721,10 +1714,10 @@ class SphericalGrid {
   static void CheckSpan(std::size_t given, std::integral auto needed,
                         const char* what) {
     if (given < static_cast<std::size_t>(needed)) {
-      throw std::invalid_argument(
-          std::string("Transform ") + what + " range has size " +
-          std::to_string(given) + ", but this batch spans " +
-          std::to_string(needed));
+      throw std::invalid_argument(std::string("Transform ") + what +
+                                  " range has size " + std::to_string(given) +
+                                  ", but this batch spans " +
+                                  std::to_string(needed));
     }
   }
 
@@ -1749,10 +1742,10 @@ class SphericalGrid {
   static void CheckSize(std::size_t given, std::integral auto expected,
                         const char* what) {
     if (given != static_cast<std::size_t>(expected)) {
-      throw std::invalid_argument(
-          std::string("Transform ") + what + " range has size " +
-          std::to_string(given) + ", but this request needs " +
-          std::to_string(expected));
+      throw std::invalid_argument(std::string("Transform ") + what +
+                                  " range has size " + std::to_string(given) +
+                                  ", but this request needs " +
+                                  std::to_string(expected));
     }
   }
 
@@ -1772,8 +1765,7 @@ class SphericalGrid {
       throw std::invalid_argument(
           "Transform degree must be between zero and the grid maximum degree");
     }
-    if (std::abs(n) > lMax ||
-        !std::ranges::contains(this->UpperIndices(), n)) {
+    if (std::abs(n) > lMax || !std::ranges::contains(this->UpperIndices(), n)) {
       throw std::invalid_argument(
           "Transform upper index is not supported at the requested degree");
     }
@@ -1916,8 +1908,8 @@ class SphericalGrid {
         wignerMatrices = WignerMatrices<Real, _MRange, _NRange>::Reflected(
             lMax, lMax, nMax, coLatitudes);
       } else {
-        wigner = Wigner<Real, _MRange, _NRange, Multiple>(
-            lMax, lMax, nMax, coLatitudes);
+        wigner = Wigner<Real, _MRange, _NRange, Multiple>(lMax, lMax, nMax,
+                                                          coLatitudes);
       }
 
       // The planner flag is kept as the caller gave it. It used to be used to

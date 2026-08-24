@@ -2,7 +2,6 @@
 #define GSH_TRANS_LAYERED_SPIN_FIELD_GUARD_H
 
 #include <FFTWpp/Core>
-
 #include <complex>
 #include <cstddef>
 #include <span>
@@ -11,8 +10,8 @@
 #include <utility>
 
 #include "../Concepts.h"
-#include "../Policies.h"
 #include "../Indexing.h"
+#include "../Policies.h"
 #include "../SpinField/SpinField.h"
 #include "../SpinField/SpinFieldOverloads.h"
 #include "../SpinField/SpinFieldView.h"
@@ -27,8 +26,8 @@ namespace GSHTrans {
 ///
 /// Two-dimensional is the primitive and three-dimensional is a stack. The
 /// angular field is never wrapped and a slice is not a new kind of object: it
-/// is a SpinFieldView, an ordinary spin-weighted node, so the index algebra, the
-/// evaluation and the aliasing theorem all lift unchanged and there is no
+/// is a SpinFieldView, an ordinary spin-weighted node, so the index algebra,
+/// the evaluation and the aliasing theorem all lift unchanged and there is no
 /// second expression system to keep consistent with the first. That is what
 /// views are admissible everywhere an owning field is.
 ///
@@ -48,9 +47,9 @@ class LayeredSpinField {
 
   /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = _N;
-  using Value = _Value;  ///< Whether the samples are real-valued or complex.
+  using Value = _Value;    ///< Whether the samples are real-valued or complex.
   using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Real = typename _Grid::Real;  ///< The precision.
+  using Real = typename _Grid::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   /// The value type: Real when real-valued, Complex otherwise.
   using Scalar = ScalarFor<Real, Value>;
@@ -92,8 +91,9 @@ class LayeredSpinField {
 
   // The uniform names a radial operator sees. A field's slice is a set of
   // angular points and an expansion's is a set of coefficients, but the radial
-  // axis does not care which: it runs over `NumberOfRadii()` values `SliceSize()`
-  // apart, and that is all `ApplyRadially` needs to know about either.
+  // axis does not care which: it runs over `NumberOfRadii()` values
+  // `SliceSize()` apart, and that is all `ApplyRadially` needs to know about
+  // either.
   /** @brief How many elements one radial slice holds. */
   auto SliceSize() const { return FieldSize(); }
   /** @brief A zero stack of the same shape, which is what an operator needs
@@ -167,9 +167,9 @@ class LayeredSpinExpansion {
 
   /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = _N;
-  using Value = _Value;  ///< Whether the samples are real-valued or complex.
+  using Value = _Value;    ///< Whether the samples are real-valued or complex.
   using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Real = typename _Grid::Real;  ///< The precision.
+  using Real = typename _Grid::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   using RadialGridType = RadialGrid<Real>;  ///< The radial grid type.
   using MRange =
@@ -318,8 +318,9 @@ template <typename Expr, typename RadialGridType>
 requires SpinFieldExpr<Expr>
 auto Broadcast(const RadialGridType& radialGrid, const Expr& expr) {
   using E = Node<Expr>;
-  auto stack = LayeredSpinField<E::UpperIndex, typename E::GridType,
-                                typename E::Value>(radialGrid, expr.Grid());
+  auto stack =
+      LayeredSpinField<E::UpperIndex, typename E::GridType, typename E::Value>(
+          radialGrid, expr.Grid());
   for (auto i : stack.RadiusIndices()) {
     auto slice = stack.Slice(i);
     expr.EvaluateInto(slice.Data());

@@ -33,15 +33,15 @@
 #include <cstddef>
 
 extern "C" {
-void dgemm_(const char* transa, const char* transb, const int* m,
-            const int* n, const int* k, const double* alpha, const double* a,
-            const int* lda, const double* b, const int* ldb,
-            const double* beta, double* c, const int* ldc);
+void dgemm_(const char* transa, const char* transb, const int* m, const int* n,
+            const int* k, const double* alpha, const double* a, const int* lda,
+            const double* b, const int* ldb, const double* beta, double* c,
+            const int* ldc);
 
-void sgemm_(const char* transa, const char* transb, const int* m,
-            const int* n, const int* k, const float* alpha, const float* a,
-            const int* lda, const float* b, const int* ldb, const float* beta,
-            float* c, const int* ldc);
+void sgemm_(const char* transa, const char* transb, const int* m, const int* n,
+            const int* k, const float* alpha, const float* a, const int* lda,
+            const float* b, const int* ldb, const float* beta, float* c,
+            const int* ldc);
 }
 
 namespace GSHTrans {

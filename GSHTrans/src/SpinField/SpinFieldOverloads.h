@@ -156,7 +156,7 @@ concept ScalarFor_ = std::same_as<RemoveComplex<S>, typename Node<A>::Real>;
 // Addition and subtraction: equal upper indices.
 template <SpinFieldExpr L, SpinFieldExpr R>
 requires SamePrecisionAs<L, R> and
-    IndexRules::Equal::Admissible<Node<L>::UpperIndex, Node<R>::UpperIndex>
+         IndexRules::Equal::Admissible<Node<L>::UpperIndex, Node<R>::UpperIndex>
 auto operator+(L&& l, R&& r) {
   return Binary<SpinFieldOps::Plus, IndexRules::Equal, L, R>(
       std::forward<L>(l), std::forward<R>(r));
@@ -164,7 +164,7 @@ auto operator+(L&& l, R&& r) {
 
 template <SpinFieldExpr L, SpinFieldExpr R>
 requires SamePrecisionAs<L, R> and
-    IndexRules::Equal::Admissible<Node<L>::UpperIndex, Node<R>::UpperIndex>
+         IndexRules::Equal::Admissible<Node<L>::UpperIndex, Node<R>::UpperIndex>
 auto operator-(L&& l, R&& r) {
   return Binary<SpinFieldOps::Minus, IndexRules::Equal, L, R>(
       std::forward<L>(l), std::forward<R>(r));
@@ -176,18 +176,18 @@ auto operator-(L&& l, R&& r) {
 // GaussLegendreGrid::ForBand.
 template <SpinFieldExpr L, SpinFieldExpr R>
 requires SamePrecisionAs<L, R> and
-    IndexRules::Sum::Admissible<Node<L>::UpperIndex, Node<R>::UpperIndex>
+         IndexRules::Sum::Admissible<Node<L>::UpperIndex, Node<R>::UpperIndex>
 auto operator*(L&& l, R&& r) {
-  return Binary<SpinFieldOps::Times, IndexRules::Sum, L, R>(
-      std::forward<L>(l), std::forward<R>(r));
+  return Binary<SpinFieldOps::Times, IndexRules::Sum, L, R>(std::forward<L>(l),
+                                                            std::forward<R>(r));
 }
 
 // Division: by a scalar field only. Zeros of the divisor are the caller's
 // problem and are not checked.
 template <SpinFieldExpr L, SpinFieldExpr R>
 requires SamePrecisionAs<L, R> and
-    IndexRules::FirstOnly::Admissible<Node<L>::UpperIndex,
-                                      Node<R>::UpperIndex>
+         IndexRules::FirstOnly::Admissible<Node<L>::UpperIndex,
+                                           Node<R>::UpperIndex>
 auto operator/(L&& l, R&& r) {
   return Binary<SpinFieldOps::DividedBy, IndexRules::FirstOnly, L, R>(
       std::forward<L>(l), std::forward<R>(r));
@@ -230,8 +230,7 @@ auto abs2(A&& a) {
 template <SpinFieldExpr A>
 requires(Node<A>::UpperIndex == 0)
 auto real(A&& a) {
-  return Unary<SpinFieldOps::RealPart, IndexRules::Zero, A>(
-      std::forward<A>(a));
+  return Unary<SpinFieldOps::RealPart, IndexRules::Zero, A>(std::forward<A>(a));
 }
 
 template <SpinFieldExpr A>
@@ -303,7 +302,7 @@ auto operator/(S s, A&& a) {
 // than a change to this one.
 template <SpinFieldExpr A, typename F>
 requires(Node<A>::UpperIndex == 0) and
-    std::invocable<std::decay_t<F>, typename Node<A>::Scalar>
+        std::invocable<std::decay_t<F>, typename Node<A>::Scalar>
 auto Map(A&& a, F&& f) {
   using Functor = std::decay_t<F>;
   return Unary<Functor, IndexRules::Zero, A>(std::forward<A>(a),

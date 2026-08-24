@@ -19,8 +19,7 @@ void CheckSingleUpperIndexAccess(std::ptrdiff_t n) {
   constexpr std::ptrdiff_t lMax = 5;
   constexpr std::ptrdiff_t mMax = 3;
 
-  auto singleAngle =
-      Wigner<double, All, Single, Single>(lMax, mMax, n, 0.7);
+  auto singleAngle = Wigner<double, All, Single, Single>(lMax, mMax, n, 0.7);
   auto explicitSingleAngle = singleAngle[n, 0];
   for (auto l : singleAngle.Degrees()) {
     for (auto m : explicitSingleAngle[l].Orders()) {
@@ -57,7 +56,8 @@ TEST(Wigner, CheckConventionLongDouble) {
 // The seed row and the boundary orders come from recursions (T11); the closed
 // forms they replaced are the definition they answer to.
 TEST(Wigner, CheckBoundaryRecursionDouble) {
-  EXPECT_LT(CheckWignerBoundary<double>(), CheckWignerBoundaryTolerance<double>());
+  EXPECT_LT(CheckWignerBoundary<double>(),
+            CheckWignerBoundaryTolerance<double>());
 }
 
 TEST(Wigner, CheckBoundaryRecursionLongDouble) {
@@ -87,9 +87,7 @@ TEST(Wigner, CheckAdditionTheoremLongDouble) {
   EXPECT_EQ(i, 0);
 }
 
-TEST(Wigner, SinglePositiveUpperIndexAccess) {
-  CheckSingleUpperIndexAccess(2);
-}
+TEST(Wigner, SinglePositiveUpperIndexAccess) { CheckSingleUpperIndexAccess(2); }
 
 TEST(Wigner, SingleNegativeUpperIndexAccess) {
   CheckSingleUpperIndexAccess(-2);
@@ -132,10 +130,9 @@ void CheckTransformMajorAgreesWithWigner(std::ptrdiff_t lMax,
   }
 
   const auto table =
-      Wigner<Real, MRange, NRange, Multiple>(lMax, mMax, nMax,
-                                                          angles);
-  const auto matrices = WignerMatrices<Real, MRange, NRange>(lMax, mMax, nMax,
-                                                             angles);
+      Wigner<Real, MRange, NRange, Multiple>(lMax, mMax, nMax, angles);
+  const auto matrices =
+      WignerMatrices<Real, MRange, NRange>(lMax, mMax, nMax, angles);
 
   ASSERT_EQ(matrices.NumberOfAngles(), nTheta);
   ASSERT_EQ(matrices.MaxDegree(), lMax);
@@ -170,8 +167,8 @@ void CheckTransformMajorAgreesWithWigner(std::ptrdiff_t lMax,
   auto tableValues = std::size_t{0};
   for (auto n : table.UpperIndices()) {
     for (auto iTheta : table.AngleIndices()) {
-      tableValues += static_cast<std::size_t>(
-          GSHIndices<MRange>(lMax, mMax, n).Size());
+      tableValues +=
+          static_cast<std::size_t>(GSHIndices<MRange>(lMax, mMax, n).Size());
     }
   }
   EXPECT_EQ(matrixValues, tableValues);
@@ -267,10 +264,10 @@ TEST(WignerMatrices, ReflectionRecoversTheNegativeOrders) {
   const auto theta = SymmetricAngles(8);
   const auto nTheta = static_cast<Int>(theta.size());
 
-  const auto full = WignerMatrices<double, All, All>::Full(lMax, lMax, nMax,
-                                                           theta);
-  const auto half = WignerMatrices<double, All, All>::Reflected(lMax, lMax,
-                                                                nMax, theta);
+  const auto full =
+      WignerMatrices<double, All, All>::Full(lMax, lMax, nMax, theta);
+  const auto half =
+      WignerMatrices<double, All, All>::Reflected(lMax, lMax, nMax, theta);
 
   EXPECT_FALSE(full.IsReflected());
   EXPECT_TRUE(half.IsReflected());
@@ -323,7 +320,8 @@ TEST(WignerMatrices, ReflectedStorageIsHalfTheOrders) {
     return total;
   };
 
-  const auto full = WignerMatrices<double, All, All>::Full(lMax, lMax, 2, theta);
+  const auto full =
+      WignerMatrices<double, All, All>::Full(lMax, lMax, 2, theta);
   const auto half =
       WignerMatrices<double, All, All>::Reflected(lMax, lMax, 2, theta);
 
@@ -340,9 +338,8 @@ TEST(WignerMatrices, ReflectedRefusesUnsymmetricAngles) {
   // Symmetric about pi/2 is the whole premise; without it half the table
   // would be quietly wrong.
   const auto skewed = std::vector<double>{0.3, 0.9, 1.4, 2.0};
-  EXPECT_THROW(
-      (WignerMatrices<double, All, All>::Reflected(6, 6, 1, skewed)),
-      std::invalid_argument);
+  EXPECT_THROW((WignerMatrices<double, All, All>::Reflected(6, 6, 1, skewed)),
+               std::invalid_argument);
   // The unreflected layout takes any angles at all, as it always has.
   EXPECT_NO_THROW((WignerMatrices<double, All, All>::Full(6, 6, 1, skewed)));
 }

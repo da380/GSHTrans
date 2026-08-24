@@ -48,7 +48,8 @@ int main() {
   // reading its operands only at the point it is writing, so evaluating in
   // place needs no temporary. That is a theorem about the node set, not an
   // accident, and it is why no re-indexing view is allowed to sneak in here.
-  auto w = SpinField<1, Grid>(grid, [](auto, auto) { return Complex{1.0, 0.0}; });
+  auto w =
+      SpinField<1, Grid>(grid, [](auto, auto) { return Complex{1.0, 0.0}; });
   const auto before = w[3, 4];
   w = w + conj(u) * v * w;
   std::cout << "in place: " << before << " -> " << (w[3, 4]) << "\n";

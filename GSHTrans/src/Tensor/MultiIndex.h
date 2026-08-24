@@ -271,7 +271,7 @@ struct SlotPermutation {
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   std::array<Int, Rank> image;  ///< Slot i of the result is slot image[i].
-  Int sign;  ///< The sign the component picks up, +1 or -1.
+  Int sign;                     ///< The sign the component picks up, +1 or -1.
 
   /** @brief Compares componentwise. */
   constexpr bool operator==(const SlotPermutation&) const = default;
@@ -360,9 +360,8 @@ struct ElasticSymmetry {
 template <typename S, std::ptrdiff_t Rank>
 concept TensorSymmetry = requires {
   { S::Generators() } -> std::ranges::sized_range;
-  requires std::same_as<
-      std::ranges::range_value_t<decltype(S::Generators())>,
-      SlotPermutation<Rank>>;
+  requires std::same_as<std::ranges::range_value_t<decltype(S::Generators())>,
+                        SlotPermutation<Rank>>;
 };
 
 }  // namespace GSHTrans

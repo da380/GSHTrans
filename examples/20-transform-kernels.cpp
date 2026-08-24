@@ -150,8 +150,8 @@ int main() {
   // over long double keeps the loop kernel and only the loop kernel.
   try {
     auto wide = GaussLegendreGrid<long double, All, All>(
-        lMax, n, FFTWpp::Measure, Chunking::Automatic(),
-        WignerValues::Stored(), TransformKernel::Matrix());
+        lMax, n, FFTWpp::Measure, Chunking::Automatic(), WignerValues::Stored(),
+        TransformKernel::Matrix());
     std::cerr << "expected long double to be refused\n";
     return 1;
   } catch (const std::invalid_argument&) {

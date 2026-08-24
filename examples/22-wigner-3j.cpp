@@ -73,8 +73,8 @@ int main() {
           ((j - m) % 2 == 0 ? 1.0 : -1.0) / std::sqrt(2.0 * j + 1);
       worst = std::max(worst, std::abs(zeroDegree(m, 0) - want));
     }
-    std::cout << "\n(j j 0; m -m 0) against its closed form, j = " << j
-              << ": " << worst << "\n";
+    std::cout << "\n(j j 0; m -m 0) against its closed form, j = " << j << ": "
+              << worst << "\n";
     if (!(worst < 1e-14)) return 1;
   }
 
@@ -115,8 +115,7 @@ int main() {
     auto sum = 0.0;
     for (auto value : table) sum += value * value;
     std::cout << "\nThe completeness relation on (3, 4, 5): sum of squares = "
-              << sum << ", departure from one = " << std::abs(sum - 1)
-              << "\n";
+              << sum << ", departure from one = " << std::abs(sum - 1) << "\n";
   }
 
   // Stretched triangles at high degree are the case a one-directional

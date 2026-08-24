@@ -36,7 +36,8 @@ namespace GSHTrans {
 // coefficients of a rank-q tensor to those of the rank-(q+1) tensor grad T:
 //
 //   (grad T)^{sigma a_1...a_q}_{lm} = Omega^{-+N}_l T^{a_1...a_q}_{lm}
-//                                     - sum_i T^{a_1...(a_i + sigma)...a_q}_{lm}
+//                                     - sum_i T^{a_1...(a_i +
+//                                     sigma)...a_q}_{lm}
 //
 // for sigma = +-1, the upper sign going with sigma = -1. The operator
 // *prepends* a slot, and the result carries upper index sigma + N, which is
@@ -191,16 +192,14 @@ template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
           TensorReality Reality, AngularGrid Grid>
 auto SurfaceGradient(
     const TensorExpansion<Rank, Symmetry, Reality, Grid>& operand) {
-  using Result =
-      TensorExpansion<Rank + 1, NoSymmetry<Rank + 1>, Reality, Grid>;
+  using Result = TensorExpansion<Rank + 1, NoSymmetry<Rank + 1>, Reality, Grid>;
 
   auto result = Result(operand.Grid(), operand.MaxDegree());
   [&]<std::size_t... Slot>(std::index_sequence<Slot...>) {
     (
         [&] {
           constexpr auto flat = Result::ComponentLayout.flatOfSlot[Slot];
-          constexpr auto indices =
-              MultiIndex<Rank + 1>::FromFlat(flat).Slots();
+          constexpr auto indices = MultiIndex<Rank + 1>::FromFlat(flat).Slots();
           ContravariantDetails::FillComponent<indices>(result, operand);
         }(),
         ...);

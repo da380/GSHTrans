@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <GSHTrans/All>
-
 #include <cmath>
 #include <complex>
 #include <cstddef>
@@ -170,8 +169,7 @@ TEST(LayeredSpinField, BroadcastLiftsAnExpressionToEveryRadius) {
   for (auto i : stack.RadiusIndices()) {
     for (auto iTheta : grid.CoLatitudeIndices()) {
       for (auto iPhi : grid.LongitudeIndices()) {
-        EXPECT_EQ((stack.Slice(i)[iTheta, iPhi]),
-                  2.0 * (u[iTheta, iPhi]));
+        EXPECT_EQ((stack.Slice(i)[iTheta, iPhi]), 2.0 * (u[iTheta, iPhi]));
       }
     }
   }
@@ -294,7 +292,8 @@ TEST(RadialOperator, AppliesAlongTheRadialAxisAndNowhereElse) {
     for (Int j = 0; j < slice.Size(); j++) {
       const auto g = Complex{std::sin(0.3 * j), 0.25 * j};
       slice.Data()[j] = r * r * g;
-      reference[static_cast<std::size_t>(i * stack.FieldSize() + j)] = 2 * r * g;
+      reference[static_cast<std::size_t>(i * stack.FieldSize() + j)] =
+          2 * r * g;
     }
   }
 
@@ -404,8 +403,8 @@ TEST(RadialOperator, IntegratesWithTheGridsOwnWeights) {
   auto integral = IntegrateRadially(stack);
   ASSERT_EQ(static_cast<Int>(integral.size()), stack.FieldSize());
   for (Int j = 0; j < stack.FieldSize(); j++) {
-    EXPECT_NEAR(integral[static_cast<std::size_t>(j)].real(),
-                0.375 * (1.0 + j), 1.0e-10);
+    EXPECT_NEAR(integral[static_cast<std::size_t>(j)].real(), 0.375 * (1.0 + j),
+                1.0e-10);
     EXPECT_NEAR(integral[static_cast<std::size_t>(j)].imag(), 0.375 * 0.5,
                 1.0e-12);
   }
@@ -556,8 +555,8 @@ TEST(LayeredGradient, TwoGradientsContractToTheLaplacian) {
     Int l;
     Int m;
   };
-  const auto cases = std::vector<Case>{{3, 4, 2},  {1, 1, 0},  {-2, 6, -5},
-                                       {0, 2, 1},  {2.5, 0, 0}, {-1, 10, 10}};
+  const auto cases = std::vector<Case>{{3, 4, 2}, {1, 1, 0},   {-2, 6, -5},
+                                       {0, 2, 1}, {2.5, 0, 0}, {-1, 10, 10}};
 
   for (const auto& c : cases) {
     auto f = LayeredScalarExpansion<Grid, ComplexTensor>(radial, grid, lMax);
@@ -609,9 +608,9 @@ TEST(LayeredGradient, HoldsOnARealScalarThroughTheReducedStorage) {
                          h.Coefficient<1, -1>(i, l, m) -
                          h.Coefficient<-1, 1>(i, l, m);
       const auto f0 = f.Coefficient<>(i, l, m);
-      const auto expected =
-          (a * (a + 1) - l * (l + 1.0)) * std::pow(TestRadii[i], a - 2) * f0 /
-          std::pow(TestRadii[i], a);
+      const auto expected = (a * (a + 1) - l * (l + 1.0)) *
+                            std::pow(TestRadii[i], a - 2) * f0 /
+                            std::pow(TestRadii[i], a);
       EXPECT_NEAR(trace.real(), expected.real(), 1.0e-10);
       EXPECT_NEAR(trace.imag(), expected.imag(), 1.0e-10);
     }
@@ -881,8 +880,7 @@ namespace {
 // Deliberately unequally spaced, and not close to uniform: a rule that
 // happened to assume equal spacing would pass on a uniform grid and fail
 // here, which is the point of choosing these.
-const auto UnevenRadii =
-    std::vector<Real>{0.40, 0.55, 0.70, 1.00, 1.30, 1.45};
+const auto UnevenRadii = std::vector<Real>{0.40, 0.55, 0.70, 1.00, 1.30, 1.45};
 
 Real Monomial(Real r, Int degree) { return std::pow(r, degree); }
 Real MonomialSlope(Real r, Int degree) {
@@ -928,8 +926,8 @@ TEST(RadialDerivatives, FiniteDifferencesAreExactToTheirOrder) {
     const auto got = Line(d, tooHigh);
     auto worst = Real{0};
     for (std::size_t i = 0; i < UnevenRadii.size(); i++) {
-      worst = std::max(worst, std::abs(got[i] - MonomialSlope(UnevenRadii[i],
-                                                              order + 1)));
+      worst = std::max(
+          worst, std::abs(got[i] - MonomialSlope(UnevenRadii[i], order + 1)));
     }
     EXPECT_GT(worst, 1.0e-9) << "order " << order;
   }
@@ -985,12 +983,11 @@ TEST(RadialDerivatives, ActOnComplexLinesAsReadilyAsRealOnes) {
   auto values = std::vector<Complex>{};
   for (auto r : UnevenRadii) values.push_back(Complex{r * r, 3.0 * r});
 
-  for (const auto& apply : {std::function<void(std::span<const Complex>,
-                                               std::span<Complex>)>(
-                                [&](auto in, auto out) { fd(in, out); }),
-                            std::function<void(std::span<const Complex>,
-                                               std::span<Complex>)>(
-                                [&](auto in, auto out) { lagrange(in, out); })}) {
+  for (const auto& apply :
+       {std::function<void(std::span<const Complex>, std::span<Complex>)>(
+            [&](auto in, auto out) { fd(in, out); }),
+        std::function<void(std::span<const Complex>, std::span<Complex>)>(
+            [&](auto in, auto out) { lagrange(in, out); })}) {
     auto got = std::vector<Complex>(values.size());
     apply(std::span<const Complex>(values), std::span<Complex>(got));
     for (std::size_t i = 0; i < UnevenRadii.size(); i++) {
@@ -1012,8 +1009,7 @@ TEST(RadialOperator, OneOperatorServesEveryThread) {
   // An operator that genuinely needs scratch, so that a mutable member would
   // be visibly wrong rather than accidentally right.
   struct ScratchOperator {
-    void operator()(std::span<const Complex> in,
-                    std::span<Complex> out) const {
+    void operator()(std::span<const Complex> in, std::span<Complex> out) const {
       thread_local auto work = std::vector<Complex>{};
       if (work.size() < in.size()) work.resize(in.size());
       for (std::size_t i = 0; i < in.size(); i++) {
@@ -1047,7 +1043,6 @@ TEST(RadialOperator, OneOperatorServesEveryThread) {
     EXPECT_EQ(one.Data()[i], many.Data()[i]) << "at " << i;
   }
 }
-
 
 // What the whole exercise is for: Gradient now runs without the caller
 // writing a differentiation matrix first. The identity is the Laplacian one,
@@ -1152,7 +1147,8 @@ TEST(RadialDerivatives, TheSplineActsOnComplexLinesThroughARealSystem) {
 
   auto values = std::vector<Complex>{};
   for (auto r : UnevenRadii) {
-    values.push_back(Complex{std::exp(r) * std::sin(3.0 * r), std::cos(2.0 * r)});
+    values.push_back(
+        Complex{std::exp(r) * std::sin(3.0 * r), std::cos(2.0 * r)});
   }
 
   auto got = std::vector<Complex>(values.size());
@@ -1208,9 +1204,9 @@ TEST(RadialResample, OntoTheSameRadiiIsTheIdentity) {
     f.Data()[i] = Complex{std::cos(0.07 * i), std::sin(0.13 * i)};
   }
 
-  for (auto scheme : {RadialInterpolation::Linear(),
-                      RadialInterpolation::CubicSpline(),
-                      RadialInterpolation::Akima()}) {
+  for (auto scheme :
+       {RadialInterpolation::Linear(), RadialInterpolation::CubicSpline(),
+        RadialInterpolation::Akima()}) {
     const auto same = Resample(f, radial, scheme);
     ASSERT_EQ(same.Data().size(), f.Data().size());
     for (std::size_t i = 0; i < f.Data().size(); i++) {
@@ -1234,15 +1230,15 @@ TEST(RadialResample, CarriesALinearProfileExactlyOntoNewRadii) {
     auto slice = f.Slice(i);
     for (auto iTheta : grid.CoLatitudeIndices()) {
       for (auto iPhi : grid.LongitudeIndices()) {
-        slice[iTheta, iPhi] = Complex{2.0 * UnevenRadii[i] + 1.0,
-                                      -0.5 * UnevenRadii[i]};
+        slice[iTheta, iPhi] =
+            Complex{2.0 * UnevenRadii[i] + 1.0, -0.5 * UnevenRadii[i]};
       }
     }
   }
 
-  for (auto scheme : {RadialInterpolation::Linear(),
-                      RadialInterpolation::CubicSpline(),
-                      RadialInterpolation::Akima()}) {
+  for (auto scheme :
+       {RadialInterpolation::Linear(), RadialInterpolation::CubicSpline(),
+        RadialInterpolation::Akima()}) {
     const auto moved = Resample(f, finer, scheme);
     EXPECT_EQ(moved.NumberOfRadii(), 7);
     EXPECT_EQ(moved.SliceSize(), f.SliceSize());
@@ -1314,10 +1310,10 @@ TEST(RadialResample, ThreadingChangesNothing) {
     f.Data()[i] = Complex{std::cos(0.09 * i), std::sin(0.17 * i)};
   }
 
-  const auto one = Resample(f, onto, RadialInterpolation::Akima(),
-                            Execution::Sequential());
-  const auto many = Resample(f, onto, RadialInterpolation::Akima(),
-                             Execution::Parallel());
+  const auto one =
+      Resample(f, onto, RadialInterpolation::Akima(), Execution::Sequential());
+  const auto many =
+      Resample(f, onto, RadialInterpolation::Akima(), Execution::Parallel());
   ASSERT_EQ(one.Data().size(), many.Data().size());
   for (std::size_t i = 0; i < one.Data().size(); i++) {
     EXPECT_EQ(one.Data()[i], many.Data()[i]) << "at " << i;
@@ -1335,8 +1331,7 @@ namespace {
 // Two elements meeting at r = 0.8, which is stored twice: once as the top of
 // the lower element and once as the bottom of the upper one. That repetition
 // is the interface, and saying so is the whole content of the partition.
-const auto LayeredRadii =
-    std::vector<Real>{0.4, 0.6, 0.8, 0.8, 1.0, 1.2};
+const auto LayeredRadii = std::vector<Real>{0.4, 0.6, 0.8, 0.8, 1.0, 1.2};
 const auto LayeredStarts = std::vector<Int>{0, 3, 6};
 
 }  // namespace
@@ -1472,7 +1467,8 @@ TEST(RadialDerivatives, TheSplineOffersTheEndConditionsItUsedToLack) {
   }
   // And natural is visibly not exact there, which is what says the choice
   // means something.
-  EXPECT_GT(std::abs(forced[0] - 3.0 * UnevenRadii[0] * UnevenRadii[0]), 1.0e-3);
+  EXPECT_GT(std::abs(forced[0] - 3.0 * UnevenRadii[0] * UnevenRadii[0]),
+            1.0e-3);
 }
 
 // Clamped is refused, and the message says why rather than leaving a caller to
@@ -1612,9 +1608,9 @@ TEST(RadialResample, FitsPerPieceAndNeverAcrossAnInterface) {
 
   // Targets on both sides of the break, none of them a source node.
   const auto onto = RadialGrid<Real>(std::vector<Real>{0.5, 0.7, 0.9, 1.1});
-  for (auto scheme : {RadialInterpolation::Linear(),
-                      RadialInterpolation::CubicSpline(),
-                      RadialInterpolation::Akima()}) {
+  for (auto scheme :
+       {RadialInterpolation::Linear(), RadialInterpolation::CubicSpline(),
+        RadialInterpolation::Akima()}) {
     const auto moved = Resample(f, onto, scheme);
     for (auto i : onto.RadiusIndices()) {
       const auto r = onto.Radius(i);

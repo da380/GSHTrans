@@ -101,8 +101,7 @@ class EmbedNode {
 
 template <typename T>
 requires TensorExpr<std::remove_cvref_t<T>> &&
-         std::same_as<typename std::remove_cvref_t<T>::SlotSet,
-                      TangentialSlots>
+         std::same_as<typename std::remove_cvref_t<T>::SlotSet, TangentialSlots>
 auto Embed(T&& tensor) {
   return EmbedNode<T>(std::forward<T>(tensor));
 }

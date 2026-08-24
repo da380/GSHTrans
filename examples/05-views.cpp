@@ -38,8 +38,7 @@ int main() {
 
   // They compose with owning fields and with each other, and they are
   // terminals, so an expression holds an lvalue one by reference.
-  std::cout << "<first, second> = "
-            << Integrate(conj(first) * second) << "\n";
+  std::cout << "<first, second> = " << Integrate(conj(first) * second) << "\n";
 
   // Writing through a view writes the caller's buffer.
   first[0, 0] = Complex{42.0, 0.0};
@@ -49,8 +48,8 @@ int main() {
   // hands out a component whose samples are not contiguous. The stride is a
   // constructor argument and defaults to one.
   auto interleaved = std::vector<Complex>(3 * size);
-  auto middle = SpinFieldView<1, Grid>(grid, std::span(interleaved).subspan(1),
-                                       3);
+  auto middle =
+      SpinFieldView<1, Grid>(grid, std::span(interleaved).subspan(1), 3);
   middle[0, 0] = Complex{1.0, 0.0};
   middle[0, 1] = Complex{2.0, 0.0};
   std::cout << "strided view wrote elements 1 and 4: " << interleaved[1] << " "

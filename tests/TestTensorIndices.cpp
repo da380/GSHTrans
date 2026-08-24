@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <GSHTrans/All>
-
 #include <array>
 #include <cstddef>
 
@@ -17,8 +16,7 @@ using Int = std::ptrdiff_t;
 // is what the abstraction is *for*. It must come out equal to the number of
 // independent real degrees of freedom of the tensor, and it does so for every
 // rank and symmetry below without any of them being special-cased.
-template <Int Rank, typename Symmetry, bool Reality,
-          typename Slots = AllSlots>
+template <Int Rank, typename Symmetry, bool Reality, typename Slots = AllSlots>
 constexpr auto RealsPerPoint() {
   constexpr auto table = MakeOrbitTable<Rank, Symmetry, Reality, Slots>();
   auto reals = Int{0};
@@ -29,14 +27,12 @@ constexpr auto RealsPerPoint() {
   return reals;
 }
 
-template <Int Rank, typename Symmetry, bool Reality,
-          typename Slots = AllSlots>
+template <Int Rank, typename Symmetry, bool Reality, typename Slots = AllSlots>
 constexpr auto StoredCount() {
   return MakeOrbitTable<Rank, Symmetry, Reality, Slots>().storedCount;
 }
 
-template <Int Rank, typename Symmetry, bool Reality,
-          typename Slots = AllSlots>
+template <Int Rank, typename Symmetry, bool Reality, typename Slots = AllSlots>
 constexpr auto PinnedCount() {
   constexpr auto table = MakeOrbitTable<Rank, Symmetry, Reality, Slots>();
   auto pinned = Int{0};
@@ -299,7 +295,6 @@ TEST(Orbits, RealityReducesOnlyARealTensor) {
   SUCCEED();
 }
 
-
 //--------------------------------------------------------------------------//
 //                            The tangential alphabet                        //
 //--------------------------------------------------------------------------//
@@ -430,9 +425,12 @@ TEST(Orbits, ATangentialTensorWithoutSymmetryHasNoPinnedComponents) {
 
   // 2^Rank reals a point at every rank, which is the number of real degrees
   // of freedom a real tangential tensor has.
-  static_assert((RealsPerPoint<1, NoSymmetry<1>, true, TangentialSlots>()) == 2);
-  static_assert((RealsPerPoint<2, NoSymmetry<2>, true, TangentialSlots>()) == 4);
-  static_assert((RealsPerPoint<3, NoSymmetry<3>, true, TangentialSlots>()) == 8);
+  static_assert((RealsPerPoint<1, NoSymmetry<1>, true, TangentialSlots>()) ==
+                2);
+  static_assert((RealsPerPoint<2, NoSymmetry<2>, true, TangentialSlots>()) ==
+                4);
+  static_assert((RealsPerPoint<3, NoSymmetry<3>, true, TangentialSlots>()) ==
+                8);
   static_assert((RealsPerPoint<4, NoSymmetry<4>, true, TangentialSlots>()) ==
                 16);
   SUCCEED();
@@ -465,11 +463,11 @@ TEST(Orbits, ASymmetricTangentialTensorIsARealSymmetricTwoByTwoMatrix) {
     return Int{-1};
   }();
   static_assert(pinned >= 0);
-  static_assert(
-      MakeOrbitTable<2, Symmetric<2>, true, TangentialSlots>()
-          .constraint[pinned] == ComponentConstraint::Real);
   static_assert(MakeOrbitTable<2, Symmetric<2>, true, TangentialSlots>()
-                    .UpperIndexOf(pinned) == 0);
+                    .constraint[pinned] == ComponentConstraint::Real);
+  static_assert(
+      MakeOrbitTable<2, Symmetric<2>, true, TangentialSlots>().UpperIndexOf(
+          pinned) == 0);
 
   // An antisymmetric one has a single degree of freedom, as a 2x2
   // antisymmetric matrix does.

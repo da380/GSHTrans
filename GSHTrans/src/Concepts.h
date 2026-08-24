@@ -13,10 +13,9 @@
  * keeping that distinction in the type system is the point.
  */
 
+#include <NumericConcepts/Numeric.hpp>
 #include <concepts>
 #include <cstddef>
-
-#include <NumericConcepts/Numeric.hpp>
 
 namespace GSHTrans {
 

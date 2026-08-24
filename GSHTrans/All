@@ -3,9 +3,9 @@
 
 // Header files to include for use of the GSHTrans library
 #include "Core"
-#include "Field"
-#include "Tensor"
 #include "Expansion"
+#include "Field"
 #include "Layered"
+#include "Tensor"
 
 #endif

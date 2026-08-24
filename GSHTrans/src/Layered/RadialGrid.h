@@ -29,13 +29,13 @@ namespace GSHTrans {
 /// is most of it.
 ///
 /// A value-semantic handle over shared immutable state, for the same reason
-/// GaussLegendreGrid is one: two layered fields are on the same radial grid when
-/// their handles agree, and copying one is a pointer copy.
+/// GaussLegendreGrid is one: two layered fields are on the same radial grid
+/// when their handles agree, and copying one is a pointer copy.
 template <RealFloatingPoint _Real>
 class RadialGrid {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using Real = _Real;  ///< The precision.
+  using Real = _Real;          ///< The precision.
 
   RadialGrid() = delete;
 
@@ -43,8 +43,7 @@ class RadialGrid {
   /// means to integrate with. The weights may be empty, in which case the grid
   /// carries points alone and Integrate is unavailable.
   RadialGrid(std::vector<Real> radii, std::vector<Real> weights = {})
-      : _impl{std::make_shared<const Impl>(std::move(radii),
-                                           std::move(weights),
+      : _impl{std::make_shared<const Impl>(std::move(radii), std::move(weights),
                                            std::vector<Int>{})} {}
 
   /// The same, knowing which radii belong to which element.
@@ -76,9 +75,8 @@ class RadialGrid {
   static RadialGrid WithElements(std::vector<Real> radii,
                                  std::vector<Int> elementStarts,
                                  std::vector<Real> weights = {}) {
-    return RadialGrid(std::make_shared<const Impl>(std::move(radii),
-                                                   std::move(weights),
-                                                   std::move(elementStarts)));
+    return RadialGrid(std::make_shared<const Impl>(
+        std::move(radii), std::move(weights), std::move(elementStarts)));
   }
 
   /** @brief How many radii the stack holds. */
@@ -145,8 +143,9 @@ class RadialGrid {
   /// radii rather than stored beside them, so that there is one source of
   /// truth and no way for the two to disagree.
   Real Breakpoint(Int k) const {
-    return k == 0 ? _impl->radii.front()
-                  : _impl->radii[static_cast<std::size_t>(ElementEnd(k - 1) - 1)];
+    return k == 0
+               ? _impl->radii.front()
+               : _impl->radii[static_cast<std::size_t>(ElementEnd(k - 1) - 1)];
   }
 
   // Identity, not structure: two grids with equal radii built separately are
@@ -188,7 +187,8 @@ class RadialGrid {
       if (starts.front() != 0 || starts.back() != nR) {
         throw std::invalid_argument(
             "An element partition must cover every radius, so it starts at 0 "
-            "and ends at " + std::to_string(nR));
+            "and ends at " +
+            std::to_string(nR));
       }
       for (std::size_t k = 0; k + 1 < starts.size(); k++) {
         // At least two nodes: a block spanning no interval is not an element.

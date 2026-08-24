@@ -2,7 +2,6 @@
 #define GSH_TRANS_TENSOR_EXPANSION_GUARD_H
 
 #include <FFTWpp/Core>
-
 #include <cmath>
 #include <complex>
 #include <cstddef>
@@ -14,10 +13,10 @@
 
 #include "../Concepts.h"
 #include "../Policies.h"
-#include "../Utility.h"
 #include "../Tensor/MultiIndex.h"
 #include "../Tensor/Orbits.h"
 #include "../Tensor/TensorField.h"
+#include "../Utility.h"
 #include "SpinExpansion.h"
 
 namespace GSHTrans {
@@ -27,9 +26,9 @@ namespace GSHTrans {
 ///
 /// The mirror of TensorField, and deliberately so -- same component addressing,
 /// same stored set, same grouping by upper index. What it does *not* mirror is
-/// the reality reduction's second buffer. A pinned component is a real field, but its
-/// coefficients are complex numbers in the reduced m >= 0 storage, so the
-/// spectral side is one complex buffer throughout. What varies is the block
+/// the reality reduction's second buffer. A pinned component is a real field,
+/// but its coefficients are complex numbers in the reduced m >= 0 storage, so
+/// the spectral side is one complex buffer throughout. What varies is the block
 /// length: a component's block is sized by its own upper index, and a pinned
 /// one by the reduced storage, which is why the total is computed rather than
 /// being a product.
@@ -47,9 +46,9 @@ class TensorExpansion {
   /** @brief The tensor rank. */
   static constexpr Int Rank = _Rank;
   using Symmetry = _Symmetry;  ///< The permutation symmetry of the slots.
-  using Reality = _Reality;  ///< Whether the tensor is real or complex.
-  using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Real = typename _Grid::Real;  ///< The precision.
+  using Reality = _Reality;    ///< Whether the tensor is real or complex.
+  using GridType = _Grid;      ///< The angular grid this is defined on.
+  using Real = typename _Grid::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
 
   // The alphabet the slots are drawn from, appended last and defaulted as it
@@ -130,8 +129,7 @@ class TensorExpansion {
     constexpr auto n = ComponentLayout.upperIndexOfSlot[slot];
     constexpr auto real = ComponentLayout.realOfSlot[slot];
     using Value = std::conditional_t<real, RealValued, ComplexValued>;
-    return SpinExpansionView<n, GridType, Value>(_grid, _lMax,
-                                                 BlockOf(slot));
+    return SpinExpansionView<n, GridType, Value>(_grid, _lMax, BlockOf(slot));
   }
 
   /// The same, read-only.
@@ -210,10 +208,10 @@ class TensorExpansion {
       // The representative's own coefficient, at whichever order this term
       // needs, allowing for a real block's reduced storage.
       const auto stored = [&](Int order) {
-        auto block = ConstSpinExpansionView<repN, GridType,
-                                            std::conditional_t<real, RealValued,
-                                                               ComplexValued>>(
-            _grid, _lMax, BlockOf(slot));
+        auto block = ConstSpinExpansionView<
+            repN, GridType,
+            std::conditional_t<real, RealValued, ComplexValued>>(_grid, _lMax,
+                                                                 BlockOf(slot));
         if constexpr (real) {
           if (order < 0) {
             return static_cast<Real>(MinusOneToPower(order)) *
@@ -224,9 +222,9 @@ class TensorExpansion {
       };
 
       // A pinned-imaginary component is i times the real field stored for it.
-      constexpr auto turn =
-          constraint == ComponentConstraint::Imaginary ? Complex{0, 1}
-                                                       : Complex{1, 0};
+      constexpr auto turn = constraint == ComponentConstraint::Imaginary
+                                ? Complex{0, 1}
+                                : Complex{1, 0};
 
       if constexpr (conjugated) {
         return sign * turn * static_cast<Real>(MinusOneToPower(m + repN)) *
@@ -288,9 +286,8 @@ template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
 auto Expand(
     const TensorField<Rank, Symmetry, Reality, Grid, Layout, Slots>& tensor,
     std::ptrdiff_t lMax, Execution policy = Execution::Sequential()) {
-  auto expansion =
-      TensorExpansion<Rank, Symmetry, Reality, Grid, Slots>(tensor.Grid(),
-                                                            lMax);
+  auto expansion = TensorExpansion<Rank, Symmetry, Reality, Grid, Slots>(
+      tensor.Grid(), lMax);
   tensor.ForwardTransformation(lMax, expansion.Data(), policy);
   return expansion;
 }
@@ -300,8 +297,7 @@ auto Expand(
 // same five arguments it always did.
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
           TensorReality Reality, AngularGrid Grid,
-          TensorLayout Layout = ComponentMajor,
-          SlotAlphabet Slots = AllSlots>
+          TensorLayout Layout = ComponentMajor, SlotAlphabet Slots = AllSlots>
 auto Evaluate(
     const TensorExpansion<Rank, Symmetry, Reality, Grid, Slots>& expansion,
     Execution policy = Execution::Sequential()) {

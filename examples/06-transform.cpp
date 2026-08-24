@@ -31,8 +31,8 @@ int main() {
   // The coefficients start at degree |N|. Below that no harmonic of that
   // upper index exists, so there is nothing to hold: d^l_{mN} vanishes
   // identically for l < |N|.
-  std::cout << "degrees " << e.MinDegree() << " .. " << e.MaxDegree()
-            << ",  " << e.Size() << " coefficients\n"
+  std::cout << "degrees " << e.MinDegree() << " .. " << e.MaxDegree() << ",  "
+            << e.Size() << " coefficients\n"
             << "f^2_{2,0} = " << (e[2, 0]) << "\n\n";
 
   // Now the projection. The field above has content at degrees 0 and 1 that
@@ -42,7 +42,8 @@ int main() {
   auto drift = Real{0};
   for (auto iTheta : grid.CoLatitudeIndices()) {
     for (auto iPhi : grid.LongitudeIndices()) {
-      drift = std::max(drift, std::abs(projected[iTheta, iPhi] - f[iTheta, iPhi]));
+      drift =
+          std::max(drift, std::abs(projected[iTheta, iPhi] - f[iTheta, iPhi]));
     }
   }
   std::cout << "arbitrary field, once through: " << drift
@@ -54,8 +55,8 @@ int main() {
   drift = 0;
   for (auto iTheta : grid.CoLatitudeIndices()) {
     for (auto iPhi : grid.LongitudeIndices()) {
-      drift = std::max(
-          drift, std::abs(twice[iTheta, iPhi] - projected[iTheta, iPhi]));
+      drift = std::max(drift,
+                       std::abs(twice[iTheta, iPhi] - projected[iTheta, iPhi]));
     }
   }
   std::cout << "band-limited field, again:     " << drift << "\n\n";
@@ -63,8 +64,9 @@ int main() {
   // A real scalar field uses the reduced m >= 0 storage, since its negative
   // orders follow from f_{l,-m} = (-1)^m conj(f_{lm}). Half the coefficients
   // for the same information.
-  auto g = SpinField<0, Grid, RealValued>(
-      grid, [](auto theta, auto phi) { return std::cos(theta) * std::sin(phi); });
+  auto g = SpinField<0, Grid, RealValued>(grid, [](auto theta, auto phi) {
+    return std::cos(theta) * std::sin(phi);
+  });
   auto real = Expand(g, lMax);
   auto complexOne = Expand(Materialise(g * Complex{1.0, 0.0}), lMax);
   std::cout << "real scalar    " << real.Size() << " coefficients\n"

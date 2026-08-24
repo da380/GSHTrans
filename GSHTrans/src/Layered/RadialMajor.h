@@ -62,7 +62,8 @@ class RadialMajor {
                        Execution policy = Execution::Sequential())
       : _nR{stack.NumberOfRadii()},
         _lines{stack.SliceSize()},
-        _data(static_cast<std::size_t>(_nR) * static_cast<std::size_t>(_lines)) {
+        _data(static_cast<std::size_t>(_nR) *
+              static_cast<std::size_t>(_lines)) {
     Transpose(stack.Data().data(), _data.data(), _nR, _lines, policy);
   }
 
@@ -96,9 +97,7 @@ class RadialMajor {
   }
 
   /** @brief Every line index. */
-  auto LineIndices() const {
-    return std::ranges::views::iota(Int{0}, _lines);
-  }
+  auto LineIndices() const { return std::ranges::views::iota(Int{0}, _lines); }
 
   /// Refill from a stack of the shape this already has, without allocating.
   ///

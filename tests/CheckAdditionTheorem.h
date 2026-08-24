@@ -41,11 +41,11 @@ int CheckAdditionTheorem() {
         // the only normalisation the library offers (core-plan.md step A2), so
         // sum_m d^l_{nm} d^l_{n'm} = delta_{nn'} (2l+1)/(4 pi). Undo that
         // factor and the check is the addition theorem as written.
-        const auto normalisation = 4 * std::numbers::pi_v<Real> /
-                                   static_cast<Real>(2 * l + 1);
-        auto sum = normalisation *
-                   std::inner_product(d1[l].begin(), d1[l].end(),
-                                      d2[l].begin(), Real{0});
+        const auto normalisation =
+            4 * std::numbers::pi_v<Real> / static_cast<Real>(2 * l + 1);
+        auto sum =
+            normalisation * std::inner_product(d1[l].begin(), d1[l].end(),
+                                               d2[l].begin(), Real{0});
         if (n == np) --sum;
         if (std::abs(sum) > eps) return 1;
       }

@@ -22,16 +22,15 @@
 #ifdef GSHTRANS_HAVE_INTERPOLATION
 
 #include <omp.h>
-#include <utility>
-
-#include <cstddef>
-#include <span>
-#include <stdexcept>
-#include <vector>
 
 #include <Interpolation/AkimaSpline.hpp>
 #include <Interpolation/CubicSpline.hpp>
 #include <Interpolation/Linear.hpp>
+#include <cstddef>
+#include <span>
+#include <stdexcept>
+#include <utility>
+#include <vector>
 
 #include "../Concepts.h"
 #include "../Policies.h"
@@ -55,13 +54,17 @@ namespace GSHTrans {
 class RadialInterpolation {
  public:
   /** @brief Piecewise linear, which cannot overshoot. */
-  static RadialInterpolation Linear() { return RadialInterpolation(Kind::Line); }
+  static RadialInterpolation Linear() {
+    return RadialInterpolation(Kind::Line);
+  }
   /** @brief A global cubic spline: smooth, and able to overshoot. */
   static RadialInterpolation CubicSpline() {
     return RadialInterpolation(Kind::Cubic);
   }
   /** @brief Akima's local scheme, the compromise between the two. */
-  static RadialInterpolation Akima() { return RadialInterpolation(Kind::Akima); }
+  static RadialInterpolation Akima() {
+    return RadialInterpolation(Kind::Akima);
+  }
 
   /** @brief Whether Linear() was asked for. */
   bool IsLinear() const { return _kind == Kind::Line; }
@@ -104,8 +107,7 @@ void Fit(std::span<const Real> from, std::span<const Scalar> values,
 // The target radii are sorted, so this is one pass rather than a search per
 // point.
 template <typename Real>
-auto AssignPieces(const RadialGrid<Real>& source,
-                  std::span<const Real> onto) {
+auto AssignPieces(const RadialGrid<Real>& source, std::span<const Real> onto) {
   using Int = std::ptrdiff_t;
   const auto pieces = source.ElementCount();
   auto first = std::vector<Int>(static_cast<std::size_t>(pieces + 1), Int{0});
@@ -140,9 +142,9 @@ auto AssignPieces(const RadialGrid<Real>& source,
 // that number is worth nothing; a caller who wants to extend a model beyond
 // its outermost radius is doing something the model does not say, and should
 // say it themselves.
-template <LayeredStack Stack, typename Real = typename std::remove_cvref_t<
-                                  decltype(std::declval<const Stack&>()
-                                               .Radial())>::Real>
+template <LayeredStack Stack,
+          typename Real = typename std::remove_cvref_t<
+              decltype(std::declval<const Stack&>().Radial())>::Real>
 auto Resample(const Stack& in, RadialGrid<Real> onto,
               RadialInterpolation scheme = RadialInterpolation::CubicSpline(),
               Execution policy = Execution::Sequential()) {
@@ -191,8 +193,8 @@ auto Resample(const Stack& in, RadialGrid<Real> onto,
           source[static_cast<std::size_t>(i * lines + j)];
     }
 
-    const auto values =
-        std::span<const Scalar>(gathered.data(), static_cast<std::size_t>(nOld));
+    const auto values = std::span<const Scalar>(gathered.data(),
+                                                static_cast<std::size_t>(nOld));
     auto answer =
         std::span<Scalar>(applied.data(), static_cast<std::size_t>(nNew));
 
@@ -200,8 +202,8 @@ auto Resample(const Stack& in, RadialGrid<Real> onto,
     // interface. A grid that does not know its elements is one piece, which
     // is exactly what this did before the partition existed.
     const auto fit = [&](std::span<const Real> nodes,
-                         std::span<const Scalar> data,
-                         std::span<const Real> at, std::span<Scalar> into) {
+                         std::span<const Scalar> data, std::span<const Real> at,
+                         std::span<Scalar> into) {
       // The branch is on the policy and not on the data, so it is the same
       // for every line and costs a predicted jump.
       if (scheme.IsLinear()) {
@@ -209,15 +211,13 @@ auto Resample(const Stack& in, RadialGrid<Real> onto,
                                                    std::span<const Scalar>>>(
             nodes, data, at, into);
       } else if (scheme.IsAkima()) {
-        ResampleDetails::Fit<
-            Interpolation::AkimaSpline<std::span<const Real>,
-                                       std::span<const Scalar>>>(nodes, data,
-                                                                 at, into);
+        ResampleDetails::Fit<Interpolation::AkimaSpline<
+            std::span<const Real>, std::span<const Scalar>>>(nodes, data, at,
+                                                             into);
       } else {
-        ResampleDetails::Fit<
-            Interpolation::CubicSpline<std::span<const Real>,
-                                       std::span<const Scalar>>>(nodes, data,
-                                                                 at, into);
+        ResampleDetails::Fit<Interpolation::CubicSpline<
+            std::span<const Real>, std::span<const Scalar>>>(nodes, data, at,
+                                                             into);
       }
     };
 

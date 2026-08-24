@@ -12,7 +12,6 @@
 // covariant derivative is closed, and the ambient one is not.
 
 #include <GSHTrans/All>
-
 #include <cmath>
 #include <complex>
 #include <iomanip>
@@ -68,8 +67,8 @@ int main() {
   const auto fill = [&](auto&& u, Real tag) {
     for (auto iTheta : grid.CoLatitudeIndices()) {
       for (auto iPhi : grid.LongitudeIndices()) {
-        u[iTheta, iPhi] = Complex{tag + std::cos(0.3 * iTheta),
-                                  std::sin(0.2 * iPhi)};
+        u[iTheta, iPhi] =
+            Complex{tag + std::cos(0.3 * iTheta), std::sin(0.2 * iPhi)};
       }
     }
   };
@@ -115,8 +114,9 @@ int main() {
   // metric, and it is closed. Gauss says it is the tangential block of the
   // ambient one -- exactly, with D&T's Omega, which is why it is not `eth`'s
   // normalisation up to a root two but the block itself.
-  auto u = TensorExpansion<1, NoSymmetry<1>, ComplexTensor, Grid,
-                           TangentialSlots>(grid, lMax);
+  auto u =
+      TensorExpansion<1, NoSymmetry<1>, ComplexTensor, Grid, TangentialSlots>(
+          grid, lMax);
   for (Int i = 0; i < u.Size(); i++) {
     u.Data()[i] = Complex{std::cos(0.17 * i), std::sin(0.37 * i)};
   }
@@ -137,9 +137,8 @@ int main() {
                                        ambient.Coefficient<1, -1>(l, m)));
       // And the block with a radial slot is the extrinsic curvature: minus
       // the field with that slot replaced.
-      curvature = std::max(curvature,
-                           std::abs(ambient.Coefficient<1, 0>(l, m) +
-                                    line.Coefficient<1>(l, m)));
+      curvature = std::max(curvature, std::abs(ambient.Coefficient<1, 0>(l, m) +
+                                               line.Coefficient<1>(l, m)));
     }
   }
   std::cout << "the split of the ambient gradient\n"

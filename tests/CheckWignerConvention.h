@@ -60,10 +60,10 @@ int CheckWignerConvention() {
 
   // Include the two boundaries, which take the special-cased branches of
   // WignerDetails::Arguments, and a value either side of pi/2.
-  const auto angles = std::array<Real, 6>{
-      static_cast<Real>(0),   static_cast<Real>(0.3),
-      static_cast<Real>(0.7), std::numbers::pi_v<Real> / 2,
-      static_cast<Real>(2.5), std::numbers::pi_v<Real>};
+  const auto angles =
+      std::array<Real, 6>{static_cast<Real>(0),   static_cast<Real>(0.3),
+                          static_cast<Real>(0.7), std::numbers::pi_v<Real> / 2,
+                          static_cast<Real>(2.5), std::numbers::pi_v<Real>};
 
   constexpr auto eps = 100 * std::numeric_limits<Real>::epsilon();
   constexpr Int lMax = 1;
@@ -77,9 +77,8 @@ int CheckWignerConvention() {
 
   for (auto theta : angles) {
     auto d = Wigner<Real, All, All, Single>(lMax, lMax, lMax, theta);
-    const auto scale =
-        std::sqrt(static_cast<Real>(3)) * std::numbers::inv_sqrtpi_v<Real> /
-        static_cast<Real>(2);
+    const auto scale = std::sqrt(static_cast<Real>(3)) *
+                       std::numbers::inv_sqrtpi_v<Real> / static_cast<Real>(2);
 
     for (Int N = -1; N <= 1; N++) {
       auto view = d[N, 0];

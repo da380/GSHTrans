@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <GSHTrans/All>
-
 #include <complex>
 #include <cstddef>
 #include <vector>
@@ -18,9 +17,7 @@ using Grid = GaussLegendreGrid<Real, All, All>;
 // Small, and planned with Estimate: this file times transforms, and the point
 // of every test below is a structural property of the choice rather than a
 // number, so the sizes are the smallest that exercise a batch.
-auto TestGrid(Int lMax, Int nMax) {
-  return Grid(lMax, nMax, FFTWpp::Estimate);
-}
+auto TestGrid(Int lMax, Int nMax) { return Grid(lMax, nMax, FFTWpp::Estimate); }
 
 //--------------------------------------------------------------------------//
 //                     W2: the timing core's discipline                      //
@@ -83,21 +80,21 @@ TEST(Tuning, ATunedGridAnswersIdentically) {
 
   auto grid = TestGrid(lMax, n);
   const auto fieldSize = static_cast<Int>(grid.FieldSize());
-  const auto coefficientSize =
-      static_cast<Int>(grid.CoefficientSize(lMax, n));
+  const auto coefficientSize = static_cast<Int>(grid.CoefficientSize(lMax, n));
 
-  auto fields = FFTWpp::vector<Complex>(
-      static_cast<std::size_t>(count * fieldSize));
+  auto fields =
+      FFTWpp::vector<Complex>(static_cast<std::size_t>(count * fieldSize));
   for (auto j = std::size_t{0}; j < fields.size(); ++j) {
-    fields[j] = Complex(static_cast<Real>(j % 17) / 17,
-                        static_cast<Real>(j % 23) / 23);
+    fields[j] =
+        Complex(static_cast<Real>(j % 17) / 17, static_cast<Real>(j % 23) / 23);
   }
 
   const auto Forward = [&](const Grid& g) {
     auto out = FFTWpp::vector<Complex>(
         static_cast<std::size_t>(count * coefficientSize));
-    g.ForwardTransformation(lMax, n, fields, Batch::Contiguous(count, fieldSize),
-                            out, Batch::Contiguous(count, coefficientSize));
+    g.ForwardTransformation(lMax, n, fields,
+                            Batch::Contiguous(count, fieldSize), out,
+                            Batch::Contiguous(count, coefficientSize));
     return out;
   };
 
@@ -165,9 +162,9 @@ TEST(Tuning, RefusesAnEmptyBatch) {
 // collapsing silently to "use the loop". Generated values are one of the
 // three, and the only one testable in every build.
 TEST(Tuning, RefusesTheMatrixKernelForGeneratedValues) {
-  const auto tuned = TuneKernel<Grid>(8, 2, 2, 4, Execution::Sequential(),
-                                      FFTWpp::Estimate, Chunking::Automatic(),
-                                      WignerValues::Generated());
+  const auto tuned =
+      TuneKernel<Grid>(8, 2, 2, 4, Execution::Sequential(), FFTWpp::Estimate,
+                       Chunking::Automatic(), WignerValues::Generated());
 
   EXPECT_FALSE(tuned.matrixTried);
   EXPECT_FALSE(tuned.conclusive);
@@ -191,10 +188,10 @@ TEST(Tuning, RefusesTheMatrixKernelAtAnUnsupportedPrecision) {
 
 TEST(Tuning, KernelTuningRefusesNonsenseArguments) {
   EXPECT_THROW(TuneKernel<Grid>(8, 2, 2, 0), std::invalid_argument);
-  EXPECT_THROW(TuneKernel<Grid>(8, 2, 2, 4, Execution::Sequential(),
-                                FFTWpp::Estimate, Chunking::Automatic(),
-                                WignerValues::Stored(), 0),
-               std::invalid_argument);
+  EXPECT_THROW(
+      TuneKernel<Grid>(8, 2, 2, 4, Execution::Sequential(), FFTWpp::Estimate,
+                       Chunking::Automatic(), WignerValues::Stored(), 0),
+      std::invalid_argument);
 }
 
 #ifdef GSHTRANS_HAVE_BLAS
@@ -203,8 +200,8 @@ TEST(Tuning, KernelTuningRefusesNonsenseArguments) {
 // so this asserts the choice rather than the numbers, which the cross-kernel
 // tests already cover.
 TEST(Tuning, TimesBothKernelsWhereBothExist) {
-  const auto tuned = TuneKernel<Grid>(8, 2, 2, 4, Execution::Sequential(),
-                                      FFTWpp::Estimate);
+  const auto tuned =
+      TuneKernel<Grid>(8, 2, 2, 4, Execution::Sequential(), FFTWpp::Estimate);
 
   EXPECT_TRUE(tuned.matrixTried);
   EXPECT_TRUE(tuned.skipped.empty());

@@ -8,7 +8,6 @@
 
 #include <FFTWpp/Core>
 #include <GaussQuad/All>
-
 #include <cmath>
 #include <complex>
 #include <cstddef>
@@ -55,8 +54,8 @@ class GaussLegendreGrid : public SphericalGrid<_Real, _MRange, _NRange> {
   using Base = SphericalGrid<_Real, _MRange, _NRange>;
 
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using Real = _Real;  ///< The precision.
+  using Int = std::ptrdiff_t;          ///< Signed index type used throughout.
+  using Real = _Real;                  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   /// Whether all orders are stored, or only the non-negative ones.
   using MRange = _MRange;
@@ -118,8 +117,8 @@ class GaussLegendreGrid : public SphericalGrid<_Real, _MRange, _NRange> {
     if (!(oversampling >= 1)) {
       throw std::invalid_argument("Oversampling factor must be at least one");
     }
-    const auto lGrid = static_cast<Int>(
-        std::ceil(oversampling * static_cast<Real>(lBand)));
+    const auto lGrid =
+        static_cast<Int>(std::ceil(oversampling * static_cast<Real>(lBand)));
     return GaussLegendreGrid(lGrid, nMax, flag, chunking, values, kernel);
   }
 

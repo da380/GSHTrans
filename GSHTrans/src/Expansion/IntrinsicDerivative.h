@@ -101,9 +101,8 @@ void FillComponent(Result& result, const Expansion& operand) {
 // is real.
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
           TensorReality Reality, AngularGrid Grid>
-auto IntrinsicDerivative(
-    const TensorExpansion<Rank, Symmetry, Reality, Grid, TangentialSlots>&
-        operand) {
+auto IntrinsicDerivative(const TensorExpansion<Rank, Symmetry, Reality, Grid,
+                                               TangentialSlots>& operand) {
   using Result = TensorExpansion<Rank + 1, NoSymmetry<Rank + 1>, Reality, Grid,
                                  TangentialSlots>;
 

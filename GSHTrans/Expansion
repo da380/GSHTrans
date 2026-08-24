@@ -3,12 +3,12 @@
 
 // The spectral side: a field's coefficients as an object rather than a raw
 // buffer, and the operators that connect different upper indices.
-#include "src/Expansion/SpinExpansion.h"
-#include "src/Expansion/Eth.h"
-#include "src/Expansion/TensorExpansion.h"
-#include "src/Expansion/ContravariantDerivative.h"
-#include "src/Expansion/IntrinsicDerivative.h"
 #include "src/Expansion/BundleMaps.h"
+#include "src/Expansion/ContravariantDerivative.h"
+#include "src/Expansion/Eth.h"
 #include "src/Expansion/Interpolate.h"
+#include "src/Expansion/IntrinsicDerivative.h"
+#include "src/Expansion/SpinExpansion.h"
+#include "src/Expansion/TensorExpansion.h"
 
 #endif

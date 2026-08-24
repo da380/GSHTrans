@@ -1,9 +1,8 @@
 #include <gtest/gtest.h>
 
 #include <GSHTrans/Core>
-
-#include <cmath>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <vector>
 
@@ -51,14 +50,15 @@ T Completeness(int l1, int l2, int l3) {
 
 TEST(ThreeJ, CompletenessHoldsForFatTriangles) {
   for (auto l : {1, 2, 3, 5, 8, 13, 20, 32}) {
-    EXPECT_NEAR(Completeness<double>(l, l, l), 1.0, 1e-12) << "(l,l,l), l = " << l;
+    EXPECT_NEAR(Completeness<double>(l, l, l), 1.0, 1e-12)
+        << "(l,l,l), l = " << l;
   }
 }
 
 TEST(ThreeJ, CompletenessHoldsAwayFromStretched) {
   // A spread of shapes, none of them close to l3 = l1 + l2.
   const auto triples = std::vector<std::array<int, 3>>{
-      {4, 4, 2},  {6, 4, 4},  {10, 7, 5},  {12, 12, 6},
+      {4, 4, 2},  {6, 4, 4},    {10, 7, 5},   {12, 12, 6},
       {16, 9, 9}, {20, 20, 10}, {24, 16, 12}, {30, 20, 16}};
   for (const auto& t : triples) {
     EXPECT_NEAR(Completeness<double>(t[0], t[1], t[2]), 1.0, 1e-12)
@@ -103,9 +103,13 @@ TEST(ThreeJ, AnswersEverythingTheOldSchemesCouldNot) {
     EXPECT_NEAR(Completeness<double>(l, l, 2 * l), 1.0, 1e-12) << "l = " << l;
   }
   // The band of 3j-plan.md T2, which neither classical method reached.
-  for (const auto& t : std::vector<std::array<int, 3>>{
-           {80, 80, 120}, {90, 90, 135}, {100, 100, 150}, {128, 128, 192},
-           {128, 128, 160}, {160, 160, 160}, {200, 200, 200}}) {
+  for (const auto& t : std::vector<std::array<int, 3>>{{80, 80, 120},
+                                                       {90, 90, 135},
+                                                       {100, 100, 150},
+                                                       {128, 128, 192},
+                                                       {128, 128, 160},
+                                                       {160, 160, 160},
+                                                       {200, 200, 200}}) {
     ASSERT_NO_THROW(Wigner3jMatrix<double>(t[0], t[1], t[2]))
         << "(" << t[0] << "," << t[1] << "," << t[2] << ")";
     EXPECT_NEAR(Completeness<double>(t[0], t[1], t[2]), 1.0, 1e-12)
@@ -292,10 +296,15 @@ TEST(ThreeJ, TheSingleSymbolEntryPointAgreesWithTheTable) {
 // every magnitude correct to 1e-16. Completeness is a sum of squares and saw
 // nothing; the recurrence is homogeneous and saw nothing; only this saw it.
 TEST(ThreeJ, IsInvariantUnderBothCyclicPermutations) {
-  for (const auto& t : std::vector<std::array<int, 3>>{
-           {3, 4, 5}, {12, 12, 12}, {40, 40, 80}, {80, 80, 120},
-           {100, 100, 150}, {128, 128, 192}, {160, 160, 160},
-           {100, 150, 200}, {128, 128, 250}}) {
+  for (const auto& t : std::vector<std::array<int, 3>>{{3, 4, 5},
+                                                       {12, 12, 12},
+                                                       {40, 40, 80},
+                                                       {80, 80, 120},
+                                                       {100, 100, 150},
+                                                       {128, 128, 192},
+                                                       {160, 160, 160},
+                                                       {100, 150, 200},
+                                                       {128, 128, 250}}) {
     const auto a = Wigner3jMatrix<double>(t[0], t[1], t[2]);
     const auto b = Wigner3jMatrix<double>(t[1], t[2], t[0]);
     const auto c = Wigner3jMatrix<double>(t[2], t[0], t[1]);
@@ -372,10 +381,16 @@ TEST(ThreeJ, TheRecurrenceCheckIsNotVacuous) {
 // cancel at all, and it degrades as the sum lengthens. Comparing against a
 // long Racah sum would measure Racah rather than the library.
 TEST(ThreeJ, AgreesWithRacahWhereRacahIsExact) {
-  for (const auto& t : std::vector<std::array<int, 3>>{
-           {3, 4, 5}, {12, 12, 12}, {40, 40, 80}, {64, 64, 128},
-           {80, 80, 120}, {100, 100, 150}, {128, 128, 192}, {128, 128, 250},
-           {160, 160, 160}, {200, 200, 200}}) {
+  for (const auto& t : std::vector<std::array<int, 3>>{{3, 4, 5},
+                                                       {12, 12, 12},
+                                                       {40, 40, 80},
+                                                       {64, 64, 128},
+                                                       {80, 80, 120},
+                                                       {100, 100, 150},
+                                                       {128, 128, 192},
+                                                       {128, 128, 250},
+                                                       {160, 160, 160},
+                                                       {200, 200, 200}}) {
     const auto table = Wigner3jMatrix<double>(t[0], t[1], t[2]);
     auto worst = 0.0;
     auto checked = 0;
@@ -434,8 +449,8 @@ TEST(ThreeJ, TheCouplingLayoutIsAConventionAndIsItsOwnInverse) {
   constexpr auto l1 = 4, l2 = 5, l3 = 6;
   const auto plain = Wigner3jMatrix<double>(l1, l2, l3);
 
-  auto coupling = std::vector<double>(static_cast<std::size_t>(2 * l1 + 1) *
-                                      (2 * l3 + 1));
+  auto coupling =
+      std::vector<double>(static_cast<std::size_t>(2 * l1 + 1) * (2 * l3 + 1));
   FillCouplingMatrix(l1, l2, l3, coupling);
 
   // c(m, mp) = (-1)^m (l1 l2 l3; -m, m-mp, mp)
@@ -452,8 +467,8 @@ TEST(ThreeJ, TheCouplingLayoutIsAConventionAndIsItsOwnInverse) {
   }
 
   auto twice = coupling;
-  ThreeJDetails::SwapCouplingConvention<double>(
-      l1, l3, std::span<double>(twice));
+  ThreeJDetails::SwapCouplingConvention<double>(l1, l3,
+                                                std::span<double>(twice));
   for (std::size_t i = 0; i < twice.size(); ++i) {
     EXPECT_NEAR(twice[i], plain.Data()[i], 1e-15) << "entry " << i;
   }

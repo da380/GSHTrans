@@ -255,8 +255,7 @@ auto PreComputeTables(std::ptrdiff_t lMax, std::ptrdiff_t mMax,
   std::generate_n(std::back_inserter(sqrtInt), size, [m = Int{0}]() mutable {
     return std::sqrt(static_cast<Real>(m++));
   });
-  std::transform(sqrtInt.begin(), sqrtInt.end(),
-                 std::back_inserter(sqrtIntInv),
+  std::transform(sqrtInt.begin(), sqrtInt.end(), std::back_inserter(sqrtIntInv),
                  [](auto x) { return x > 0 ? 1 / x : 0; });
   return std::pair(std::move(sqrtInt), std::move(sqrtIntInv));
 }
@@ -319,11 +318,9 @@ constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
 
     while (iter != finish) {
       const auto root = std::sqrt(binomial);
-      *iter++ = n >= 0 ? root * IntegerPower(s, l - m) *
-                             IntegerPower(c, l + m)
+      *iter++ = n >= 0 ? root * IntegerPower(s, l - m) * IntegerPower(c, l + m)
                        : MinusOneToPower<Real>(l - m) * root *
-                             IntegerPower(s, l + m) *
-                             IntegerPower(c, l - m);
+                             IntegerPower(s, l + m) * IntegerPower(c, l - m);
       binomial *= static_cast<Real>(l - m) / static_cast<Real>(l + m + 1);
       m++;
     }
@@ -435,8 +432,7 @@ constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
       while (iterMinusTwo != finishMinusTwo) {
         const auto denom = sqrtIntInv[l - m] * sqrtIntInv[l + m];
         const auto f1 = (alpha - beta * m) * denom;
-        const auto f2 =
-            gamma * sqrtInt[l - 1 - m] * sqrtInt[l - 1 + m] * denom;
+        const auto f2 = gamma * sqrtInt[l - 1 - m] * sqrtInt[l - 1 + m] * denom;
         *iter++ = f1 * *iterMinusOne++ - f2 * *iterMinusTwo++;
         m++;
       }
@@ -473,8 +469,7 @@ constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
   // sqrt((2l+1)/(4 pi)) d^l_{nm}. This is the only normalisation the
   // library offers.
   {
-    const auto factor =
-        std::numbers::inv_sqrtpi_v<Real> / static_cast<Real>(2);
+    const auto factor = std::numbers::inv_sqrtpi_v<Real> / static_cast<Real>(2);
     for (auto l : d.Degrees()) {
       auto start = d[l].begin();
       auto finish = d[l].end();
@@ -497,15 +492,14 @@ constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
  * @tparam _AngleRange Whether the table holds one colatitude or many.
  */
 template <RealFloatingPoint _Real, OrderIndexRange _MRange = All,
-          IndexRange _NRange = Single,
-          AngleIndexRange _AngleRange = Single>
+          IndexRange _NRange = Single, AngleIndexRange _AngleRange = Single>
 class Wigner {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using Real = _Real;  ///< The precision.
+  using Real = _Real;          ///< The precision.
   /// Whether all orders are stored, or only the non-negative ones.
   using MRange = _MRange;
-  using NRange = _NRange;  ///< Which upper indices are covered.
+  using NRange = _NRange;          ///< Which upper indices are covered.
   using AngleRange = _AngleRange;  ///< Whether one colatitude is held, or many.
 
   /** @brief An empty table. */
@@ -567,7 +561,8 @@ class Wigner {
     ComputeAll(std::vector{theta});
   }
 
-  /** @brief The smallest degree stored at upper index @p n, namely @f$|n|@f$. */
+  /** @brief The smallest degree stored at upper index @p n, namely @f$|n|@f$.
+   */
   auto MinDegree(Int n) const {
     assert(std::abs(n) <= _nMax);
     return std::abs(n);
@@ -656,20 +651,23 @@ class Wigner {
                                                  AngleIndices());
   }
 
-  /** @brief The block of values for upper index @p n at colatitude @p iTheta. */
+  /** @brief The block of values for upper index @p n at colatitude @p iTheta.
+   */
   auto operator[](Int n, Int iTheta) const {
     return ConstGSHView<Real, MRange>(MaxDegree(), MaxOrder(), n,
                                       &_data[Offset(n, iTheta)]);
   }
 
-  /** @brief The block for upper index @p n, when only one colatitude is held. */
+  /** @brief The block for upper index @p n, when only one colatitude is held.
+   */
   auto operator[](Int n) const
   requires std::same_as<AngleRange, Single> && (!std::same_as<NRange, Single>)
   {
     return operator[](n, 0);
   }
 
-  /** @brief The block at colatitude @p iTheta, when only one upper index is held. */
+  /** @brief The block at colatitude @p iTheta, when only one upper index is
+   * held. */
   auto operator[](Int iTheta) const
   requires std::same_as<NRange, Single> && (!std::same_as<AngleRange, Single>)
   {
@@ -737,7 +735,6 @@ class Wigner {
         GSHView<Real, MRange>(_lMax, _mMax, n, &_data[Offset(n, iTheta)]), n,
         theta, sqrtInt, sqrtIntInv);
   }
-
 };
 }  // namespace GSHTrans
 

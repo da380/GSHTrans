@@ -1,11 +1,11 @@
 #ifndef GSH_TRANS_WIGNER_MATRICES_GUARD_H
 #define GSH_TRANS_WIGNER_MATRICES_GUARD_H
 
-#include <algorithm>
-#include <cmath>
 #include <omp.h>
 
+#include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <limits>
 #include <numbers>
@@ -27,7 +27,8 @@ namespace GSHTrans {
 /// The matrix kernel writes the Legendre stage as one matrix product per
 /// order,
 ///
-///     f^n_{lm} = sum_i D^(n,m)_{li} b^(m)_i,     D^(n,m)_{li} = X^n_{lm}(theta_i)
+///     f^n_{lm} = sum_i D^(n,m)_{li} b^(m)_i,     D^(n,m)_{li} =
+///     X^n_{lm}(theta_i)
 ///
 /// and that needs D^(n,m) contiguous in (l, theta) at fixed (n, m). The table
 /// Wigner builds is contiguous in (l, m) at fixed (n, theta), which is the
@@ -71,7 +72,7 @@ template <RealFloatingPoint _Real, OrderIndexRange _MRange = All,
 class WignerMatrices {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using Real = _Real;  ///< The precision.
+  using Real = _Real;          ///< The precision.
   /// Whether all orders are stored, or only the non-negative ones.
   using MRange = _MRange;
   using NRange = _NRange;  ///< Which upper indices are covered.
@@ -111,7 +112,8 @@ class WignerMatrices {
         _nMax{nMax},
         _nTheta(static_cast<Int>(std::ranges::size(theta))),
         _reflected{reflected} {
-    if (lMax < 0) throw std::invalid_argument("Maximum degree must be positive");
+    if (lMax < 0)
+      throw std::invalid_argument("Maximum degree must be positive");
     if (mMax < 0 || mMax > lMax) {
       throw std::invalid_argument(
           "Maximum order must lie between zero and the maximum degree");

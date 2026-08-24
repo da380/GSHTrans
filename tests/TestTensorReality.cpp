@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <GSHTrans/All>
-
 #include <array>
 #include <cmath>
 #include <complex>
@@ -25,8 +24,9 @@ void Fill(T& t, Real tag) {
   const auto& grid = t.Grid();
   for (auto iTheta : grid.CoLatitudeIndices()) {
     for (auto iPhi : grid.LongitudeIndices()) {
-      if constexpr (std::same_as<typename std::remove_cvref_t<decltype(u)>::Value,
-                                 RealValued>) {
+      if constexpr (std::same_as<
+                        typename std::remove_cvref_t<decltype(u)>::Value,
+                        RealValued>) {
         u[iTheta, iPhi] = tag + iTheta + 0.5 * iPhi;
       } else {
         u[iTheta, iPhi] = Complex{tag + iTheta, 0.5 * iPhi - tag};
@@ -46,22 +46,22 @@ TEST(TensorReality, StorageIsTheRealDegreesOfFreedom) {
   // condition pins, which is 3^p -- the real degrees of freedom of a real
   // rank-p tensor, and the theory note's claim that "the reduction loses
   // nothing".
-  static_assert((TensorField<1, NoSymmetry<1>, RealTensor, Grid>::RealsPerPoint)
-                == 3);
-  static_assert((TensorField<2, NoSymmetry<2>, RealTensor, Grid>::RealsPerPoint)
-                == 9);
-  static_assert((TensorField<4, NoSymmetry<4>, RealTensor, Grid>::RealsPerPoint)
-                == 81);
+  static_assert(
+      (TensorField<1, NoSymmetry<1>, RealTensor, Grid>::RealsPerPoint) == 3);
+  static_assert(
+      (TensorField<2, NoSymmetry<2>, RealTensor, Grid>::RealsPerPoint) == 9);
+  static_assert(
+      (TensorField<4, NoSymmetry<4>, RealTensor, Grid>::RealsPerPoint) == 81);
 
   // Symmetry composes with it without being special-cased.
-  static_assert((TensorField<2, Symmetric<2>, RealTensor, Grid>::RealsPerPoint)
-                == 6);
+  static_assert(
+      (TensorField<2, Symmetric<2>, RealTensor, Grid>::RealsPerPoint) == 6);
   static_assert(
       (TensorField<2, Antisymmetric<2>, RealTensor, Grid>::RealsPerPoint) == 3);
-  static_assert((TensorField<3, Symmetric<3>, RealTensor, Grid>::RealsPerPoint)
-                == 10);
-  static_assert((TensorField<4, ElasticSymmetry, RealTensor, Grid>::RealsPerPoint)
-                == 21);
+  static_assert(
+      (TensorField<3, Symmetric<3>, RealTensor, Grid>::RealsPerPoint) == 10);
+  static_assert(
+      (TensorField<4, ElasticSymmetry, RealTensor, Grid>::RealsPerPoint) == 21);
 
   // Against a complex tensor of the same rank, which stores 2 * 3^p.
   static_assert(
@@ -99,8 +99,7 @@ TEST(TensorReality, ComplexTensorsAreUnchanged) {
   auto t = C(grid);
   EXPECT_EQ(t.RealSize(), 0);
   auto zero = t.Component<0, 0>();
-  static_assert(
-      std::same_as<typename decltype(zero)::Value, ComplexValued>);
+  static_assert(std::same_as<typename decltype(zero)::Value, ComplexValued>);
 }
 
 //--------------------------------------------------------------------------//
@@ -113,8 +112,8 @@ template <typename T, Int... Alphas>
 void ExpectRealityCondition(const T& t, Int iTheta, Int iPhi) {
   constexpr auto negated =
       MultiIndex<T::Rank>(std::array<Int, T::Rank>{Alphas...}).Negated();
-  constexpr auto N = MultiIndex<T::Rank>(std::array<Int, T::Rank>{Alphas...})
-                         .UpperIndex();
+  constexpr auto N =
+      MultiIndex<T::Rank>(std::array<Int, T::Rank>{Alphas...}).UpperIndex();
 
   const auto value = t.template Component<Alphas...>()[iTheta, iPhi];
   const auto derived = [&]<std::size_t... I>(std::index_sequence<I...>) {
@@ -216,8 +215,9 @@ TEST(TensorReality, SymmetricRealTensorMatchesTheWorkedExample) {
   const auto& tensor = t;
 
   // (-+) is self-paired, so it is real, and it equals (+-) by symmetry.
-  static_assert(std::same_as<
-                typename decltype(tensor.Component<-1, 1>())::Value, RealValued>);
+  static_assert(
+      std::same_as<typename decltype(tensor.Component<-1, 1>())::Value,
+                   RealValued>);
   EXPECT_EQ((tensor.Component<-1, 1>()[1, 1]),
             (tensor.Component<1, -1>()[1, 1]));
 
@@ -268,10 +268,9 @@ TEST(TensorReality, RoundTripsWithTheRealComponentsOnTheRealPath) {
 
   // A pinned component uses the reduced m >= 0 storage, so the coefficient
   // count is not the complex count times the number of components.
-  const auto expected =
-      static_cast<Int>(grid.CoefficientSize(lMax, -2)) +
-      static_cast<Int>(grid.CoefficientSize(lMax, -1)) +
-      2 * static_cast<Int>(grid.RealCoefficientSize(lMax));
+  const auto expected = static_cast<Int>(grid.CoefficientSize(lMax, -2)) +
+                        static_cast<Int>(grid.CoefficientSize(lMax, -1)) +
+                        2 * static_cast<Int>(grid.RealCoefficientSize(lMax));
   EXPECT_EQ(t.CoefficientSize(lMax), expected);
 
   // The round trip starts from a *field*, not from arbitrary coefficients.
@@ -332,12 +331,12 @@ TEST(TensorReality, MaterialiseCanProduceARealTensor) {
 
   for (auto iTheta : grid.CoLatitudeIndices()) {
     for (auto iPhi : grid.LongitudeIndices()) {
-      EXPECT_NEAR(std::real(Complex{transposed.Component<0, 1>()[iTheta, iPhi]}),
-                  std::real(Complex{tensor.Component<1, 0>()[iTheta, iPhi]}),
-                  1.0e-13);
-      EXPECT_NEAR(std::imag(Complex{transposed.Component<0, 1>()[iTheta, iPhi]}),
-                  std::imag(Complex{tensor.Component<1, 0>()[iTheta, iPhi]}),
-                  1.0e-13);
+      EXPECT_NEAR(
+          std::real(Complex{transposed.Component<0, 1>()[iTheta, iPhi]}),
+          std::real(Complex{tensor.Component<1, 0>()[iTheta, iPhi]}), 1.0e-13);
+      EXPECT_NEAR(
+          std::imag(Complex{transposed.Component<0, 1>()[iTheta, iPhi]}),
+          std::imag(Complex{tensor.Component<1, 0>()[iTheta, iPhi]}), 1.0e-13);
     }
   }
 
@@ -359,8 +358,8 @@ TEST(TensorReality, TheSymmetricPartOfARealTensorIsRealAndSymmetric) {
   Fill<Source, 0, 0>(s, 5.0);
 
   const auto& tensor = s;
-  auto sym = Materialise<Symmetric<2>, RealTensor>(
-      Symmetrise<Symmetric<2>>(tensor));
+  auto sym =
+      Materialise<Symmetric<2>, RealTensor>(Symmetrise<Symmetric<2>>(tensor));
 
   // Six reals a point rather than eighteen, which is what a rank-2 tensor
   // costs stored naively as nine complex fields.

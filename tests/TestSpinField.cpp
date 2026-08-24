@@ -1,9 +1,9 @@
 #include <gtest/gtest.h>
 
 #include <GSHTrans/All>
+#include <cmath>
 #include <complex>
 #include <cstddef>
-#include <cmath>
 #include <numbers>
 #include <span>
 #include <string>
@@ -117,8 +117,8 @@ static_assert(!SpinWeighted<GaussLegendreGrid<double, All, All>>);
 
 // Scalar follows from Value.
 static_assert(std::same_as<ScalarFor<double, RealValued>, double>);
-static_assert(std::same_as<ScalarFor<double, ComplexValued>,
-                           std::complex<double>>);
+static_assert(
+    std::same_as<ScalarFor<double, ComplexValued>, std::complex<double>>);
 static_assert(std::same_as<ScalarFor<long double, ComplexValued>,
                            std::complex<long double>>);
 
@@ -136,8 +136,7 @@ static_assert(IsTerminal<const StubTerminal&>);
 static_assert(IsTerminal<StubTerminal&&>);
 
 // An lvalue terminal is referred to; everything else is owned.
-static_assert(
-    std::same_as<OperandStorage<StubTerminal&>, const StubTerminal&>);
+static_assert(std::same_as<OperandStorage<StubTerminal&>, const StubTerminal&>);
 static_assert(
     std::same_as<OperandStorage<const StubTerminal&>, const StubTerminal&>);
 
@@ -166,9 +165,8 @@ static_assert(
 
 // A real scalar preserves; a complex one promotes.
 static_assert(std::same_as<ValueAfterScalar<double, RealValued>, RealValued>);
-static_assert(
-    std::same_as<ValueAfterScalar<std::complex<double>, RealValued>,
-                 ComplexValued>);
+static_assert(std::same_as<ValueAfterScalar<std::complex<double>, RealValued>,
+                           ComplexValued>);
 static_assert(
     std::same_as<ValueAfterScalar<double, ComplexValued>, ComplexValued>);
 
@@ -219,12 +217,11 @@ static_assert(R::Negate::Apply<R::Negate::Apply<3>> == 3);
 // of the closure table in plan section 3.4: given operands that satisfy the
 // constraint, the result does too.
 template <typename Value, Int N>
-inline constexpr bool Lawful =
-    std::same_as<Value, ComplexValued> or N == 0;
+inline constexpr bool Lawful = std::same_as<Value, ComplexValued> or N == 0;
 
 // Equal, on two real operands: both must be at zero, so the result is.
-static_assert(Lawful<CombinedValue<RealValued, RealValued>,
-                     R::Equal::Apply<0, 0>>);
+static_assert(
+    Lawful<CombinedValue<RealValued, RealValued>, R::Equal::Apply<0, 0>>);
 // Sum, on two real operands: 0 + 0 = 0.
 static_assert(
     Lawful<CombinedValue<RealValued, RealValued>, R::Sum::Apply<0, 0>>);
@@ -317,8 +314,8 @@ TEST(SpinField, StoresSamplesInTheCanonicalOrder) {
   // Mutable access writes where the flat layout says it should: phi fastest.
   for (auto iTheta : grid.CoLatitudeIndices()) {
     for (auto iPhi : grid.LongitudeIndices()) {
-      u[iTheta, iPhi] = Complex{static_cast<double>(iTheta),
-                                static_cast<double>(iPhi)};
+      u[iTheta, iPhi] =
+          Complex{static_cast<double>(iTheta), static_cast<double>(iPhi)};
     }
   }
   for (auto iTheta : grid.CoLatitudeIndices()) {
@@ -418,7 +415,7 @@ concept Addable = requires(L l, R r) { l + r; };
 template <typename L, typename R>
 concept Subtractable = requires(L l, R r) { l - r; };
 template <typename L, typename R>
-concept Multipliable = requires(L l, R r) { l * r; };
+concept Multipliable = requires(L l, R r) { l* r; };
 template <typename L, typename R>
 concept Divisible = requires(L l, R r) { l / r; };
 template <typename A>
@@ -477,26 +474,25 @@ static_assert(Negatable<F<2>&> && HasConj<F<2>&>);
 static_assert(decltype(-std::declval<F<2>&>())::UpperIndex == 2);
 static_assert(decltype(conj(std::declval<F<2>&>()))::UpperIndex == -2);
 static_assert(decltype(conj(std::declval<F<-2>&>()))::UpperIndex == 2);
-static_assert(
-    decltype(conj(conj(std::declval<F<2>&>())))::UpperIndex == 2);
+static_assert(decltype(conj(conj(std::declval<F<2>&>())))::UpperIndex == 2);
 
 // abs and abs2 exist at every index and land at zero, real-valued.
 static_assert(HasAbs<F<2>&>);
 static_assert(decltype(abs(std::declval<F<2>&>()))::UpperIndex == 0);
-static_assert(std::same_as<decltype(abs(std::declval<F<2>&>()))::Value,
-                           RealValued>);
-static_assert(std::same_as<decltype(abs2(std::declval<F<2>&>()))::Value,
-                           RealValued>);
-static_assert(std::same_as<decltype(abs2(std::declval<F<2>&>()))::Scalar,
-                           double>);
+static_assert(
+    std::same_as<decltype(abs(std::declval<F<2>&>()))::Value, RealValued>);
+static_assert(
+    std::same_as<decltype(abs2(std::declval<F<2>&>()))::Value, RealValued>);
+static_assert(
+    std::same_as<decltype(abs2(std::declval<F<2>&>()))::Scalar, double>);
 
 // real and imag exist only at zero.
 static_assert(HasRealPart<F<0>&> && HasImagPart<F<0>&>);
 static_assert(!HasRealPart<F<1>&>);
 static_assert(!HasImagPart<F<1>&>);
 static_assert(!HasRealPart<F<-2>&>);
-static_assert(std::same_as<decltype(real(std::declval<F<0>&>()))::Value,
-                           RealValued>);
+static_assert(
+    std::same_as<decltype(real(std::declval<F<0>&>()))::Value, RealValued>);
 
 // Value propagation through the algebra.
 static_assert(std::same_as<Add<F0R&, F0R&>::Value, RealValued>);
@@ -506,18 +502,18 @@ static_assert(std::same_as<Mul<F0R&, F<2>&>::Value, ComplexValued>);
 static_assert(std::same_as<Div<F0R&, F0R&>::Value, RealValued>);
 
 // conj on a real-valued field at zero is the identity, and stays real.
-static_assert(std::same_as<decltype(conj(std::declval<F0R&>()))::Value,
-                           RealValued>);
+static_assert(
+    std::same_as<decltype(conj(std::declval<F0R&>()))::Value, RealValued>);
 static_assert(decltype(conj(std::declval<F0R&>()))::UpperIndex == 0);
 
 // Scalar multiplication: real preserves, complex promotes, index untouched.
 static_assert(
     std::same_as<decltype(std::declval<F0R&>() * 2.0)::Value, RealValued>);
-static_assert(std::same_as<
-              decltype(std::declval<F0R&>() * Complex{0, 1})::Value,
-              ComplexValued>);
-static_assert(std::same_as<decltype(2.0 * std::declval<F<2>&>())::Value,
-                           ComplexValued>);
+static_assert(
+    std::same_as<decltype(std::declval<F0R&>() * Complex{0, 1})::Value,
+                 ComplexValued>);
+static_assert(
+    std::same_as<decltype(2.0 * std::declval<F<2>&>())::Value, ComplexValued>);
 static_assert(decltype(2.0 * std::declval<F<2>&>())::UpperIndex == 2);
 static_assert(decltype(std::declval<F<2>&>() / 2.0)::UpperIndex == 2);
 
@@ -738,8 +734,7 @@ TEST(SpinField, NamedExpressionsMayDieBeforeWhatIsBuiltFromThem) {
 
   const auto evaluated = Evaluated(outer);
   for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
-    ExpectClose(evaluated[i],
-                (u.Data()[i] + u.Data()[i]) * w.Data()[i]);
+    ExpectClose(evaluated[i], (u.Data()[i] + u.Data()[i]) * w.Data()[i]);
   }
 }
 
@@ -801,7 +796,7 @@ static_assert(AssignableFrom<F0R&, decltype(abs(std::declval<F2&>()))>);
 static_assert(PlusAssignable<F2&, F2&>);
 static_assert(!PlusAssignable<F2&, F0&>);
 static_assert(TimesAssignable<F2&, F0&>);
-static_assert(!TimesAssignable<F2&, F2&>);   // would land at N = 4
+static_assert(!TimesAssignable<F2&, F2&>);  // would land at N = 4
 static_assert(DivideAssignable<F2&, F0&>);
 static_assert(!DivideAssignable<F2&, F2&>);
 static_assert(TimesAssignable<F2&, double>);
@@ -817,8 +812,8 @@ static_assert(!TimesAssignable<F0R&, Complex>);
 static_assert(std::same_as<decltype(Materialise(std::declval<Add<F2&, F2&>>())),
                            SpinField<2, Grid, ComplexValued>>);
 static_assert(
-    std::same_as<decltype(Materialise(std::declval<
-                          decltype(abs(std::declval<F2&>()))>())),
+    std::same_as<decltype(Materialise(
+                     std::declval<decltype(abs(std::declval<F2&>()))>())),
                  SpinField<0, Grid, RealValued>>);
 
 }  // namespace
@@ -849,8 +844,7 @@ TEST(SpinField, RealExpressionsWidenIntoComplexFields) {
 
   SpinField<0, Grid> wide = abs2(u);
   auto narrow = Materialise(abs2(u));
-  static_assert(std::same_as<decltype(narrow),
-                             SpinField<0, Grid, RealValued>>);
+  static_assert(std::same_as<decltype(narrow), SpinField<0, Grid, RealValued>>);
 
   for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     EXPECT_NEAR(wide.Data()[i].real(), std::norm(u.Data()[i]), tolerance);
@@ -936,8 +930,7 @@ TEST(SpinField, InPlaceAssignmentIsSafeWhenTheDestinationAppears) {
   u = conj(u) * v + u;
 
   for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
-    const auto expected =
-        std::conj(u0.Data()[i]) * v.Data()[i] + u0.Data()[i];
+    const auto expected = std::conj(u0.Data()[i]) * v.Data()[i] + u0.Data()[i];
     ExpectClose(u.Data()[i], expected);
   }
 
@@ -1063,14 +1056,14 @@ TEST(SpinField, MapTakesItsValueKindFromTheCallablesReturnType) {
   static_assert(std::same_as<decltype(exponential)::Value, RealValued>);
 
   // Real in, complex out: promoted.
-  auto rotated =
-      Map(realField, [](double x) { return Complex{std::cos(x), std::sin(x)}; });
+  auto rotated = Map(
+      realField, [](double x) { return Complex{std::cos(x), std::sin(x)}; });
   static_assert(std::same_as<decltype(rotated)::Value, ComplexValued>);
 
   for (auto iTheta : grid.CoLatitudeIndices()) {
     for (auto iPhi : grid.LongitudeIndices()) {
-      EXPECT_NEAR((modulus[iTheta, iPhi]),
-                  std::abs(complexField[iTheta, iPhi]), tolerance);
+      EXPECT_NEAR((modulus[iTheta, iPhi]), std::abs(complexField[iTheta, iPhi]),
+                  tolerance);
       EXPECT_NEAR((exponential[iTheta, iPhi]),
                   std::exp(realField[iTheta, iPhi]), tolerance);
     }
@@ -1086,7 +1079,7 @@ TEST(SpinField, MapOwnsACopyOfAnLvalueCallable) {
   auto copies = 0;
   {
     auto callable = CountingCallable(&copies);
-    auto node = Map(u, callable);   // lvalue: must be copied in
+    auto node = Map(u, callable);  // lvalue: must be copied in
     EXPECT_GE(copies, 1);
     for (auto iTheta : grid.CoLatitudeIndices()) {
       for (auto iPhi : grid.LongitudeIndices()) {
@@ -1170,16 +1163,15 @@ static_assert(requires(const F2 f) {
 
 TEST(SpinField, IntegrateGivesTheSphereArea) {
   auto grid = TestGrid();
-  auto one = SpinField<0, Grid, RealValued>(
-      grid, [](auto, auto) { return 1.0; });
+  auto one =
+      SpinField<0, Grid, RealValued>(grid, [](auto, auto) { return 1.0; });
 
   const auto area = 4.0 * std::numbers::pi_v<double>;
   EXPECT_NEAR(Integrate(one), area, 1.0e-12);
 
   // And it is linear in a constant.
-  auto three = SpinField<0, Grid>(grid, [](auto, auto) {
-    return Complex{3.0, -1.5};
-  });
+  auto three =
+      SpinField<0, Grid>(grid, [](auto, auto) { return Complex{3.0, -1.5}; });
   const auto value = Integrate(three);
   EXPECT_NEAR(value.real(), 3.0 * area, 1.0e-11);
   EXPECT_NEAR(value.imag(), -1.5 * area, 1.0e-11);
@@ -1256,8 +1248,8 @@ TEST(SpinField, ViewsParticipateInExpressionsLikeOwningFields) {
   }
 
   auto view = SpinFieldView<2, Grid>(grid, std::span(storage));
-  auto constView = ConstSpinFieldView<2, Grid>(
-      grid, std::span<const Complex>(storage));
+  auto constView =
+      ConstSpinFieldView<2, Grid>(grid, std::span<const Complex>(storage));
 
   // Reads agree with the storage, in the canonical order.
   for (auto iTheta : grid.CoLatitudeIndices()) {

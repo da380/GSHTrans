@@ -1,12 +1,11 @@
 #include <gtest/gtest.h>
 
 #include <GSHTrans/All>
-
 #include <complex>
 #include <cstddef>
 #include <cstdint>
-#include <random>
 #include <numbers>
+#include <random>
 #include <span>
 #include <vector>
 
@@ -65,9 +64,9 @@ class PaddedGrid : public ::testing::Test {
     const auto values = Samples(nTheta * nPhi, 11);
     const auto north = Samples(nPhi, 22);
     const auto south = Samples(nPhi, 33);
-    return std::tuple{values, north, south,
-                      InterpolateDetails::Pad<Grid, Complex>(
-                          grid, values, north, south)};
+    return std::tuple{
+        values, north, south,
+        InterpolateDetails::Pad<Grid, Complex>(grid, values, north, south)};
   }
 };
 
@@ -142,9 +141,9 @@ TEST_F(PaddedGrid, RefusesInputsThatDoNotFitTheGrid) {
   const auto shortRow = Samples(nPhi - 1, 44);
   const auto shortField = Samples(nTheta * nPhi - 1, 55);
 
-  EXPECT_THROW((InterpolateDetails::Pad<Grid, Complex>(grid, shortField, north,
-                                                       north)),
-               std::invalid_argument);
+  EXPECT_THROW(
+      (InterpolateDetails::Pad<Grid, Complex>(grid, shortField, north, north)),
+      std::invalid_argument);
   EXPECT_THROW(
       (InterpolateDetails::Pad<Grid, Complex>(grid, values, shortRow, north)),
       std::invalid_argument);
@@ -156,8 +155,8 @@ TEST_F(PaddedGrid, RefusesInputsThatDoNotFitTheGrid) {
 // A real field pads exactly as a complex one does; the scalar type is carried
 // through rather than promoted, which is what [I9] asks for.
 TEST_F(PaddedGrid, PadsARealFieldWithoutPromoting) {
-  auto values = std::vector<Real>(
-      static_cast<std::size_t>(nTheta * nPhi), Real{2});
+  auto values =
+      std::vector<Real>(static_cast<std::size_t>(nTheta * nPhi), Real{2});
   auto row = std::vector<Real>(static_cast<std::size_t>(nPhi), Real{5});
 
   const auto padded =
@@ -196,8 +195,8 @@ void Fill(Expansion& e, std::uint_fast32_t seed) {
 // callable by value and copies it into a lambda -- which is [I8]'s whole
 // point, and the property most easily broken by a change of storage.
 static_assert(std::copy_constructible<SpectralInterpolant<2, Grid>>);
-static_assert(std::copy_constructible<
-              SpectralInterpolant<0, Grid, RealValued>>);
+static_assert(
+    std::copy_constructible<SpectralInterpolant<0, Grid, RealValued>>);
 
 // The decisive agreement: the same numbers as the transform, at every point
 // the transform produces. This is what says the direct sum of section 22.1 is
@@ -259,8 +258,8 @@ TEST(SpectralInterpolant, IsExactOnALowDegreeHarmonic) {
   constexpr Int N = 1;
   auto grid = Grid(1, 1);
   auto e = SpinExpansion<N, Grid>(grid, 1);
-  const auto c = std::array{Complex(0.3, -0.7), Complex(-1.1, 0.4),
-                            Complex(0.9, 0.2)};
+  const auto c =
+      std::array{Complex(0.3, -0.7), Complex(-1.1, 0.4), Complex(0.9, 0.2)};
   e[1, -1] = c[0];
   e[1, 0] = c[1];
   e[1, 1] = c[2];
@@ -273,11 +272,10 @@ TEST(SpectralInterpolant, IsExactOnALowDegreeHarmonic) {
       // P^{1}_{1,-1} = (1 - cos)/2,  P^{1}_{1,0} = sin/sqrt(2),
       // P^{1}_{1,+1} = (1 + cos)/2.
       const auto want =
-          norm * (c[0] * ((1 - std::cos(theta)) / 2) *
-                      std::exp(Complex(0, -phi)) +
-                  c[1] * (std::sin(theta) / std::sqrt(2.0)) +
-                  c[2] * ((1 + std::cos(theta)) / 2) *
-                      std::exp(Complex(0, phi)));
+          norm *
+          (c[0] * ((1 - std::cos(theta)) / 2) * std::exp(Complex(0, -phi)) +
+           c[1] * (std::sin(theta) / std::sqrt(2.0)) +
+           c[2] * ((1 + std::cos(theta)) / 2) * std::exp(Complex(0, phi)));
       EXPECT_NEAR(std::abs(at(theta, phi) - want), 0.0, 1e-14)
           << "at theta = " << theta << ", phi = " << phi;
     }
@@ -309,9 +307,8 @@ TEST(SpectralInterpolant, AnswersAtThePolesByTheStatedRule) {
     EXPECT_NEAR(std::abs(at(0.0, phi) - north * std::exp(Complex(0, N * phi))),
                 0.0, 1e-13)
         << "north pole at phi = " << phi;
-    EXPECT_NEAR(
-        std::abs(at(pi, phi) - south * std::exp(Complex(0, -N * phi))), 0.0,
-        1e-13)
+    EXPECT_NEAR(std::abs(at(pi, phi) - south * std::exp(Complex(0, -N * phi))),
+                0.0, 1e-13)
         << "south pole at phi = " << phi;
   }
 }
@@ -479,10 +476,9 @@ static_assert(requires { Scheme::Bicubic(); });
 // [I8]: modelling ScalarFunctionS2 is the point of the feature rather than a
 // bonus, because it is what makes remeshing one line. Asserted because it is
 // the property most easily broken by a change of signature.
+static_assert(ScalarFunctionS2<SpectralInterpolant<2, Grid>, Real, Complex>);
 static_assert(
-    ScalarFunctionS2<SpectralInterpolant<2, Grid>, Real, Complex>);
-static_assert(ScalarFunctionS2<SpectralInterpolant<0, Grid, RealValued>, Real,
-                               Real>);
+    ScalarFunctionS2<SpectralInterpolant<0, Grid, RealValued>, Real, Real>);
 
 // Remeshing, end to end: a band-limited field sampled on one grid, evaluated
 // on another. Spectral interpolation is exact for such a field, so the
@@ -511,8 +507,7 @@ TEST(FieldInterpolant, RemeshesOntoAnotherGridExactly) {
   auto worst = Real{0};
   for (auto iTheta : fine.CoLatitudeIndices())
     for (auto iPhi : fine.LongitudeIndices())
-      worst = std::max(worst,
-                       std::abs(got[iTheta, iPhi] - want[iTheta, iPhi]));
+      worst = std::max(worst, std::abs(got[iTheta, iPhi] - want[iTheta, iPhi]));
   EXPECT_LT(worst, 1e-12) << "worst difference " << worst;
 }
 

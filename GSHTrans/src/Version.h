@@ -41,10 +41,10 @@
 #define GSHTRANS_VERSION_NUMBER(major, minor, patch) \
   ((major) * 10000 + (minor) * 100 + (patch))
 
-/** @brief This library's version, comparable against GSHTRANS_VERSION_NUMBER. */
-#define GSHTRANS_VERSION                                            \
-  GSHTRANS_VERSION_NUMBER(GSHTRANS_VERSION_MAJOR,                   \
-                          GSHTRANS_VERSION_MINOR,                   \
+/** @brief This library's version, comparable against GSHTRANS_VERSION_NUMBER.
+ */
+#define GSHTRANS_VERSION                                                  \
+  GSHTRANS_VERSION_NUMBER(GSHTRANS_VERSION_MAJOR, GSHTRANS_VERSION_MINOR, \
                           GSHTRANS_VERSION_PATCH)
 
 /** @brief This library's version as "major.minor.patch". */

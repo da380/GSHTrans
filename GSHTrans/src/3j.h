@@ -309,9 +309,8 @@ int SchultenGordonRow(int l1, int l2, int l3, int m1, std::span<T> g) {
       factor = A(m2Min + j + 1);
       c1 = -B(m2Min + j + 2) / factor;
 
-      const auto y = (j == n - 2)
-                         ? rootSmall * c1  // the third term vanishes
-                         : c1 * g[j + 1] - (older / factor) * g[j + 2];
+      const auto y = (j == n - 2) ? rootSmall * c1  // the third term vanishes
+                                  : c1 * g[j + 1] - (older / factor) * g[j + 2];
 
       if (j == last - 2) {  // the match point: compare, do not store
         y3 = y;
@@ -336,8 +335,7 @@ int SchultenGordonRow(int l1, int l2, int l3, int m1, std::span<T> g) {
 
     // Least squares over the three overlapping points, which is steadier than
     // matching on one of them.
-    auto ratio = (x1 * y1 + x2 * y2 + x3 * y3) /
-                 (x1 * x1 + x2 * x2 + x3 * x3);
+    auto ratio = (x1 * y1 + x2 * y2 + x3 * y3) / (x1 * x1 + x2 * x2 + x3 * x3);
 
     if (std::abs(ratio) >= 1) {
       for (auto i = 0; i <= last - 2; ++i) g[i] *= ratio;
@@ -366,8 +364,7 @@ int SchultenGordonRow(int l1, int l2, int l3, int m1, std::span<T> g) {
  */
 template <NumericConcepts::Real T>
 T ResidualTolerance(int steps) {
-  return static_cast<T>(1000 * (steps + 1)) *
-         std::numeric_limits<T>::epsilon();
+  return static_cast<T>(1000 * (steps + 1)) * std::numeric_limits<T>::epsilon();
 }
 
 /**
@@ -407,10 +404,10 @@ bool RowSatisfiesRecurrence(int l1, int l2, int l3, int m1,
                           RecurrenceA<T>(l1, l2, l3, m1, m2 - 1) * g[k - 2];
     // The coefficients are of order l^2, so the residual is measured against
     // the scale they multiply rather than against the values alone.
-    const auto local = std::max(
-        {std::abs(RecurrenceA<T>(l1, l2, l3, m1, m2)),
-         std::abs(RecurrenceB<T>(l1, l2, l3, m1, m2)),
-         std::abs(RecurrenceA<T>(l1, l2, l3, m1, m2 - 1))});
+    const auto local =
+        std::max({std::abs(RecurrenceA<T>(l1, l2, l3, m1, m2)),
+                  std::abs(RecurrenceB<T>(l1, l2, l3, m1, m2)),
+                  std::abs(RecurrenceA<T>(l1, l2, l3, m1, m2 - 1))});
     if (not(std::abs(residual) <= tolerance * local)) return false;
   }
   return true;

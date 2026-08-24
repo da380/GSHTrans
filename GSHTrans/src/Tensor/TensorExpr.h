@@ -24,10 +24,11 @@ namespace GSHTrans {
 // A tensor expression: a rank, a grid, and a component accessor.
 //
 // The whole of the tensor algebra is that an operation on tensors is an
-// operation on that accessor. Every node below returns a *spin-weighted* node from
-// Component<...>(), so the index algebra of upper indices is already enforced
-// and there is no second expression system to keep consistent with the first.
-// What this layer has to get right is only *which* components it asks for.
+// operation on that accessor. Every node below returns a *spin-weighted* node
+// from Component<...>(), so the index algebra of upper indices is already
+// enforced and there is no second expression system to keep consistent with the
+// first. What this layer has to get right is only *which* components it asks
+// for.
 //
 // The concept cannot require Component<...>() itself: the multi-index is a
 // pack whose admissible values depend on the tensor's symmetry -- the all-zero
@@ -39,30 +40,33 @@ namespace GSHTrans {
 // and the contraction, whose sum runs over that alphabet's letters rather
 // than over a fixed {-1, 0, +1}.
 template <typename T>
-concept TensorExpr = requires {
-  requires std::same_as<std::remove_cv_t<decltype(T::Rank)>, std::ptrdiff_t>;
-  requires T::Rank >= 0;
-  typename T::GridType;
-  requires AngularGrid<typename T::GridType>;
-  typename T::SlotSet;
-  requires SlotAlphabet<typename T::SlotSet>;
-  { T::template Represents<> } -> std::convertible_to<bool>;
-} and requires(const T& tensor) {
-  { tensor.Grid() } -> std::convertible_to<const typename T::GridType&>;
-}
-// And it is a *spatial* tensor, which has to be said because a spectral one
-// answers every question above: TensorExpansion carries a rank, a grid, a slot
-// alphabet and a Represents, so without this it satisfies the concept and
-// Permute, the tensor product, Materialise and the bundle maps all accept one.
-// They would then compose the wrong Component -- a view over coefficients
-// rather than a spin-weighted node -- and the first symptom is an overload of
-// Tangential resolving to the spatial node for a spectral operand, which is
-// how this was found.
-//
-// The discriminator is the truncation degree, and it is the real difference
-// rather than a convenient one: an expansion is defined up to a degree and a
-// field is not.
-and not requires(const T& tensor) { tensor.MaxDegree(); };
+concept TensorExpr =
+    requires {
+      requires std::same_as<std::remove_cv_t<decltype(T::Rank)>,
+                            std::ptrdiff_t>;
+      requires T::Rank >= 0;
+      typename T::GridType;
+      requires AngularGrid<typename T::GridType>;
+      typename T::SlotSet;
+      requires SlotAlphabet<typename T::SlotSet>;
+      { T::template Represents<> } -> std::convertible_to<bool>;
+    } and
+    requires(const T& tensor) {
+      { tensor.Grid() } -> std::convertible_to<const typename T::GridType&>;
+    }
+    // And it is a *spatial* tensor, which has to be said because a spectral one
+    // answers every question above: TensorExpansion carries a rank, a grid, a
+    // slot alphabet and a Represents, so without this it satisfies the concept
+    // and Permute, the tensor product, Materialise and the bundle maps all
+    // accept one. They would then compose the wrong Component -- a view over
+    // coefficients rather than a spin-weighted node -- and the first symptom is
+    // an overload of Tangential resolving to the spatial node for a spectral
+    // operand, which is how this was found.
+    //
+    // The discriminator is the truncation degree, and it is the real difference
+    // rather than a convenient one: an expansion is defined up to a degree and
+    // a field is not.
+    and not requires(const T& tensor) { tensor.MaxDegree(); };
 
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
           TensorReality Reality, AngularGrid Grid, TensorLayout Layout,
@@ -94,8 +98,8 @@ auto ComponentOf(const Operand& operand, std::index_sequence<I...>) {
 
 template <auto Indices, typename Operand>
 auto ComponentOf(const Operand& operand) {
-  return ComponentOf<Indices>(
-      operand, std::make_index_sequence<Indices.size()>{});
+  return ComponentOf<Indices>(operand,
+                              std::make_index_sequence<Indices.size()>{});
 }
 
 // Whether an operand represents the component named by an array.
@@ -285,11 +289,11 @@ auto Transpose(T&& tensor) {
 
 /// (S tensor T)^{alpha beta} = S^{alpha} T^{beta}, of rank p + q.
 ///
-/// The component is a spin-weighted product, so its upper index is the sum of the
-/// two operands' -- which is eq:N applied to the concatenated multi-index, and
-/// the theory note, docs/canonical-components.tex, says so in as many words.
-/// Nothing here has to arrange that;
-/// it is what "upper indices add under pointwise multiplication" means.
+/// The component is a spin-weighted product, so its upper index is the sum of
+/// the two operands' -- which is eq:N applied to the concatenated multi-index,
+/// and the theory note, docs/canonical-components.tex, says so in as many
+/// words. Nothing here has to arrange that; it is what "upper indices add under
+/// pointwise multiplication" means.
 template <typename LeftOperand, typename RightOperand>
 class TensorProductNode {
  public:
@@ -342,13 +346,13 @@ class TensorProductNode {
 
   /** @brief The first p slots, naming the left operand's component. */
   template <Int... Alphas>
-  static constexpr auto LeftIndices = TensorDetails::Head<Left::Rank>(
-      Indices<Alphas...>);
+  static constexpr auto LeftIndices =
+      TensorDetails::Head<Left::Rank>(Indices<Alphas...>);
 
   /** @brief The last q slots, naming the right operand's component. */
   template <Int... Alphas>
-  static constexpr auto RightIndices = TensorDetails::Tail<Right::Rank>(
-      Indices<Alphas...>);
+  static constexpr auto RightIndices =
+      TensorDetails::Tail<Right::Rank>(Indices<Alphas...>);
 
   /** @brief Backs Represents; see there. */
   template <Int... Alphas>
@@ -488,10 +492,10 @@ class ContractionNode {
   // both alphabets; the factor is exactly +-1, so no arithmetic is added.
   template <Int... Alphas, std::size_t... A>
   auto Sum(std::index_sequence<A...>) const {
-    return ((MinusOneToPower<Real>(Alphabet[A]) *
-             TensorDetails::ComponentOf<Source<Alphabet[A], Alphas...>>(
-                 _operand)) +
-            ...);
+    return (
+        (MinusOneToPower<Real>(Alphabet[A]) *
+         TensorDetails::ComponentOf<Source<Alphabet[A], Alphas...>>(_operand)) +
+        ...);
   }
 };
 
@@ -538,7 +542,8 @@ class SymmetriseNode {
 
   /** @brief The elements of the symmetry group, and how many there are. */
   static constexpr auto Group = TensorDetails::GroupElements<Rank, Symmetry>();
-  /** @brief The order of the symmetry group, which is what the sum divides by. */
+  /** @brief The order of the symmetry group, which is what the sum divides by.
+   */
   static constexpr Int GroupSize = Group.second;
 
   /** @brief Wraps an operand to be averaged over the symmetry group. */
@@ -564,9 +569,9 @@ class SymmetriseNode {
       return false;
     } else {
       return [&]<std::size_t... E>(std::index_sequence<E...>) {
-        return (TensorDetails::Represents<Source<E, Alphas...>,
-                                          OperandType>() and
-                ...);
+        return (
+            TensorDetails::Represents<Source<E, Alphas...>, OperandType>() and
+            ...);
       }(std::make_index_sequence<GroupSize>{});
     }
   }
@@ -619,7 +624,8 @@ namespace TensorDetails {
 // EvaluateInto writes a contiguous span. The contiguous case could take the
 // faster path; it is not worth two code paths until something measures it.
 template <auto Indices, typename Field, typename Expr, std::size_t... I>
-void AssignComponent(Field& field, const Expr& expr, std::index_sequence<I...>) {
+void AssignComponent(Field& field, const Expr& expr,
+                     std::index_sequence<I...>) {
   auto target = field.template Component<Indices[I]...>();
   const auto source = expr.template Component<Indices[I]...>();
   using Target = std::remove_cvref_t<decltype(target)>;
@@ -681,9 +687,8 @@ template <typename Symmetry = void, TensorReality Reality = ComplexTensor,
 requires TensorExpr<std::remove_cvref_t<Expr>>
 auto Materialise(const Expr& expr) {
   using E = std::remove_cvref_t<Expr>;
-  using Chosen =
-      std::conditional_t<std::same_as<Symmetry, void>, NoSymmetry<E::Rank>,
-                         Symmetry>;
+  using Chosen = std::conditional_t<std::same_as<Symmetry, void>,
+                                    NoSymmetry<E::Rank>, Symmetry>;
   // The alphabet is the expression's, not a choice: materialising cannot move
   // a tensor between bundles. Layout is named explicitly only because SlotSet
   // sits behind it in the parameter list.
@@ -693,7 +698,8 @@ auto Materialise(const Expr& expr) {
   auto field = Field(expr.Grid());
   [&]<std::size_t... Slot>(std::index_sequence<Slot...>) {
     (TensorDetails::AssignSlot<Field, E, Slot>(field, expr), ...);
-  }(std::make_index_sequence<static_cast<std::size_t>(Field::StoredComponents)>{});
+  }(std::make_index_sequence<static_cast<std::size_t>(
+        Field::StoredComponents)>{});
   return field;
 }
 

@@ -85,8 +85,7 @@ void FillFrom(Result& result, const Operand& operand) {
         [&] {
           constexpr auto flat = Result::ComponentLayout.flatOfSlot[Slot];
           constexpr auto indices =
-              MultiIndex<Result::Rank,
-                         typename Result::SlotSet>::FromFlat(flat)
+              MultiIndex<Result::Rank, typename Result::SlotSet>::FromFlat(flat)
                   .Slots();
           if constexpr (!SkipRadial || !HasRadialSlotIn<indices>()) {
             CopyComponent<indices>(result, operand);

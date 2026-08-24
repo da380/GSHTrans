@@ -11,7 +11,6 @@
 // needs and none can infer.
 
 #include <GSHTrans/All>
-
 #include <cmath>
 #include <complex>
 #include <iomanip>
@@ -41,8 +40,7 @@ int main() {
   // disjoint, so every radius belongs to exactly one element -- which is what
   // makes a derivative at the interface well defined without anyone having to
   // choose between the two sides.
-  const auto radii =
-      std::vector<Real>{0.40, 0.60, 0.80, 0.80, 1.00, 1.20};
+  const auto radii = std::vector<Real>{0.40, 0.60, 0.80, 0.80, 1.00, 1.20};
   const auto starts = std::vector<Int>{0, 3, 6};
   const auto mesh = RadialGrid<Real>::WithElements(radii, starts);
 
@@ -88,8 +86,9 @@ int main() {
               << (i == 2 ? "   <- from below\n"
                          : (i == 3 ? "   <- from above\n" : "\n"));
   }
-  std::cout << "  both sides are reported, each at its own index. That is what\n"
-               "  a discontinuity is, and it is why the blocks are disjoint.\n\n";
+  std::cout
+      << "  both sides are reported, each at its own index. That is what\n"
+         "  a discontinuity is, and it is why the blocks are disjoint.\n\n";
 
   // Nothing in one element can move the answer in another, which is what
   // block-diagonal means and what a global operator on the same radii would
@@ -110,8 +109,8 @@ int main() {
   // not know whether the repetition is meaningful. With one, it fits each
   // element separately and never spans the interface.
   const auto spline = SplineDerivative<Real>(mesh);
-  std::cout << "the spline derivative on this mesh fits "
-            << spline.PieceCount() << " pieces\n\n";
+  std::cout << "the spline derivative on this mesh fits " << spline.PieceCount()
+            << " pieces\n\n";
 
   //------------------------------------------------------------------------//
   // Remeshing, which must not cross an interface either
@@ -130,7 +129,8 @@ int main() {
   // Targets on both sides of the break, none of them a source node. Each is
   // answered from the piece that owns it, so the two straight lines are
   // reproduced exactly rather than smeared into one curve through the jump.
-  const auto onto = RadialGrid<Real>(std::vector<Real>{0.5, 0.7, 0.8, 0.9, 1.1});
+  const auto onto =
+      RadialGrid<Real>(std::vector<Real>{0.5, 0.7, 0.8, 0.9, 1.1});
   const auto moved = Resample(f, onto, RadialInterpolation::CubicSpline());
 
   std::cout << "resampling across the interface\n"

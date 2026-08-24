@@ -42,8 +42,9 @@ int main() {
   auto v = SpinField<2, Grid>(grid, [](auto theta, auto phi) {
     return Complex{std::cos(theta), 0.5 * std::sin(phi)};
   });
-  auto s = SpinField<0, Grid>(
-      grid, [](auto theta, auto) { return Complex{1 + 0.25 * std::cos(theta)}; });
+  auto s = SpinField<0, Grid>(grid, [](auto theta, auto) {
+    return Complex{1 + 0.25 * std::cos(theta)};
+  });
 
   // The rules, read off the types. Conjugation *reverses* the upper index: a
   // quantity carrying exp(-i N psi) has a conjugate carrying exp(+i N psi).
@@ -64,13 +65,13 @@ int main() {
   using Spin2 = decltype(u);
   using Scalar = decltype(s);
 
-  static_assert(!Addable<Spin2, Scalar>);   // unequal upper indices
-  static_assert(Addable<Spin2, Spin2>);     // equal ones are fine
-  static_assert(!HasRealPart<Spin2>);       // covariant only at N = 0
+  static_assert(!Addable<Spin2, Scalar>);  // unequal upper indices
+  static_assert(Addable<Spin2, Spin2>);    // equal ones are fine
+  static_assert(!HasRealPart<Spin2>);      // covariant only at N = 0
   static_assert(HasRealPart<Scalar>);
-  static_assert(!Divisible<Scalar, Spin2>); // a divisor must be at N = 0
+  static_assert(!Divisible<Scalar, Spin2>);  // a divisor must be at N = 0
   static_assert(Divisible<Spin2, Scalar>);
-  static_assert(!Integrable<Spin2>);        // vanishes identically
+  static_assert(!Integrable<Spin2>);  // vanishes identically
   static_assert(Integrable<Scalar>);
 
   // And the constraint that cannot be written at all: a real-valued field at

@@ -142,29 +142,29 @@ TEST(GaussLegendreGrid, RejectsUnsupportedTransformRequests) {
   auto onePointField = FFTWpp::vector<Real>(onePointGrid.FieldSize());
   auto degreeOneCoefficients = FFTWpp::vector<Complex>(3);
 
-  EXPECT_THROW(onePointGrid.ForwardTransformation(
-                   1, 0, onePointField, degreeOneCoefficients),
+  EXPECT_THROW(onePointGrid.ForwardTransformation(1, 0, onePointField,
+                                                  degreeOneCoefficients),
                std::invalid_argument);
-  EXPECT_THROW(onePointGrid.InverseTransformation(
-                   1, 0, degreeOneCoefficients, onePointField),
+  EXPECT_THROW(onePointGrid.InverseTransformation(1, 0, degreeOneCoefficients,
+                                                  onePointField),
                std::invalid_argument);
 
   auto largerGrid = Grid(2, 2, FFTWpp::Estimate);
   auto largerField = FFTWpp::vector<Real>(largerGrid.FieldSize());
   auto degreeThreeCoefficients = FFTWpp::vector<Complex>(10);
-  EXPECT_THROW(largerGrid.ForwardTransformation(
-                   3, 0, largerField, degreeThreeCoefficients),
+  EXPECT_THROW(largerGrid.ForwardTransformation(3, 0, largerField,
+                                                degreeThreeCoefficients),
                std::invalid_argument);
-  EXPECT_THROW(largerGrid.InverseTransformation(
-                   3, 0, degreeThreeCoefficients, largerField),
+  EXPECT_THROW(largerGrid.InverseTransformation(3, 0, degreeThreeCoefficients,
+                                                largerField),
                std::invalid_argument);
-  EXPECT_THROW(largerGrid.ForwardTransformation(
-                   1, 2, largerField, degreeOneCoefficients),
+  EXPECT_THROW(largerGrid.ForwardTransformation(1, 2, largerField,
+                                                degreeOneCoefficients),
                std::invalid_argument);
 
   auto scalarGrid = Grid(2, 0, FFTWpp::Estimate);
-  EXPECT_THROW(scalarGrid.ForwardTransformation(
-                   1, 1, largerField, degreeOneCoefficients),
+  EXPECT_THROW(scalarGrid.ForwardTransformation(1, 1, largerField,
+                                                degreeOneCoefficients),
                std::invalid_argument);
 }
 
@@ -189,7 +189,8 @@ TEST(GaussLegendreGrid, LongitudeCountResolvesTheHighestOrders) {
     auto grid = Grid(lMax, 0, FFTWpp::Estimate);
     const auto nPhi = static_cast<std::ptrdiff_t>(grid.NumberOfLongitudes());
     EXPECT_GE(nPhi, 2 * lMax + 1) << "lMax = " << lMax;
-    EXPECT_TRUE(IsFastFFTSize(nPhi)) << "lMax = " << lMax << ", nPhi = " << nPhi;
+    EXPECT_TRUE(IsFastFFTSize(nPhi))
+        << "lMax = " << lMax << ", nPhi = " << nPhi;
     EXPECT_EQ(grid.FieldSize(), (lMax + 1) * nPhi) << "lMax = " << lMax;
   }
 }
@@ -257,8 +258,7 @@ TEST(GaussLegendreGrid, ForBandGivesRequestedHeadroom) {
   // An oversampled grid still transforms at the band, which is the point:
   // headroom in the quadrature, truncation in the transform.
   auto field = FFTWpp::vector<Complex>(doubled.FieldSize());
-  auto coefficients =
-      FFTWpp::vector<Complex>(doubled.CoefficientSize(band, 0));
+  auto coefficients = FFTWpp::vector<Complex>(doubled.CoefficientSize(band, 0));
   EXPECT_NO_THROW(doubled.ForwardTransformation(band, 0, field, coefficients));
 }
 
@@ -343,8 +343,7 @@ TEST(GaussLegendreGrid, RejectsMismatchedRangeSizes) {
   } catch (const std::invalid_argument& error) {
     const auto message = std::string(error.what());
     EXPECT_NE(message.find("coefficient"), std::string::npos) << message;
-    EXPECT_NE(message.find(std::to_string(coefficientSize)),
-              std::string::npos)
+    EXPECT_NE(message.find(std::to_string(coefficientSize)), std::string::npos)
         << message;
   }
 }
@@ -407,12 +406,12 @@ TEST(GaussLegendreGrid, AcceptsUnalignedCallerStorage) {
     auto field = std::span(fieldStorage)
                      .subspan(MisalignedOffset(fieldStorage.data(), boundary),
                               fieldSize);
-    auto given = std::span(givenStorage)
-                     .subspan(MisalignedOffset(givenStorage.data(), boundary),
-                              size);
-    auto back = std::span(backStorage)
-                    .subspan(MisalignedOffset(backStorage.data(), boundary),
-                             size);
+    auto given =
+        std::span(givenStorage)
+            .subspan(MisalignedOffset(givenStorage.data(), boundary), size);
+    auto back =
+        std::span(backStorage)
+            .subspan(MisalignedOffset(backStorage.data(), boundary), size);
 
     ASSERT_NE(reinterpret_cast<std::uintptr_t>(field.data()) % boundary, 0u);
     ASSERT_NE(reinterpret_cast<std::uintptr_t>(given.data()) % boundary, 0u);
@@ -442,15 +441,15 @@ TEST(GaussLegendreGrid, AcceptsUnalignedCallerStorage) {
     auto fieldStorage = std::vector<Real>(fieldSize + 16);
     auto givenStorage = std::vector<Complex>(size + 16);
     auto backStorage = std::vector<Complex>(size + 16);
-    auto field = std::span(fieldStorage)
-                     .subspan(OddlyAlignedOffset(fieldStorage.data()),
-                              fieldSize);
-    auto given = std::span(givenStorage)
-                     .subspan(MisalignedOffset(givenStorage.data(), boundary),
-                              size);
-    auto back = std::span(backStorage)
-                    .subspan(MisalignedOffset(backStorage.data(), boundary),
-                             size);
+    auto field =
+        std::span(fieldStorage)
+            .subspan(OddlyAlignedOffset(fieldStorage.data()), fieldSize);
+    auto given =
+        std::span(givenStorage)
+            .subspan(MisalignedOffset(givenStorage.data(), boundary), size);
+    auto back =
+        std::span(backStorage)
+            .subspan(MisalignedOffset(backStorage.data(), boundary), size);
 
     // Not merely off a cache line: in a different FFTW alignment class from
     // the fftw_malloc'd buffers the plans are made on.
@@ -484,12 +483,12 @@ TEST(GaussLegendreGrid, AcceptsUnalignedCallerStorage) {
 // ([C27]'s G3), but the contract the base states has to be exercised, and the
 // cheapest honest way is a fixture that reaches the protected constructor.
 namespace {
-struct ProbeGrid : GSHTrans::SphericalGrid<double, GSHTrans::All,
-                                           GSHTrans::All> {
+struct ProbeGrid
+    : GSHTrans::SphericalGrid<double, GSHTrans::All, GSHTrans::All> {
   using Base = GSHTrans::SphericalGrid<double, GSHTrans::All, GSHTrans::All>;
   ProbeGrid(std::ptrdiff_t lMax, std::ptrdiff_t nMax,
             std::vector<double> coLatitudes, std::vector<double> weights)
-      : Base{lMax,   nMax, std::move(coLatitudes), std::move(weights),
+      : Base{lMax, nMax, std::move(coLatitudes), std::move(weights),
              FFTWpp::Estimate} {}
 };
 }  // namespace
@@ -516,8 +515,8 @@ TEST(SphericalGrid, IsCompleteWithoutTheQuadratureThatMadeIt) {
   ASSERT_EQ(probe.FieldSize(), grid.FieldSize());
   ASSERT_EQ(probe.NumberOfLongitudes(), grid.NumberOfLongitudes());
 
-  auto field = FFTWpp::vector<Complex>(
-      static_cast<std::size_t>(grid.FieldSize()));
+  auto field =
+      FFTWpp::vector<Complex>(static_cast<std::size_t>(grid.FieldSize()));
   for (std::size_t j = 0; j < field.size(); ++j) {
     field[j] = Complex(static_cast<double>(j % 13) / 13,
                        static_cast<double>(j % 7) / 7);
@@ -759,8 +758,7 @@ TEST(GaussLegendreGrid, ParallelAgreesWithSequential) {
   auto fieldSequential = FFTWpp::vector<Complex>(grid.FieldSize());
   auto coefficientsSequential = FFTWpp::vector<Complex>(indices.Size());
   grid.InverseTransformation(lMax, n, given, fieldSequential);
-  grid.ForwardTransformation(lMax, n, fieldSequential,
-                             coefficientsSequential);
+  grid.ForwardTransformation(lMax, n, fieldSequential, coefficientsSequential);
 
   for (auto threads : {1, 2, 3, 4, 8}) {
     const auto policy = Execution::Parallel(threads);
@@ -826,8 +824,7 @@ TEST(GaussLegendreGrid, NestedParallelismIsSuppressed) {
   for (auto s = 0; s < count; ++s) {
     auto given = Given(s);
     auto field = FFTWpp::vector<Complex>(grid.FieldSize());
-    grid.InverseTransformation(lMax, 0, given, field,
-                               Execution::Parallel(4));
+    grid.InverseTransformation(lMax, 0, given, field, Execution::Parallel(4));
     grid.ForwardTransformation(lMax, 0, field, results[s],
                                Execution::Parallel(4));
     if (omp_get_level() > 1) sawNesting += 1;
@@ -972,8 +969,7 @@ TEST(BatchedTransform, ChunkingIsNotObservableInAnyResult) {
   }
 
   // And it really is the policy that moved, not a copy of the default.
-  EXPECT_EQ(grid.With(Chunking::Fixed(3)).ChunkingPolicy(),
-            Chunking::Fixed(3));
+  EXPECT_EQ(grid.With(Chunking::Fixed(3)).ChunkingPolicy(), Chunking::Fixed(3));
   EXPECT_EQ(grid.ChunkingPolicy(), Chunking::Automatic());
 }
 
@@ -1204,9 +1200,9 @@ TEST(BatchedTransform, SingleFieldIsTheBatchAtCountOne) {
   auto tooLong = FFTWpp::vector<BatchComplex>(coefficientSize + 1);
   EXPECT_THROW(grid.ForwardTransformation(lMax, n, field, tooLong),
                std::invalid_argument);
-  EXPECT_NO_THROW(grid.ForwardTransformation(
-      lMax, n, field, Batch::One(fieldSize), tooLong,
-      Batch::One(coefficientSize)));
+  EXPECT_NO_THROW(grid.ForwardTransformation(lMax, n, field,
+                                             Batch::One(fieldSize), tooLong,
+                                             Batch::One(coefficientSize)));
 }
 
 TEST(BatchedTransform, ChunkingDoesNotChangeTheAnswer) {
@@ -1265,8 +1261,8 @@ TEST(BatchedTransform, ChunkingPolicyIsCarriedByTheGrid) {
   EXPECT_EQ(copy.Identity(), grid.Identity());
 
   // ForBand forwards it too, rather than silently resetting to Automatic.
-  auto banded = BatchGrid::ForBand(4, n, 1.5, FFTWpp::Estimate,
-                                   Chunking::Fixed(3));
+  auto banded =
+      BatchGrid::ForBand(4, n, 1.5, FFTWpp::Estimate, Chunking::Fixed(3));
   EXPECT_EQ(banded.MaxDegree(), 6);
 }
 
@@ -1313,9 +1309,8 @@ TEST(GeneratingGrid, ForwardAgreesWithTheStoredTableExactly) {
   for (auto [lMax, n] : std::vector<std::pair<std::ptrdiff_t, std::ptrdiff_t>>{
            {7, 2}, {12, 0}, {9, -3}, {5, 5}}) {
     auto stored = GenGrid(lMax, std::abs(n), FFTWpp::Estimate);
-    auto generated =
-        GenGrid(lMax, std::abs(n), FFTWpp::Estimate, Chunking::Automatic(),
-                WignerValues::Generated());
+    auto generated = GenGrid(lMax, std::abs(n), FFTWpp::Estimate,
+                             Chunking::Automatic(), WignerValues::Generated());
 
     const auto fieldSize = static_cast<std::ptrdiff_t>(stored.FieldSize());
     const auto coefficientSize =
@@ -1367,9 +1362,8 @@ TEST(GeneratingGrid, TruncatedCallsGenerateOnlyTheDegreesTheyUse) {
   constexpr auto n = std::ptrdiff_t{1};
 
   auto stored = GenGrid(gridDegree, n, FFTWpp::Estimate);
-  auto generated =
-      GenGrid(gridDegree, n, FFTWpp::Estimate, Chunking::Automatic(),
-              WignerValues::Generated());
+  auto generated = GenGrid(gridDegree, n, FFTWpp::Estimate,
+                           Chunking::Automatic(), WignerValues::Generated());
 
   const auto field = GenField(static_cast<std::ptrdiff_t>(stored.FieldSize()));
 
@@ -1454,10 +1448,9 @@ TEST(GeneratingGrid, BatchedAndParallelCallsAgreeExactly) {
   // reduction, not the supplier.
   const auto Run = [&](auto& grid, Execution policy) {
     auto out = std::vector<GenComplex>(count * coefficientSize);
-    grid.ForwardTransformation(lMax, n, fields,
-                               Batch::Contiguous(count, fieldSize), out,
-                               Batch::Contiguous(count, coefficientSize),
-                               policy);
+    grid.ForwardTransformation(
+        lMax, n, fields, Batch::Contiguous(count, fieldSize), out,
+        Batch::Contiguous(count, coefficientSize), policy);
     return out;
   };
 
@@ -1481,9 +1474,9 @@ TEST(GeneratingGrid, BuildsNoTableAndForBandCarriesThePolicy) {
   EXPECT_EQ(generated.MaxDegree(), lMax);
 
   // ForBand forwards the policy rather than silently resetting it to Stored.
-  auto banded = GenGrid::ForBand(8, 2, 1.5, FFTWpp::Estimate,
-                                 Chunking::Automatic(),
-                                 WignerValues::Generated());
+  auto banded =
+      GenGrid::ForBand(8, 2, 1.5, FFTWpp::Estimate, Chunking::Automatic(),
+                       WignerValues::Generated());
   EXPECT_EQ(banded.MaxDegree(), 12);
 
   auto stored = GenGrid(12, 2, FFTWpp::Estimate);
@@ -1521,9 +1514,9 @@ TEST(BatchedTransform, ChunkRuleCountsCopiesNotThreads) {
   // copy had the whole cache, and P8's prediction of two is sixty-four private
   // accumulators sharing 256 MiB.
   EXPECT_EQ(laptop.Count(bytesPerField, 1), 8);
-  EXPECT_EQ((Chunking::ForCache(std::ptrdiff_t{256} << 20)
-                 .Count(bytesPerField, 64)),
-            2);
+  EXPECT_EQ(
+      (Chunking::ForCache(std::ptrdiff_t{256} << 20).Count(bytesPerField, 64)),
+      2);
 
   // Fixed still defeats the heuristic from either side.
   EXPECT_EQ(Chunking::Fixed(5).Count(bytesPerField, 1), 5);
@@ -1548,9 +1541,9 @@ using StageGrid = GaussLegendreGrid<StageReal, All, All>;
 // normalisation and a negative exponent, and for a complex field its order m
 // sits at index m for m >= 0 and at nPhi - |m| for m < 0 -- which is what
 // running the index from 0 to nPhi - 1 says.
-auto NaiveFourier(const std::vector<StageComplex>& fields, std::ptrdiff_t nTheta,
-                  std::ptrdiff_t nPhi, std::ptrdiff_t count,
-                  std::ptrdiff_t nFourier) {
+auto NaiveFourier(const std::vector<StageComplex>& fields,
+                  std::ptrdiff_t nTheta, std::ptrdiff_t nPhi,
+                  std::ptrdiff_t count, std::ptrdiff_t nFourier) {
   auto out = std::vector<StageComplex>(nFourier * nTheta * count);
   for (auto m = std::ptrdiff_t{0}; m < nFourier; m++) {
     for (auto iTheta = std::ptrdiff_t{0}; iTheta < nTheta; iTheta++) {
@@ -1626,8 +1619,8 @@ TEST(FourierStage, MatchesADirectTransformForARealField) {
   const auto nFourier = grid.FourierSize<StageReal>();
   EXPECT_EQ(nFourier, nPhi / 2 + 1);
 
-  auto stage = std::vector<StageComplex>(
-      grid.ForwardFourierStageSize<StageReal>(count));
+  auto stage =
+      std::vector<StageComplex>(grid.ForwardFourierStageSize<StageReal>(count));
   grid.ForwardFourierStage(fields, Batch::Contiguous(count, fieldSize), 0,
                            count, std::span<StageComplex>(stage));
 
@@ -1752,8 +1745,8 @@ TEST(FourierStage, RejectsBadRequests) {
   const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
 
   auto fields = std::vector<StageComplex>(2 * fieldSize);
-  auto out = std::vector<StageComplex>(
-      grid.ForwardFourierStageSize<StageComplex>(2));
+  auto out =
+      std::vector<StageComplex>(grid.ForwardFourierStageSize<StageComplex>(2));
   const auto batch = Batch::Contiguous(2, fieldSize);
 
   // Fields outside the batch.
@@ -1768,8 +1761,8 @@ TEST(FourierStage, RejectsBadRequests) {
                                         std::span<StageComplex>(out)),
                std::invalid_argument);
   // An output buffer sized for the wrong number of fields.
-  auto tooSmall = std::vector<StageComplex>(
-      grid.ForwardFourierStageSize<StageComplex>(1));
+  auto tooSmall =
+      std::vector<StageComplex>(grid.ForwardFourierStageSize<StageComplex>(1));
   EXPECT_THROW(grid.ForwardFourierStage(fields, batch, 0, 2,
                                         std::span<StageComplex>(tooSmall)),
                std::invalid_argument);
@@ -1841,9 +1834,9 @@ void CheckKernelsAgreeForward(std::ptrdiff_t lMax, std::ptrdiff_t gridDegree,
                               std::ptrdiff_t n, std::ptrdiff_t count,
                               double tolerance) {
   auto loop = Grid(gridDegree, std::abs(n), FFTWpp::Estimate);
-  auto matrix = Grid(gridDegree, std::abs(n), FFTWpp::Estimate,
-                     Chunking::Automatic(), WignerValues::Stored(),
-                     TransformKernel::Matrix());
+  auto matrix =
+      Grid(gridDegree, std::abs(n), FFTWpp::Estimate, Chunking::Automatic(),
+           WignerValues::Stored(), TransformKernel::Matrix());
 
   const auto fieldSize = static_cast<std::ptrdiff_t>(loop.FieldSize());
   const auto coefficientSize = static_cast<std::ptrdiff_t>(
@@ -1957,9 +1950,9 @@ void CheckKernelsAgreeInverse(std::ptrdiff_t lMax, std::ptrdiff_t gridDegree,
                               std::ptrdiff_t n, std::ptrdiff_t count,
                               double tolerance) {
   auto loop = Grid(gridDegree, std::abs(n), FFTWpp::Estimate);
-  auto matrix = Grid(gridDegree, std::abs(n), FFTWpp::Estimate,
-                     Chunking::Automatic(), WignerValues::Stored(),
-                     TransformKernel::Matrix());
+  auto matrix =
+      Grid(gridDegree, std::abs(n), FFTWpp::Estimate, Chunking::Automatic(),
+           WignerValues::Stored(), TransformKernel::Matrix());
 
   const auto fieldSize = static_cast<std::ptrdiff_t>(loop.FieldSize());
   const auto coefficientSize = static_cast<std::ptrdiff_t>(
@@ -1968,11 +1961,12 @@ void CheckKernelsAgreeInverse(std::ptrdiff_t lMax, std::ptrdiff_t gridDegree,
 
   // Coefficients rather than a field, so that the inverse is exercised on its
   // own rather than only as the right inverse of the forward.
-  auto coefficients = std::vector<std::complex<double>>(count * coefficientSize);
+  auto coefficients =
+      std::vector<std::complex<double>>(count * coefficientSize);
   for (std::size_t i = 0; i < coefficients.size(); i++) {
-    coefficients[i] = std::complex<double>{
-        std::cos(0.23 * static_cast<double>(i)),
-        std::sin(0.41 * static_cast<double>(i))};
+    coefficients[i] =
+        std::complex<double>{std::cos(0.23 * static_cast<double>(i)),
+                             std::sin(0.41 * static_cast<double>(i))};
   }
 
   auto fromLoop = std::vector<Scalar>(count * fieldSize);
@@ -2055,11 +2049,12 @@ TEST(MatrixKernel, RoundTripsOnItsOwn) {
   const auto coefficientSize =
       static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
 
-  auto coefficients = std::vector<std::complex<double>>(count * coefficientSize);
+  auto coefficients =
+      std::vector<std::complex<double>>(count * coefficientSize);
   for (std::size_t i = 0; i < coefficients.size(); i++) {
-    coefficients[i] = std::complex<double>{
-        std::cos(0.19 * static_cast<double>(i)),
-        std::sin(0.53 * static_cast<double>(i))};
+    coefficients[i] =
+        std::complex<double>{std::cos(0.19 * static_cast<double>(i)),
+                             std::sin(0.53 * static_cast<double>(i))};
   }
 
   auto field = std::vector<std::complex<double>>(count * fieldSize);

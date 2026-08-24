@@ -13,9 +13,9 @@
 // full-degree call is the Legendre stage, measured on the production code
 // rather than on a replica of it.
 
-#include <GSHTrans/All>
 #include <omp.h>
 
+#include <GSHTrans/All>
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -27,8 +27,8 @@
 #include <fstream>
 #include <limits>
 #include <memory>
-#include <numeric>
 #include <numbers>
+#include <numeric>
 #include <optional>
 #include <random>
 #include <set>
@@ -146,8 +146,8 @@ long CacheKilobytes(int level, int& sharedBy) {
 int NumaNodes() {
   auto count = 0;
   for (auto node = 0; node < 512; ++node) {
-    const auto path = "/sys/devices/system/node/node" + std::to_string(node) +
-                      "/cpulist";
+    const auto path =
+        "/sys/devices/system/node/node" + std::to_string(node) + "/cpulist";
     if (!FirstLine(path).empty()) ++count;
   }
   return count;
@@ -195,15 +195,20 @@ void PrintMachineFacts() {
     std::printf("  physical cores   %d (%.0f threads per core)\n", cores,
                 static_cast<double>(threads) / cores);
   } else {
-    std::printf("  physical cores   unknown (/proc/cpuinfo carries no core id)\n");
+    std::printf(
+        "  physical cores   unknown (/proc/cpuinfo carries no core id)\n");
   }
   std::printf("  NUMA nodes       %d\n", NumaNodes());
-  if (l2 > 0) std::printf("  L2               %ld KB, shared by %d threads\n", l2, l2Shared);
+  if (l2 > 0)
+    std::printf("  L2               %ld KB, shared by %d threads\n", l2,
+                l2Shared);
   if (l3 > 0) {
-    std::printf("  L3               %ld KB, shared by %d threads (%.1f MB per core)\n",
-                l3, l3Shared, l3Shared > 0 && cores > 0
-                    ? l3 / 1024.0 / (l3Shared / (static_cast<double>(threads) / cores))
-                    : 0.0);
+    std::printf(
+        "  L3               %ld KB, shared by %d threads (%.1f MB per core)\n",
+        l3, l3Shared,
+        l3Shared > 0 && cores > 0
+            ? l3 / 1024.0 / (l3Shared / (static_cast<double>(threads) / cores))
+            : 0.0);
   }
   std::printf("  MemAvailable     %ld MB\n", MemAvailableMegabytes());
   // A 5.4 GB table streamed by every thread is a lot of TLB pressure, and the
@@ -443,8 +448,8 @@ void RunScaling(Int lMax, Int nMax, int windows) {
     field[i] = Complex{0.5 + 0.001 * i, -0.25 + 0.002 * i};
   }
   const auto bytes = WignerBytes(lMax, n);
-  const auto accumulator =
-      static_cast<double>(grid.CoefficientSize(lMax, n)) * sizeof(Complex) / 1e6;
+  const auto accumulator = static_cast<double>(grid.CoefficientSize(lMax, n)) *
+                           sizeof(Complex) / 1e6;
 
   std::printf(
       "\nlMax = %zd, nMax = %zd, complex.  Table %.0f MB built in %.2f s; one\n"
@@ -459,8 +464,8 @@ void RunScaling(Int lMax, Int nMax, int windows) {
   auto forwardBase = 0.0;
   auto inverseBase = 0.0;
   for (auto threads : ThreadLadder()) {
-    const auto policy = threads == 1 ? Execution::Sequential()
-                                     : Execution::Parallel(threads);
+    const auto policy =
+        threads == 1 ? Execution::Sequential() : Execution::Parallel(threads);
     const auto forward = TimePerCall(
         [&] {
           grid.ForwardTransformation(lMax, n, field, coefficients, policy);
@@ -477,9 +482,8 @@ void RunScaling(Int lMax, Int nMax, int windows) {
     }
     std::printf("%8d %10.3f %7.2fx %10.3f %7.2fx %8.2f %10.1f %9.1f %9.1f\n",
                 threads, forward * 1e3, forwardBase / forward, inverse * 1e3,
-                inverseBase / inverse, forward / inverse,
-                accumulator * threads, bytes / forward / 1e9,
-                bytes / inverse / 1e9);
+                inverseBase / inverse, forward / inverse, accumulator * threads,
+                bytes / forward / 1e9, bytes / inverse / 1e9);
   }
 }
 
@@ -536,8 +540,10 @@ int main(int argc, char** argv) {
 
   for (auto i = 1; i < argc; ++i) sectionsWanted.push_back(argv[i]);
 
-  std::printf("GSHTrans transform benchmark (core-plan.md section 5), "
-              "harness revision %d\n", revision);
+  std::printf(
+      "GSHTrans transform benchmark (core-plan.md section 5), "
+      "harness revision %d\n",
+      revision);
   std::printf("double precision, single field per call (k = 1)\n");
   std::printf(
       "sections: stream grid transforms threading batching generated "
@@ -565,11 +571,13 @@ int main(int argc, char** argv) {
   //------------------------------------------------------------------------//
 
   if (Want("stream") || Want("roof")) {
-    PrintHeader("Bandwidth roofs: triad, and a read scan of one transform's table");
+    PrintHeader(
+        "Bandwidth roofs: triad, and a read scan of one transform's table");
     const auto tableBytes = WignerBytes(256, 2);
-    std::printf("scan array is %.0f MB, the Wigner bytes one lMax = 256, "
-                "n = 2 transform streams\n\n",
-                tableBytes / 1e6);
+    std::printf(
+        "scan array is %.0f MB, the Wigner bytes one lMax = 256, "
+        "n = 2 transform streams\n\n",
+        tableBytes / 1e6);
     std::printf("%8s %14s %14s %14s %10s\n", "threads", "triad GB/s",
                 "scan GB/s", "scan GB/s", "penalty");
     std::printf("%8s %14s %14s %14s %10s\n", "", "(team touch)", "(team touch)",
@@ -594,148 +602,143 @@ int main(int argc, char** argv) {
   //------------------------------------------------------------------------//
 
   if (Want("grid")) {
-  PrintHeader("Grid construction: time and resident size");
-  std::printf("%6s %6s %12s %12s %12s\n", "lMax", "nMax", "build (s)",
-              "RSS (MB)", "table (MB)");
-  for (auto lMax : {Int{32}, Int{64}, Int{128}, Int{256}}) {
-    for (auto nMax : {Int{0}, Int{2}}) {
-      const auto before = ResidentMegabytes();
-      const auto start = Clock::now();
-      auto grid = GaussLegendreGrid<Real, All, All>(lMax, nMax,
-                                                    FFTWpp::Estimate);
-      const auto seconds =
-          std::chrono::duration<double>(Clock::now() - start).count();
-      const auto after = ResidentMegabytes();
+    PrintHeader("Grid construction: time and resident size");
+    std::printf("%6s %6s %12s %12s %12s\n", "lMax", "nMax", "build (s)",
+                "RSS (MB)", "table (MB)");
+    for (auto lMax : {Int{32}, Int{64}, Int{128}, Int{256}}) {
+      for (auto nMax : {Int{0}, Int{2}}) {
+        const auto before = ResidentMegabytes();
+        const auto start = Clock::now();
+        auto grid =
+            GaussLegendreGrid<Real, All, All>(lMax, nMax, FFTWpp::Estimate);
+        const auto seconds =
+            std::chrono::duration<double>(Clock::now() - start).count();
+        const auto after = ResidentMegabytes();
 
-      auto tableBytes = 0.0;
-      for (auto n = -nMax; n <= nMax; ++n) tableBytes += WignerBytes(lMax, n);
-      std::printf("%6zd %6zd %12.3f %12ld %12.1f\n", lMax, nMax, seconds,
-                  after - before, tableBytes / 1e6);
+        auto tableBytes = 0.0;
+        for (auto n = -nMax; n <= nMax; ++n) tableBytes += WignerBytes(lMax, n);
+        std::printf("%6zd %6zd %12.3f %12ld %12.1f\n", lMax, nMax, seconds,
+                    after - before, tableBytes / 1e6);
+      }
     }
-  }
 
-  //------------------------------------------------------------------------//
-  //                        Transforms, and the split                        //
-  //------------------------------------------------------------------------//
-
+    //------------------------------------------------------------------------//
+    //                        Transforms, and the split //
+    //------------------------------------------------------------------------//
   }
 
   if (Want("transforms")) {
-  PrintHeader("Transforms: total, stage split, and Legendre bandwidth");
-  std::printf("%6s %4s %8s %9s %10s %10s %9s %9s\n", "lMax", "n", "scalar",
-              "direction", "total(ms)", "FFT(ms)", "Leg(ms)", "GB/s");
+    PrintHeader("Transforms: total, stage split, and Legendre bandwidth");
+    std::printf("%6s %4s %8s %9s %10s %10s %9s %9s\n", "lMax", "n", "scalar",
+                "direction", "total(ms)", "FFT(ms)", "Leg(ms)", "GB/s");
 
-  for (auto lMax : {Int{32}, Int{64}, Int{128}, Int{256}}) {
-    for (auto n : {Int{0}, Int{2}}) {
-      auto grid = GaussLegendreGrid<Real, All, All>(lMax, n, FFTWpp::Measure);
-      const auto stub = std::abs(n);  // smallest legal call degree
+    for (auto lMax : {Int{32}, Int{64}, Int{128}, Int{256}}) {
+      for (auto n : {Int{0}, Int{2}}) {
+        auto grid = GaussLegendreGrid<Real, All, All>(lMax, n, FFTWpp::Measure);
+        const auto stub = std::abs(n);  // smallest legal call degree
 
-      const auto fieldSize = grid.FieldSize();
-      const auto full = grid.CoefficientSize(lMax, n);
-      const auto small = grid.CoefficientSize(stub, n);
+        const auto fieldSize = grid.FieldSize();
+        const auto full = grid.CoefficientSize(lMax, n);
+        const auto small = grid.CoefficientSize(stub, n);
 
-      auto complexField = FFTWpp::vector<Complex>(fieldSize);
-      auto realField = FFTWpp::vector<Real>(fieldSize);
-      for (auto i = Int{0}; i < fieldSize; ++i) {
-        complexField[i] = Complex{0.5 + 0.001 * i, -0.25 + 0.002 * i};
-        realField[i] = 0.5 + 0.001 * i;
-      }
-      auto fullCoefficients = FFTWpp::vector<Complex>(full);
-      auto smallCoefficients = FFTWpp::vector<Complex>(small);
-      auto realFull = FFTWpp::vector<Complex>(grid.RealCoefficientSize(lMax));
-      auto realSmall = FFTWpp::vector<Complex>(grid.RealCoefficientSize(stub));
+        auto complexField = FFTWpp::vector<Complex>(fieldSize);
+        auto realField = FFTWpp::vector<Real>(fieldSize);
+        for (auto i = Int{0}; i < fieldSize; ++i) {
+          complexField[i] = Complex{0.5 + 0.001 * i, -0.25 + 0.002 * i};
+          realField[i] = 0.5 + 0.001 * i;
+        }
+        auto fullCoefficients = FFTWpp::vector<Complex>(full);
+        auto smallCoefficients = FFTWpp::vector<Complex>(small);
+        auto realFull = FFTWpp::vector<Complex>(grid.RealCoefficientSize(lMax));
+        auto realSmall =
+            FFTWpp::vector<Complex>(grid.RealCoefficientSize(stub));
 
-      const auto bytes = WignerBytes(lMax, n);
+        const auto bytes = WignerBytes(lMax, n);
 
-      auto report = [&](const char* scalar, const char* direction,
-                        double total, double stage) {
-        const auto legendre = total - stage;
-        const auto gbs = legendre > 0 ? bytes / legendre / 1e9 : 0.0;
-        std::printf("%6zd %4zd %8s %9s %10.3f %10.3f %9.3f %9.1f\n", lMax, n,
-                    scalar, direction, total * 1e3, stage * 1e3,
-                    legendre * 1e3, gbs);
-      };
+        auto report = [&](const char* scalar, const char* direction,
+                          double total, double stage) {
+          const auto legendre = total - stage;
+          const auto gbs = legendre > 0 ? bytes / legendre / 1e9 : 0.0;
+          std::printf("%6zd %4zd %8s %9s %10.3f %10.3f %9.3f %9.1f\n", lMax, n,
+                      scalar, direction, total * 1e3, stage * 1e3,
+                      legendre * 1e3, gbs);
+        };
 
-      report("complex", "forward",
-             TimePerCall([&] {
-               grid.ForwardTransformation(lMax, n, complexField,
-                                          fullCoefficients);
-             }),
-             TimePerCall([&] {
-               grid.ForwardTransformation(stub, n, complexField,
-                                          smallCoefficients);
-             }));
-
-      report("complex", "inverse",
-             TimePerCall([&] {
-               grid.InverseTransformation(lMax, n, fullCoefficients,
-                                          complexField);
-             }),
-             TimePerCall([&] {
-               grid.InverseTransformation(stub, n, smallCoefficients,
-                                          complexField);
-             }));
-
-      // Real-valued fields exist only at upper index zero (core step A).
-      if (n == 0) {
-        report("real", "forward",
-               TimePerCall([&] {
-                 grid.ForwardTransformation(lMax, 0, realField, realFull);
+        report("complex", "forward", TimePerCall([&] {
+                 grid.ForwardTransformation(lMax, n, complexField,
+                                            fullCoefficients);
                }),
                TimePerCall([&] {
-                 grid.ForwardTransformation(stub, 0, realField, realSmall);
+                 grid.ForwardTransformation(stub, n, complexField,
+                                            smallCoefficients);
                }));
-        report("real", "inverse",
-               TimePerCall([&] {
-                 grid.InverseTransformation(lMax, 0, realFull, realField);
+
+        report("complex", "inverse", TimePerCall([&] {
+                 grid.InverseTransformation(lMax, n, fullCoefficients,
+                                            complexField);
                }),
                TimePerCall([&] {
-                 grid.InverseTransformation(stub, 0, realSmall, realField);
+                 grid.InverseTransformation(stub, n, smallCoefficients,
+                                            complexField);
                }));
+
+        // Real-valued fields exist only at upper index zero (core step A).
+        if (n == 0) {
+          report("real", "forward", TimePerCall([&] {
+                   grid.ForwardTransformation(lMax, 0, realField, realFull);
+                 }),
+                 TimePerCall([&] {
+                   grid.ForwardTransformation(stub, 0, realField, realSmall);
+                 }));
+          report("real", "inverse", TimePerCall([&] {
+                   grid.InverseTransformation(lMax, 0, realFull, realField);
+                 }),
+                 TimePerCall([&] {
+                   grid.InverseTransformation(stub, 0, realSmall, realField);
+                 }));
+        }
       }
     }
-  }
 
-  //------------------------------------------------------------------------//
-  //                              Threading                                  //
-  //------------------------------------------------------------------------//
-
+    //------------------------------------------------------------------------//
+    //                              Threading //
+    //------------------------------------------------------------------------//
   }
 
   if (Want("threading")) {
-  PrintHeader("Threading (core-plan.md step H)");
-  std::printf("%6s %4s %9s %8s %10s %9s %9s\n", "lMax", "n", "direction",
-              "threads", "time(ms)", "speedup", "GB/s");
-  for (auto lMax : {Int{128}, Int{256}}) {
-    const auto n = Int{2};
-    auto grid = GaussLegendreGrid<Real, All, All>(lMax, n, FFTWpp::Measure);
-    auto field = FFTWpp::vector<Complex>(grid.FieldSize());
-    auto coefficients = FFTWpp::vector<Complex>(grid.CoefficientSize(lMax, n));
-    for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
-      field[i] = Complex{0.5 + 0.001 * i, -0.25 + 0.002 * i};
-    }
-    const auto bytes = WignerBytes(lMax, n);
+    PrintHeader("Threading (core-plan.md step H)");
+    std::printf("%6s %4s %9s %8s %10s %9s %9s\n", "lMax", "n", "direction",
+                "threads", "time(ms)", "speedup", "GB/s");
+    for (auto lMax : {Int{128}, Int{256}}) {
+      const auto n = Int{2};
+      auto grid = GaussLegendreGrid<Real, All, All>(lMax, n, FFTWpp::Measure);
+      auto field = FFTWpp::vector<Complex>(grid.FieldSize());
+      auto coefficients =
+          FFTWpp::vector<Complex>(grid.CoefficientSize(lMax, n));
+      for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+        field[i] = Complex{0.5 + 0.001 * i, -0.25 + 0.002 * i};
+      }
+      const auto bytes = WignerBytes(lMax, n);
 
-    for (const char* direction : {"forward", "inverse"}) {
-      auto base = 0.0;
-      for (auto threads : {1, 2, 4, 8, 16}) {
-        const auto policy = threads == 1 ? Execution::Sequential()
-                                         : Execution::Parallel(threads);
-        const auto seconds = TimePerCall([&] {
-          if (direction[0] == 'f') {
-            grid.ForwardTransformation(lMax, n, field, coefficients, policy);
-          } else {
-            grid.InverseTransformation(lMax, n, coefficients, field, policy);
-          }
-        });
-        if (threads == 1) base = seconds;
-        std::printf("%6zd %4zd %9s %8d %10.3f %8.2fx %9.1f\n", lMax, n,
-                    direction, threads, seconds * 1e3, base / seconds,
-                    bytes / seconds / 1e9);
+      for (const char* direction : {"forward", "inverse"}) {
+        auto base = 0.0;
+        for (auto threads : {1, 2, 4, 8, 16}) {
+          const auto policy = threads == 1 ? Execution::Sequential()
+                                           : Execution::Parallel(threads);
+          const auto seconds = TimePerCall([&] {
+            if (direction[0] == 'f') {
+              grid.ForwardTransformation(lMax, n, field, coefficients, policy);
+            } else {
+              grid.InverseTransformation(lMax, n, coefficients, field, policy);
+            }
+          });
+          if (threads == 1) base = seconds;
+          std::printf("%6zd %4zd %9s %8d %10.3f %8.2fx %9.1f\n", lMax, n,
+                      direction, threads, seconds * 1e3, base / seconds,
+                      bytes / seconds / 1e9);
+        }
       }
     }
-  }
-
   }
 
   //------------------------------------------------------------------------//
@@ -745,7 +748,8 @@ int main(int argc, char** argv) {
   if (Want("generated")) {
     PrintHeader("Generated Wigner values against the stored table (step F')");
     std::printf(
-        "The same recursion, the same order, the same values -- run inside the\n"
+        "The same recursion, the same order, the same values -- run inside "
+        "the\n"
         "transform into per-thread scratch instead of read from a table. The\n"
         "two paths agree bit for bit, so the only questions are what it costs\n"
         "and what it saves. Both grids are built in this process and the two\n"
@@ -773,8 +777,8 @@ int main(int argc, char** argv) {
 
         auto storedBefore = ResidentMegabytes();
         start = Clock::now();
-        auto stored = GaussLegendreGrid<Real, All, All>(lMax, nMax,
-                                                        FFTWpp::Estimate);
+        auto stored =
+            GaussLegendreGrid<Real, All, All>(lMax, nMax, FFTWpp::Estimate);
         const auto storedSeconds =
             std::chrono::duration<double>(Clock::now() - start).count();
         const auto storedMB = ResidentMegabytes() - storedBefore;
@@ -801,8 +805,7 @@ int main(int argc, char** argv) {
       const auto n = Int{2};
       if (!AffordableAt(lMax, n)) continue;
 
-      auto stored =
-          GaussLegendreGrid<Real, All, All>(lMax, n, FFTWpp::Measure);
+      auto stored = GaussLegendreGrid<Real, All, All>(lMax, n, FFTWpp::Measure);
       auto generated = GaussLegendreGrid<Real, All, All>(
           lMax, n, FFTWpp::Measure, Chunking::Automatic(),
           WignerValues::Generated());
@@ -849,8 +852,8 @@ int main(int argc, char** argv) {
             };
             const auto a = Time(stored) / static_cast<double>(k);
             const auto b = Time(generated) / static_cast<double>(k);
-            const auto c = k > 1 ? Time(wholeChunk) / static_cast<double>(k)
-                                 : 0.0;
+            const auto c =
+                k > 1 ? Time(wholeChunk) / static_cast<double>(k) : 0.0;
             std::printf("%6zd %4zd %4zd %8d %10s %11.3f %11.3f %9.2fx", lMax, n,
                         k, threads, direction, a * 1e3, b * 1e3, b / a);
             if (k > 1) {
@@ -1084,10 +1087,13 @@ int main(int argc, char** argv) {
   if (Want("server")) {
     PrintHeader("Thread scaling to the full machine (core-plan.md [C11])");
     std::printf(
-        "Step H's decomposition -- colatitudes, with a private accumulator per\n"
-        "thread for the forward direction -- was measured to eight threads and\n"
+        "Step H's decomposition -- colatitudes, with a private accumulator "
+        "per\n"
+        "thread for the forward direction -- was measured to eight threads "
+        "and\n"
         "is predicted not to survive 64-128: the accumulators become the\n"
-        "dominant traffic and the colatitude axis is only lMax + 1 long. These\n"
+        "dominant traffic and the colatitude axis is only lMax + 1 long. "
+        "These\n"
         "rows are what decides that, and nothing on a laptop can.\n");
     for (auto lMax : ScalingDegrees()) {
       if (!AffordableAt(lMax, 2)) continue;
@@ -1103,10 +1109,13 @@ int main(int argc, char** argv) {
     PrintHeader("Batching (core-plan.md step F, tier 1)");
     std::printf(
         "Each row transforms k fields in one call, with the chunk pinned to k\n"
-        "so that the row measures one chunk of that width. P2 measured 2.3x at\n"
-        "an optimum near k = 8 on a 16 MiB laptop, and *worse than no batching*\n"
+        "so that the row measures one chunk of that width. P2 measured 2.3x "
+        "at\n"
+        "an optimum near k = 8 on a 16 MiB laptop, and *worse than no "
+        "batching*\n"
         "beyond it. The `auto` column is what Chunking::Automatic would pick\n"
-        "here, and the point of these rows is whether it picks near the peak.\n");
+        "here, and the point of these rows is whether it picks near the "
+        "peak.\n");
 
     for (auto lMax : {Int{128}, Int{256}}) {
       const auto n = Int{2};
@@ -1154,10 +1163,10 @@ int main(int argc, char** argv) {
         });
         const auto perField = seconds / static_cast<double>(k);
         if (k == 1) base = perField;
-        std::printf("%6zd %12.3f %14.4f %9.2fx %12.1f\n", k, seconds * 1e3,
-                    perField * 1e3, base / perField,
-                    static_cast<double>(k) *
-                        (fieldSize + coefficientSize) * 16 / 1e6);
+        std::printf(
+            "%6zd %12.3f %14.4f %9.2fx %12.1f\n", k, seconds * 1e3,
+            perField * 1e3, base / perField,
+            static_cast<double>(k) * (fieldSize + coefficientSize) * 16 / 1e6);
       }
     }
     std::printf(
@@ -1178,7 +1187,6 @@ int main(int argc, char** argv) {
     PrintHeader("Thread scaling at lMax = 2048");
     if (AffordableAt(2048, 2)) RunScaling(2048, 2, Windows(2048));
   }
-
 
   //------------------------------------------------------------------------//
   //                    Interpolation (field-algebra-plan.md 22)             //
@@ -1207,9 +1215,8 @@ int main(int argc, char** argv) {
     auto points = std::vector<std::pair<Real, Real>>();
     points.reserve(samplePoints);
     for (auto i = 0; i < samplePoints; ++i) {
-      points.emplace_back(
-          uniform(engine) * std::numbers::pi_v<Real>,
-          uniform(engine) * 2 * std::numbers::pi_v<Real>);
+      points.emplace_back(uniform(engine) * std::numbers::pi_v<Real>,
+                          uniform(engine) * 2 * std::numbers::pi_v<Real>);
     }
 
     // The question a caller actually has is not "how good is bicubic at the
@@ -1244,8 +1251,8 @@ int main(int argc, char** argv) {
     for (auto factor : {Int{1}, Int{2}, Int{4}, Int{8}}) {
       const auto lMax = band * factor;
       auto grid = GaussLegendreGrid<Real, All, All>(lMax, 2);
-      auto expansion = SpinExpansion<N, GaussLegendreGrid<Real, All, All>>(
-          grid, band);
+      auto expansion =
+          SpinExpansion<N, GaussLegendreGrid<Real, All, All>>(grid, band);
       {
         auto next = coefficients.begin();
         for (auto l : expansion.Degrees())
@@ -1317,24 +1324,22 @@ int main(int argc, char** argv) {
 
     for (auto lMax : {Int{16}, Int{32}, Int{64}, Int{128}}) {
       auto grid = GaussLegendreGrid<Real, All, All>(lMax, 2);
-      auto expansion = SpinExpansion<N, GaussLegendreGrid<Real, All, All>>(
-          grid, lMax);
+      auto expansion =
+          SpinExpansion<N, GaussLegendreGrid<Real, All, All>>(grid, lMax);
       for (auto l : expansion.Degrees())
         for (auto m : expansion.Orders(l)) expansion[l, m] = Complex(1, 0);
       const auto field = Evaluate(expansion);
 
-      const auto buildSpectral =
-          TimePerCall([&] {
-            auto at = Interpolate(field, Scheme::Spectral());
-            DoNotOptimise(at(1.0, 1.0));
-          });
+      const auto buildSpectral = TimePerCall([&] {
+        auto at = Interpolate(field, Scheme::Spectral());
+        DoNotOptimise(at(1.0, 1.0));
+      });
 
       const auto reference = Interpolate(field, Scheme::Spectral());
       auto index = std::size_t{0};
       const auto perPointSpectral = TimePerCall([&] {
         index = (index + 1) & 1023;
-        DoNotOptimise(reference(1.0 + 0.0005 * static_cast<Real>(index),
-                                0.7));
+        DoNotOptimise(reference(1.0 + 0.0005 * static_cast<Real>(index), 0.7));
       });
 
       // One remesh: expand the field and evaluate it on the same grid, which
@@ -1373,11 +1378,11 @@ int main(int argc, char** argv) {
         "the grid's own point count: fewer than that and evaluating point by\n"
         "point is the cheaper route, more and it is worth transforming onto a\n"
         "second grid and interpolating there instead.\n"
-        "\nBuilding a local interpolant costs a forward transform, because the\n"
+        "\nBuilding a local interpolant costs a forward transform, because "
+        "the\n"
         "polar rows are exact ([I3]). Its cheapness is per evaluation, not\n"
         "per interpolant, and these two columns are what says so.\n");
   }
-
 
   //------------------------------------------------------------------------//
   //                   Tuning (core-plan.md section 12)                      //
@@ -1409,12 +1414,11 @@ int main(int argc, char** argv) {
           const auto kernel = TuneKernel<GaussLegendreGrid<Real, All, All>>(
               lMax, 2, 2, count, policy);
 
-          std::printf("%6td %5td %8d %13.2fx %8d %13.2fx %8s\n", lMax, count,
-                      threads, chunk.Speedup(), chunk.candidates,
-                      kernel.Speedup(),
-                      kernel.matrixTried
-                          ? (kernel.conclusive ? "matrix" : "loop")
-                          : "n/a");
+          std::printf(
+              "%6td %5td %8d %13.2fx %8d %13.2fx %8s\n", lMax, count, threads,
+              chunk.Speedup(), chunk.candidates, kernel.Speedup(),
+              kernel.matrixTried ? (kernel.conclusive ? "matrix" : "loop")
+                                 : "n/a");
           if (!kernel.skipped.empty()) {
             std::printf("       kernel not tried: %s\n",
                         kernel.skipped.c_str());

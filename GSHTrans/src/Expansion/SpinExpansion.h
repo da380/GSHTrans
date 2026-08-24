@@ -2,7 +2,6 @@
 #define GSH_TRANS_SPIN_EXPANSION_GUARD_H
 
 #include <FFTWpp/Core>
-
 #include <cassert>
 #include <cmath>
 #include <complex>
@@ -16,8 +15,8 @@
 #include <vector>
 
 #include "../Concepts.h"
-#include "../Policies.h"
 #include "../Indexing.h"
+#include "../Policies.h"
 #include "../SpinField/SpinField.h"
 #include "../SpinField/SpinFieldView.h"
 #include "../SpinField/SpinWeighted.h"
@@ -57,9 +56,9 @@ class SpinExpansionBase {
 
   /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = _N;
-  using Value = _Value;  ///< Whether the samples are real-valued or complex.
+  using Value = _Value;    ///< Whether the samples are real-valued or complex.
   using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Real = typename _Grid::Real;  ///< The precision.
+  using Real = typename _Grid::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
 
   /// Coefficients are complex whatever the field is; what a real field
@@ -85,9 +84,7 @@ class SpinExpansionBase {
    * the harmonics there do not exist.
    */
   SpinExpansionBase(GridType grid, Int lMax, std::span<_Element> data)
-      : _grid{std::move(grid)},
-        _indices{lMax, lMax, UpperIndex},
-        _data{data} {
+      : _grid{std::move(grid)}, _indices{lMax, lMax, UpperIndex}, _data{data} {
     if (lMax < std::abs(UpperIndex)) {
       throw std::invalid_argument(
           "An expansion's degree cannot be below its upper index, since the "
@@ -111,7 +108,9 @@ class SpinExpansionBase {
   /** @brief Every degree stored. */
   auto Degrees() const { return _indices.Degrees(); }
   /** @brief Every order stored at degree @p l. */
-  auto Orders(Int l) const { return GSHSubIndices<MRange>(l, MaxDegree()).Orders(); }
+  auto Orders(Int l) const {
+    return GSHSubIndices<MRange>(l, MaxDegree()).Orders();
+  }
   /** @brief How many elements are stored. */
   auto Size() const { return static_cast<Int>(_data.size()); }
   /** @brief The underlying buffer. */
@@ -158,9 +157,9 @@ class SpinExpansion {
 
   /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = _N;
-  using Value = _Value;  ///< Whether the samples are real-valued or complex.
+  using Value = _Value;    ///< Whether the samples are real-valued or complex.
   using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Real = typename _Grid::Real;  ///< The precision.
+  using Real = typename _Grid::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   /// A writable view over this object.
   using ViewType = SpinExpansionView<_N, _Grid, _Value>;

@@ -71,6 +71,6 @@ int main() {
   // already knows -- without the machinery being told anything about
   // elasticity.
   using Elastic = TensorField<4, ElasticSymmetry, ComplexTensor, Grid>;
-  std::cout << "elastic rank 4: stored " << Elastic::StoredComponents
-            << " of " << Elastic::Components << "\n";
+  std::cout << "elastic rank 4: stored " << Elastic::StoredComponents << " of "
+            << Elastic::Components << "\n";
 }

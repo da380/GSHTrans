@@ -2,7 +2,6 @@
 #define GSH_TRANS_CHECK_WIGNER_BOUNDARY_GUARD_H
 
 #include <GSHTrans/All>
-
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -54,10 +53,10 @@ auto CheckWignerBoundary() {
   // Angles either side of pi/2, and two close to the poles, where the
   // recursion's factor is smallest and its seed is nearest the exact 0 or 1
   // that the closed form special-cases.
-  const auto angles = std::vector<Real>{
-      static_cast<Real>(0.02), static_cast<Real>(0.4), static_cast<Real>(1.0),
-      std::numbers::pi_v<Real> / 2, static_cast<Real>(2.3),
-      static_cast<Real>(3.12)};
+  const auto angles =
+      std::vector<Real>{static_cast<Real>(0.02), static_cast<Real>(0.4),
+                        static_cast<Real>(1.0),  std::numbers::pi_v<Real> / 2,
+                        static_cast<Real>(2.3),  static_cast<Real>(3.12)};
 
   auto wigner = Wigner<Real, All, All, Multiple>(lMax, lMax, nMax, angles);
 

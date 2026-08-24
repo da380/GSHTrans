@@ -31,8 +31,8 @@ int main() {
   // weights integrates the constant 1, which is the area of the sphere.
   auto area = Real{0};
   for (auto w : grid.Weights()) area += w;
-  std::cout << "sum of weights " << area << "   4 pi = "
-            << 4 * std::numbers::pi << "\n\n";
+  std::cout << "sum of weights " << area << "   4 pi = " << 4 * std::numbers::pi
+            << "\n\n";
 
   // A product of two band-limited fields has twice the band, and integrating
   // |f|^2 integrates a degree-2l quantity. ForBand asks for the headroom

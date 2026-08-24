@@ -38,9 +38,9 @@ class SpinFieldView {
 
   /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = _N;
-  using Value = _Value;  ///< Whether the samples are real-valued or complex.
+  using Value = _Value;    ///< Whether the samples are real-valued or complex.
   using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Real = typename _Grid::Real;  ///< The precision.
+  using Real = typename _Grid::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   /// The value type: Real when real-valued, Complex otherwise.
   using Scalar = std::remove_const_t<_Element>;
@@ -49,9 +49,9 @@ class SpinFieldView {
   static_assert(std::same_as<Value, ComplexValued> or UpperIndex == 0,
                 "A spin-weighted field can be real-valued only at upper index "
                 "zero");
-  static_assert(
-      not std::same_as<typename _Grid::NRange, NonNegative> or UpperIndex >= 0,
-      "This grid stores only non-negative upper indices");
+  static_assert(not std::same_as<typename _Grid::NRange, NonNegative> or
+                    UpperIndex >= 0,
+                "This grid stores only non-negative upper indices");
 
   SpinFieldView() = delete;
 
@@ -77,9 +77,8 @@ class SpinFieldView {
         static_cast<std::size_t>((_grid.FieldSize() - 1) * _stride + 1);
     if (_data.size() < span) {
       throw std::invalid_argument(
-          "A view over " + std::to_string(_data.size()) +
-          " values at stride " + std::to_string(_stride) +
-          " does not cover this grid's " +
+          "A view over " + std::to_string(_data.size()) + " values at stride " +
+          std::to_string(_stride) + " does not cover this grid's " +
           std::to_string(_grid.FieldSize()) + " points");
     }
   }

@@ -98,11 +98,10 @@ int main() {
   static_assert(std::same_as<decltype(gradV)::Reality, RealTensor>);
 
   std::cout << std::defaultfloat;
-  std::cout << "grad of a real vector: rank " << decltype(gradV)::Rank
-            << ", " << decltype(gradV)::StoredComponents
-            << " stored components of "
-            << decltype(gradV)::Components << ", "
-            << gradV.Size() << " coefficients\n";
+  std::cout << "grad of a real vector: rank " << decltype(gradV)::Rank << ", "
+            << decltype(gradV)::StoredComponents << " stored components of "
+            << decltype(gradV)::Components << ", " << gradV.Size()
+            << " coefficients\n";
 
   // Every component is readable whether or not it is stored, which is what
   // the derived half of a real tensor needs in the spectral domain -- and

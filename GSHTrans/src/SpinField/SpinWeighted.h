@@ -31,55 +31,56 @@ namespace GSHTrans {
 // The scalar a node evaluates to: Real when the node is real-valued, Complex
 // otherwise.
 template <RealFloatingPoint Real, RealOrComplexValued Value>
-using ScalarFor =
-    std::conditional_t<std::same_as<Value, RealValued>, Real,
-                       std::complex<Real>>;
+using ScalarFor = std::conditional_t<std::same_as<Value, RealValued>, Real,
+                                     std::complex<Real>>;
 
 template <typename T>
-concept SpinWeighted = requires {
-  // The spin weight, known at compile time.
-  requires std::same_as<std::remove_cv_t<decltype(T::UpperIndex)>,
-                        std::ptrdiff_t>;
+concept SpinWeighted =
+    requires {
+      // The spin weight, known at compile time.
+      requires std::same_as<std::remove_cv_t<decltype(T::UpperIndex)>,
+                            std::ptrdiff_t>;
 
-  // The scalar kind, and the types that follow from it.
-  typename T::Value;
-  requires RealOrComplexValued<typename T::Value>;
-  typename T::Real;
-  requires RealFloatingPoint<typename T::Real>;
-  typename T::Complex;
-  requires std::same_as<typename T::Complex, std::complex<typename T::Real>>;
-  typename T::Scalar;
-  requires std::same_as<typename T::Scalar,
-                        ScalarFor<typename T::Real, typename T::Value>>;
+      // The scalar kind, and the types that follow from it.
+      typename T::Value;
+      requires RealOrComplexValued<typename T::Value>;
+      typename T::Real;
+      requires RealFloatingPoint<typename T::Real>;
+      typename T::Complex;
+      requires std::same_as<typename T::Complex,
+                            std::complex<typename T::Real>>;
+      typename T::Scalar;
+      requires std::same_as<typename T::Scalar,
+                            ScalarFor<typename T::Real, typename T::Value>>;
 
-  typename T::GridType;
+      typename T::GridType;
 
-  // Theory note section 7 item 5, promoted into the concept: real-valuedness
-  // is not preserved by the frame rotation e_{+-} -> e^{-+ i psi} e_{+-}, so
-  // it is not a property any component of any tensor can have at N != 0. A
-  // library able to represent one can represent something that does not
-  // exist. The constraint is closed under every node in this layer, so it is
-  // checked here once and never re-derived; what it forbids is a real-valued
-  // *terminal* or *view* at nonzero upper index.
-  requires std::same_as<typename T::Value, ComplexValued> or
-               T::UpperIndex == 0;
-} and requires(const T& node, std::ptrdiff_t iTheta, std::ptrdiff_t iPhi,
-               std::span<typename T::Scalar> target) {
-  // The grid is a value-semantic handle, so this is cheap to copy and two
-  // nodes are on the same grid when Grid().Identity() agrees.
-  { node.Grid() } -> std::convertible_to<const typename T::GridType&>;
+      // Theory note section 7 item 5, promoted into the concept:
+      // real-valuedness is not preserved by the frame rotation e_{+-} -> e^{-+
+      // i psi} e_{+-}, so it is not a property any component of any tensor can
+      // have at N != 0. A library able to represent one can represent something
+      // that does not exist. The constraint is closed under every node in this
+      // layer, so it is checked here once and never re-derived; what it forbids
+      // is a real-valued *terminal* or *view* at nonzero upper index.
+      requires std::same_as<typename T::Value, ComplexValued> or
+                   T::UpperIndex == 0;
+    } and requires(const T& node, std::ptrdiff_t iTheta, std::ptrdiff_t iPhi,
+                   std::span<typename T::Scalar> target) {
+      // The grid is a value-semantic handle, so this is cheap to copy and two
+      // nodes are on the same grid when Grid().Identity() agrees.
+      { node.Grid() } -> std::convertible_to<const typename T::GridType&>;
 
-  // By value, always, including on terminals: uniform value return is what
-  // makes terminals, views and expressions interchangeable. A mutable
-  // reference accessor exists on terminals and mutable views, outside the
-  // concept.
-  { node[iTheta, iPhi] } -> std::same_as<typename T::Scalar>;
+      // By value, always, including on terminals: uniform value return is what
+      // makes terminals, views and expressions interchangeable. A mutable
+      // reference accessor exists on terminals and mutable views, outside the
+      // concept.
+      { node[iTheta, iPhi] } -> std::same_as<typename T::Scalar>;
 
-  // Writes the field in the canonical layout: (iTheta, iPhi) with phi
-  // fastest, flat index iTheta * nPhi + iPhi. This declaration is the
-  // definition of record for that order.
-  { node.EvaluateInto(target) } -> std::same_as<void>;
-};
+      // Writes the field in the canonical layout: (iTheta, iPhi) with phi
+      // fastest, flat index iTheta * nPhi + iPhi. This declaration is the
+      // definition of record for that order.
+      { node.EvaluateInto(target) } -> std::same_as<void>;
+    };
 
 // Convenience for the common case of writing "the node type behind this
 // possibly-reference operand type".
@@ -213,15 +214,16 @@ template <typename T>
 struct IsTerminalTrait : std::false_type {};
 
 template <typename T>
-inline constexpr bool IsTerminal = IsTerminalTrait<std::remove_cvref_t<T>>::value;
+inline constexpr bool IsTerminal =
+    IsTerminalTrait<std::remove_cvref_t<T>>::value;
 
 // How an operand is stored inside a node, given the value category it was
 // passed with. T is the deduced type of a forwarding reference, so it carries
 // the category: an lvalue arrives as U&, an rvalue as U.
 //
 //   terminal or view, lvalue    ->  const U&    (cheap; caller owns it)
-//   terminal or view, rvalue    ->  U           (moved in; nothing else owns it)
-//   expression node,  either    ->  U           (small; copying is cheap)
+//   terminal or view, rvalue    ->  U           (moved in; nothing else owns
+//   it) expression node,  either    ->  U           (small; copying is cheap)
 //
 // The rvalue-terminal row is the one a plain IsTerminal test gets wrong:
 // `auto e = MakeField(...) + v;` would bind a reference to a temporary that
@@ -244,10 +246,9 @@ using OperandStorage =
 
 // A binary node is real-valued exactly when both its operands are.
 template <RealOrComplexValued LValue, RealOrComplexValued RValue>
-using CombinedValue =
-    std::conditional_t<std::same_as<LValue, RealValued> and
-                           std::same_as<RValue, RealValued>,
-                       RealValued, ComplexValued>;
+using CombinedValue = std::conditional_t<std::same_as<LValue, RealValued> and
+                                             std::same_as<RValue, RealValued>,
+                                         RealValued, ComplexValued>;
 
 // The value kind a scalar multiplier imposes: a complex scalar promotes a real
 // field, a real one leaves it alone.

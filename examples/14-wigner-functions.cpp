@@ -43,7 +43,7 @@ int main() {
   //
   // which is Dahlen & Tromp (C.117). The upper index is the *first* subscript
   // of d: d^l_{mN} is a different function, differing by (-1)^{N-m}.
-  const auto view = d[1, 128];        // upper index 1, the colatitude at pi/2
+  const auto view = d[1, 128];  // upper index 1, the colatitude at pi/2
   std::cout << std::fixed << std::setprecision(6);
   std::cout << "at theta = pi/2, upper index N = 1:\n";
   for (auto m : view[3].Orders()) {
@@ -126,8 +126,9 @@ int main() {
               "plot ";
     Int column = 2;
     for (auto n : d.UpperIndices()) {
-      script << (column > 2 ? ", " : "") << "'" << path << "' using 1:"
-             << column << " with lines lw 2 title 'N = " << n << "'";
+      script << (column > 2 ? ", " : "") << "'" << path
+             << "' using 1:" << column << " with lines lw 2 title 'N = " << n
+             << "'";
       column++;
     }
     script << "\n";

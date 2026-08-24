@@ -38,8 +38,8 @@ class Binary {
   using RNode = Node<R>;
 
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using Real = typename LNode::Real;  ///< The precision.
+  using Int = std::ptrdiff_t;          ///< Signed index type used throughout.
+  using Real = typename LNode::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   /// The angular grid this is defined on.
   using GridType = typename LNode::GridType;
@@ -58,14 +58,13 @@ class Binary {
       Rule::template Apply<LNode::UpperIndex, RNode::UpperIndex>;
 
   static_assert(SpinWeighted<LNode> and SpinWeighted<RNode>);
-  static_assert(std::same_as<typename LNode::GridType,
-                             typename RNode::GridType>,
-                "both operands must be on the same kind of grid");
+  static_assert(
+      std::same_as<typename LNode::GridType, typename RNode::GridType>,
+      "both operands must be on the same kind of grid");
   static_assert(std::same_as<typename LNode::Real, typename RNode::Real>,
                 "one precision per expression tree: no mixed-precision "
                 "promotion");
-  static_assert(Rule::template Admissible<LNode::UpperIndex,
-                                          RNode::UpperIndex>,
+  static_assert(Rule::template Admissible<LNode::UpperIndex, RNode::UpperIndex>,
                 "the upper indices of these operands do not satisfy this "
                 "operation's index rule");
   static_assert(RealOrComplexFloatingPoint<Scalar>);
@@ -128,8 +127,8 @@ class Unary {
   using ANode = Node<A>;
 
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using Real = typename ANode::Real;  ///< The precision.
+  using Int = std::ptrdiff_t;          ///< Signed index type used throughout.
+  using Real = typename ANode::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   /// The angular grid this is defined on.
   using GridType = typename ANode::GridType;
@@ -155,8 +154,7 @@ class Unary {
                 "index zero");
 
   /** @brief Wraps the operand of a unary operation. */
-  Unary(A&& a, Op op = Op{})
-      : _a{std::forward<A>(a)}, _op{std::move(op)} {}
+  Unary(A&& a, Op op = Op{}) : _a{std::forward<A>(a)}, _op{std::move(op)} {}
 
   /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _a.Grid(); }

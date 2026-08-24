@@ -8,9 +8,9 @@
 #include <utility>
 
 #include "../Concepts.h"
-#include "../Policies.h"
 #include "../Expansion/SpinExpansion.h"
 #include "../Expansion/TensorExpansion.h"
+#include "../Policies.h"
 #include "../Tensor/Orbits.h"
 #include "../Tensor/TensorField.h"
 #include "../Utility.h"
@@ -80,10 +80,10 @@ struct StacksImpl<At, Flat, std::index_sequence<Slots...>> {
 };
 
 template <template <typename, Int> typename At, typename Flat>
-using Stacks = typename StacksImpl<
-    At, Flat,
-    std::make_index_sequence<static_cast<std::size_t>(
-        Flat::StoredComponents)>>::type;
+using Stacks =
+    typename StacksImpl<At, Flat,
+                        std::make_index_sequence<static_cast<std::size_t>(
+                            Flat::StoredComponents)>>::type;
 
 }  // namespace LayeredDetails
 
@@ -115,9 +115,9 @@ class LayeredTensorField {
   /** @brief The tensor rank. */
   static constexpr Int Rank = _Rank;
   using Symmetry = _Symmetry;  ///< The permutation symmetry of the slots.
-  using Reality = _Reality;  ///< Whether the tensor is real or complex.
-  using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Real = typename _Grid::Real;  ///< The precision.
+  using Reality = _Reality;    ///< Whether the tensor is real or complex.
+  using GridType = _Grid;      ///< The angular grid this is defined on.
+  using Real = typename _Grid::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   using RadialGridType = RadialGrid<Real>;  ///< The radial grid type.
   using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
@@ -163,8 +163,8 @@ class LayeredTensorField {
    */
   LayeredTensorField(RadialGridType radialGrid, GridType grid)
       : _stacks{Build(radialGrid, grid,
-                      std::make_index_sequence<
-                          static_cast<std::size_t>(StoredComponents)>{})},
+                      std::make_index_sequence<static_cast<std::size_t>(
+                          StoredComponents)>{})},
         _radialGrid{std::move(radialGrid)},
         _grid{std::move(grid)} {}
 
@@ -259,8 +259,8 @@ class LayeredTensorField {
   static auto Build(const RadialGridType& radialGrid, const GridType& grid,
                     std::index_sequence<Slots...>) {
     return LayeredDetails::Stacks<LayeredDetails::FieldStackAt, Flat>{
-        LayeredDetails::FieldStackAt<Flat, static_cast<Int>(Slots)>(
-            radialGrid, grid)...};
+        LayeredDetails::FieldStackAt<Flat, static_cast<Int>(Slots)>(radialGrid,
+                                                                    grid)...};
   }
 };
 
@@ -284,9 +284,9 @@ class LayeredTensorExpansion {
   /** @brief The tensor rank. */
   static constexpr Int Rank = _Rank;
   using Symmetry = _Symmetry;  ///< The permutation symmetry of the slots.
-  using Reality = _Reality;  ///< Whether the tensor is real or complex.
-  using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Real = typename _Grid::Real;  ///< The precision.
+  using Reality = _Reality;    ///< Whether the tensor is real or complex.
+  using GridType = _Grid;      ///< The angular grid this is defined on.
+  using Real = typename _Grid::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   using RadialGridType = RadialGrid<Real>;  ///< The radial grid type.
   using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
@@ -324,8 +324,8 @@ class LayeredTensorExpansion {
    */
   LayeredTensorExpansion(RadialGridType radialGrid, GridType grid, Int lMax)
       : _stacks{Build(radialGrid, grid, lMax,
-                      std::make_index_sequence<
-                          static_cast<std::size_t>(StoredComponents)>{})},
+                      std::make_index_sequence<static_cast<std::size_t>(
+                          StoredComponents)>{})},
         _radialGrid{std::move(radialGrid)},
         _grid{std::move(grid)},
         _lMax{lMax} {}
@@ -473,8 +473,7 @@ template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
 auto Expand(
     const LayeredTensorField<Rank, Symmetry, Reality, Grid, SlotSet>& field,
     std::ptrdiff_t lMax, Execution policy = Execution::Sequential()) {
-  using Result =
-      LayeredTensorExpansion<Rank, Symmetry, Reality, Grid, SlotSet>;
+  using Result = LayeredTensorExpansion<Rank, Symmetry, Reality, Grid, SlotSet>;
   using Flat = typename Result::Flat;
 
   auto result = Result(field.Radial(), field.Grid(), lMax);
@@ -489,17 +488,16 @@ auto Expand(
               std::make_index_sequence<static_cast<std::size_t>(Rank)>{});
         }(),
         ...);
-  }(std::make_index_sequence<
-      static_cast<std::size_t>(Result::StoredComponents)>{});
+  }(std::make_index_sequence<static_cast<std::size_t>(
+        Result::StoredComponents)>{});
   return result;
 }
 
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
           TensorReality Reality, AngularGrid Grid, SlotAlphabet SlotSet>
-auto Evaluate(
-    const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid, SlotSet>&
-        expansion,
-    Execution policy = Execution::Sequential()) {
+auto Evaluate(const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid,
+                                           SlotSet>& expansion,
+              Execution policy = Execution::Sequential()) {
   using Result = LayeredTensorField<Rank, Symmetry, Reality, Grid, SlotSet>;
   using Flat = typename Result::Flat;
 
@@ -515,8 +513,8 @@ auto Evaluate(
               std::make_index_sequence<static_cast<std::size_t>(Rank)>{});
         }(),
         ...);
-  }(std::make_index_sequence<
-      static_cast<std::size_t>(Result::StoredComponents)>{});
+  }(std::make_index_sequence<static_cast<std::size_t>(
+        Result::StoredComponents)>{});
   return result;
 }
 

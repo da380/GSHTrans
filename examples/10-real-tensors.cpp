@@ -50,7 +50,8 @@ int main() {
   // can sit, since permutation preserves the slot sum and negation reverses
   // it.
   static_assert(std::same_as<decltype(u.Component<0>())::Value, RealValued>);
-  static_assert(std::same_as<decltype(u.Component<-1>())::Value, ComplexValued>);
+  static_assert(
+      std::same_as<decltype(u.Component<-1>())::Value, ComplexValued>);
 
   // The derived component. conj reverses the upper index, which is why the
   // relation works out: a component stored at -1 derives one at +1.
@@ -66,23 +67,23 @@ int main() {
 
   // The counts, which are the independent real degrees of freedom at every
   // rank and symmetry, with nothing special-cased.
-  std::cout << "reals per point\n"
-            << "  rank 2                "
-            << (TensorField<2, NoSymmetry<2>, RealTensor, Grid>::RealsPerPoint)
-            << "   (3^2)\n"
-            << "  rank 2 symmetric      "
-            << (TensorField<2, Symmetric<2>, RealTensor, Grid>::RealsPerPoint)
-            << "   (a real symmetric 3x3 matrix)\n"
-            << "  rank 2 antisymmetric  "
-            << (TensorField<2, Antisymmetric<2>, RealTensor, Grid>::RealsPerPoint)
-            << "\n"
-            << "  rank 3 symmetric      "
-            << (TensorField<3, Symmetric<3>, RealTensor, Grid>::RealsPerPoint)
-            << "\n"
-            << "  rank 4                "
-            << (TensorField<4, NoSymmetry<4>, RealTensor, Grid>::RealsPerPoint)
-            << "  (3^4)\n"
-            << "  rank 4 elastic        "
-            << (TensorField<4, ElasticSymmetry, RealTensor, Grid>::RealsPerPoint)
-            << "   (the elastic constants)\n";
+  std::cout
+      << "reals per point\n"
+      << "  rank 2                "
+      << (TensorField<2, NoSymmetry<2>, RealTensor, Grid>::RealsPerPoint)
+      << "   (3^2)\n"
+      << "  rank 2 symmetric      "
+      << (TensorField<2, Symmetric<2>, RealTensor, Grid>::RealsPerPoint)
+      << "   (a real symmetric 3x3 matrix)\n"
+      << "  rank 2 antisymmetric  "
+      << (TensorField<2, Antisymmetric<2>, RealTensor, Grid>::RealsPerPoint)
+      << "\n"
+      << "  rank 3 symmetric      "
+      << (TensorField<3, Symmetric<3>, RealTensor, Grid>::RealsPerPoint) << "\n"
+      << "  rank 4                "
+      << (TensorField<4, NoSymmetry<4>, RealTensor, Grid>::RealsPerPoint)
+      << "  (3^4)\n"
+      << "  rank 4 elastic        "
+      << (TensorField<4, ElasticSymmetry, RealTensor, Grid>::RealsPerPoint)
+      << "   (the elastic constants)\n";
 }

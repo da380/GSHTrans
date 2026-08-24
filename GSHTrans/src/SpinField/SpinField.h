@@ -35,9 +35,9 @@ class SpinField {
 
   /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = _N;
-  using Value = _Value;  ///< Whether the samples are real-valued or complex.
+  using Value = _Value;    ///< Whether the samples are real-valued or complex.
   using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Real = typename _Grid::Real;  ///< The precision.
+  using Real = typename _Grid::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   /// The value type: Real when real-valued, Complex otherwise.
   using Scalar = ScalarFor<Real, Value>;
@@ -52,17 +52,16 @@ class SpinField {
 
   // Whether the grid admits negative upper indices at all is a property of its
   // type, so it is a static_assert and not a runtime test.
-  static_assert(
-      not std::same_as<typename _Grid::NRange, NonNegative> or UpperIndex >= 0,
-      "This grid stores only non-negative upper indices");
+  static_assert(not std::same_as<typename _Grid::NRange, NonNegative> or
+                    UpperIndex >= 0,
+                "This grid stores only non-negative upper indices");
 
   // A field is always built on a grid; there is no valid empty state.
   SpinField() = delete;
 
   /** @brief A zero field on @p grid. */
   explicit SpinField(GridType grid)
-      : _grid{std::move(grid)},
-        _data(CheckedSize(_grid), Scalar{}) {}
+      : _grid{std::move(grid)}, _data(CheckedSize(_grid), Scalar{}) {}
 
   /**
    * @brief A function of position, sampled over the grid's points in the
@@ -107,8 +106,7 @@ class SpinField {
   /// grid its operands were on and nowhere else.
   template <typename Expr>
   requires Compatible<Expr> and (not std::same_as<Node<Expr>, SpinField>)
-  SpinField(const Expr& expr)
-      : _grid{expr.Grid()}, _data(CheckedSize(_grid)) {
+  SpinField(const Expr& expr) : _grid{expr.Grid()}, _data(CheckedSize(_grid)) {
     expr.EvaluateInto(std::span<Scalar>(_data));
   }
 
@@ -124,10 +122,10 @@ class SpinField {
   /// pointwise and index-preserving, so writing element (iTheta, iPhi) of the
   /// destination happens after reading element (iTheta, iPhi) -- and only that
   /// element -- of every operand, including the destination itself. So
-  /// `u = conj(u) * v + u` is safe as written. If a re-indexing node ever enters
-  /// this layer the argument fails, which is why the invariant is stated as
-  /// "pointwise *and index-preserving*" and why there is a regression test for
-  /// exactly this shape.
+  /// `u = conj(u) * v + u` is safe as written. If a re-indexing node ever
+  /// enters this layer the argument fails, which is why the invariant is stated
+  /// as "pointwise *and index-preserving*" and why there is a regression test
+  /// for exactly this shape.
   template <typename Expr>
   requires Compatible<Expr> and (not std::same_as<Node<Expr>, SpinField>)
   SpinField& operator=(const Expr& expr) {
@@ -261,7 +259,8 @@ class SpinField {
 
   // (iTheta, iPhi) with phi fastest, matching the transform's own layout.
   Int FlatIndex(Int iTheta, Int iPhi) const {
-    assert(iTheta >= 0 && iTheta < static_cast<Int>(_grid.NumberOfCoLatitudes()));
+    assert(iTheta >= 0 &&
+           iTheta < static_cast<Int>(_grid.NumberOfCoLatitudes()));
     assert(iPhi >= 0 && iPhi < static_cast<Int>(_grid.NumberOfLongitudes()));
     return iTheta * static_cast<Int>(_grid.NumberOfLongitudes()) + iPhi;
   }
@@ -272,8 +271,8 @@ class SpinField {
   static std::size_t CheckedSize(const GridType& grid) {
     if (!std::ranges::contains(grid.UpperIndices(), UpperIndex)) {
       throw std::invalid_argument(
-          "This grid does not carry upper index " +
-          std::to_string(UpperIndex) + "; it carries " +
+          "This grid does not carry upper index " + std::to_string(UpperIndex) +
+          "; it carries " +
           std::to_string(*std::ranges::begin(grid.UpperIndices())) + " to " +
           std::to_string(grid.MaxUpperIndex()));
     }

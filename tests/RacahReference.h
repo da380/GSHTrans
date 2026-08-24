@@ -31,7 +31,6 @@
 // logarithm grows with degree, and is about 1e-12 at l = 500.
 
 #include <GSHTrans/Core>
-
 #include <algorithm>
 #include <cmath>
 #include <concepts>
@@ -62,9 +61,9 @@ Real RacahSymbol(int l1, int l2, int l3, int m1, int m2, int m3) {
   const auto logDelta =
       logFactorial(l1 + l2 - l3) + logFactorial(l1 - l2 + l3) +
       logFactorial(-l1 + l2 + l3) - logFactorial(l1 + l2 + l3 + 1);
-  const auto logNumerator =
-      logFactorial(l1 + m1) + logFactorial(l1 - m1) + logFactorial(l2 + m2) +
-      logFactorial(l2 - m2) + logFactorial(l3 + m3) + logFactorial(l3 - m3);
+  const auto logNumerator = logFactorial(l1 + m1) + logFactorial(l1 - m1) +
+                            logFactorial(l2 + m2) + logFactorial(l2 - m2) +
+                            logFactorial(l3 + m3) + logFactorial(l3 - m3);
   const auto logPrefactor = (logDelta + logNumerator) / 2;
 
   const auto lowest = std::max({0, l2 - l3 - m1, l1 - l3 + m2});

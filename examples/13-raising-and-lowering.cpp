@@ -78,6 +78,6 @@ int main() {
   // fields, at upper index +1 and -1.
   auto gradientPlus = Evaluate(raised);
   static_assert(decltype(gradientPlus)::UpperIndex == 1);
-  std::cout << "the raised field is a spin-1 field of "
-            << gradientPlus.Size() << " samples\n";
+  std::cout << "the raised field is a spin-1 field of " << gradientPlus.Size()
+            << " samples\n";
 }

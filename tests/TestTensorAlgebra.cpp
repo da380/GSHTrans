@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <GSHTrans/All>
-
 #include <array>
 #include <complex>
 #include <cstddef>
@@ -57,9 +56,12 @@ TEST(TensorAlgebra, TransposeRelabelsWithoutCopying) {
   static_assert(decltype(transposed)::Rank == 2);
 
   // Slot 0 of the transpose is slot 1 of the operand.
-  EXPECT_EQ((transposed.Component<0, 1>()[2, 3]), (tensor.Component<1, 0>()[2, 3]));
-  EXPECT_EQ((transposed.Component<1, 0>()[2, 3]), (tensor.Component<0, 1>()[2, 3]));
-  EXPECT_NE((transposed.Component<0, 1>()[2, 3]), (tensor.Component<0, 1>()[2, 3]));
+  EXPECT_EQ((transposed.Component<0, 1>()[2, 3]),
+            (tensor.Component<1, 0>()[2, 3]));
+  EXPECT_EQ((transposed.Component<1, 0>()[2, 3]),
+            (tensor.Component<0, 1>()[2, 3]));
+  EXPECT_NE((transposed.Component<0, 1>()[2, 3]),
+            (tensor.Component<0, 1>()[2, 3]));
 
   // The upper index follows the multi-index, not the slot order, so a
   // transposed component carries what its own indices say.
@@ -278,9 +280,10 @@ TEST(TensorAlgebra, ContractingAProductIsADoubleSum) {
   auto product = Contract<1, 2>(TensorProduct(s, t));
   static_assert(decltype(product)::Rank == 2);
 
-  const auto expected = -s.Component<0, -1>()[1, 1] * t.Component<1, 0>()[1, 1] +
-                        s.Component<0, 0>()[1, 1] * t.Component<0, 0>()[1, 1] -
-                        s.Component<0, 1>()[1, 1] * t.Component<-1, 0>()[1, 1];
+  const auto expected =
+      -s.Component<0, -1>()[1, 1] * t.Component<1, 0>()[1, 1] +
+      s.Component<0, 0>()[1, 1] * t.Component<0, 0>()[1, 1] -
+      s.Component<0, 1>()[1, 1] * t.Component<-1, 0>()[1, 1];
   const auto got = product.Component<0, 0>()[1, 1];
   EXPECT_NEAR(got.real(), expected.real(), 1.0e-13);
   EXPECT_NEAR(got.imag(), expected.imag(), 1.0e-13);
@@ -366,9 +369,9 @@ TEST(TensorAlgebra, MaterialiseEvaluatesIntoAField) {
 
   const auto& tensor = t;
   auto transposed = Materialise(Transpose(tensor));
-  static_assert(std::same_as<decltype(transposed),
-                             TensorField<2, NoSymmetry<2>, ComplexTensor,
-                                         Grid>>);
+  static_assert(
+      std::same_as<decltype(transposed),
+                   TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>>);
 
   for (auto iTheta : grid.CoLatitudeIndices()) {
     for (auto iPhi : grid.LongitudeIndices()) {
@@ -538,8 +541,8 @@ TEST(TensorAlgebra, MaterialiseKeepsTheOperandsAlphabet) {
   static_assert(decltype(field)::Components == 4);
   static_assert(decltype(field)::StoredComponents == 3);
 
-  const auto expected = 0.5 * (tensor.Component<-1, 1>()[2, 2] +
-                               tensor.Component<1, -1>()[2, 2]);
+  const auto expected =
+      0.5 * (tensor.Component<-1, 1>()[2, 2] + tensor.Component<1, -1>()[2, 2]);
   EXPECT_EQ((field.Component<-1, 1>()[2, 2]), expected);
   EXPECT_EQ((field.Component<1, -1>()[2, 2]), expected);
 }

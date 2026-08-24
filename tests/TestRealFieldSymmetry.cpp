@@ -65,13 +65,12 @@ void MakeRealSamples(const AnyGrid& grid, FFTWpp::vector<Real>& realSamples,
                      FFTWpp::vector<Complex>& complexSamples) {
   auto i = Int{0};
   for (auto [theta, phi] : grid.Points()) {
-    const auto value = 1.25 + 0.4 * std::cos(theta) +
-                       0.3 * std::sin(theta) * std::cos(phi) -
-                       0.2 * std::sin(2.0 * theta) * std::sin(2.0 * phi) +
-                       0.15 * std::cos(3.0 * theta) * std::cos(3.0 * phi) +
-                       0.45 * (1.0 + 0.3 * std::cos(theta)) *
-                           std::cos(lMax * phi) +
-                       0.35 * std::sin(theta) * std::sin(lMax * phi);
+    const auto value =
+        1.25 + 0.4 * std::cos(theta) + 0.3 * std::sin(theta) * std::cos(phi) -
+        0.2 * std::sin(2.0 * theta) * std::sin(2.0 * phi) +
+        0.15 * std::cos(3.0 * theta) * std::cos(3.0 * phi) +
+        0.45 * (1.0 + 0.3 * std::cos(theta)) * std::cos(lMax * phi) +
+        0.35 * std::sin(theta) * std::sin(lMax * phi);
     realSamples[i] = value;
     complexSamples[i] = Complex{value, 0.0};
     ++i;
@@ -266,16 +265,14 @@ TEST(RealFieldSymmetry, ReducedInverseUsesTheImplicitHermitianPair) {
 TEST(RealFieldSymmetry, RealTransformsAreRejectedAtNonzeroUpperIndex) {
   auto grid = Grid(lMax, nSpin, FFTWpp::Estimate);
   auto realField = FFTWpp::vector<Real>(grid.FieldSize());
-  auto coefficients =
-      FFTWpp::vector<Complex>(GSHIndices<NonNegative>(lMax, lMax, nSpin).Size());
+  auto coefficients = FFTWpp::vector<Complex>(
+      GSHIndices<NonNegative>(lMax, lMax, nSpin).Size());
 
   for (auto n : {nSpin, -nSpin}) {
-    const auto forward = RejectionMessage([&] {
-      grid.ForwardTransformation(lMax, n, realField, coefficients);
-    });
-    const auto inverse = RejectionMessage([&] {
-      grid.InverseTransformation(lMax, n, coefficients, realField);
-    });
+    const auto forward = RejectionMessage(
+        [&] { grid.ForwardTransformation(lMax, n, realField, coefficients); });
+    const auto inverse = RejectionMessage(
+        [&] { grid.InverseTransformation(lMax, n, coefficients, realField); });
     EXPECT_TRUE(Mentions(forward, "upper index zero")) << forward;
     EXPECT_TRUE(Mentions(inverse, "upper index zero")) << inverse;
   }
@@ -291,8 +288,7 @@ TEST(RealFieldSymmetry, RealTransformsAreRejectedAtNonzeroUpperIndex) {
   // The complex transforms at the same upper index are untouched.
   auto complexField = FFTWpp::vector<Complex>(grid.FieldSize());
   auto full = FFTWpp::vector<Complex>(grid.CoefficientSize(lMax, nSpin));
-  EXPECT_NO_THROW(
-      grid.ForwardTransformation(lMax, nSpin, complexField, full));
+  EXPECT_NO_THROW(grid.ForwardTransformation(lMax, nSpin, complexField, full));
 }
 
 // An MRange = NonNegative grid is a real scalar grid: it serves real transforms
@@ -329,8 +325,8 @@ TEST(RealFieldSymmetry, ScalarGridRoundTripsAtUpperIndexZero) {
 
   // The comparison above is idempotence, which an all-zero spectrum would
   // satisfy. Check the spectrum is actually carrying the field.
-  const auto largest = std::ranges::max(
-      coefficients | std::ranges::views::transform(
-                         [](auto c) { return std::abs(c); }));
+  const auto largest =
+      std::ranges::max(coefficients | std::ranges::views::transform(
+                                          [](auto c) { return std::abs(c); }));
   EXPECT_GT(largest, 1.0);
 }

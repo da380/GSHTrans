@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <GSHTrans/All>
-
 #include <array>
 #include <complex>
 #include <cstddef>
@@ -115,8 +114,8 @@ TEST(TensorField, ComponentsAreSpinWeightedNodes) {
   // product of two components lands at the sum of their upper indices, and
   // conj reverses -- so this is integrable, which a component pair at
   // unequal upper index would not be.
-  auto pairing = Integrate(conj(constT.Component<1, 1>()) *
-                           constT.Component<1, 1>());
+  auto pairing =
+      Integrate(conj(constT.Component<1, 1>()) * constT.Component<1, 1>());
   static_assert(std::same_as<decltype(pairing), Complex>);
   SUCCEED();
 }
@@ -269,11 +268,10 @@ TEST(TensorField, StoredComponentsGroupByUpperIndex) {
 
   // Symmetry removes some of them, and the total always matches.
   using S = TensorField<2, Symmetric<2>, ComplexTensor, Grid>;
-  constexpr auto total = S::StoredAtUpperIndex(-2).second +
-                         S::StoredAtUpperIndex(-1).second +
-                         S::StoredAtUpperIndex(0).second +
-                         S::StoredAtUpperIndex(1).second +
-                         S::StoredAtUpperIndex(2).second;
+  constexpr auto total =
+      S::StoredAtUpperIndex(-2).second + S::StoredAtUpperIndex(-1).second +
+      S::StoredAtUpperIndex(0).second + S::StoredAtUpperIndex(1).second +
+      S::StoredAtUpperIndex(2).second;
   static_assert(total == S::StoredComponents);
   SUCCEED();
 }
@@ -283,9 +281,9 @@ TEST(TensorField, StoredComponentsGroupByUpperIndex) {
 //--------------------------------------------------------------------------//
 
 TEST(TensorField, TheNamedRanksAreWhatTheySay) {
-  static_assert(std::same_as<VectorField<Grid, ComplexTensor>,
-                             TensorField<1, NoSymmetry<1>, ComplexTensor,
-                                         Grid>>);
+  static_assert(
+      std::same_as<VectorField<Grid, ComplexTensor>,
+                   TensorField<1, NoSymmetry<1>, ComplexTensor, Grid>>);
   static_assert(ElasticTensorField<Grid, ComplexTensor>::StoredComponents ==
                 21);
 
@@ -293,15 +291,15 @@ TEST(TensorField, TheNamedRanksAreWhatTheySay) {
   // vary, and the reality defaults to the one applications mostly want.
   static_assert(std::same_as<VectorField<Grid>,
                              TensorField<1, NoSymmetry<1>, RealTensor, Grid>>);
-  static_assert(std::same_as<SymmetricTensorField<Grid, ComplexTensor>,
-                             TensorField<2, Symmetric<2>, ComplexTensor,
-                                         Grid>>);
-  static_assert(std::same_as<AntisymmetricTensorField<Grid, ComplexTensor>,
-                             TensorField<2, Antisymmetric<2>, ComplexTensor,
-                                         Grid>>);
-  static_assert(std::same_as<ScalarField<Grid, ComplexTensor>,
-                             TensorField<0, NoSymmetry<0>, ComplexTensor,
-                                         Grid>>);
+  static_assert(
+      std::same_as<SymmetricTensorField<Grid, ComplexTensor>,
+                   TensorField<2, Symmetric<2>, ComplexTensor, Grid>>);
+  static_assert(
+      std::same_as<AntisymmetricTensorField<Grid, ComplexTensor>,
+                   TensorField<2, Antisymmetric<2>, ComplexTensor, Grid>>);
+  static_assert(
+      std::same_as<ScalarField<Grid, ComplexTensor>,
+                   TensorField<0, NoSymmetry<0>, ComplexTensor, Grid>>);
 
   // A vector is the one rank where the multi-index and the upper index
   // coincide, which is the coincidence that makes rank 2 surprising.
@@ -317,8 +315,9 @@ TEST(TensorField, TheNamedRanksAreWhatTheySay) {
 // bundle is smaller, and the symmetric real one is a real symmetric 2x2
 // matrix -- three reals a point, which is the spin-2 object up to its trace.
 TEST(TensorField, TheTangentialNamesSayWhichBundle) {
-  static_assert(std::same_as<TangentialVectorField<Grid, ComplexTensor>::SlotSet,
-                             TangentialSlots>);
+  static_assert(
+      std::same_as<TangentialVectorField<Grid, ComplexTensor>::SlotSet,
+                   TangentialSlots>);
   static_assert(TangentialVectorField<Grid, ComplexTensor>::Components == 2);
   static_assert(TangentialRank2Field<Grid, ComplexTensor>::Components == 4);
 
@@ -332,10 +331,10 @@ TEST(TensorField, TheTangentialNamesSayWhichBundle) {
   static_assert(TangentialVectorField<Grid>::RealComponents == 0);
 
   // And the escape hatch for anything else in that bundle.
-  static_assert(std::same_as<
-                TangentialTensorField<3, NoSymmetry<3>, Grid,
-                                      ComplexTensor>::SlotSet,
-                TangentialSlots>);
+  static_assert(
+      std::same_as<
+          TangentialTensorField<3, NoSymmetry<3>, Grid, ComplexTensor>::SlotSet,
+          TangentialSlots>);
   SUCCEED();
 }
 
@@ -371,19 +370,18 @@ TEST(TensorField, ComponentsSharingAnUpperIndexAreContiguous) {
     return seen == T::StoredComponents;
   };
 
-  static_assert(contiguousByUpperIndex
-                    .template operator()<
-                        TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>>());
-  static_assert(contiguousByUpperIndex
-                    .template operator()<
-                        TensorField<2, Symmetric<2>, ComplexTensor, Grid>>());
-  static_assert(contiguousByUpperIndex
-                    .template operator()<
-                        TensorField<2, Antisymmetric<2>, ComplexTensor,
-                                    Grid>>());
-  static_assert(contiguousByUpperIndex
-                    .template operator()<
-                        TensorField<4, ElasticSymmetry, ComplexTensor, Grid>>());
+  static_assert(
+      contiguousByUpperIndex.template
+      operator()<TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>>());
+  static_assert(
+      contiguousByUpperIndex.template
+      operator()<TensorField<2, Symmetric<2>, ComplexTensor, Grid>>());
+  static_assert(
+      contiguousByUpperIndex.template
+      operator()<TensorField<2, Antisymmetric<2>, ComplexTensor, Grid>>());
+  static_assert(
+      contiguousByUpperIndex.template
+      operator()<TensorField<4, ElasticSymmetry, ComplexTensor, Grid>>());
   SUCCEED();
 }
 
@@ -560,8 +558,8 @@ TEST(TensorField, BothLayoutsTransformToTheSameCoefficients) {
   constexpr auto lMax = Int{5};
   auto grid = Grid(lMax, 2, FFTWpp::Estimate);
 
-  auto point = TensorField<2, Symmetric<2>, ComplexTensor, Grid, PointMajor>(
-      grid);
+  auto point =
+      TensorField<2, Symmetric<2>, ComplexTensor, Grid, PointMajor>(grid);
   auto component =
       TensorField<2, Symmetric<2>, ComplexTensor, Grid, ComponentMajor>(grid);
 
@@ -572,8 +570,9 @@ TEST(TensorField, BothLayoutsTransformToTheSameCoefficients) {
     const auto write = [&](auto&& u, Int tag) {
       for (auto iTheta : grid.CoLatitudeIndices()) {
         for (auto iPhi : grid.LongitudeIndices()) {
-          u[iTheta, iPhi] = Complex{std::cos(0.3 * (iTheta * nPhi + iPhi) + tag),
-                                    std::sin(0.7 * iPhi - tag)};
+          u[iTheta, iPhi] =
+              Complex{std::cos(0.3 * (iTheta * nPhi + iPhi) + tag),
+                      std::sin(0.7 * iPhi - tag)};
         }
       }
     };

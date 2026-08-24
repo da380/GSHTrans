@@ -64,7 +64,7 @@ enum class ComponentConstraint { None, Zero, Real, Imaginary };
 template <std::ptrdiff_t _Rank, SlotAlphabet _Slots = AllSlots>
 struct OrbitTable {
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
+  using SlotSet = _Slots;      ///< The alphabet the slots are drawn from.
 
   /** @brief The tensor rank. */
   static constexpr Int Rank = _Rank;
@@ -75,10 +75,11 @@ struct OrbitTable {
   /// actually stored for it, the sign relating the two, and whether the
   /// relation conjugates. So
   ///
-  ///   T^{flat} = sign[flat] * (conjugate[flat] ? conj : id)(T^{representative[flat]}).
+  ///   T^{flat} = sign[flat] * (conjugate[flat] ? conj :
+  ///   id)(T^{representative[flat]}).
   std::array<Int, Size> representative{};  ///< The component actually stored.
-  std::array<Int, Size> sign{};           ///< The sign relating the two.
-  std::array<bool, Size> conjugate{};     ///< Whether the relation conjugates.
+  std::array<Int, Size> sign{};            ///< The sign relating the two.
+  std::array<bool, Size> conjugate{};      ///< Whether the relation conjugates.
 
   /// Where a component lives in the buffer, or -1 if it is not stored -- either
   /// because another member of its orbit is, or because the orbit is
@@ -167,8 +168,8 @@ constexpr auto MakeOrbitTable() {
       const auto fromConjugated = table.conjugate[from];
 
       for (const auto& generator : generators) {
-        Reach(index.Permuted(generator.image).Flat(),
-              fromSign * generator.sign, fromConjugated);
+        Reach(index.Permuted(generator.image).Flat(), fromSign * generator.sign,
+              fromConjugated);
       }
 
       if constexpr (IncludeNegation) {

@@ -112,9 +112,7 @@ class Batch {
    * @param count How many fields.
    * @param size How many elements each holds.
    */
-  static Batch Contiguous(Int count, Int size) {
-    return Batch(count, 1, size);
-  }
+  static Batch Contiguous(Int count, Int size) { return Batch(count, 1, size); }
 
   /**
    * @brief Fields interleaved element by element.

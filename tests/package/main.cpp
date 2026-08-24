@@ -8,7 +8,6 @@
 // package just as surely as one that fails to link.
 
 #include <GSHTrans/All>
-
 #include <algorithm>
 #include <cmath>
 #include <complex>
@@ -30,9 +29,8 @@ int main() {
 
   // A band-limited field, so that the round trip is an identity rather than a
   // projection: Y_1^0 up to normalisation.
-  auto f = SpinField<0, Grid>(grid, [](auto theta, auto) {
-    return Complex{std::cos(theta), 0};
-  });
+  auto f = SpinField<0, Grid>(
+      grid, [](auto theta, auto) { return Complex{std::cos(theta), 0}; });
 
   auto twice = Evaluate(Expand(f, lMax));
 

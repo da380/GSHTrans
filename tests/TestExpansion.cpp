@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <GSHTrans/All>
-
 #include <cmath>
 #include <complex>
 #include <cstddef>
@@ -78,8 +77,8 @@ TEST(SpinExpansion, IndexingReachesTheCoefficientTheTransformWrote) {
   for (auto l : e.Degrees()) {
     for (auto m : e.Orders(l)) {
       EXPECT_EQ((e[l, m]), e.Data()[indices.Index(l, m)]);
-      EXPECT_EQ((e[l, m]), (Complex{static_cast<Real>(l),
-                                    static_cast<Real>(m)}));
+      EXPECT_EQ((e[l, m]),
+                (Complex{static_cast<Real>(l), static_cast<Real>(m)}));
     }
   }
 }
@@ -177,8 +176,7 @@ TEST(Eth, LoweringARaisedScalarIsTheSurfaceLaplacian) {
 
   for (auto l : f.Degrees()) {
     for (auto m : f.Orders(l)) {
-      const auto expected =
-          -static_cast<Real>(l * (l + 1)) * Complex{f[l, m]};
+      const auto expected = -static_cast<Real>(l * (l + 1)) * Complex{f[l, m]};
       EXPECT_NEAR((laplacian[l, m]).real(), expected.real(), 1.0e-12)
           << "l = " << l << ", m = " << m;
       EXPECT_NEAR((laplacian[l, m]).imag(), expected.imag(), 1.0e-12)
@@ -255,10 +253,9 @@ TEST(Eth, LoweringAScalarReadsTheOrdersARealFieldDoesNotStore) {
   }
   for (auto l : complexOne.Degrees()) {
     for (auto m : complexOne.Orders(l)) {
-      complexOne[l, m] =
-          m >= 0 ? Complex{real[l, m]}
-                 : static_cast<Real>(MinusOneToPower(m)) *
-                       std::conj(Complex{real[l, -m]});
+      complexOne[l, m] = m >= 0 ? Complex{real[l, m]}
+                                : static_cast<Real>(MinusOneToPower(m)) *
+                                      std::conj(Complex{real[l, -m]});
     }
   }
 
@@ -350,9 +347,9 @@ TEST(TensorExpansion, RoundTripsAgainstTheTensorField) {
   write(field.Component<0, 0>(), 4.0);
 
   auto e = Expand(field, lMax);
-  static_assert(std::same_as<decltype(e),
-                             TensorExpansion<2, Symmetric<2>, RealTensor,
-                                             Grid>>);
+  static_assert(
+      std::same_as<decltype(e),
+                   TensorExpansion<2, Symmetric<2>, RealTensor, Grid>>);
 
   auto back = Evaluate(e);
   static_assert(std::same_as<decltype(back), Field>);
@@ -405,8 +402,8 @@ TEST(TensorExpansion, EveryComponentIsReadable) {
         if constexpr (std::same_as<typename Node::Value, RealValued>) {
           u[iTheta, iPhi] = tag + std::cos(0.3 * iTheta) * std::sin(0.2 * iPhi);
         } else {
-          u[iTheta, iPhi] = Complex{tag + std::cos(0.3 * iTheta),
-                                    std::sin(0.2 * iPhi) - tag};
+          u[iTheta, iPhi] =
+              Complex{tag + std::cos(0.3 * iTheta), std::sin(0.2 * iPhi) - tag};
         }
       }
     }
@@ -468,8 +465,8 @@ TEST(TensorExpansion, SymmetryRelativesAgreeWithTheirRepresentative) {
   constexpr auto lMax = Int{5};
   auto grid = Grid(lMax, 2, FFTWpp::Estimate);
 
-  auto skew = TensorExpansion<2, Antisymmetric<2>, ComplexTensor, Grid>(grid,
-                                                                       lMax);
+  auto skew =
+      TensorExpansion<2, Antisymmetric<2>, ComplexTensor, Grid>(grid, lMax);
   skew.Component<-1, 0>()[3, 1] = Complex{2.0, -1.0};
 
   const auto& e = skew;
@@ -490,8 +487,8 @@ TEST(ContravariantDerivative, OnAScalarItIsEthUpToRootTwo) {
   constexpr auto lMax = Int{8};
   auto grid = Grid(lMax, 2, FFTWpp::Estimate);
 
-  auto scalar = TensorExpansion<0, NoSymmetry<0>, ComplexTensor, Grid>(grid,
-                                                                       lMax);
+  auto scalar =
+      TensorExpansion<0, NoSymmetry<0>, ComplexTensor, Grid>(grid, lMax);
   auto asSpin = SpinExpansion<0, Grid>(grid, lMax);
   for (auto l : asSpin.Degrees()) {
     for (auto m : asSpin.Orders(l)) {
@@ -514,9 +511,11 @@ TEST(ContravariantDerivative, OnAScalarItIsEthUpToRootTwo) {
       const auto plus = gradient.Coefficient<1>(l, m);
       const auto minus = gradient.Coefficient<-1>(l, m);
       EXPECT_NEAR(plus.real(), (-Complex{raised[l, m]} / rootTwo).real(),
-                  1.0e-12) << "l = " << l << ", m = " << m;
+                  1.0e-12)
+          << "l = " << l << ", m = " << m;
       EXPECT_NEAR(minus.real(), (Complex{lowered[l, m]} / rootTwo).real(),
-                  1.0e-12) << "l = " << l << ", m = " << m;
+                  1.0e-12)
+          << "l = " << l << ", m = " << m;
       EXPECT_NEAR(plus.imag(), (-Complex{raised[l, m]} / rootTwo).imag(),
                   1.0e-12);
       EXPECT_NEAR(minus.imag(), (Complex{lowered[l, m]} / rootTwo).imag(),
@@ -539,8 +538,8 @@ TEST(ContravariantDerivative, TheTraceOfTheSecondGradientIsTheLaplacian) {
   constexpr auto lMax = Int{8};
   auto grid = Grid(lMax, 2, FFTWpp::Estimate);
 
-  auto scalar = TensorExpansion<0, NoSymmetry<0>, ComplexTensor, Grid>(grid,
-                                                                       lMax);
+  auto scalar =
+      TensorExpansion<0, NoSymmetry<0>, ComplexTensor, Grid>(grid, lMax);
   for (auto l = Int{0}; l <= lMax; l++) {
     for (auto m = -l; m <= l; m++) {
       scalar.Component<>()[l, m] =
@@ -559,8 +558,8 @@ TEST(ContravariantDerivative, TheTraceOfTheSecondGradientIsTheLaplacian) {
       const auto trace = -second.Coefficient<-1, 1>(l, m) +
                          second.Coefficient<0, 0>(l, m) -
                          second.Coefficient<1, -1>(l, m);
-      const auto expected = -static_cast<Real>(l * (l + 1)) *
-                            scalar.Coefficient<>(l, m);
+      const auto expected =
+          -static_cast<Real>(l * (l + 1)) * scalar.Coefficient<>(l, m);
       EXPECT_NEAR(trace.real(), expected.real(), 1.0e-11)
           << "l = " << l << ", m = " << m;
       EXPECT_NEAR(trace.imag(), expected.imag(), 1.0e-11)
@@ -637,7 +636,8 @@ TEST(ContravariantDerivative, ObeysTheChainRuleOnFields) {
   const auto check = [&]<Int Sigma, Int Alpha>() {
     for (auto iTheta : grid.CoLatitudeIndices()) {
       for (auto iPhi : grid.LongitudeIndices()) {
-        const auto got = product.template Component<Sigma, Alpha>()[iTheta, iPhi];
+        const auto got =
+            product.template Component<Sigma, Alpha>()[iTheta, iPhi];
         const auto expected =
             scalarGradient.template Component<Sigma>()[iTheta, iPhi] *
                 vectorField.template Component<Alpha>()[iTheta, iPhi] +
@@ -676,8 +676,8 @@ TEST(ContravariantDerivative, AgreesOnARealTensorAndItsWidening) {
         if constexpr (std::same_as<typename Node::Value, RealValued>) {
           u[iTheta, iPhi] = tag + std::cos(0.3 * iTheta) * std::sin(0.2 * iPhi);
         } else {
-          u[iTheta, iPhi] = Complex{tag + std::cos(0.3 * iTheta),
-                                    std::sin(0.2 * iPhi) - tag};
+          u[iTheta, iPhi] =
+              Complex{tag + std::cos(0.3 * iTheta), std::sin(0.2 * iPhi) - tag};
         }
       }
     }
@@ -736,9 +736,8 @@ using TangentialExpansion =
 // Whether a coefficient can be asked for at all, as a concept so that the
 // negative case is an unsatisfied requirement rather than a hard error.
 template <typename E, std::ptrdiff_t... Alphas>
-concept HasCoefficient = requires(const E& e) {
-  e.template Coefficient<Alphas...>(0, 0);
-};
+concept HasCoefficient =
+    requires(const E& e) { e.template Coefficient<Alphas...>(0, 0); };
 
 template <typename E>
 concept Differentiable = requires(const E& e) { SurfaceGradient(e); };
@@ -835,8 +834,8 @@ TEST(TensorExpansion, ATangentialRealTensorDerivesItsOtherComponents) {
   const auto write = [&](auto&& u, Real tag) {
     for (auto iTheta : grid.CoLatitudeIndices()) {
       for (auto iPhi : grid.LongitudeIndices()) {
-        u[iTheta, iPhi] = Complex{tag + std::cos(0.3 * iTheta),
-                                  std::sin(0.2 * iPhi) - tag};
+        u[iTheta, iPhi] =
+            Complex{tag + std::cos(0.3 * iTheta), std::sin(0.2 * iPhi) - tag};
       }
     }
   };
@@ -847,8 +846,7 @@ TEST(TensorExpansion, ATangentialRealTensorDerivesItsOtherComponents) {
   auto reduced = Expand(tensor, lMax);
   static_assert(std::same_as<decltype(reduced)::SlotSet, TangentialSlots>);
 
-  auto widened =
-      Materialise<NoSymmetry<2>, ComplexTensor>(tensor);
+  auto widened = Materialise<NoSymmetry<2>, ComplexTensor>(tensor);
   static_assert(std::same_as<decltype(widened)::SlotSet, TangentialSlots>);
   auto full = Expand(widened, lMax);
 
@@ -943,8 +941,9 @@ TEST(IntrinsicDerivative, IsTheTangentialBlockOfTheSurfaceGradient) {
   constexpr auto lMax = Int{6};
   auto grid = Grid(lMax, 2, FFTWpp::Estimate);
 
-  auto t = TensorExpansion<1, NoSymmetry<1>, ComplexTensor, Grid,
-                           TangentialSlots>(grid, lMax);
+  auto t =
+      TensorExpansion<1, NoSymmetry<1>, ComplexTensor, Grid, TangentialSlots>(
+          grid, lMax);
   for (auto i = Int{0}; i < t.Size(); i++) {
     t.Data()[i] = Complex{std::cos(0.23 * i), std::sin(0.41 * i)};
   }
@@ -998,8 +997,9 @@ TEST(IntrinsicDerivative, HoldsAtRankTwoWithBothSlotsToShift) {
   constexpr auto lMax = Int{5};
   auto grid = Grid(lMax, 3, FFTWpp::Estimate);
 
-  auto t = TensorExpansion<2, NoSymmetry<2>, ComplexTensor, Grid,
-                           TangentialSlots>(grid, lMax);
+  auto t =
+      TensorExpansion<2, NoSymmetry<2>, ComplexTensor, Grid, TangentialSlots>(
+          grid, lMax);
   for (auto i = Int{0}; i < t.Size(); i++) {
     t.Data()[i] = Complex{0.5 + std::cos(0.19 * i), std::sin(0.29 * i)};
   }
@@ -1047,8 +1047,9 @@ TEST(IntrinsicDerivative, IsClosedOnTheTangentialBundle) {
   constexpr auto lMax = Int{4};
   auto grid = Grid(lMax, 3, FFTWpp::Estimate);
 
-  auto t = TensorExpansion<1, NoSymmetry<1>, ComplexTensor, Grid,
-                           TangentialSlots>(grid, lMax);
+  auto t =
+      TensorExpansion<1, NoSymmetry<1>, ComplexTensor, Grid, TangentialSlots>(
+          grid, lMax);
   const auto& tangential = t;
   const auto second = IntrinsicDerivative(IntrinsicDerivative(tangential));
   static_assert(decltype(second)::Rank == 3);
@@ -1072,8 +1073,9 @@ TEST(BundleMaps, TheIntrinsicDerivativeIsTheTangentialAmbientOne) {
   constexpr auto lMax = Int{6};
   auto grid = Grid(lMax, 2, FFTWpp::Estimate);
 
-  auto t = TensorExpansion<1, NoSymmetry<1>, ComplexTensor, Grid,
-                           TangentialSlots>(grid, lMax);
+  auto t =
+      TensorExpansion<1, NoSymmetry<1>, ComplexTensor, Grid, TangentialSlots>(
+          grid, lMax);
   for (auto i = Int{0}; i < t.Size(); i++) {
     t.Data()[i] = Complex{std::cos(0.17 * i), std::sin(0.37 * i)};
   }
@@ -1109,8 +1111,9 @@ TEST(BundleMaps, EmbedIsTheInclusionAndTangentialItsAdjoint) {
   constexpr auto lMax = Int{5};
   auto grid = Grid(lMax, 2, FFTWpp::Estimate);
 
-  auto t = TensorExpansion<2, NoSymmetry<2>, ComplexTensor, Grid,
-                           TangentialSlots>(grid, lMax);
+  auto t =
+      TensorExpansion<2, NoSymmetry<2>, ComplexTensor, Grid, TangentialSlots>(
+          grid, lMax);
   for (auto i = Int{0}; i < t.Size(); i++) {
     t.Data()[i] = Complex{0.5 + std::cos(0.11 * i), std::sin(0.23 * i)};
   }

@@ -74,9 +74,10 @@ auto FirstDerivativeWeights(Real z, std::span<const Real> nodes) {
       c2 *= c3;
       if (j == i - 1) {
         for (auto k = mn; k >= 1; k--) {
-          c[at(i, k)] =
-              c1 * (static_cast<Real>(k) * c[at(i - 1, k - 1)] -
-                    c5 * c[at(i - 1, k)]) / c2;
+          c[at(i, k)] = c1 *
+                        (static_cast<Real>(k) * c[at(i - 1, k - 1)] -
+                         c5 * c[at(i - 1, k)]) /
+                        c2;
         }
         c[at(i, 0)] = -c1 * c5 * c[at(i - 1, 0)] / c2;
       }
@@ -167,7 +168,7 @@ template <RealFloatingPoint _Real>
 class FiniteDifferenceDerivative {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using Real = _Real;  ///< The precision.
+  using Real = _Real;          ///< The precision.
 
   FiniteDifferenceDerivative() = delete;
 
@@ -274,7 +275,7 @@ template <RealFloatingPoint _Real>
 class LagrangeDerivative {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using Real = _Real;  ///< The precision.
+  using Real = _Real;          ///< The precision.
 
   LagrangeDerivative() = delete;
 
@@ -361,7 +362,7 @@ template <RealFloatingPoint _Real>
 class ElementDerivative {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using Real = _Real;  ///< The precision.
+  using Real = _Real;          ///< The precision.
 
   ElementDerivative() = delete;
 
@@ -386,13 +387,12 @@ class ElementDerivative {
     _offset[0] = 0;
     for (auto k : _radial.ElementIndices()) {
       const auto size = _radial.ElementSize(k);
-      const auto nodes = radii.subspan(
-          static_cast<std::size_t>(_radial.ElementStart(k)),
-          static_cast<std::size_t>(size));
+      const auto nodes =
+          radii.subspan(static_cast<std::size_t>(_radial.ElementStart(k)),
+                        static_cast<std::size_t>(size));
       const auto block = RadialDetails::DifferentiationMatrix<Real>(nodes);
       _d.insert(_d.end(), block.begin(), block.end());
-      _offset[static_cast<std::size_t>(k + 1)] =
-          static_cast<Int>(_d.size());
+      _offset[static_cast<std::size_t>(k + 1)] = static_cast<Int>(_d.size());
     }
   }
 
@@ -401,8 +401,10 @@ class ElementDerivative {
 
   /// One element's matrix, row-major over its own nodes.
   std::span<const Real> Matrix(Int k) const {
-    const auto first = static_cast<std::size_t>(_offset[static_cast<std::size_t>(k)]);
-    const auto last = static_cast<std::size_t>(_offset[static_cast<std::size_t>(k + 1)]);
+    const auto first =
+        static_cast<std::size_t>(_offset[static_cast<std::size_t>(k)]);
+    const auto last =
+        static_cast<std::size_t>(_offset[static_cast<std::size_t>(k + 1)]);
     return std::span<const Real>(_d).subspan(first, last - first);
   }
 

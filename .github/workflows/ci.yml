@@ -120,6 +120,31 @@ jobs:
   # WARN_IF_UNDOCUMENTED is on, so an undocumented public entity is a doxygen
   # warning and WARN_AS_ERROR makes it fail here. The library is fully
   # covered, so what this leg catches is a regression rather than a backlog.
+  # The tree is clang-format clean against the checked-in .clang-format, and
+  # this is what keeps it so. A one-off run decays the moment the next commit
+  # lands; the check is what makes it a property. The umbrella headers have no
+  # extension, so clang-format has to be told what language they are.
+  format:
+    name: clang-format
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+
+      - name: Check the formatting
+        run: |
+          git ls-files '*.h' '*.cpp' \
+            | xargs clang-format-18 --dry-run --Werror
+          for f in GSHTrans/All GSHTrans/Core GSHTrans/Expansion \
+                   GSHTrans/Field GSHTrans/Layered GSHTrans/Tensor; do
+            clang-format-18 --dry-run --Werror \
+              -assume-filename=umbrella.h < "$f"
+          done
+
   docs:
     name: documentation
     runs-on: ubuntu-24.04

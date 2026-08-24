@@ -67,9 +67,9 @@ int main() {
   // All of them together. The Wigner block for this upper index is streamed
   // once for the batch rather than once per field, which is the whole of what
   // batching buys.
-  const auto batched =
-      time([&] { grid.ForwardTransformation(lMax, n, fields, in,
-                                            coefficients, out); });
+  const auto batched = time([&] {
+    grid.ForwardTransformation(lMax, n, fields, in, coefficients, out);
+  });
 
   // Threading is an explicit per-call policy and defaults to sequential: the
   // library never creates threads because it can, only because it was asked.

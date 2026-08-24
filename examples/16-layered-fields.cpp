@@ -11,7 +11,6 @@
 // discretisation and arrives as a callable.
 
 #include <GSHTrans/All>
-
 #include <cmath>
 #include <complex>
 #include <iomanip>
@@ -66,8 +65,8 @@ int main() {
   // volume element is *not* inserted here: fold it into the weights if that
   // is what you want, because guessing would be wrong half the time.
   const auto overRadius = IntegrateRadially(stack);
-  std::cout << "int_{0.4}^{1} r^2 dr = " << overRadius[0].real()
-            << "  (exact " << (1.0 - 0.4 * 0.4 * 0.4) / 3 << ")\n\n";
+  std::cout << "int_{0.4}^{1} r^2 dr = " << overRadius[0].real() << "  (exact "
+            << (1.0 - 0.4 * 0.4 * 0.4) / 3 << ")\n\n";
 
   //------------------------------------------------------------------------//
   // The radial axis is the batch axis
@@ -143,12 +142,12 @@ int main() {
   // An exact d/dr for this particular field, so that what is printed below is
   // the algebra and not a difference formula's truncation error.
   const auto exact = [&](Real power) {
-    return [power, &radial](std::span<const Complex> in,
-                            std::span<Complex> out) {
-      for (std::size_t i = 0; i < in.size(); i++) {
-        out[i] = power * in[i] / radial.Radius(static_cast<Int>(i));
-      }
-    };
+    return
+        [power, &radial](std::span<const Complex> in, std::span<Complex> out) {
+          for (std::size_t i = 0; i < in.size(); i++) {
+            out[i] = power * in[i] / radial.Radius(static_cast<Int>(i));
+          }
+        };
   };
 
   auto grad = Gradient(f, exact(a));
@@ -156,8 +155,7 @@ int main() {
 
   const auto r = radial.Radius(20);
   const auto omega = std::sqrt(l * (l + 1.0) / 2);
-  std::cout << "at r = " << r << ", for f = r^3 Y_{" << l << "," << m
-            << "}:\n";
+  std::cout << "at r = " << r << ", for f = r^3 Y_{" << l << "," << m << "}:\n";
   std::cout << "  (grad f)^0  = " << (grad.Coefficient<0>(20, l, m)).real()
             << "   expect " << a * std::pow(r, a - 1) << "\n";
   std::cout << "  (grad f)^+1 = " << (grad.Coefficient<1>(20, l, m)).real()

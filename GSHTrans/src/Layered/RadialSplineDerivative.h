@@ -22,13 +22,12 @@
 
 #ifdef GSHTRANS_HAVE_INTERPOLATION
 
+#include <Interpolation/CubicSplineSystem.hpp>
 #include <cstddef>
 #include <span>
 #include <stdexcept>
 #include <utility>
 #include <vector>
-
-#include <Interpolation/CubicSplineSystem.hpp>
 
 #include "../Concepts.h"
 #include "RadialGrid.h"
@@ -53,7 +52,7 @@ template <RealFloatingPoint _Real>
 class SplineDerivative {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using Real = _Real;  ///< The precision.
+  using Real = _Real;          ///< The precision.
   using System = Interpolation::CubicSplineSystem<
       std::span<const Real>>;  ///< The factorised spline system.
 

@@ -324,7 +324,7 @@ static_assert(!GSHTrans::AngularGrid<WithoutAxes>,
 static_assert(GSHTrans::AngularGrid<WithAxes>,
               "and adding them is the only thing that was missing");
 static_assert(
-    GSHTrans::AngularGrid<GSHTrans::GaussLegendreGrid<double, GSHTrans::All,
-                                                      GSHTrans::All>>);
+    GSHTrans::AngularGrid<
+        GSHTrans::GaussLegendreGrid<double, GSHTrans::All, GSHTrans::All>>);
 
 }  // namespace

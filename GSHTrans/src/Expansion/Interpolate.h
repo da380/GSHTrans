@@ -229,12 +229,11 @@ class SpectralInterpolant {
   /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = _N;
   using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Value = _Value;  ///< Whether the samples are real-valued or complex.
-  using Real = typename _Grid::Real;  ///< The precision.
+  using Value = _Value;    ///< Whether the samples are real-valued or complex.
+  using Real = typename _Grid::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
-  using Scalar =
-      std::conditional_t<std::same_as<Value, RealValued>, Real,
-                         Complex>;  ///< What evaluation returns.
+  using Scalar = std::conditional_t<std::same_as<Value, RealValued>, Real,
+                                    Complex>;  ///< What evaluation returns.
 
   /// A real field stores only m >= 0, the rest being fixed by
   /// f_{l,-m} = (-1)^m conj(f_{lm}). That is the expansion's own convention,
@@ -416,20 +415,19 @@ auto Interpolate(const F& field, Scheme::SpectralTag = Scheme::Spectral(),
 /// initialised in order. Handing upstream an owning view instead would make
 /// this class move-only, and it has to be copyable -- ProjectFunction takes
 /// its callable by value.
-template <std::ptrdiff_t _N, AngularGrid _Grid,
-          RealOrComplexValued _Value, typename _Upstream>
+template <std::ptrdiff_t _N, AngularGrid _Grid, RealOrComplexValued _Value,
+          typename _Upstream>
 class LocalInterpolant {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = _N;
   using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Value = _Value;  ///< Whether the samples are real-valued or complex.
-  using Real = typename _Grid::Real;  ///< The precision.
+  using Value = _Value;    ///< Whether the samples are real-valued or complex.
+  using Real = typename _Grid::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
-  using Scalar =
-      std::conditional_t<std::same_as<Value, RealValued>, Real,
-                         Complex>;  ///< What evaluation returns.
+  using Scalar = std::conditional_t<std::same_as<Value, RealValued>, Real,
+                                    Complex>;  ///< What evaluation returns.
 
   /** @brief Takes ownership of a padded grid and builds the upstream scheme
    * over it. */
@@ -485,8 +483,9 @@ struct UpstreamFor<Scheme::BilinearTag, Real, Scalar> {
 
 template <typename Real, typename Scalar>
 struct UpstreamFor<Scheme::BicubicTag, Real, Scalar> {
-  using Type = Interpolation::BicubicSpline<
-      std::span<const Real>, std::span<const Real>, std::span<const Scalar>>;
+  using Type =
+      Interpolation::BicubicSpline<std::span<const Real>, std::span<const Real>,
+                                   std::span<const Scalar>>;
 };
 
 template <typename Tag>
@@ -509,13 +508,12 @@ auto Interpolate(const F& field, Tag, std::ptrdiff_t lMax = -1) {
   const auto& grid = field.Grid();
   const auto degree = lMax < 0 ? grid.MaxDegree() : lMax;
 
-  auto samples = std::vector<Scalar>(
-      static_cast<std::size_t>(grid.FieldSize()));
+  auto samples =
+      std::vector<Scalar>(static_cast<std::size_t>(grid.FieldSize()));
   field.EvaluateInto(std::span<Scalar>(samples));
 
   const auto expansion = Expand(field, degree);
-  const auto rows =
-      InterpolateDetails::PolarRows<Scalar>(expansion, grid);
+  const auto rows = InterpolateDetails::PolarRows<Scalar>(expansion, grid);
 
   auto padded = InterpolateDetails::Pad<typename F::GridType, Scalar>(
       grid, samples, rows.first, rows.second);

@@ -78,8 +78,8 @@ int main() {
     for (auto theta : grid.CoLatitudes()) {
       auto iPhi = Int{0};
       for (auto phi : grid.Longitudes()) {
-        worst = std::max(worst,
-                         std::abs(exact(theta, phi) - field[iTheta, iPhi]));
+        worst =
+            std::max(worst, std::abs(exact(theta, phi) - field[iTheta, iPhi]));
         iPhi++;
       }
       iTheta++;
@@ -134,8 +134,8 @@ int main() {
     auto worst = Real{0};
     for (auto iTheta : finer.CoLatitudeIndices())
       for (auto iPhi : finer.LongitudeIndices())
-        worst = std::max(worst,
-                         std::abs(moved[iTheta, iPhi] - want[iTheta, iPhi]));
+        worst =
+            std::max(worst, std::abs(moved[iTheta, iPhi] - want[iTheta, iPhi]));
     std::cout << "\nRemeshed onto a grid of degree " << finer.MaxDegree()
               << ", against the exact answer there: " << worst << "\n";
     if (!(worst < 1e-12)) return 1;
@@ -177,11 +177,12 @@ int main() {
                "does, and nothing above is withdrawn.\n";
 #endif
 
-  std::cout << "\nWhich to use: Spectral for a handful of points and as the\n"
-               "reference; a local scheme on an oversampled grid for many.\n"
-               "One whole-grid remesh costs about what fifty spectral point\n"
-               "evaluations cost, so past a few dozen scattered points it is\n"
-               "cheaper to transform onto a finer grid and interpolate there.\n";
+  std::cout
+      << "\nWhich to use: Spectral for a handful of points and as the\n"
+         "reference; a local scheme on an oversampled grid for many.\n"
+         "One whole-grid remesh costs about what fifty spectral point\n"
+         "evaluations cost, so past a few dozen scattered points it is\n"
+         "cheaper to transform onto a finer grid and interpolate there.\n";
 
   return 0;
 }

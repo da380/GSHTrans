@@ -31,9 +31,9 @@
  *   TuningMargin.
  */
 
-#include <FFTWpp/Core>
 #include <omp.h>
 
+#include <FFTWpp/Core>
 #include <algorithm>
 #include <chrono>
 #include <complex>
@@ -132,9 +132,7 @@ struct TunedChunking {
    * @brief How much better the choice is than doing nothing.
    * @return One, or a little under, when the comparison was inconclusive.
    */
-  double Speedup() const {
-    return seconds > 0 ? defaultSeconds / seconds : 1;
-  }
+  double Speedup() const { return seconds > 0 ? defaultSeconds / seconds : 1; }
 };
 
 //--------------------------------------------------------------------------//
@@ -367,8 +365,8 @@ TunedKernel TuneKernelLoopOnly(TunedKernel result, std::ptrdiff_t lMax,
                                FFTWpp::Flag flag, Chunking chunking,
                                WignerValues values, int rounds) {
   using Complex = typename GridType::Complex;
-  const auto grid = GridType(lMax, nMax, flag, chunking, values,
-                             TransformKernel::Loop());
+  const auto grid =
+      GridType(lMax, nMax, flag, chunking, values, TransformKernel::Loop());
   auto best = std::numeric_limits<double>::max();
   for (auto round = 0; round < rounds; ++round) {
     best = std::min(best, TuningDetails::TimeRound<GridType, Complex>(
@@ -423,25 +421,26 @@ TunedKernel TuneKernel(std::ptrdiff_t lMax, std::ptrdiff_t nMax,
   // The three ways the matrix kernel can be unavailable, each named rather
   // than silently collapsing to "use the loop".
 #ifndef GSHTRANS_HAVE_BLAS
-  result.skipped = "this build has no BLAS, so the matrix kernel does not "
-                   "exist";
+  result.skipped =
+      "this build has no BLAS, so the matrix kernel does not "
+      "exist";
   return TuneKernelLoopOnly<GridType>(std::move(result), lMax, nMax, n, count,
                                       policy, flag, chunking, values, rounds);
 #else
   if constexpr (!BlasDetails::BlasReal<Real>) {
-    result.skipped = "BLAS offers single and double precision only, so the "
-                     "matrix kernel is unavailable at this precision";
-    return TuneKernelLoopOnly<GridType>(std::move(result), lMax, nMax, n,
-                                        count, policy, flag, chunking, values,
-                                        rounds);
+    result.skipped =
+        "BLAS offers single and double precision only, so the "
+        "matrix kernel is unavailable at this precision";
+    return TuneKernelLoopOnly<GridType>(std::move(result), lMax, nMax, n, count,
+                                        policy, flag, chunking, values, rounds);
   } else {
     if (!values.AreStored()) {
       result.skipped =
           "the matrix kernel needs a stored table, and generated values were "
           "asked for";
       return TuneKernelLoopOnly<GridType>(std::move(result), lMax, nMax, n,
-                                          count, policy, flag, chunking,
-                                          values, rounds);
+                                          count, policy, flag, chunking, values,
+                                          rounds);
     }
 
     result.matrixTried = true;
@@ -452,10 +451,9 @@ TunedKernel TuneKernel(std::ptrdiff_t lMax, std::ptrdiff_t nMax,
       const auto loopFirst = (round % 2) == 0;
       for (auto step = 0; step < 2; ++step) {
         const auto wantLoop = (step == 0) == loopFirst;
-        const auto kernel = wantLoop ? TransformKernel::Loop()
-                                     : TransformKernel::Matrix();
-        const auto grid =
-            GridType(lMax, nMax, flag, chunking, values, kernel);
+        const auto kernel =
+            wantLoop ? TransformKernel::Loop() : TransformKernel::Matrix();
+        const auto grid = GridType(lMax, nMax, flag, chunking, values, kernel);
         const auto seconds = TuningDetails::TimeRound<GridType, Complex>(
             grid, lMax, n, count, policy);
         auto& best = wantLoop ? loopBest : matrixBest;

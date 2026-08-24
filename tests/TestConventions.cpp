@@ -44,7 +44,6 @@
 #include <gtest/gtest.h>
 
 #include <GSHTrans/All>
-
 #include <cmath>
 #include <complex>
 #include <cstddef>
@@ -123,8 +122,12 @@ TEST(Conventions, TheSurfaceGradientOfAScalarIsTheGradient) {
       // Degree two, and with azimuthal order two, because degree one is
       // special in enough ways that a check resting on it alone is thin.
       {"sin^2(theta) cos(2 phi)",
-       [](Real t, Real p) { return std::sin(t) * std::sin(t) * std::cos(2 * p); },
-       [](Real t, Real p) { return 2 * std::sin(t) * std::cos(t) * std::cos(2 * p); },
+       [](Real t, Real p) {
+         return std::sin(t) * std::sin(t) * std::cos(2 * p);
+       },
+       [](Real t, Real p) {
+         return 2 * std::sin(t) * std::cos(t) * std::cos(2 * p);
+       },
        [](Real t, Real p) { return -2 * std::sin(t) * std::sin(2 * p); }},
   };
 
@@ -194,20 +197,20 @@ TEST(Conventions, TheTraceOfTheSurfaceGradientIsTheSurfaceDivergence) {
       // f = Re Y_1^1 ~ sin(t) cos(p), g = P_1 ~ cos(t). div v = -2 f.
       //
       //   v_theta = d_t f - (1/s) d_p g,   v_phi = (1/s) d_p f + d_t g
-      {"degree one",
-       [](Real t, Real p) { return std::cos(t) * std::cos(p); },
+      {"degree one", [](Real t, Real p) { return std::cos(t) * std::cos(p); },
        [](Real t, Real p) { return -std::sin(p) - std::sin(t); },
        [](Real t, Real p) { return -2 * std::sin(t) * std::cos(p); }},
       // f = P_2 ~ (3 cos^2 t - 1)/2, g = Re Y_2^2 ~ sin^2(t) cos(2p).
       // div v = -6 f.
       {"degree two",
        [](Real t, Real p) {
-         return -3 * std::cos(t) * std::sin(t) + 2 * std::sin(t) * std::sin(2 * p);
+         return -3 * std::cos(t) * std::sin(t) +
+                2 * std::sin(t) * std::sin(2 * p);
        },
-       [](Real t, Real p) { return 2 * std::sin(t) * std::cos(t) * std::cos(2 * p); },
-       [](Real t, Real) {
-         return -3 * (3 * std::cos(t) * std::cos(t) - 1);
-       }},
+       [](Real t, Real p) {
+         return 2 * std::sin(t) * std::cos(t) * std::cos(2 * p);
+       },
+       [](Real t, Real) { return -3 * (3 * std::cos(t) * std::cos(t) - 1); }},
   };
 
   for (const auto& c : cases) {

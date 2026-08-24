@@ -17,7 +17,6 @@
 // multiply and a transform back. These are conveniences.
 
 #include <GSHTrans/All>
-
 #include <cmath>
 #include <complex>
 #include <iomanip>
@@ -100,12 +99,12 @@ int main() {
             << "     r         natural         not-a-knot\n";
   for (std::size_t i = 0; i < radii.size(); i++) {
     const auto exact = 3 * radii[i] * radii[i];
-    std::cout << "  " << radii[i] << "      "
-              << std::abs(bySplineN[i] - exact) << "      "
-              << std::abs(bySplineK[i] - exact) << '\n';
+    std::cout << "  " << radii[i] << "      " << std::abs(bySplineN[i] - exact)
+              << "      " << std::abs(bySplineK[i] - exact) << '\n';
   }
-  std::cout << "  (natural is wrong at the ends by construction; the cubic's\n"
-               "   second derivative is not zero there and natural says it is)\n";
+  std::cout
+      << "  (natural is wrong at the ends by construction; the cubic's\n"
+         "   second derivative is not zero there and natural says it is)\n";
 #endif
 
   //------------------------------------------------------------------------//
@@ -128,8 +127,7 @@ int main() {
     Real power;
     std::vector<Real> r;
 
-    void operator()(std::span<const Complex> in,
-                    std::span<Complex> out) const {
+    void operator()(std::span<const Complex> in, std::span<Complex> out) const {
       for (std::size_t i = 0; i < in.size(); i++) out[i] = power * in[i] / r[i];
     }
   };

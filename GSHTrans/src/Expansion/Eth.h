@@ -151,13 +151,12 @@ auto Coefficient(const SpinExpansion<N, Grid, Value>& expansion,
 template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
 auto Raise(const SpinExpansion<N, Grid, Value>& expansion) {
   using Real = typename Grid::Real;
-  auto raised =
-      SpinExpansion<N + 1, Grid, ComplexValued>(expansion.Grid(),
-                                                expansion.MaxDegree());
+  auto raised = SpinExpansion<N + 1, Grid, ComplexValued>(
+      expansion.Grid(), expansion.MaxDegree());
   for (auto l : raised.Degrees()) {
     for (auto m : raised.Orders(l)) {
-      raised[l, m] = EthDetails::RaisingFactor<Real>(l, N) *
-                     Coefficient(expansion, l, m);
+      raised[l, m] =
+          EthDetails::RaisingFactor<Real>(l, N) * Coefficient(expansion, l, m);
     }
   }
   return raised;
@@ -167,13 +166,12 @@ auto Raise(const SpinExpansion<N, Grid, Value>& expansion) {
 template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
 auto Lower(const SpinExpansion<N, Grid, Value>& expansion) {
   using Real = typename Grid::Real;
-  auto lowered =
-      SpinExpansion<N - 1, Grid, ComplexValued>(expansion.Grid(),
-                                                expansion.MaxDegree());
+  auto lowered = SpinExpansion<N - 1, Grid, ComplexValued>(
+      expansion.Grid(), expansion.MaxDegree());
   for (auto l : lowered.Degrees()) {
     for (auto m : lowered.Orders(l)) {
-      lowered[l, m] = EthDetails::LoweringFactor<Real>(l, N) *
-                      Coefficient(expansion, l, m);
+      lowered[l, m] =
+          EthDetails::LoweringFactor<Real>(l, N) * Coefficient(expansion, l, m);
     }
   }
   return lowered;
