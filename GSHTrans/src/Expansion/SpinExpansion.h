@@ -65,7 +65,8 @@ class SpinExpansionBase {
   /// is how many of them there are.
   using Scalar = Complex;  ///< The value type: Real when real-valued, Complex otherwise.
   using MRange =
-      std::conditional_t<std::same_as<Value, RealValued>, NonNegative, All>;
+      std::conditional_t<std::same_as<Value, RealValued>, NonNegative,
+                         All>;  ///< Which orders are stored.
 
   static_assert(std::same_as<Value, ComplexValued> or UpperIndex == 0,
                 "A spin-weighted field can be real-valued only at upper index "
@@ -74,6 +75,14 @@ class SpinExpansionBase {
 
   SpinExpansionBase() = delete;
 
+  /**
+   * @brief A view of @p data as the coefficients of a field on @p grid.
+   * @param grid The angular grid the coefficients belong to.
+   * @param lMax The largest degree stored.
+   * @param data The buffer, which must be the right size.
+   * @throws std::invalid_argument if @p lMax is below the upper index, since
+   * the harmonics there do not exist.
+   */
   SpinExpansionBase(GridType grid, Int lMax, std::span<_Element> data)
       : _grid{std::move(grid)},
         _indices{lMax, lMax, UpperIndex},
@@ -107,8 +116,10 @@ class SpinExpansionBase {
   /** @brief The underlying buffer. */
   auto Data() const { return _data; }
 
+  /** @brief The coefficient at degree @p l and order @p m. */
   Complex operator[](Int l, Int m) const { return _data[Index(l, m)]; }
 
+  /// The same, writable. Present only on a view over mutable storage.
   _Element& operator[](Int l, Int m)
   requires(not std::is_const_v<_Element>)
   {
@@ -153,12 +164,18 @@ class SpinExpansion {
   using ViewType = SpinExpansionView<_N, _Grid, _Value>;  ///< A writable view over this object.
   using ConstViewType = ConstSpinExpansionView<_N, _Grid, _Value>;  ///< A read-only view over this object.
   using MRange =
-      std::conditional_t<std::same_as<_Value, RealValued>, NonNegative, All>;
+      std::conditional_t<std::same_as<_Value, RealValued>, NonNegative,
+                         All>;  ///< Which orders are stored.
 
   static_assert(std::same_as<_Value, ComplexValued> or UpperIndex == 0);
 
   SpinExpansion() = delete;
 
+  /**
+   * @brief A zero expansion on @p grid.
+   * @param grid The angular grid the coefficients belong to.
+   * @param lMax The largest degree stored.
+   */
   SpinExpansion(GridType grid, Int lMax)
       : _grid{std::move(grid)},
         _indices{Checked(lMax), lMax, UpperIndex},
@@ -183,10 +200,14 @@ class SpinExpansion {
   /** @brief The underlying buffer. */
   auto Data() const { return std::span<const Complex>(_data); }
 
+  /** @brief A writable view over this expansion's storage. */
   auto View() { return ViewType(_grid, MaxDegree(), Data()); }
+  /** @brief A read-only view over this expansion's storage. */
   auto View() const { return ConstViewType(_grid, MaxDegree(), Data()); }
 
+  /** @brief The coefficient at degree @p l and order @p m. */
   Complex operator[](Int l, Int m) const { return _data[Index(l, m)]; }
+  /// The same, writable.
   Complex& operator[](Int l, Int m) { return _data[Index(l, m)]; }
 
  private:

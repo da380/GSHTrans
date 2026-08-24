@@ -58,12 +58,17 @@ class SpinField {
   // A field is always built on a grid; there is no valid empty state.
   SpinField() = delete;
 
+  /** @brief A zero field on @p grid. */
   explicit SpinField(GridType grid)
       : _grid{std::move(grid)},
         _data(CheckedSize(_grid), Scalar{}) {}
 
-  // Sample a function of position. The callable is invoked as f(theta, phi)
-  // over the grid's points, in the canonical order.
+  /**
+   * @brief A function of position, sampled over the grid's points in the
+   * canonical order.
+   * @param grid The grid to sample on.
+   * @param f The callable, invoked as `f(theta, phi)`.
+   */
   template <typename Function>
   requires requires(Function f, Real theta, Real phi) {
     { f(theta, phi) } -> std::convertible_to<Scalar>;
@@ -150,18 +155,21 @@ class SpinField {
         requires Compatible<decltype(f + e)>;
       };
 
+  /** @brief Whether `*this - expr` is an admissible right-hand side. */
   template <typename Expr>
   static constexpr bool CanSubtractAssign =
       requires(const SpinField& f, const Expr& e) {
         requires Compatible<decltype(f - e)>;
       };
 
+  /** @brief Whether `*this * expr` is an admissible right-hand side. */
   template <typename Expr>
   static constexpr bool CanMultiplyAssign =
       requires(const SpinField& f, const Expr& e) {
         requires Compatible<decltype(f * e)>;
       };
 
+  /** @brief Whether `*this / expr` is an admissible right-hand side. */
   template <typename Expr>
   static constexpr bool CanDivideAssign =
       requires(const SpinField& f, const Expr& e) {
@@ -176,18 +184,21 @@ class SpinField {
     return *this = *this + expr;
   }
 
+  /// @copydoc operator+=
   template <typename Expr>
   requires CanSubtractAssign<Expr>
   SpinField& operator-=(const Expr& expr) {
     return *this = *this - expr;
   }
 
+  /// @copydoc operator+=
   template <typename Expr>
   requires CanMultiplyAssign<Expr>
   SpinField& operator*=(const Expr& expr) {
     return *this = *this * expr;
   }
 
+  /// @copydoc operator+=
   template <typename Expr>
   requires CanDivideAssign<Expr>
   SpinField& operator/=(const Expr& expr) {
@@ -234,9 +245,13 @@ class SpinField {
   /** @brief The underlying buffer. */
   auto Data() { return std::span<Scalar>(_data); }
 
+  /** @brief The first sample. */
   auto begin() { return _data.begin(); }
+  /** @brief One past the last sample. */
   auto end() { return _data.end(); }
+  /** @brief The first sample. */
   auto begin() const { return _data.begin(); }
+  /** @brief One past the last sample. */
   auto end() const { return _data.end(); }
 
  private:

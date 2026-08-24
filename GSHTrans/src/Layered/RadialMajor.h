@@ -42,6 +42,7 @@ namespace GSHTrans {
 // index and no algebra, because nothing angular is meaningful once the angular
 // axis has been shredded into lines. Repack, work on lines, repack back.
 
+/// @tparam Stack The radius-major stack this is repacked from.
 template <typename Stack>
 class RadialMajor {
  public:

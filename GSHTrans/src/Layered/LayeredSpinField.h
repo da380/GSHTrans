@@ -53,9 +53,10 @@ class LayeredSpinField {
   using Real = typename _Grid::Real;  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   using Scalar = ScalarFor<Real, Value>;  ///< The value type: Real when real-valued, Complex otherwise.
-  using RadialGridType = RadialGrid<Real>;
-  using SliceType = SpinFieldView<_N, _Grid, _Value>;
-  using ConstSliceType = ConstSpinFieldView<_N, _Grid, _Value>;
+  using RadialGridType = RadialGrid<Real>;  ///< The radial grid type.
+  using SliceType = SpinFieldView<_N, _Grid, _Value>;  ///< One angular field.
+  using ConstSliceType =
+      ConstSpinFieldView<_N, _Grid, _Value>;  ///< One angular field, read-only.
 
   static_assert(std::same_as<Value, ComplexValued> or UpperIndex == 0,
                 "A spin-weighted field can be real-valued only at upper index "
@@ -63,6 +64,11 @@ class LayeredSpinField {
 
   LayeredSpinField() = delete;
 
+  /**
+   * @brief A zero stack on the product of the two grids.
+   * @param radialGrid The radii.
+   * @param grid The angular grid every slice is on.
+   */
   LayeredSpinField(RadialGridType radialGrid, GridType grid)
       : _radialGrid{std::move(radialGrid)},
         _grid{std::move(grid)},
@@ -89,6 +95,8 @@ class LayeredSpinField {
   // apart, and that is all `ApplyRadially` needs to know about either.
   /** @brief How many elements one radial slice holds. */
   auto SliceSize() const { return FieldSize(); }
+  /** @brief A zero stack of the same shape, which is what an operator needs
+   * to write into. */
   auto SameShape() const { return LayeredSpinField(_radialGrid, _grid); }
 
   /// The same field on a different set of radii, which is what resampling
@@ -109,6 +117,7 @@ class LayeredSpinField {
     return SliceType(_grid, Data().subspan(Offset(i), SliceExtent()));
   }
 
+  /// The same, read-only.
   auto Slice(Int i) const {
     return ConstSliceType(_grid, Data().subspan(Offset(i), SliceExtent()));
   }
@@ -161,12 +170,19 @@ class LayeredSpinExpansion {
   using GridType = _Grid;  ///< The angular grid this is defined on.
   using Real = typename _Grid::Real;  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
-  using RadialGridType = RadialGrid<Real>;
+  using RadialGridType = RadialGrid<Real>;  ///< The radial grid type.
   using MRange =
-      std::conditional_t<std::same_as<_Value, RealValued>, NonNegative, All>;
+      std::conditional_t<std::same_as<_Value, RealValued>, NonNegative,
+                         All>;  ///< Which orders are stored.
 
   LayeredSpinExpansion() = delete;
 
+  /**
+   * @brief A zero expansion on the product of the two grids.
+   * @param radialGrid The radii.
+   * @param grid The angular grid the coefficients belong to.
+   * @param lMax The largest degree stored.
+   */
   LayeredSpinExpansion(RadialGridType radialGrid, GridType grid, Int lMax)
       : _radialGrid{std::move(radialGrid)},
         _grid{std::move(grid)},
@@ -208,10 +224,14 @@ class LayeredSpinExpansion {
     return static_cast<Int>(_indices.Index(l, m));
   }
 
+  /** @brief A zero expansion of the same shape, which is what an operator
+   * needs to write into. */
   auto SameShape() const {
     return LayeredSpinExpansion(_radialGrid, _grid, MaxDegree());
   }
 
+  /// The same expansion on a different set of radii, which is what resampling
+  /// needs and what SameShape cannot give.
   auto SameShapeOn(RadialGridType radialGrid) const {
     return LayeredSpinExpansion(std::move(radialGrid), _grid, MaxDegree());
   }
@@ -225,10 +245,13 @@ class LayeredSpinExpansion {
   Complex operator[](Int i, Int l, Int m) const {
     return _data[Offset(i) + static_cast<std::size_t>(_indices.Index(l, m))];
   }
+  /// The same, writable.
   Complex& operator[](Int i, Int l, Int m) {
     return _data[Offset(i) + static_cast<std::size_t>(_indices.Index(l, m))];
   }
 
+  /// The whole stack as the transform's batch: nR blocks, each contiguous,
+  /// CoefficientSize() apart.
   auto Batch() const {
     return GSHTrans::Batch::Contiguous(NumberOfRadii(), CoefficientSize());
   }

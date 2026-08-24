@@ -58,14 +58,21 @@ class TensorExpansion {
   // again.
   using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
 
+  /** @brief The spatial tensor this expands, which owns the combinatorics. */
   using FieldType =
       TensorField<Rank, Symmetry, Reality, GridType, ComponentMajor, SlotSet>;
 
+  /** @brief The orbits of the symmetry group, and what each pins. */
   static constexpr auto& Orbits = FieldType::Orbits;
+  /** @brief Where each stored component sits. */
   static constexpr auto& ComponentLayout = FieldType::ComponentLayout;
+  /** @brief How many components the tensor has, stored or not. */
   static constexpr Int Components = FieldType::Components;
+  /** @brief How many are actually stored, one per orbit. */
   static constexpr Int StoredComponents = FieldType::StoredComponents;
+  /** @brief How many of those are complex fields. */
   static constexpr Int ComplexComponents = FieldType::ComplexComponents;
+  /** @brief How many are pinned to a single real number. */
   static constexpr Int RealComponents = FieldType::RealComponents;
 
   /** @brief Whether this holds a component at those slot letters. */
@@ -78,6 +85,12 @@ class TensorExpansion {
 
   TensorExpansion() = delete;
 
+  /**
+   * @brief A zero expansion on @p grid.
+   * @param grid The angular grid the coefficients belong to.
+   * @param lMax The largest degree stored, which must be at least Rank since
+   * a rank-p tensor has components at upper index p.
+   */
   TensorExpansion(GridType grid, Int lMax)
       : _grid{std::move(grid)}, _lMax{lMax}, _data(BlockTotal(_grid, lMax)) {
     if (lMax < Rank) {
@@ -132,45 +145,45 @@ class TensorExpansion {
                                                       BlockOf(slot));
   }
 
-  // The coefficient of *any* representable component at (l, m).
-  //
-  // The block accessors above reach only stored components, because a block
-  // is what a view can be taken over. A derived component has no block: on the
-  // spectral side deriving one is eq:complevel,
-  //
-  //   T^{-N}_{l,-m} = (-1)^m conj(T^{N}_{lm}),
-  //
-  // which reverses the order index rather than acting at fixed (l, m), so it
-  // is a computation and not a view. This is that computation, and with it
-  // every component of the tensor is readable in either domain.
-  //
-  // Four things have to be resolved, and the orbit table says which applies:
-  //
-  //   stored                  read it
-  //   permutation relative    the representative's, with a sign
-  //   reality relative        the representative's at -m, conjugated
-  //   vanishing orbit         zero
-  //
-  // and two more come from how the block itself is stored: a pinned component
-  // is a real field, so its block holds only m >= 0 and the negative orders
-  // follow from f_{l,-m} = (-1)^m conj(f_{lm}); and one pinned as imaginary
-  // holds the real field whose i-multiple the component is.
-  //
-  // Degrees below the component's own |N| return zero rather than reading off
-  // the end: a component at upper index N has no content there, which is not
-  // a missing value but an absent one. So does a component whose orbit
-  // vanishes -- unlike the spatial accessor, which refuses those because a
-  // node must have a type and there is nothing to give it. Here the answer is
-  // a value, and zero is the right one; the surface gradient reads shifted
-  // components that may vanish and would otherwise have to special-case them.
-  // A letter the alphabet does not have is refused rather than answered with
-  // zero, which is the one place this accessor's permissiveness stops. A
-  // vanishing orbit is a component the tensor *has* and that is identically
-  // zero, so zero is the right answer; a radial index on a tangential tensor
-  // is not a component at all, and saying zero would be answering a question
-  // about a different bundle. The check is also what stops the multi-index
-  // being formed from a letter that
-  // would make its constructor throw.
+  /// The coefficient of *any* representable component at (l, m).
+  ///
+  /// The block accessors above reach only stored components, because a block
+  /// is what a view can be taken over. A derived component has no block: on the
+  /// spectral side deriving one is eq:complevel,
+  ///
+  ///   T^{-N}_{l,-m} = (-1)^m conj(T^{N}_{lm}),
+  ///
+  /// which reverses the order index rather than acting at fixed (l, m), so it
+  /// is a computation and not a view. This is that computation, and with it
+  /// every component of the tensor is readable in either domain.
+  ///
+  /// Four things have to be resolved, and the orbit table says which applies:
+  ///
+  ///   stored                  read it
+  ///   permutation relative    the representative's, with a sign
+  ///   reality relative        the representative's at -m, conjugated
+  ///   vanishing orbit         zero
+  ///
+  /// and two more come from how the block itself is stored: a pinned component
+  /// is a real field, so its block holds only m >= 0 and the negative orders
+  /// follow from f_{l,-m} = (-1)^m conj(f_{lm}); and one pinned as imaginary
+  /// holds the real field whose i-multiple the component is.
+  ///
+  /// Degrees below the component's own |N| return zero rather than reading off
+  /// the end: a component at upper index N has no content there, which is not
+  /// a missing value but an absent one. So does a component whose orbit
+  /// vanishes -- unlike the spatial accessor, which refuses those because a
+  /// node must have a type and there is nothing to give it. Here the answer is
+  /// a value, and zero is the right one; the surface gradient reads shifted
+  /// components that may vanish and would otherwise have to special-case them.
+  /// A letter the alphabet does not have is refused rather than answered with
+  /// zero, which is the one place this accessor's permissiveness stops. A
+  /// vanishing orbit is a component the tensor *has* and that is identically
+  /// zero, so zero is the right answer; a radial index on a tangential tensor
+  /// is not a component at all, and saying zero would be answering a question
+  /// about a different bundle. The check is also what stops the multi-index
+  /// being formed from a letter that
+  /// would make its constructor throw.
   template <Int... Alphas>
   requires(sizeof...(Alphas) == Rank and AreSlotLetters<_Slots, Alphas...>())
   Complex Coefficient(Int l, Int m) const {
@@ -228,6 +241,7 @@ class TensorExpansion {
     return Data().subspan(offset, size);
   }
 
+  /// The same, read-only.
   std::span<const Complex> BlockOf(Int slot) const {
     const auto [offset, size] = Block(_grid, _lMax, slot);
     return Data().subspan(offset, size);

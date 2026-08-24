@@ -53,6 +53,13 @@ namespace GSHTrans {
 // slot sum while negation reverses it.
 enum class ComponentConstraint { None, Zero, Real, Imaginary };
 
+/**
+ * @brief For every component of a tensor: which component is actually stored
+ * for it, how the two are related, and what its orbit pins it to.
+ *
+ * @tparam _Rank The tensor rank.
+ * @tparam _Slots The alphabet the slots are drawn from.
+ */
 template <std::ptrdiff_t _Rank, SlotAlphabet _Slots = AllSlots>
 struct OrbitTable {
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.

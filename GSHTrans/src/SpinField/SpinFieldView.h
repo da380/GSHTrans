@@ -86,6 +86,7 @@ class SpinFieldView {
   /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _grid; }
 
+  /** @brief The sample at the grid point @p iTheta, @p iPhi. */
   Scalar operator[](Int iTheta, Int iPhi) const {
     return _data[FlatIndex(iTheta, iPhi)];
   }
@@ -97,6 +98,10 @@ class SpinFieldView {
     return _data[FlatIndex(iTheta, iPhi)];
   }
 
+  /**
+   * @brief Writes every sample into @p target, unstriding as it goes.
+   * @throws std::invalid_argument if @p target is not the field's size.
+   */
   template <typename S>
   requires std::convertible_to<Scalar, S>
   void EvaluateInto(std::span<S> target) const {
@@ -121,6 +126,7 @@ class SpinFieldView {
   auto Size() const { return static_cast<Int>(_grid.FieldSize()); }
   /** @brief The underlying buffer. */
   auto Data() const { return _data; }
+  /** @brief How many elements separate successive samples. */
   auto Stride() const { return _stride; }
 
  private:
