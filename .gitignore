@@ -3,6 +3,12 @@
 **/*~
 **/.vscode
 
+# Emacs autosaves (#file#) and lock files (.#file). An empty docs/#wi2.f#
+# was tracked for a while: it slipped past docs/*.f below, because an
+# autosave's name ends in # rather than in the extension it shadows.
+**/#*#
+**/.#*
+
 # LaTeX build artefacts
 docs/*.aux
 docs/*.log
