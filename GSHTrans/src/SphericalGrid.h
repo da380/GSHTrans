@@ -380,164 +380,9 @@ class SphericalGrid {
     }
 #endif
 
-    // One colatitude's contribution from a chunk of `c` fields, accumulated
-    // into a [coefficient][field] scratch buffer.
-    //
-    // The batch index runs fastest in both the FFT output and the scratch, so
-    // the innermost loop is an axpy of length c over contiguous memory. That
-    // is the whole of what batching buys at tier 1: the Wigner row for this
-    // (n, iTheta, l) is read once and used c times, rather than re-streamed
-    // per field. The Wigner traffic per field falls by c; nothing else about
-    // the arithmetic changes.
-    auto AccumulateRow = [&](Int iTheta, Int first, Int c, Complex* scratch,
-                             auto& work) {
-      // Copy this colatitude's row out of each field. Caller stride enters
-      // here and at the unpack, and nowhere else.
-      for (auto k = Int{0}; k < c; k++) {
-        PackRow(std::next(inFirst, inBatch.Offset(iTheta * nPhi, first + k)),
-                nPhi, inBatch.Stride(), std::next(work.in.begin(), k * nPhi));
-      }
-      work.plan.Execute();
-
-      // Get the Wigner values and quadrature weight.
-      auto d = WignerBlock(n, iTheta, lMax);
-      const auto w = _impl->coLatitudeWeights[static_cast<std::size_t>(iTheta)] * scaleFactor;
-      const auto orders = static_cast<Int>(work.out.size()) / c;
-
-      // Loop over the spherical harmonic coefficients, taking the Wigner
-      // values one degree at a time.
-      //
-      // The row pointer comes from d[l] rather than from a single iterator
-      // walked across the whole block. That is the supplier seam: the only
-      // thing this loop needs is a contiguous run of values in (l, m) order,
-      // one run per degree, and asking for it per degree is what lets a
-      // generating grid substitute a supplier that builds the row into
-      // per-thread scratch for one that points into the stored table.
-      // OffsetForDegree is closed-form, so the seam costs a few integer
-      // operations per degree against a loop of length (2l+1) * c.
-      //
-      // The two constraints it carries, both already satisfied here: degrees
-      // are visited in ascending contiguous order from |n|, and each
-      // (n, iTheta) is visited once per pass. A generated row cannot be
-      // revisited without re-running the recursion.
-      auto* target = scratch;
-      auto degrees = d.Degrees() | std::ranges::views::filter(
-                                       [lMax](auto l) { return l <= lMax; });
-
-      for (auto l : degrees) {
-        auto dl = d[l];
-        auto wigIter = dl.begin();
-
-        if constexpr (ComplexFloatingPoint<Scalar>) {
-          // Negative orders live at the top of the FFT output, c apart.
-          const auto* source = work.out.data() + (orders - dl.MaxOrder()) * c;
-          for ([[maybe_unused]] auto m : dl.NegativeOrders()) {
-            const auto a = *wigIter++ * w;
-            for (auto k = Int{0}; k < c; k++) target[k] += a * source[k];
-            target += c;
-            source += c;
-          }
-          source = work.out.data();
-          for ([[maybe_unused]] auto m : dl.NonNegativeOrders()) {
-            const auto a = *wigIter++ * w;
-            for (auto k = Int{0}; k < c; k++) target[k] += a * source[k];
-            target += c;
-            source += c;
-          }
-        } else {
-          const auto* source = work.out.data();
-          if constexpr (std::same_as<_MRange, All>) {
-            std::advance(wigIter, dl.MaxOrder());
-          }
-          for ([[maybe_unused]] auto m : dl.NonNegativeOrders()) {
-            const auto a = *wigIter++ * w;
-            for (auto k = Int{0}; k < c; k++) target[k] += a * source[k];
-            target += c;
-            source += c;
-          }
-        }
-      }
-    };
-
-    // Write a completed [coefficient][field] block to wherever the caller
-    // keeps it. Assignment rather than accumulation, which is what makes the
-    // routine own its output: transforming twice into the same buffer used to
-    // double the answer, because the colatitude loop accumulates and nothing
-    // initialised the destination. Zeroing the range first
-    // would be both redundant and wrong here, since a range holding an
-    // interleaved batch also holds components this call must not touch.
-    auto Scatter = [&](const Complex* scratch, Int first, Int c, Int fromJ,
-                       Int toJ) {
-      for (auto j = fromJ; j < toJ; j++) {
-        for (auto k = Int{0}; k < c; k++) {
-          outFirst[outBatch.Offset(j, first + k)] = scratch[j * c + k];
-        }
-      }
-    };
-
-    const auto chunk = ForwardChunkSize(coefficientSize, policy);
-    for (auto first = Int{0}; first < count; first += chunk) {
-      const auto c = std::min(chunk, count - first);
-      const auto scratchSize = static_cast<std::size_t>(coefficientSize * c);
-
-      if (!RunInParallel(policy)) {
-        auto& work = GetWorkspace<Scalar, true>(nPhi, c, _flag);
-        auto& scratch = CoefficientScratch(scratchSize);
-        std::fill_n(scratch.begin(), scratchSize, Complex{});
-        for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
-          AccumulateRow(iTheta, first, c, scratch.data(), work);
-        }
-        Scatter(scratch.data(), first, c, 0, coefficientSize);
-        continue;
-      }
-
-      // Every colatitude contributes to every coefficient, so the colatitudes
-      // cannot simply be divided between threads writing into `out`. Each
-      // thread accumulates into a private buffer and the partial sums are
-      // added at the end.
-      //
-      // That addition is *partitioned*, not serialised. Each thread owns one
-      // block of degrees and sums every thread's partials for that block
-      // alone, then scatters it, so the reduction runs in parallel and no
-      // thread waits on another. It used to be a critical section in which
-      // each thread added a whole coefficient array in turn, which costs one
-      // serialised pass per thread: invisible against the colatitude loop at
-      // eight threads, and 128 MB of serialised adds per transform at 128.
-      // The decomposition itself is unchanged -- thread-private
-      // accumulators over colatitudes are the wrong shape well before 128
-      // threads, but choosing what replaces them needs a machine this was
-      // not measured on.
-      const auto threadCount = ThreadCount(policy);
-
-      // The reduction reads every thread's accumulator, so the thread-local
-      // buffers have to be published to the team. Written before the implicit
-      // barrier at the end of the colatitude loop and read after it.
-      auto partials = std::vector<Complex*>(threadCount, nullptr);
-
-#pragma omp parallel num_threads(threadCount)
-      {
-        const auto thread = static_cast<Int>(omp_get_thread_num());
-        const auto threads = static_cast<Int>(omp_get_num_threads());
-        auto& work = GetWorkspace<Scalar, true>(nPhi, c, _flag);
-        auto& partial = Accumulator(scratchSize);
-        std::fill_n(partial.begin(), scratchSize, Complex{});
-        partials[thread] = partial.data();
-
-#pragma omp for schedule(static)
-        for (Int iTheta = 0; iTheta < nTheta; iTheta++) {
-          AccumulateRow(iTheta, first, c, partial.data(), work);
-        }
-
-        const auto fromJ = coefficientSize * thread / threads;
-        const auto toJ = coefficientSize * (thread + 1) / threads;
-        auto* base = partials[0];
-        for (auto t = Int{1}; t < threads; t++) {
-          const auto* p = partials[t];
-          for (auto i = fromJ * c; i < toJ * c; i++) base[i] += p[i];
-        }
-        Scatter(base, first, c, fromJ, toJ);
-      }
-    }
+    ForwardLoopKernel<Scalar>(lMax, n, inFirst, inBatch, outFirst, outBatch,
+                              count, nPhi, nTheta, scaleFactor,
+                              coefficientSize, policy);
   }
 
   // The single field, which is the batched primitive at count = 1.
@@ -626,108 +471,8 @@ class SphericalGrid {
     }
 #endif
 
-    // One colatitude, synthesised into its own row of each field. Unlike the
-    // forward transform, the colatitudes here write disjoint output and share
-    // only read-only input, so threading over them needs no reduction.
-    auto SynthesiseRow = [&](Int iTheta, Int first, Int c,
-                             const Complex* scratch, auto& work) {
-      std::ranges::for_each(work.in, [](auto& x) { return x = 0; });
-
-      // Get the Wigner values.
-      auto d = WignerBlock(n, iTheta, lMax);
-      const auto orders = static_cast<Int>(work.in.size()) / c;
-
-      // Loop over the coefficients, one degree at a time. As in the forward
-      // direction, the row pointer comes from d[l]: this is the same supplier
-      // seam, and a generating grid substitutes at the same point. The
-      // inner loop is again an axpy of length c, over a batch index that
-      // runs fastest on both sides.
-      const auto* source = scratch;
-      auto degrees = d.Degrees() | std::ranges::views::filter(
-                                       [lMax](auto l) { return l <= lMax; });
-      for (auto l : degrees) {
-        auto dl = d[l];
-        auto wigIter = dl.begin();
-        if constexpr (ComplexFloatingPoint<Scalar>) {
-          auto* target = work.in.data() + (orders - dl.MaxOrder()) * c;
-          for ([[maybe_unused]] auto m : dl.NegativeOrders()) {
-            const auto a = *wigIter++;
-            for (auto k = Int{0}; k < c; k++) target[k] += a * source[k];
-            target += c;
-            source += c;
-          }
-          target = work.in.data();
-          for ([[maybe_unused]] auto m : dl.NonNegativeOrders()) {
-            const auto a = *wigIter++;
-            for (auto k = Int{0}; k < c; k++) target[k] += a * source[k];
-            target += c;
-            source += c;
-          }
-        } else {
-          auto* target = work.in.data();
-          if constexpr (std::same_as<_MRange, All>) {
-            std::advance(wigIter, dl.MaxOrder());
-          }
-          for ([[maybe_unused]] auto m : dl.NonNegativeOrders()) {
-            const auto a = *wigIter++;
-            for (auto k = Int{0}; k < c; k++) target[k] += a * source[k];
-            target += c;
-            source += c;
-          }
-        }
-      }
-
-      // Perform FFT to recover the field at this colatitude, through the
-      // plan's own buffers, then hand each row to the caller.
-      work.plan.Execute();
-      for (auto k = Int{0}; k < c; k++) {
-        UnpackRow(std::next(work.out.begin(), k * nPhi), nPhi,
-                  std::next(outFirst,
-                            outBatch.Offset(iTheta * nPhi, first + k)),
-                  outBatch.Stride());
-      }
-    };
-
-    const auto chunk = InverseChunkSize(coefficientSize);
-    for (auto first = Int{0}; first < count; first += chunk) {
-      const auto c = std::min(chunk, count - first);
-      const auto scratchSize = static_cast<std::size_t>(coefficientSize * c);
-
-      // Gather this chunk's coefficients into [coefficient][field] order
-      // once, rather than reaching through the caller's stride on every
-      // colatitude. The Legendre stage works on our own buffers, whose layout
-      // we choose, and the choice is the one the batched loop above wants
-      // above. It costs one pass over the coefficients against a colatitude
-      // loop that reads the whole Wigner block, which T4 measured to be
-      // invisible for the same reason in the other direction.
-      //
-      // Gathered by the calling thread before the parallel region opens, and
-      // read-only inside it.
-      auto& scratch = CoefficientScratch(scratchSize);
-      for (auto k = Int{0}; k < c; k++) {
-        for (auto j = Int{0}; j < coefficientSize; j++) {
-          scratch[j * c + k] = inFirst[inBatch.Offset(j, first + k)];
-        }
-      }
-      const auto* gathered = scratch.data();
-
-      if (!RunInParallel(policy)) {
-        auto& work = GetWorkspace<Scalar, false>(nPhi, c, _flag);
-        for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
-          SynthesiseRow(iTheta, first, c, gathered, work);
-        }
-        continue;
-      }
-
-#pragma omp parallel num_threads(ThreadCount(policy))
-      {
-        auto& work = GetWorkspace<Scalar, false>(nPhi, c, _flag);
-#pragma omp for schedule(static)
-        for (Int iTheta = 0; iTheta < nTheta; iTheta++) {
-          SynthesiseRow(iTheta, first, c, gathered, work);
-        }
-      }
-    }
+    InverseLoopKernel<Scalar>(lMax, n, inFirst, inBatch, outFirst, outBatch,
+                              count, nPhi, nTheta, coefficientSize, policy);
   }
 
   // The single field, which is the batched primitive at count = 1.
@@ -777,7 +522,7 @@ class SphericalGrid {
   //     out[m * (nTheta * count) + iTheta * count + k]
   //
   // so that for one order m the (theta, k) block is contiguous with k
-  // fastest. That block is what the per-order matrix product of step M3
+  // fastest. That block is what the per-order matrix product
   // multiplies: a complex (nTheta x count) matrix, which -- because
   // std::complex stores its parts adjacently -- is also a real
   // (nTheta x 2 count) one, and so can go to dgemm with N = 2 count.
@@ -853,7 +598,7 @@ class SphericalGrid {
     const auto block = ChooseThetaBlock(thetaBlock, count, nTheta);
     auto inFirst = std::ranges::begin(in);
 
-    // Threaded over blocks (step M4). Each block reads its own colatitudes of
+    // Threaded over blocks. Each block reads its own colatitudes of
     // the caller's fields and writes its own run within every order's output,
     // so the blocks are disjoint on both sides; the workspace and its plan are
     // thread_local already, so a thread finds or makes its own.
@@ -1208,6 +953,292 @@ class SphericalGrid {
         coefficientSize * static_cast<Int>(sizeof(Complex)), 1);
   }
 
+  // The loop kernel of the forward transform: a colatitude at a time, over a
+  // Wigner table contiguous in (l, m) at fixed (n, theta).
+  //
+  // A named member rather than the body of the public entry point, so that
+  // the two kernels read as the peers they are: the entry point validates,
+  // chooses and delegates, and both kernels are the same size of thing.
+  template <RealOrComplexFloatingPoint Scalar, typename InIterator,
+            typename OutIterator>
+  void ForwardLoopKernel(Int lMax, Int n, InIterator inFirst, Batch inBatch,
+                         OutIterator outFirst, Batch outBatch, Int count,
+                         Int nPhi, Int nTheta, Real scaleFactor,
+                         Int coefficientSize, Execution policy) const {
+    // One colatitude's contribution from a chunk of `c` fields, accumulated
+    // into a [coefficient][field] scratch buffer.
+    //
+    // The batch index runs fastest in both the FFT output and the scratch, so
+    // the innermost loop is an axpy of length c over contiguous memory. That
+    // is the whole of what batching buys at tier 1: the Wigner row for this
+    // (n, iTheta, l) is read once and used c times, rather than re-streamed
+    // per field. The Wigner traffic per field falls by c; nothing else about
+    // the arithmetic changes.
+    auto AccumulateRow = [&](Int iTheta, Int first, Int c, Complex* scratch,
+                             auto& work) {
+      // Copy this colatitude's row out of each field. Caller stride enters
+      // here and at the unpack, and nowhere else.
+      for (auto k = Int{0}; k < c; k++) {
+        PackRow(std::next(inFirst, inBatch.Offset(iTheta * nPhi, first + k)),
+                nPhi, inBatch.Stride(), std::next(work.in.begin(), k * nPhi));
+      }
+      work.plan.Execute();
+
+      // Get the Wigner values and quadrature weight.
+      auto d = WignerBlock(n, iTheta, lMax);
+      const auto w = _impl->coLatitudeWeights[static_cast<std::size_t>(iTheta)] * scaleFactor;
+      const auto orders = static_cast<Int>(work.out.size()) / c;
+
+      // Loop over the spherical harmonic coefficients, taking the Wigner
+      // values one degree at a time.
+      //
+      // The row pointer comes from d[l] rather than from a single iterator
+      // walked across the whole block. That is the supplier seam: the only
+      // thing this loop needs is a contiguous run of values in (l, m) order,
+      // one run per degree, and asking for it per degree is what lets a
+      // generating grid substitute a supplier that builds the row into
+      // per-thread scratch for one that points into the stored table.
+      // OffsetForDegree is closed-form, so the seam costs a few integer
+      // operations per degree against a loop of length (2l+1) * c.
+      //
+      // The two constraints it carries, both already satisfied here: degrees
+      // are visited in ascending contiguous order from |n|, and each
+      // (n, iTheta) is visited once per pass. A generated row cannot be
+      // revisited without re-running the recursion.
+      auto* target = scratch;
+      auto degrees = d.Degrees() | std::ranges::views::filter(
+                                       [lMax](auto l) { return l <= lMax; });
+
+      for (auto l : degrees) {
+        auto dl = d[l];
+        auto wigIter = dl.begin();
+
+        if constexpr (ComplexFloatingPoint<Scalar>) {
+          // Negative orders live at the top of the FFT output, c apart.
+          const auto* source = work.out.data() + (orders - dl.MaxOrder()) * c;
+          for ([[maybe_unused]] auto m : dl.NegativeOrders()) {
+            const auto a = *wigIter++ * w;
+            for (auto k = Int{0}; k < c; k++) target[k] += a * source[k];
+            target += c;
+            source += c;
+          }
+          source = work.out.data();
+          for ([[maybe_unused]] auto m : dl.NonNegativeOrders()) {
+            const auto a = *wigIter++ * w;
+            for (auto k = Int{0}; k < c; k++) target[k] += a * source[k];
+            target += c;
+            source += c;
+          }
+        } else {
+          const auto* source = work.out.data();
+          if constexpr (std::same_as<_MRange, All>) {
+            std::advance(wigIter, dl.MaxOrder());
+          }
+          for ([[maybe_unused]] auto m : dl.NonNegativeOrders()) {
+            const auto a = *wigIter++ * w;
+            for (auto k = Int{0}; k < c; k++) target[k] += a * source[k];
+            target += c;
+            source += c;
+          }
+        }
+      }
+    };
+
+    // Write a completed [coefficient][field] block to wherever the caller
+    // keeps it. Assignment rather than accumulation, which is what makes the
+    // routine own its output: transforming twice into the same buffer used to
+    // double the answer, because the colatitude loop accumulates and nothing
+    // initialised the destination. Zeroing the range first
+    // would be both redundant and wrong here, since a range holding an
+    // interleaved batch also holds components this call must not touch.
+    auto Scatter = [&](const Complex* scratch, Int first, Int c, Int fromJ,
+                       Int toJ) {
+      for (auto j = fromJ; j < toJ; j++) {
+        for (auto k = Int{0}; k < c; k++) {
+          outFirst[outBatch.Offset(j, first + k)] = scratch[j * c + k];
+        }
+      }
+    };
+
+    const auto chunk = ForwardChunkSize(coefficientSize, policy);
+    for (auto first = Int{0}; first < count; first += chunk) {
+      const auto c = std::min(chunk, count - first);
+      const auto scratchSize = static_cast<std::size_t>(coefficientSize * c);
+
+      if (!RunInParallel(policy)) {
+        auto& work = GetWorkspace<Scalar, true>(nPhi, c, _flag);
+        auto& scratch = CoefficientScratch(scratchSize);
+        std::fill_n(scratch.begin(), scratchSize, Complex{});
+        for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
+          AccumulateRow(iTheta, first, c, scratch.data(), work);
+        }
+        Scatter(scratch.data(), first, c, 0, coefficientSize);
+        continue;
+      }
+
+      // Every colatitude contributes to every coefficient, so the colatitudes
+      // cannot simply be divided between threads writing into `out`. Each
+      // thread accumulates into a private buffer and the partial sums are
+      // added at the end.
+      //
+      // That addition is *partitioned*, not serialised. Each thread owns one
+      // block of degrees and sums every thread's partials for that block
+      // alone, then scatters it, so the reduction runs in parallel and no
+      // thread waits on another. It used to be a critical section in which
+      // each thread added a whole coefficient array in turn, which costs one
+      // serialised pass per thread: invisible against the colatitude loop at
+      // eight threads, and 128 MB of serialised adds per transform at 128.
+      // The decomposition itself is unchanged -- thread-private
+      // accumulators over colatitudes are the wrong shape well before 128
+      // threads, but choosing what replaces them needs a machine this was
+      // not measured on.
+      const auto threadCount = ThreadCount(policy);
+
+      // The reduction reads every thread's accumulator, so the thread-local
+      // buffers have to be published to the team. Written before the implicit
+      // barrier at the end of the colatitude loop and read after it.
+      auto partials = std::vector<Complex*>(threadCount, nullptr);
+
+#pragma omp parallel num_threads(threadCount)
+      {
+        const auto thread = static_cast<Int>(omp_get_thread_num());
+        const auto threads = static_cast<Int>(omp_get_num_threads());
+        auto& work = GetWorkspace<Scalar, true>(nPhi, c, _flag);
+        auto& partial = Accumulator(scratchSize);
+        std::fill_n(partial.begin(), scratchSize, Complex{});
+        partials[thread] = partial.data();
+
+#pragma omp for schedule(static)
+        for (Int iTheta = 0; iTheta < nTheta; iTheta++) {
+          AccumulateRow(iTheta, first, c, partial.data(), work);
+        }
+
+        const auto fromJ = coefficientSize * thread / threads;
+        const auto toJ = coefficientSize * (thread + 1) / threads;
+        auto* base = partials[0];
+        for (auto t = Int{1}; t < threads; t++) {
+          const auto* p = partials[t];
+          for (auto i = fromJ * c; i < toJ * c; i++) base[i] += p[i];
+        }
+        Scatter(base, first, c, fromJ, toJ);
+      }
+    }
+  }
+
+  // The loop kernel of the inverse transform, the mirror of the forward one.
+  //
+  // Unlike the forward direction the colatitudes write disjoint output and
+  // share only read-only input, so threading over them needs no reduction.
+  template <RealOrComplexFloatingPoint Scalar, typename InIterator,
+            typename OutIterator>
+  void InverseLoopKernel(Int lMax, Int n, InIterator inFirst, Batch inBatch,
+                         OutIterator outFirst, Batch outBatch, Int count,
+                         Int nPhi, Int nTheta, Int coefficientSize,
+                         Execution policy) const {
+    // One colatitude, synthesised into its own row of each field. Unlike the
+    // forward transform, the colatitudes here write disjoint output and share
+    // only read-only input, so threading over them needs no reduction.
+    auto SynthesiseRow = [&](Int iTheta, Int first, Int c,
+                             const Complex* scratch, auto& work) {
+      std::ranges::for_each(work.in, [](auto& x) { return x = 0; });
+
+      // Get the Wigner values.
+      auto d = WignerBlock(n, iTheta, lMax);
+      const auto orders = static_cast<Int>(work.in.size()) / c;
+
+      // Loop over the coefficients, one degree at a time. As in the forward
+      // direction, the row pointer comes from d[l]: this is the same supplier
+      // seam, and a generating grid substitutes at the same point. The
+      // inner loop is again an axpy of length c, over a batch index that
+      // runs fastest on both sides.
+      const auto* source = scratch;
+      auto degrees = d.Degrees() | std::ranges::views::filter(
+                                       [lMax](auto l) { return l <= lMax; });
+      for (auto l : degrees) {
+        auto dl = d[l];
+        auto wigIter = dl.begin();
+        if constexpr (ComplexFloatingPoint<Scalar>) {
+          auto* target = work.in.data() + (orders - dl.MaxOrder()) * c;
+          for ([[maybe_unused]] auto m : dl.NegativeOrders()) {
+            const auto a = *wigIter++;
+            for (auto k = Int{0}; k < c; k++) target[k] += a * source[k];
+            target += c;
+            source += c;
+          }
+          target = work.in.data();
+          for ([[maybe_unused]] auto m : dl.NonNegativeOrders()) {
+            const auto a = *wigIter++;
+            for (auto k = Int{0}; k < c; k++) target[k] += a * source[k];
+            target += c;
+            source += c;
+          }
+        } else {
+          auto* target = work.in.data();
+          if constexpr (std::same_as<_MRange, All>) {
+            std::advance(wigIter, dl.MaxOrder());
+          }
+          for ([[maybe_unused]] auto m : dl.NonNegativeOrders()) {
+            const auto a = *wigIter++;
+            for (auto k = Int{0}; k < c; k++) target[k] += a * source[k];
+            target += c;
+            source += c;
+          }
+        }
+      }
+
+      // Perform FFT to recover the field at this colatitude, through the
+      // plan's own buffers, then hand each row to the caller.
+      work.plan.Execute();
+      for (auto k = Int{0}; k < c; k++) {
+        UnpackRow(std::next(work.out.begin(), k * nPhi), nPhi,
+                  std::next(outFirst,
+                            outBatch.Offset(iTheta * nPhi, first + k)),
+                  outBatch.Stride());
+      }
+    };
+
+    const auto chunk = InverseChunkSize(coefficientSize);
+    for (auto first = Int{0}; first < count; first += chunk) {
+      const auto c = std::min(chunk, count - first);
+      const auto scratchSize = static_cast<std::size_t>(coefficientSize * c);
+
+      // Gather this chunk's coefficients into [coefficient][field] order
+      // once, rather than reaching through the caller's stride on every
+      // colatitude. The Legendre stage works on our own buffers, whose layout
+      // we choose, and the choice is the one the batched loop above wants
+      // above. It costs one pass over the coefficients against a colatitude
+      // loop that reads the whole Wigner block, which T4 measured to be
+      // invisible for the same reason in the other direction.
+      //
+      // Gathered by the calling thread before the parallel region opens, and
+      // read-only inside it.
+      auto& scratch = CoefficientScratch(scratchSize);
+      for (auto k = Int{0}; k < c; k++) {
+        for (auto j = Int{0}; j < coefficientSize; j++) {
+          scratch[j * c + k] = inFirst[inBatch.Offset(j, first + k)];
+        }
+      }
+      const auto* gathered = scratch.data();
+
+      if (!RunInParallel(policy)) {
+        auto& work = GetWorkspace<Scalar, false>(nPhi, c, _flag);
+        for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
+          SynthesiseRow(iTheta, first, c, gathered, work);
+        }
+        continue;
+      }
+
+#pragma omp parallel num_threads(ThreadCount(policy))
+      {
+        auto& work = GetWorkspace<Scalar, false>(nPhi, c, _flag);
+#pragma omp for schedule(static)
+        for (Int iTheta = 0; iTheta < nTheta; iTheta++) {
+          SynthesiseRow(iTheta, first, c, gathered, work);
+        }
+      }
+    }
+  }
+
 #ifdef GSHTRANS_HAVE_BLAS
   // Scratch for the m-major Fourier intermediate and for one order's product.
   // Kept per thread and grown, never allocated per call: an allocation
@@ -1226,7 +1257,7 @@ class SphericalGrid {
   }
 
   // Run `body(m, scratch)` for every order from minOrder to lMax, threaded or
-  // not (step M4).
+  // not.
   //
   // **schedule(dynamic), and the reason is that the obvious static split is
   // wrong twice over.** Section 12 of the reference note warns once: the work
@@ -1285,7 +1316,7 @@ class SphericalGrid {
     }
   }
 
-  // The forward transform as one matrix product per order (step M3).
+  // The forward transform as one matrix product per order.
   //
   // Reordered so that the sum over colatitudes is innermost, the Legendre
   // stage is, at fixed upper index and order,
@@ -1336,14 +1367,14 @@ class SphericalGrid {
       ForwardFourierStage(in, inBatch, first, c, stageSpan, 0, policy);
 
       // Everything one order needs, and nothing another order touches. That
-      // disjointness is the whole of the threading argument (step M4): the
+      // disjointness is the whole of the threading argument: the
       // products at different orders read a shared, read-only table and a
       // shared, read-only intermediate, and write coefficients no other order
       // writes. **No accumulator and no reduction, in either direction** --
       // which is the forward loop kernel's weak point deleted rather than
       // tuned.
       // One order and, where there is one, its negation -- both against the
-      // *same* matrix (step M6).
+      // *same* matrix.
       //
       //     f^n_{l,-m} = (-1)^{l+n} sum_j w_j D^(n,m)_{lj} F_{-m}(theta_j-bar)
       //
@@ -1423,7 +1454,7 @@ class SphericalGrid {
     }
   }
 
-  // The inverse transform, the same matrices read the other way (step M3b).
+  // The inverse transform, the same matrices read the other way.
   //
   //     F_m(theta_i) = sum_l D^(n,m)_{li} f^n_{lm}
   //
@@ -1477,7 +1508,7 @@ class SphericalGrid {
       // Disjoint in the same way the forward direction is, and for the same
       // reason: each order reads coefficients no other order reads and writes
       // the one block of the intermediate that its own FFT order occupies.
-      // The mirror of the forward direction, order by order (step M6). With
+      // The mirror of the forward direction, order by order. With
       // g_l = (-1)^{l+n} f^n_{l,-m}, the reflection gives
       //
       //     F_{-m}(theta_i) = sum_l D^(n,m)_{l,i-bar} g_l

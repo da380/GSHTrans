@@ -85,7 +85,7 @@ class WignerMatrices {
   }
 
   /// Non-negative orders only, the negative ones recovered from the reflection
-  /// (step M6). Requires colatitudes symmetric about pi/2, and checks it.
+  /// Requires colatitudes symmetric about pi/2, and checks it.
   template <std::ranges::range Range>
   requires RealFloatingPoint<std::ranges::range_value_t<Range>>
   static auto Reflected(Int lMax, Int mMax, Int nMax, Range &&theta) {
