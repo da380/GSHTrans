@@ -11,6 +11,73 @@ rather than narrating how the code came to be.
 
 ---
 
+## Status
+
+Most of the list has been worked through. What follows records the outcome so
+the review stays usable as a record rather than reading as a list of things
+still to do.
+
+**Done.**
+
+- **[R0.1]** decided as recommended, and applied: the measured facts and the
+  constraints stay, the plan-step tags and the development history go. Every
+  `[C..]`, `[D..]`, `[E..]`, `[I..]`, `[R..]`, `M..`, `P..`, `step X` and
+  plan-section citation has gone from `GSHTrans/src`. References to the theory
+  note and to `docs/gshtrans-reference.tex` stay, since those point at the
+  mathematics; the theory note is now named as `docs/canonical-components.tex`
+  once in each header that defers to it ([RX.4]).
+- **[R0.2]** settled and complete. `docs/Doxyfile.in` is configured by CMake,
+  `cmake --build build --target docs` builds the documentation, and
+  `EXTRACT_ALL` is off with `WARN_IF_UNDOCUMENTED` on. **Every public entity
+  in the library is documented**, the run is clean, and `WARN_AS_ERROR` is on
+  with a CI leg to keep it that way. Private helpers are documented in the
+  source and excluded from the output.
+- **[RX.1]**, **[RX.2]** the include hygiene; **[R3.1]**–**[R3.3]** the dead
+  tags; **[RX.3]** the phase vocabulary; **[R8.1]** the `GridBase` references;
+  **[R12.2]** the 3-j narrative.
+- **[RX.5]** the shared detail namespaces. The two `AnyRadial` predicates are
+  one `HasRadialSlot` in `MultiIndex.h`, where it is a fact about the alphabet;
+  `Expansion/BundleMaps.h` has its own `SpectralBundleDetails`; and `Omega`
+  moves from `ContravariantDerivative.h` into `Eth.h`, so nothing defines into
+  another header's namespace.
+- **[RX.6]** the kernel asymmetry. `ForwardLoopKernel` and `InverseLoopKernel`
+  are named private members beside the matrix pair, and the public entry
+  points are 67 and 51 lines rather than 220 and 149.
+- **[R6.1]**, **[R6.2]** the BLAS hazards, documented at the declarations.
+  There is still no configure-time check, and there is no portable way to make
+  one from inside the header: an ILP64 BLAS is a constraint on how the library
+  is configured.
+- **[R7.1]** the unused `<omp.h>`; **[R7.2]** the `Policies.h` comments;
+  **[R2.2]** the `IsFastFFTSize` instance, now stated as the grid's `nPhi`.
+
+**Answered rather than acted on.**
+
+- **[R2.3]** `MinusOneToPower`'s default return type *is* taken — at seven call
+  sites in the library and in the tests and examples, wherever the sign is
+  wanted as an integer. The default stays.
+- **[RX.6]**, second half: `RadialResample.h`'s `Resample` is long but already
+  decomposed, into a per-line `run` and a per-piece `fit`. Extracting either
+  would mean threading a dozen parameters through to gain nothing a reader
+  needs. Left as it is.
+
+**Still open, each needing a decision rather than an edit.**
+
+- **[R1.1]** the version number. `1.0.0` is stale and only the value is; the
+  mechanism works. Deliberately not chosen here.
+- **[R7.3]** whether `Scheme` is renamed or the opening comment amended. The
+  opening now says the tags are the exception and why, which may be enough.
+- **[R7.4]** `Chunking::Count` taking `int copies` against `std::ptrdiff_t`
+  everywhere else.
+- **[R8.3]** `SphericalGrid.h` at 1841 lines. Smaller now that the entry points
+  are, but still the largest file by a wide margin.
+- **[R11.2]** the `Tuning.h` signatures, and **[R16.3]** the duplication
+  between the two layered field types.
+- Whether the library is clang-formatted. `.clang-format` exists and the tree
+  does not conform to it; running it would touch nearly every file, which is a
+  decision to take on its own rather than inside another change.
+
+---
+
 ## 0. Two decisions to take first, because they affect every file
 
 ### [R0.1] What happens to the plan references — needs a decision
@@ -470,7 +537,8 @@ A first pass. Every file was opened and its structure and commentary read;
 the larger ones — `SphericalGrid.h`, `TensorField.h`, `TensorExpr.h`,
 `LayeredTensorField.h` — were surveyed rather than read line by line, so their
 entries are lighter than their size warrants and should not be taken as
-"little to do here". Nothing in the list has been acted on.
+"little to do here". The Status section above records what has since been
+acted on.
 
 No correctness defect was found. That is worth saying plainly: the findings
 are hygiene, documentation, dead code and residue, not bugs.
