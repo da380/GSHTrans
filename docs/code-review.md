@@ -72,9 +72,9 @@ still to do.
   are, but still the largest file by a wide margin.
 - **[R11.2]** the `Tuning.h` signatures, and **[R16.3]** the duplication
   between the two layered field types.
-- Whether the library is clang-formatted. `.clang-format` exists and the tree
-  does not conform to it; running it would touch nearly every file, which is a
-  decision to take on its own rather than inside another change.
+
+The clang-format question that used to sit here is settled: the tree conforms
+to the checked-in `.clang-format`, and a CI leg keeps it there.
 
 ---
 
