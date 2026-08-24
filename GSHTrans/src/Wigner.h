@@ -156,7 +156,7 @@ constexpr auto IntegerPower(Real x, std::ptrdiff_t k) {
 // Compute needs d^l_{n,-l} and d^l_{n,l} once per degree, and the closed forms
 // above cost three lgamma and an exp apiece. Paid once inside grid
 // construction that is affordable; paid inside a transform, which is what a
-// generating Wigner supplier does (core-plan.md step F'), it is of order 131k
+// generating Wigner supplier does, it is of order 131k
 // transcendental evaluations per upper index per transform at lMax = 256,
 // comparable to the whole transform.
 //
@@ -266,8 +266,8 @@ auto PreComputeTables(std::ptrdiff_t lMax, std::ptrdiff_t mMax,
 //
 // Lifted out of Wigner::Compute unchanged, so that the values can be written
 // somewhere other than a stored table -- into per-thread scratch inside a
-// transform, which is what a generating grid does (core-plan.md step F', T11).
-// Wigner::Compute is now the wrapper that points the view at its own storage.
+// transform, which is what a generating grid does. Wigner::Compute is the
+// wrapper that points the view at its own storage.
 // The destination's degree and order bounds come from the view, so a caller
 // wanting only the degrees up to some truncation asks for a view of that
 // extent and pays for no more.
@@ -301,10 +301,8 @@ constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
   // It is about lgamma. glibc's writes the global signgam, and ComputeAll
   // calls Compute from every thread, so the closed form is a data race here
   // -- benign, since nothing reads signgam, but the only genuine one
-  // ThreadSanitizer finds in this library (core-plan.md step F'). Leaving
-  // this row on the closed form while the degree loop moved off it would
-  // have left the race exactly where it was. The values are also exact this
-  // way, where the closed form was merely accurate.
+  // ThreadSanitizer finds in this library. The values are also exact this
+  // way, where the closed form is merely accurate.
   {
     const auto l = nAbs;
     const auto s = arg.SinHalf();
@@ -473,7 +471,7 @@ constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
 
   // Orthonormalise: the stored value at (l, m) becomes
   // sqrt((2l+1)/(4 pi)) d^l_{nm}. This is the only normalisation the
-  // library offers (core-plan step A2).
+  // library offers.
   {
     const auto factor =
         std::numbers::inv_sqrtpi_v<Real> / static_cast<Real>(2);
@@ -711,7 +709,7 @@ class Wigner {
     // Flattened to an integer loop and decoded inside. OpenMP's canonical loop
     // form wants an integer induction variable or, from 5.0, a random-access
     // iterator loop; a structured binding over a cartesian_product view is
-    // neither obviously conforming nor portable (core-plan.md F8).
+    // neither obviously conforming nor portable.
     //
     // The region is suppressed when one is already open, so that a caller
     // threading over grids or slices does not nest with this one. Exactly one

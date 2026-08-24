@@ -36,7 +36,7 @@ namespace GSHTrans {
 // and thrown away. What it cannot amortise is a line touched *many* times --
 // an iterative solve, a factorisation applied repeatedly, a sweep over several
 // operators. That is what this is for, and the choice between the two is a
-// measurement rather than a principle: see docs/field-algebra-plan.md.
+// measurement rather than a principle.
 //
 // This is a buffer and a shape, not a field type. It has no grid, no upper
 // index and no algebra, because nothing angular is meaningful once the angular

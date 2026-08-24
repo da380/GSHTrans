@@ -24,9 +24,8 @@ namespace GSHTrans {
 /// The same d-function values as Wigner, laid out transform-major:
 /// [n][m][l][theta] rather than [n][theta][(l, m)].
 ///
-/// This is core-plan.md step M1, the first half of the transform-major
-/// restructure of section 11. The matrix kernel writes the Legendre stage as
-/// one matrix product per order,
+/// The matrix kernel writes the Legendre stage as one matrix product per
+/// order,
 ///
 ///     f^n_{lm} = sum_i D^(n,m)_{li} b^(m)_i,     D^(n,m)_{li} = X^n_{lm}(theta_i)
 ///

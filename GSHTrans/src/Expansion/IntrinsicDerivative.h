@@ -19,8 +19,8 @@ namespace GSHTrans {
 //
 // SurfaceGradient is D&T's grad_1, the angular part of the three-dimensional
 // gradient. It differentiates the tensor *and* its basis, and the basis leaves
-// the tangent plane -- so it does not close on a tangential tensor, and by
-// [D9] it takes no operand from that bundle at all.
+// the tangent plane -- so it does not close on a tangential tensor, and it
+// takes no operand from that bundle at all.
 //
 // This is the other one. The two are related by the Gauss formula: grad_1 is D
 // plus a term in the second fundamental form, which for the unit sphere is
@@ -43,8 +43,7 @@ namespace GSHTrans {
 // **The normalisation is forced, not chosen.** Gauss says D is the tangential
 // block of grad_1, exactly, so it carries D&T's Omega. Adopting eth's instead
 // would make this operator differ by sqrt(2) from the operator it is defined
-// to be. The sqrt(2) stays where it belongs, as a fact about eth
-// (field-algebra-plan.md section 18.2 [D4], [D11]).
+// to be. The sqrt(2) stays where it belongs, as a fact about eth.
 
 namespace IntrinsicDetails {
 
@@ -69,8 +68,8 @@ void FillComponent(Result& result, const Expansion& operand) {
   // Negation therefore has no fixed point among its multi-indices -- the
   // all-zero one does not exist over this alphabet -- and no permutation can
   // pin anything either, so no component of the result is constrained. That
-  // is [D6]'s payoff arriving where it removes a branch rather than a buffer:
-  // the surface gradient needs a pinned-imaginary case here and this does not.
+  // is where knowing the orbits removes a branch rather than a buffer: the
+  // surface gradient needs a pinned-imaginary case here and this does not.
   constexpr auto flat = MultiIndex<Rank + 1, TangentialSlots>(Indices).Flat();
   static_assert(Result::Orbits.constraint[flat] == ComponentConstraint::None,
                 "A tangential tensor with no symmetry has no pinned "

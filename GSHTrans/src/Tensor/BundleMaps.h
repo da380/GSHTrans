@@ -14,24 +14,25 @@ namespace GSHTrans {
 
 // The two maps between the tangential bundle and the general one.
 //
-// A tangential tensor lives in another bundle, so it is another object
-// (field-algebra-plan.md section 18.2 [D8]). What connects the two is the
+// A tangential tensor lives in another bundle, so it is another object. What
+// connects the two is the
 // inclusion of the tangent plane in the ambient space, and its adjoint:
 //
 //   Embed(T)       tangential -> general, the components with a radial slot
 //                  being ones the embedded tensor does not have
 //   Tangential(T)  general -> tangential, dropping those same components
 //
-// Neither is implicit. A product of operands from different alphabets does not
-// compile ([D10]) and grad_1 takes no tangential operand ([D9]); both are
-// written by embedding at the call site, where it can be read.
+// Neither is implicit. A product of operands from different alphabets does
+// not compile, and grad_1 takes no tangential operand; both are written by
+// embedding at the call site, where it can be read.
 //
 // Both are lazy, and neither owns storage. That is what makes crossing bundles
 // cost a node rather than a buffer: Embed allocates nothing and writes no
 // zeros, because a component with a radial slot is one it declines to
 // represent -- the same signal an antisymmetric tensor's diagonal already
 // emits, which every compile-time traversal, Contract and Materialise already
-// handle. See [D13] for why the spectral pair is not built this way.
+// handle. See Expansion/BundleMaps.h for why the spectral pair is not built
+// this way.
 
 namespace BundleDetails {
 

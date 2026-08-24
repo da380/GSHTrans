@@ -168,8 +168,8 @@ void FillRadialComponent(Result& result, const Derivative& derivative, Int i) {
 //
 // Like its flat counterpart it takes a general tensor and not a tangential
 // one: grad_1 moves slots between e_0 and e_+-, so it does not close on the
-// tangential bundle, and a tangential operand is embedded first
-// (field-algebra-plan.md section 18.2 [D9]). Every MultiIndex<Rank + 1> below
+// tangential bundle, and a tangential operand is embedded first. Every
+// MultiIndex<Rank + 1> below
 // is therefore over AllSlots by right rather than by oversight -- the result
 // lands in the general bundle whatever the operand was.
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,

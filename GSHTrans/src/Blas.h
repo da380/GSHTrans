@@ -2,7 +2,7 @@
 #define GSH_TRANS_BLAS_GUARD_H
 
 // The one BLAS entry point this library uses, and the row-major wrapper the
-// matrix kernel calls (core-plan.md section 11, step M3).
+// matrix kernel calls.
 //
 // Present only where GSHTRANS_HAVE_BLAS is defined; the header is conditional
 // in its entirety, so including it without a BLAS is not an error and gives

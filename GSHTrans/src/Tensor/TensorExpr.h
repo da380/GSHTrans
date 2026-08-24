@@ -35,9 +35,9 @@ namespace GSHTrans {
 // instantiation every tensor must provide. It requires the parts that are
 // universal, and `Represents` is what a caller consults before asking.
 // SlotSet is part of the concept because two operations read it: the tensor
-// product, which requires its operands to be drawn from the same alphabet
-// ([D10]), and the contraction, whose sum runs over that alphabet's letters
-// rather than over a fixed {-1, 0, +1}.
+// product, which requires its operands to be drawn from the same alphabet,
+// and the contraction, whose sum runs over that alphabet's letters rather
+// than over a fixed {-1, 0, +1}.
 template <typename T>
 concept TensorExpr = requires {
   requires std::same_as<std::remove_cv_t<decltype(T::Rank)>, std::ptrdiff_t>;
@@ -298,9 +298,9 @@ class TensorProductNode {
 
   // A tangential tensor lives in a different bundle from a general one, so
   // the product of the two is not a tensor over either alphabet. Crossing
-  // bundles is done by Embed at the call site and never implicitly
-  // (field-algebra-plan.md section 18.2 [D10]). The constraint is on the free
-  // function below, where it is a clean overload-resolution failure; this is
+  // bundles is done by Embed at the call site and never implicitly. The
+  // constraint is on the free function below, where it is a clean
+  // overload-resolution failure; this is
   // the backstop for anyone building the node directly.
   static_assert(std::same_as<SlotSet, typename Right::SlotSet>,
                 "A tensor product needs both operands drawn from the same "

@@ -37,7 +37,7 @@ namespace GSHTrans {
 /// mixed object such as D&T's T^{r Omega} would break an invariant the symmetry
 /// machinery relies on -- a permutation may only exchange slots drawn from the
 /// same alphabet -- and widening to a per-slot list later costs only this
-/// header. See field-algebra-plan.md section 18.2 [D2].
+/// header.
 ///
 /// Both alphabets are closed under negation, which is what the reality
 /// condition needs: it maps -1 to +1 and 0 to itself.
@@ -66,9 +66,8 @@ concept SlotAlphabet = requires {
 // requires-expression can see: over TangentialSlots, `requires { Flat<0, 1>; }`
 // is **true** and the use then fails to compile. So every accessor taking a
 // component's letters as template arguments asks this first, in the same
-// `if constexpr` shape the pack-size check uses (field-algebra-plan.md
-// section 12.4). That is the same lesson arriving a second time by a second
-// route, which is why it is written down here rather than at one call site.
+// `if constexpr` shape the pack-size check uses. It is written down here
+// rather than at one call site because every one of them needs it.
 template <SlotAlphabet Slots>
 constexpr bool IsSlotLetter(std::ptrdiff_t alpha) {
   for (auto letter : Slots::Alphabet) {
@@ -171,8 +170,8 @@ class MultiIndex {
   /// is the all-zero index -- which for a tangential tensor of rank >= 1 does
   /// not exist, so negation is then free of fixed points and every orbit has
   /// size two. That is what removes the pinned components, and with them the
-  /// second buffer, from a tangential real tensor with no permutation symmetry
-  /// (field-algebra-plan.md section 18.2 [D6]).
+  /// second buffer, from a tangential real tensor with no permutation
+  /// symmetry.
   constexpr MultiIndex Negated() const {
     auto slots = _slots;
     for (auto& alpha : slots) alpha = -alpha;

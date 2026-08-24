@@ -1,21 +1,24 @@
 #ifndef GSH_TRANS_INTERPOLATE_GUARD_H
 #define GSH_TRANS_INTERPOLATE_GUARD_H
 
-// Interpolation of a field: a callable of the two angles.
-//
-// The plan is field-algebra-plan.md section 22, and the decisions it records
-// are referred to below as [I1] to [I9]. The short version of what makes this
-// more than a forwarding call to Interpolation:
-//
-//   -- the longitudes run 0 ... 2pi - dphi, so the wrap is not represented and
-//      a query in the last cell would interpolate against nothing;
-//   -- neither pole is a grid point, so every local scheme extrapolates there,
-//      and does so exactly where a spin-weighted field's sin^|m|(theta)
-//      behaviour is most delicate.
-//
-// Both are fixed by handing the upstream scheme a *padded* grid rather than
-// the field's own, and the padding is exact: the wrap column is column zero
-// copied, and the two polar rows are computed from the expansion.
+/**
+ * @file Interpolate.h
+ * @brief Interpolation of a field: a callable of the two angles.
+ *
+ * @details Two things make this more than a forwarding call to the upstream
+ * interpolation library:
+ *
+ * - the longitudes run @f$0 \ldots 2\pi - \Delta\phi@f$, so the wrap is not
+ *   represented and a query in the last cell would interpolate against
+ *   nothing;
+ * - neither pole is a grid point, so every local scheme extrapolates there,
+ *   and does so exactly where a spin-weighted field's
+ *   @f$\sin^{|m|}\theta@f$ behaviour is most delicate.
+ *
+ * Both are fixed by handing the upstream scheme a *padded* grid rather than
+ * the field's own, and the padding is exact: the wrap column is column zero
+ * copied, and the two polar rows are computed from the expansion.
+ */
 
 #include <cmath>
 #include <complex>
@@ -57,9 +60,9 @@ namespace InterpolateDetails {
 // i * Columns() + j -- which is both this library's layout (SpinField.h) and
 // Interpolation's (Bilinear.hpp), and is why no repack is needed.
 //
-// It owns its arrays. [I1]: an interpolant is a snapshot, and here there is
-// nothing to borrow anyway, since every array below is new storage whatever
-// the caller passed.
+// It owns its arrays. An interpolant is a snapshot, and here there is nothing
+// to borrow anyway, since every array below is new storage whatever the
+// caller passed.
 template <RealFloatingPoint _Real, RealOrComplexFloatingPoint _Scalar>
 struct Padded {
   using Real = _Real;  ///< The precision.
@@ -153,7 +156,7 @@ auto Pad(const GridType& grid, std::span<const Scalar> samples,
 // against there and would extrapolate -- exactly where a spin-weighted field
 // is most delicate. The rows below remove the extrapolation entirely, and they
 // are exact rather than a fudge, because at a pole all but one order vanishes
-// (section 22.1, measured over |N| <= 2 and l <= 5):
+// (measured over |N| <= 2 and l <= 5):
 //
 //     f(0,  phi) = exp(+i N phi) sum_l           f^N_{l,+N} sqrt((2l+1)/4pi)
 //     f(pi, phi) = exp(-i N phi) sum_l (-1)^{l-N} f^N_{l,-N} sqrt((2l+1)/4pi)
@@ -208,16 +211,15 @@ auto PolarRows(const Expansion& expansion, const GridType& grid) {
 /// which is what WignerDetails::ComputeBlock stores and what the loop kernel's
 /// SynthesiseRow sums. Checked against Evaluate at every grid point rather than
 /// read off the transform: worst absolute difference 5.0e-15 complex and
-/// 8.1e-15 real (section 22.1).
+/// 8.1e-15 real.
 ///
-/// [I2]: this is the reference the cheap schemes are measured against, and it
-/// is built first for that reason as much as for its own sake. It is exact and
-/// pole-safe, and it costs O(lMax^2) a point where they cost O(1).
+/// This is the reference the cheap schemes are measured against. It is exact
+/// and pole-safe, and it costs O(lMax^2) a point where they cost O(1).
 ///
-/// [I1]: it owns its coefficients. The shared_ptr is what keeps a copy cheap
-/// and, more to the point, keeps the state at a stable address so that copying
-/// the interpolant is well defined -- which it has to be, because the grid's
-/// ProjectFunction takes its callable by value ([I8]).
+/// It owns its coefficients. The shared_ptr is what keeps a copy cheap and,
+/// more to the point, keeps the state at a stable address so that copying the
+/// interpolant is well defined -- which it has to be, because the grid's
+/// ProjectFunction takes its callable by value.
 template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value = ComplexValued>
 class SpectralInterpolant {
@@ -250,7 +252,7 @@ class SpectralInterpolant {
     const auto lMax = _state->lMax;
     constexpr auto pi = std::numbers::pi_v<Real>;
 
-    // [I4]: a colatitude outside [0, pi] is not a point on the sphere, so
+    // A colatitude outside [0, pi] is not a point on the sphere, so
     // there is no number to return; a longitude outside [0, 2pi) is one, and
     // reducing it is exact rather than an approximation. The two axes are not
     // alike and this is where that shows.
@@ -302,7 +304,7 @@ class SpectralInterpolant {
       }
     }
 
-    // [I9]: for a real field the sum is real -- measured at 5.3e-16 in the
+    // For a real field the sum is real -- measured at 5.3e-16 in the
     // imaginary part -- so taking the real part is a projection onto a
     // quantity known to be real rather than a truncation.
     if constexpr (std::same_as<Value, RealValued>) {
@@ -390,17 +392,17 @@ auto Interpolate(const F& field, Scheme::SpectralTag = Scheme::Spectral(),
 
 /// One of Interpolation's rectilinear schemes over the *padded* grid: the
 /// field's own samples, plus the wrap column and the two polar rows. After the
-/// padding and [I4]'s domain rules, no query reaches upstream's edge-cell
-/// continuation at all, which is the property that makes those schemes usable
-/// on a sphere.
+/// padding and the domain rules on the angles, no query reaches upstream's
+/// edge-cell continuation at all, which is the property that makes those
+/// schemes usable on a sphere.
 ///
 /// The upstream object is given std::span rather than the deduction guide's
 /// views, for two reasons that both matter. A span is a view, so it satisfies
 /// upstream's constraints; and it is a type this class can *spell*, which lets
 /// the padded arrays and the interpolant over them live in one State and be
 /// initialised in order. Handing upstream an owning view instead would make
-/// this class move-only, and it has to be copyable -- ProjectFunction takes its
-/// callable by value ([I8]).
+/// this class move-only, and it has to be copyable -- ProjectFunction takes
+/// its callable by value.
 template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value, typename _Upstream>
 class LocalInterpolant {
@@ -472,7 +474,7 @@ concept LocalScheme = std::same_as<Tag, Scheme::BilinearTag> or
 }  // namespace InterpolateDetails
 
 // A field, locally. The forward transform is for the polar rows and nothing
-// else ([I3]): two columns of coefficients out of a whole expansion, which is
+// else: two columns of coefficients out of a whole expansion, which is
 // the construction cost this scheme carries and the reason its cheapness is
 // per evaluation rather than per interpolant.
 template <SpinWeighted F, InterpolateDetails::LocalScheme Tag>

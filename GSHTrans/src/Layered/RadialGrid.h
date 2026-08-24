@@ -58,8 +58,8 @@ class RadialGrid {
   ///
   /// The blocks are disjoint and given by their `nElements + 1` starts, so
   /// every node belongs to exactly one element and two elements meet at a
-  /// *repeated radius* (field-algebra-plan.md section 20.5 [E1]). That is what
-  /// makes a derivative well defined at an interface without anyone having to
+  /// *repeated radius*. That is what makes a derivative well defined at an
+  /// interface without anyone having to
   /// choose between averaging the two sides and picking one: both exist, and
   /// they are the pair `Interpolation::Piecewise::Limits` returns on the other
   /// side of the join.
@@ -124,7 +124,7 @@ class RadialGrid {
   }
 
   /// Which element a radius index belongs to. Exactly one does, the blocks
-  /// being disjoint, which is the whole point of [E1].
+  /// being disjoint, which is the whole point of the element structure.
   Int ElementOf(Int i) const {
     for (auto k = Int{0}; k < ElementCount(); k++) {
       if (i < ElementEnd(k)) return k;
@@ -134,7 +134,7 @@ class RadialGrid {
 
   /// The breakpoints, of which there are ElementCount() + 1. Read off the
   /// radii rather than stored beside them, so that there is one source of
-  /// truth and no way for the two to disagree ([E3]).
+  /// truth and no way for the two to disagree.
   Real Breakpoint(Int k) const {
     return k == 0 ? _impl->radii.front()
                   : _impl->radii[static_cast<std::size_t>(ElementEnd(k - 1) - 1)];

@@ -49,9 +49,8 @@ namespace GSHTrans {
 //
 // Components are reached by multi-index as on the flat type, with the same two
 // accessors and the same conditions. Slice(r) returning a *tensor* view is
-// deliberately not offered -- there is no tensor view type, and
-// field-algebra-plan.md section 17.3 records that reaching the component
-// directly is the smaller of the two ways to do without one.
+// deliberately not offered -- there is no tensor view type, and reaching the
+// component directly is the smaller of the two ways to do without one.
 
 namespace LayeredDetails {
 

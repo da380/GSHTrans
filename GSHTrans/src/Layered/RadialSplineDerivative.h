@@ -1,28 +1,24 @@
 #ifndef GSH_TRANS_RADIAL_SPLINE_DERIVATIVE_GUARD_H
 #define GSH_TRANS_RADIAL_SPLINE_DERIVATIVE_GUARD_H
 
-// d/dr of the cubic spline through a radial line.
-//
-// The whole of this header is conditional on GSHTRANS_WITH_INTERPOLATION,
-// which is on by default. Without it a caller has FiniteDifferenceDerivative
-// and LagrangeDerivative, which are the two that need nothing outside the
-// standard library.
-//
-// **This used to be self-contained and is not any more, and that is a
-// deliberate reversal** (field-algebra-plan.md section 21.2 [R5]). It held its
-// own natural-spline system and its own Thomas sweep, for one reason: the
-// factorisation inside Interpolation was not reachable, so building on that
-// library would have meant a spline constructed per radial line. It is
-// reachable now -- `CubicSplineSystem` is the matrix, factorised once, with a
-// `Solve` that allocates nothing and is `const`, which is exactly the contract
-// RadialOperator.h asks an operator to meet. So sixty lines of duplicated
-// spline go, and what is left is assembly.
-//
-// The exchange is worth more than the lines. This gains the endpoint
-// conditions the hand-written version never had -- and NotAKnot in particular
-// stays fourth order right up to the ends, where Natural costs an order, which
-// is precisely where a spline derivative was least trustworthy and precisely
-// where a boundary condition gets applied.
+/**
+ * @file RadialSplineDerivative.h
+ * @brief @f$d/dr@f$ of the cubic spline through a radial line.
+ *
+ * @details The whole of this header is conditional on the interpolation
+ * dependency, which is on by default. Without it a caller has
+ * FiniteDifferenceDerivative and LagrangeDerivative, which are the two that
+ * need nothing outside the standard library.
+ *
+ * **This is deliberately not self-contained.** The spline system comes from
+ * that dependency rather than being written here: `CubicSplineSystem` is the
+ * matrix, factorised once, with a `Solve` that allocates nothing and is
+ * `const`, which is exactly the contract RadialOperator.h asks an operator to
+ * meet. It also carries the endpoint conditions — and NotAKnot in particular
+ * stays fourth order right up to the ends, where Natural costs an order,
+ * which is precisely where a spline derivative is least trustworthy and
+ * precisely where a boundary condition gets applied.
+ */
 
 #ifdef GSHTRANS_HAVE_INTERPOLATION
 

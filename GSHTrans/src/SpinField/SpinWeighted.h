@@ -22,10 +22,10 @@ namespace GSHTrans {
 // node -- models SpinWeighted, and nothing dispatches through anything else:
 // there are no virtual functions and no required base class.
 //
-// The unit is deliberately a single component, not a tensor. The theory note
-// section 2 is explicit that for rank >= 2 a collection labelled only by an
-// upper index does not determine a tensor, so tensors are built from these at
-// the tensor layer rather than being what this layer is about.
+// The unit is deliberately a single component, not a tensor. For rank >= 2 a
+// collection labelled only by an upper index does not determine a tensor (see
+// section 2 of the theory note), so tensors are built from these at the
+// tensor layer rather than being what this layer is about.
 
 // The scalar a node evaluates to: Real when the node is real-valued, Complex
 // otherwise.
@@ -57,10 +57,9 @@ concept SpinWeighted = requires {
   // is not preserved by the frame rotation e_{+-} -> e^{-+ i psi} e_{+-}, so
   // it is not a property any component of any tensor can have at N != 0. A
   // library able to represent one can represent something that does not
-  // exist. The constraint is closed under every node in this layer (see the
-  // closure table in the plan, section 3.4), so it is checked here once and
-  // never re-derived; what it forbids is a real-valued *terminal* or *view* at
-  // nonzero upper index.
+  // exist. The constraint is closed under every node in this layer, so it is
+  // checked here once and never re-derived; what it forbids is a real-valued
+  // *terminal* or *view* at nonzero upper index.
   requires std::same_as<typename T::Value, ComplexValued> or
                T::UpperIndex == 0;
 } and requires(const T& node, std::ptrdiff_t iTheta, std::ptrdiff_t iPhi,

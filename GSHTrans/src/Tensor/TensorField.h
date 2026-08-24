@@ -32,9 +32,8 @@ namespace GSHTrans {
 //
 // Both are offered rather than one being required, because the transform's
 // batch descriptor covers either: (stride 1, dist FieldSize) for the first
-// and (stride nStored, dist 1) for the second (core-plan.md [C9]). Which is
-// faster is a measurement, not a precondition, and the field-algebra plan
-// dropped the repack requirement on the strength of exactly that.
+// and (stride nStored, dist 1) for the second. Which is faster is a
+// measurement, not a precondition, which is why neither layout is required.
 struct ComponentMajor {};
 struct PointMajor {};
 
@@ -46,8 +45,8 @@ concept TensorLayout =
 /// canonical components as spin-weighted nodes.
 ///
 /// One buffer rather than a tuple of separately allocated fields, because the
-/// components are what get transformed and the transform wants to see them as a
-/// batch (core-plan.md [C9]). A component is therefore a *view* into the
+/// components are what get transformed and the transform wants to see them as
+/// a batch. A component is therefore a *view* into the
 /// buffer, which is why views are admissible wherever an owning field
 /// is, and why operator[] returns by value on every node.
 ///
@@ -76,8 +75,8 @@ class TensorField {
   /// Which slots this tensor's indices are drawn from, and the multi-index
   /// over them. AllSlots is the ordinary canonical tensor; TangentialSlots is
   /// one with no radial slot, whose components number 2^Rank rather than
-  /// 3^Rank (field-algebra-plan.md section 18). The parameter is appended last
-  /// and defaulted so that no existing spelling of this template moves.
+  /// 3^Rank. The parameter is appended last and defaulted so that no existing
+  /// spelling of this template moves.
   ///
   /// Nothing below knows which alphabet it has. Everything is written against
   /// Index and against the orbit table built over it, which is the whole of
@@ -106,10 +105,10 @@ class TensorField {
   ///
   /// This is a storage decision and it is forced by the transform. A batch
   /// shares grid, degree and upper index, and is described by (count, stride,
-  /// dist) -- a uniform spacing (core-plan.md [C9]). In flat order the stored
-  /// components carrying one upper index are scattered at no fixed spacing
-  /// once there is any symmetry, so no single descriptor covers them and the
-  /// batching that step F exists for would be unreachable. Ordered by upper
+  /// dist) -- a uniform spacing. In flat order the stored components carrying
+  /// one upper index are scattered at no fixed spacing once there is any
+  /// symmetry, so no single descriptor covers them and batching would be
+  /// unreachable. Ordered by upper
   /// index they are contiguous, and one batch per upper index describes the
   /// whole tensor.
   ///
@@ -344,8 +343,8 @@ class TensorField {
   /// Note what this means for a grid: the derived partner of a stored
   /// component at N has upper index -N, so on a grid carrying only
   /// non-negative upper indices half of these could not be *terminals*. They
-  /// are expressions, and the field-algebra plan's section 3.7 put the grid's
-  /// N-support check on terminals and views alone for exactly this case.
+  /// are expressions, and the grid's N-support check is on terminals and
+  /// views alone for exactly this case.
   template <Int... Alphas>
   requires Represents<Alphas...>
   auto Component() const {
@@ -452,8 +451,7 @@ class TensorField {
   /// Transform every stored component, batching those that share an upper
   /// index.
   ///
-  /// This is the first consumer of the batched primitive step F was built for,
-  /// and the reason the buffer is ordered by upper index: each group is a
+  /// This is why the buffer is ordered by upper index: each group is a
   /// contiguous run on both sides, so one Batch::Contiguous describes it and
   /// the Wigner block for that upper index is streamed once for the whole
   /// group rather than once per component. A rank-2 tensor has three
@@ -725,8 +723,8 @@ using AntisymmetricTensorField = TensorField<2, Antisymmetric<2>, Reality,
 template <AngularGrid Grid, TensorReality Reality = RealTensor>
 using ElasticTensorField = TensorField<4, ElasticSymmetry, Reality, Grid>;
 
-// And the tangential forms, named alongside rather than bolted on afterwards
-// (field-algebra-plan.md section 18.2 [D12]). The prefix says which bundle the
+// And the tangential forms, named alongside rather than bolted on
+// afterwards. The prefix says which bundle the
 // object lives in, which is the thing about it that a reader most needs to
 // know: its indices run over {-1, +1}, it has 2^p components rather than 3^p,
 // and the derivative that is closed on it is the intrinsic one.
@@ -741,7 +739,7 @@ using TangentialRank2Field =
                 TangentialSlots>;
 
 // The spin-2 object of surface geodesy and of the CMB, up to the trace that
-// `Orbits.h` cannot express and a caller subtracts ([D7]). As a real tensor it
+// `Orbits.h` cannot express and a caller subtracts. As a real tensor it
 // is three reals a point: a real symmetric 2x2 matrix, which is what it is.
 template <AngularGrid Grid, TensorReality Reality = RealTensor>
 using TangentialSymmetricField =

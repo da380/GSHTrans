@@ -196,7 +196,7 @@ void FillComponent(Result& result, const Expansion& operand,
 // does not close on a tangential tensor and no signature over that alphabet
 // would be honest. A tangential operand is embedded first and then
 // differentiated, in that order and visibly, which is why the deduction below
-// simply does not match one (field-algebra-plan.md section 18.2 [D9]). What
+// simply does not match one. What
 // *is* closed on a tangential tensor is the intrinsic derivative, and that
 // has a name of its own.
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,

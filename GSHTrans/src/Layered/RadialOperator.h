@@ -30,9 +30,8 @@ namespace GSHTrans {
 // the *seam*: gathering a radial line out of a radius-major stack, handing it
 // to whatever the caller supplied, and scattering the answer back.
 //
-// The seam is a callable rather than a matrix, which is the choice
-// field-algebra-plan.md section 17.2 settled and for the reason it gives: a
-// caller who has factorised something wants to apply the factorisation, and a
+// The seam is a callable rather than a matrix, for one reason: a caller who
+// has factorised something wants to apply the factorisation, and a
 // matrix interface forecloses that. It takes contiguous spans and not strided
 // ones, because a contiguous span is what LAPACK, a band solver and a plain
 // loop all want, and the gather that buys it is a fraction of the transform it

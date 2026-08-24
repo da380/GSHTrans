@@ -165,8 +165,8 @@ class TensorExpansion {
   // vanishing orbit is a component the tensor *has* and that is identically
   // zero, so zero is the right answer; a radial index on a tangential tensor
   // is not a component at all, and saying zero would be answering a question
-  // about a different bundle (field-algebra-plan.md section 18.2 [D8]). The
-  // check is also what stops the multi-index being formed from a letter that
+  // about a different bundle. The check is also what stops the multi-index
+  // being formed from a letter that
   // would make its constructor throw.
   template <Int... Alphas>
   requires(sizeof...(Alphas) == Rank and AreSlotLetters<_Slots, Alphas...>())

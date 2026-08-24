@@ -113,8 +113,7 @@ class LayeredSpinField {
   }
 
   /// The whole stack as the transform's batch: nR fields, each contiguous,
-  /// FieldSize apart. This is the descriptor core-plan.md step F exists for,
-  /// and the radial axis is what it was waiting for.
+  /// FieldSize apart.
   auto Batch() const {
     return GSHTrans::Batch::Contiguous(NumberOfRadii(), FieldSize());
   }
@@ -254,10 +253,9 @@ class LayeredSpinExpansion {
 
 // Transform every radius at once.
 //
-// This is what core-plan.md step F was built for and had never had. The whole
-// stack goes to the grid as one batch, so the Wigner block for this upper
-// index is streamed once for all the radii rather than once per radius, and
-// the threading policy is the caller's as everywhere else.
+// The whole stack goes to the grid as one batch, so the Wigner block for
+// this upper index is streamed once for all the radii rather than once per
+// radius, and the threading policy is the caller's as everywhere else.
 //
 // A batch shares grid, degree and upper index. A stack of one field's slices
 // shares all three by construction, which is why the radial axis is the batch

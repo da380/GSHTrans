@@ -35,7 +35,7 @@ namespace GSHTrans {
 // The two here need nothing outside the standard library. SplineDerivative is
 // the third and lives in RadialSplineDerivative.h, because it is built on
 // Interpolation's factorised spline system and so exists only when that
-// dependency does (field-algebra-plan.md section 21.2 [R5]).
+// dependency does.
 
 namespace RadialDetails {
 
@@ -322,7 +322,8 @@ class LagrangeDerivative {
 /// approximation: the field is not assumed differentiable across an interface,
 /// because at a material interface it is not.
 ///
-/// **What makes this well defined is [E1].** The blocks are disjoint, so two
+/// **What makes this well defined is the element structure.** The blocks
+/// are disjoint, so two
 /// elements meet at a repeated radius and each owns one of the pair. The
 /// derivative at an interface is therefore two numbers, one per side, each
 /// stored at its own index -- which is what a discontinuity *is*, and is the

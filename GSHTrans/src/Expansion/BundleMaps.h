@@ -18,11 +18,11 @@ namespace GSHTrans {
 // domain: Embed widens a tangential expansion into the general bundle, and
 // Tangential projects one back.
 //
-// **These copy, where the spatial pair does not, and that is a decision rather
-// than an oversight** (field-algebra-plan.md section 18.2 [D13]). Three things
-// make it the right one. There are no lazy nodes on this side at all, and by
-// design -- section 15.4 records that a derived component is not offered
-// spectrally because deriving one reverses the order index. Making Embed lazy
+// **These copy, where the spatial pair does not, and that is a decision
+// rather than an oversight.** Three things make it the right one. There are
+// no lazy nodes on this side at all, and by design: a derived component is
+// not offered spectrally, because deriving one reverses the order index.
+// Making Embed lazy
 // would mean re-signing SurfaceGradient against a concept that could not carry
 // the one member distinguishing this type from the layered one, since
 // Coefficient is a template whose pack depends on the rank and a concept
