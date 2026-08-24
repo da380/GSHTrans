@@ -22,6 +22,7 @@ set(GSHTRANS_EXAMPLES
   19-layered-models
   20-transform-kernels
   21-interpolation
+  22-wigner-3j
 )
 
 foreach(example IN LISTS GSHTRANS_EXAMPLES)
@@ -39,12 +40,3 @@ foreach(example IN LISTS GSHTRANS_EXAMPLES)
   # states an identity it checks it itself.
   add_test(NAME example.${example} COMMAND ${example})
 endforeach()
-
-# Standalone Wigner 3-j experiments, unrelated to the library: wigner3j.hpp is
-# a second, self-contained implementation that does not use GSHTrans at all.
-# Deliberately not registered as tests -- docs/thoughts.md section 6 is the
-# standing note on what to do about the two 3-j codes in this repository.
-add_executable(wig wig.cpp)
-target_link_libraries(wig PRIVATE GSHTrans)
-
-add_executable(wigner3j_tests wigner3j_tests.cpp)

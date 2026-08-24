@@ -6,7 +6,10 @@
 #include <cmath>
 #include <cstddef>
 #include <ranges>
+#include <limits>
 #include <span>
+#include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -282,6 +285,62 @@ void WoodhouseToPlain(const int l1, const int l3, std::span<T> a) {
   }
 }
 
+
+/**
+ * @brief The tolerance the completeness self-check uses, at this precision.
+ * @details Deliberately loose. Its job is to separate a table that is right
+ * from one the recursion has destroyed, and those two populations are twenty
+ * orders of magnitude apart -- a good table departs from one by 1e-16 to
+ * 1e-8, a bad one by 1e-3 to 1e112 -- so the choice is not delicate. It is
+ * written against epsilon so that it follows the precision rather than
+ * assuming double.
+ */
+template <NumericConcepts::Real T>
+T CompletenessTolerance() {
+  return T{100} * std::sqrt(std::numeric_limits<T>::epsilon());
+}
+
+/**
+ * @brief Checks a completed table against the completeness relation, and
+ * throws if it fails.
+ * @details The relation
+ *
+ *     sum over the (m1, m3) plane of the squared symbols  =  1
+ *
+ * holds exactly for any triple satisfying the triangle rule. It costs one
+ * pass over a table that has just been built -- the same order as building
+ * it, and a small multiple less work -- and it is the only check available
+ * here that needs no reference implementation.
+ *
+ * The reason it is a runtime check and not merely a test is that **the
+ * failure mode is silent and catastrophic**. This is a one-directional
+ * recursion, and near stretched triangles at high degree it is being run in
+ * its unstable direction: the values grow without bound while remaining
+ * finite, so a caller gets 1e112 where 0.1 was wanted, in a table of the
+ * right shape, with no indication that anything is wrong. Refusing is
+ * strictly better than that. See docs/3j-plan.md [J1].
+ *
+ * Triples outside the triangle rule are skipped: their tables are
+ * identically zero by design, so the sum is zero and correctly so.
+ */
+template <NumericConcepts::Real T>
+void CheckCompleteness(int l1, int l2, int l3, std::span<const T> table) {
+  if (not SatisfiesTriangle(l1, l2, l3)) return;
+  auto sum = T{0};
+  for (auto value : table) sum += value * value;
+  const auto departure = std::abs(sum - T{1});
+  if (not(departure < CompletenessTolerance<T>())) {
+    throw std::runtime_error(
+        "Wigner3jMatrix: the completeness relation fails for degrees (" +
+        std::to_string(l1) + ", " + std::to_string(l2) + ", " +
+        std::to_string(l3) +
+        "): the squared symbols sum to " + std::to_string(sum) +
+        " rather than one. The recursion has lost accuracy, which happens "
+        "near stretched triangles at high degree; the values are finite but "
+        "meaningless. See docs/3j-plan.md.");
+  }
+}
+
 }  // namespace ThreeJDetails
 
 /*------------------------------------------------------------------------*/
@@ -364,6 +423,8 @@ class Wigner3jMatrix {
     assert(l1 >= 0 and l2 >= 0 and l3 >= 0);
     ThreeJDetails::WoodhouseMatrix<T>(_l1, _l2, _l3, _data);
     ThreeJDetails::WoodhouseToPlain<T>(_l1, _l3, _data);
+    ThreeJDetails::CheckCompleteness<T>(_l1, _l2, _l3,
+                                        std::span<const T>(_data));
   }
 
   /** @brief Returns the first degree. */

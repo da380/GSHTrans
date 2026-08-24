@@ -42,6 +42,10 @@ add_executable(TestInterpolate
                TestInterpolate.cpp)
 target_link_libraries(TestInterpolate PRIVATE GSHTrans gtest_main)
 
+add_executable(TestThreeJ
+               TestThreeJ.cpp)
+target_link_libraries(TestThreeJ PRIVATE GSHTrans gtest_main)
+
 add_executable(TestTuning
                TestTuning.cpp)
 target_link_libraries(TestTuning PRIVATE GSHTrans gtest_main)
@@ -143,6 +147,7 @@ gtest_discover_tests(TestTensorReality)
 gtest_discover_tests(TestExpansion)
 gtest_discover_tests(TestInterpolate)
 gtest_discover_tests(TestTuning)
+gtest_discover_tests(TestThreeJ)
 gtest_discover_tests(TestConventions)
 gtest_discover_tests(TestLayered)
 gtest_discover_tests(TestWigner)

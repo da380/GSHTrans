@@ -49,6 +49,14 @@ So double is exact to `l = 25`, first departs at 30, and is catastrophic by
 is the signature §6 identified — a recursion run in its unstable direction,
 which extra precision delays and does not cure.
 
+*Refined while writing T1's tests, and it matters for where a tolerance
+goes.* At the resolution of that table the failure looks like a cliff between
+25 and 30. It is not: the departure from one is `1e-16` out to `l = 16`,
+`4.4e-14` at 20, **`1.8e-8` at 25**, `1.2e-5` at 28 and `4.1e-3` at 30. So the
+loss is **exponential from about `l = 20`**, and there is a band around 22 to
+28 where the values are degrading but still usable. A check has to decide
+what to do about that band, which is what [J1]'s tolerance is for.
+
 Away from stretched the boundary is much further out. At `l₃ = 3l₁/2` the sum
 is exact to `l = 40`, departs at 60 (181.06 against 181) and is catastrophic
 by 80. At `(l, l, l)` it holds to `l = 20` and, per §6, to 128.
@@ -179,8 +187,9 @@ sums at scale knows where the factor of `l` is.
 
 ## 3. The steps
 
-**T1 — the test family, and the boundary as a known quantity.** Before any
-algorithm changes. Four groups, none needing a reference implementation:
+**T1 — the test family, and the boundary as a known quantity.** *Done*, as
+`tests/TestThreeJ.cpp`. Before any algorithm changes. Four groups, none
+needing a reference implementation:
 
 - **the identity**, swept over the triangle space — fat, intermediate and
   stretched, at several degrees — asserting `Σ = 1` where §1's table says it
@@ -201,6 +210,21 @@ algorithm changes. Four groups, none needing a reference implementation:
 after it, `3j.h` has coverage where it had none, and the boundary is a
 documented property rather than something someone rediscovers.
 
+*Two things this document had wrong, both found by writing the tests against
+it.* The gradual decay above, and the closed form at the stretched corner:
+§3's sketch of it as `(−1)^{l1−l2} sqrt((2l1)!(2l2)!/(2l1+2l2+1)!)` is the
+formula for a different corner. At the **fully** stretched symbol every
+factorial cancels and it is simply
+
+```
+(l1  l2  l1+l2 ; l1  l2  −(l1+l2))  =  1 / sqrt(2 l3 + 1)
+```
+
+which the library reproduces to zero absolute difference. That is a much
+stronger test than the one intended, because there is no arithmetic in the
+expected value to be wrong in the same way the code is — and it is the case
+T4's Racah path must reproduce, since the sum there has exactly one term.
+
 **T2 — price the hybrid, per [J3].** An afternoon, and it is a measurement
 rather than an implementation. Racah in log space, written for the experiment
 and not for keeps; compare against the recursion across the triangle space and
@@ -212,14 +236,32 @@ whether they overlap or leave a band uncovered.
 If they overlap, [J3] stands and T3 is small. If they do not, the answer is
 Schulten–Gordon and this plan's §2 is amended rather than followed.
 
-**T3 — [J1]'s self-check.** The identity in `Wigner3jMatrix`'s constructor,
-with the tolerance and the throw. It lands before T4 deliberately: a caller who
-picks the library up between the two gets a refusal where they used to get
-`10¹¹²`, which is a strict improvement even with no second algorithm behind it.
+**T3 — [J1]'s self-check.** *Done.* The identity in `Wigner3jMatrix`'s
+constructor, with the tolerance and the throw. It lands before T4
+deliberately: a caller who picks the library up between the two gets a refusal
+where they used to get `10¹¹²`, which is a strict improvement even with no
+second algorithm behind it.
 
 *The test is that it fires* — a stretched triple at `l = 40` must throw — *and
 that it does not fire* on the whole of the range T1 established as good, which
-is what says the tolerance is not doing damage.
+is what says the tolerance is not doing damage. Both are asserted, and the
+second names every family T1 measured as accurate, plus a triple that is not
+a triangle at all: its table is identically zero by design, so its
+completeness sum is zero and correctly so, and the check must skip it rather
+than refuse it.
+
+*The tolerance is `100 · sqrt(ε)`*, so it follows the precision rather than
+assuming double — `1.5e-6` there, `3.4e-2` in single, `3.3e-8` in long
+double. That accepts the degrading band around `l = 22` to 25 and refuses
+from about 28, which is the line the refined measurement above puts it on.
+The populations it separates are twenty orders apart, so the choice is not
+delicate; where it sits inside the degrading band is the only judgement in
+it.
+
+*What T1's boundary tests became.* They asserted that the completeness sum
+**is not one** at stretched high degree. They now assert that construction
+**throws**, which is the same fact one layer up, and they carry a note saying
+that T4 should invert them.
 
 **T4 — Racah, and the dispatch.** The closed form for one symbol and for a
 table, log-space factorials, and the fallback [J3] describes. The self-check
@@ -230,9 +272,14 @@ triples that failed the identity now pass it, and their values agree with the
 `l₃ = l₁ + l₂` closed form where that applies. The negative assertions of T1
 are inverted in the same commit, which is the visible record of what changed.
 
-**T5 — [J2]'s deletion**, and `examples/wig.cpp` rewritten against the
-library's type so that the public interface is exercised from outside the test
-tree, as every other example is.
+**T5 — [J2]'s deletion.** *Done*, and there were **three** copies of the
+Woodhouse routine in this repository rather than the two §4 counted:
+`GSHTrans/src/3j.h`, `examples/wigner3j.hpp`, and a third written out inline
+inside `examples/wig.cpp`. All three standalone files are gone, replaced by
+`examples/22-wigner-3j.cpp` — a numbered example against the library's own
+types, registered as a test like every other, which is what an example should
+have been doing. It ends by demonstrating the refusal, since that is the
+thing a caller most needs to know about.
 
 ---
 
