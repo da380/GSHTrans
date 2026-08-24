@@ -91,6 +91,20 @@ using Stacks = typename StacksImpl<
 //                          The layered tensor field                         //
 //--------------------------------------------------------------------------//
 
+/**
+ * @brief A tensor field on a radial stack of spheres: one LayeredSpinField
+ * per stored component.
+ *
+ * @details The combinatorics are the flat tensor's, which this type does not
+ * repeat. It adds a radial axis and nothing else, so a component is reached
+ * by multi-index exactly as on the flat type and under the same conditions.
+ *
+ * @tparam _Rank The tensor rank.
+ * @tparam _Symmetry The permutation symmetry of the slots.
+ * @tparam _Reality Whether the tensor is real or complex.
+ * @tparam _Grid The angular grid.
+ * @tparam _Slots The alphabet the slots are drawn from.
+ */
 template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
           TensorReality _Reality, AngularGrid _Grid,
           SlotAlphabet _Slots = AllSlots>
@@ -105,7 +119,7 @@ class LayeredTensorField {
   using GridType = _Grid;  ///< The angular grid this is defined on.
   using Real = typename _Grid::Real;  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
-  using RadialGridType = RadialGrid<Real>;
+  using RadialGridType = RadialGrid<Real>;  ///< The radial grid type.
   using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
 
   /// The flat tensor of the same shape, which owns the combinatorics: the
@@ -118,9 +132,13 @@ class LayeredTensorField {
   using Flat =
       TensorField<Rank, Symmetry, Reality, GridType, ComponentMajor, SlotSet>;
 
+  /** @brief The orbits of the symmetry group, and what each pins. */
   static constexpr auto& Orbits = Flat::Orbits;
+  /** @brief Where each stored component sits, taken from the flat tensor. */
   static constexpr auto& ComponentLayout = Flat::ComponentLayout;
+  /** @brief How many components the tensor has, stored or not. */
   static constexpr Int Components = Flat::Components;
+  /** @brief How many are actually stored, one per orbit. */
   static constexpr Int StoredComponents = Flat::StoredComponents;
 
   /** @brief Whether this holds a component at those slot letters. */
@@ -137,6 +155,12 @@ class LayeredTensorField {
 
   LayeredTensorField() = delete;
 
+  /**
+   * @brief A zero tensor field on the product of the two grids.
+   * @param radialGrid The radii.
+   * @param grid The angular grid, which must carry every upper index from
+   * -Rank to Rank.
+   */
   LayeredTensorField(RadialGridType radialGrid, GridType grid)
       : _stacks{Build(radialGrid, grid,
                       std::make_index_sequence<
@@ -165,6 +189,7 @@ class LayeredTensorField {
     return std::get<static_cast<std::size_t>(SlotOf<Alphas...>())>(_stacks);
   }
 
+  /// The same, read-only.
   template <Int... Alphas>
   requires Writable<Alphas...>
   const auto& ComponentStack() const {
@@ -243,6 +268,12 @@ class LayeredTensorField {
 //                        The layered tensor expansion                       //
 //--------------------------------------------------------------------------//
 
+/**
+ * @brief The spectral counterpart of LayeredTensorField: one
+ * LayeredSpinExpansion per stored component.
+ *
+ * @copydetails LayeredTensorField
+ */
 template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
           TensorReality _Reality, AngularGrid _Grid,
           SlotAlphabet _Slots = AllSlots>
@@ -257,16 +288,22 @@ class LayeredTensorExpansion {
   using GridType = _Grid;  ///< The angular grid this is defined on.
   using Real = typename _Grid::Real;  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
-  using RadialGridType = RadialGrid<Real>;
+  using RadialGridType = RadialGrid<Real>;  ///< The radial grid type.
   using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
 
+  /** @brief The flat tensor of the same shape, which owns the
+   * combinatorics. */
   using Flat =
       TensorField<Rank, Symmetry, Reality, GridType, ComponentMajor, SlotSet>;
+  /** @brief The spatial tensor this expands. */
   using FieldType =
       LayeredTensorField<Rank, Symmetry, Reality, GridType, SlotSet>;
 
+  /** @brief The orbits of the symmetry group, and what each pins. */
   static constexpr auto& Orbits = Flat::Orbits;
+  /** @brief Where each stored component sits, taken from the flat tensor. */
   static constexpr auto& ComponentLayout = Flat::ComponentLayout;
+  /** @brief How many components are actually stored, one per orbit. */
   static constexpr Int StoredComponents = Flat::StoredComponents;
 
   /** @brief Whether this holds a component at those slot letters. */
@@ -279,6 +316,12 @@ class LayeredTensorExpansion {
 
   LayeredTensorExpansion() = delete;
 
+  /**
+   * @brief A zero expansion on the product of the two grids.
+   * @param radialGrid The radii.
+   * @param grid The angular grid the coefficients belong to.
+   * @param lMax The largest degree stored.
+   */
   LayeredTensorExpansion(RadialGridType radialGrid, GridType grid, Int lMax)
       : _stacks{Build(radialGrid, grid, lMax,
                       std::make_index_sequence<
@@ -299,25 +342,28 @@ class LayeredTensorExpansion {
   /** @brief The largest degree stored. */
   auto MaxDegree() const { return _lMax; }
 
+  /// The whole radial stack of one stored component's coefficients, as a
+  /// LayeredSpinExpansion.
   template <Int... Alphas>
   requires Writable<Alphas...>
   auto& ComponentStack() {
     return std::get<static_cast<std::size_t>(SlotOf<Alphas...>())>(_stacks);
   }
 
+  /// The same, read-only.
   template <Int... Alphas>
   requires Writable<Alphas...>
   const auto& ComponentStack() const {
     return std::get<static_cast<std::size_t>(SlotOf<Alphas...>())>(_stacks);
   }
 
-  // The coefficient of any representable component, at one radius.
-  //
-  // This is TensorExpansion::Coefficient with a radius index threaded through
-  // it, and the same four cases: stored, permutation-relative,
-  // reality-relative, or an orbit that vanishes. Degrees below the component's
-  // own |N| return zero, which is what lets the gradient read shifted
-  // components without special-casing the ones that do not exist.
+  /// The coefficient of any representable component, at one radius.
+  ///
+  /// This is TensorExpansion::Coefficient with a radius index threaded
+  /// through it, and the same four cases: stored, permutation-relative,
+  /// reality-relative, or an orbit that vanishes. Degrees below the
+  /// component's own |N| return zero, which is what lets the gradient read
+  /// shifted components without special-casing the ones that do not exist.
   template <Int... Alphas>
   requires(sizeof...(Alphas) == Rank)
   Complex Coefficient(Int i, Int l, Int m) const {

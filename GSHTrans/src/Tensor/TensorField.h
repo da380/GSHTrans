@@ -84,8 +84,9 @@ class TensorField {
   /// why the generalisation is additive: the storage groups by the slot sum,
   /// and the slot sum does not care how many values a slot can take.
   using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
-  using Index = MultiIndex<Rank, SlotSet>;
+  using Index = MultiIndex<Rank, SlotSet>;  ///< The multi-index over those slots.
 
+  /** @brief Whether the samples of one component are contiguous. */
   static constexpr bool IsComponentMajor =
       std::same_as<_Layout, ComponentMajor>;
   using Real = typename _Grid::Real;  ///< The precision.
@@ -96,9 +97,12 @@ class TensorField {
   // Orbits.h, where the switch lives.
   using Scalar = Complex;  ///< The value type: Real when real-valued, Complex otherwise.
 
+  /** @brief The orbits of the symmetry group, and what each pins. */
   static constexpr auto& Orbits =
       TensorOrbits<Rank, Symmetry, Reality, SlotSet>;
+  /** @brief How many components the tensor has, stored or not. */
   static constexpr Int Components = Index::Size;
+  /** @brief How many are actually stored, one per orbit. */
   static constexpr Int StoredComponents = Orbits.storedCount;
 
   /// The buffer's component order, which is **by upper index** and not by flat
@@ -137,15 +141,16 @@ class TensorField {
   /// ten for symmetric rank 3 -- and four for a tangential rank 2, which has
   /// no constrained component at all to contribute the odd one.
   struct Layout {
-    std::array<Int, StoredComponents> flatOfSlot{};
-    std::array<Int, StoredComponents> upperIndexOfSlot{};
-    std::array<bool, StoredComponents> realOfSlot{};
-    std::array<Int, 2 * Rank + 1> firstSlotAt{};
-    std::array<Int, 2 * Rank + 1> countAt{};
-    Int complexCount{};
-    Int realCount{};
+    std::array<Int, StoredComponents> flatOfSlot{};  ///< Flat index of each slot.
+    std::array<Int, StoredComponents> upperIndexOfSlot{};  ///< Upper index of each slot.
+    std::array<bool, StoredComponents> realOfSlot{};  ///< Whether each slot is a pinned real.
+    std::array<Int, 2 * Rank + 1> firstSlotAt{};  ///< First slot of each upper index's group.
+    std::array<Int, 2 * Rank + 1> countAt{};  ///< How many slots that group holds.
+    Int complexCount{};  ///< How many slots are complex fields.
+    Int realCount{};     ///< How many are pinned to a real number.
   };
 
+  /** @brief The layout itself, built at compile time. */
   static constexpr Layout ComponentLayout = [] {
     auto layout = Layout{};
     const auto constrained = [](Int flat) {
@@ -182,12 +187,15 @@ class TensorField {
     return layout;
   }();
 
+  /** @brief How many stored components are complex fields. */
   static constexpr Int ComplexComponents = ComponentLayout.complexCount;
+  /** @brief How many are pinned to a single real number. */
   static constexpr Int RealComponents = ComponentLayout.realCount;
 
   /// The real numbers one grid point of this tensor costs.
   static constexpr Int RealsPerPoint = 2 * ComplexComponents + RealComponents;
 
+  /** @brief The upper index of the component with that flat multi-index. */
   static constexpr Int UpperIndexOfFlat(Int flat) {
     return Index::FromFlat(flat).UpperIndex();
   }
@@ -284,6 +292,11 @@ class TensorField {
 
   TensorField() = delete;
 
+  /**
+   * @brief A zero tensor field on @p grid.
+   * @throws std::invalid_argument if the grid does not carry every upper
+   * index from -Rank to Rank.
+   */
   explicit TensorField(GridType grid)
       : _grid{std::move(grid)},
         _data(static_cast<std::size_t>(ComplexComponents) *
@@ -502,6 +515,13 @@ class TensorField {
     }
   }
 
+  /**
+   * @brief Synthesise every stored component from one coefficient buffer,
+   * batching the components that share an upper index.
+   * @param lMax The largest degree present.
+   * @param in The coefficients, grouped by upper index as the buffer is.
+   * @param policy Whether the transforms may thread.
+   */
   void InverseTransformation(Int lMax, std::span<const Complex> in,
                              Execution policy = Execution::Sequential()) {
     CheckCoefficients(in.size(), lMax);
