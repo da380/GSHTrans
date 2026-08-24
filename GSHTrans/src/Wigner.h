@@ -601,6 +601,7 @@ class Wigner {
       return 0;
     }
   }
+  /** @brief The largest order stored anywhere in the table. */
   auto MaxOrder() const { return _mMax; }
   /** @brief The largest order stored at degree @p l. */
   auto MaxOrder(Int l) const { return std::min(l, _mMax); }

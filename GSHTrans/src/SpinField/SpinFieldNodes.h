@@ -49,7 +49,8 @@ class Binary {
   using Scalar =
       std::invoke_result_t<Op, typename LNode::Scalar, typename RNode::Scalar>;
   using Value =
-      std::conditional_t<RealFloatingPoint<Scalar>, RealValued, ComplexValued>;
+      std::conditional_t<RealFloatingPoint<Scalar>, RealValued,
+                         ComplexValued>;  ///< Whether that scalar is real.
 
   /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex =
@@ -73,6 +74,12 @@ class Binary {
                 "closure lemma violated: a real-valued result away from upper "
                 "index zero");
 
+  /**
+   * @brief Wraps the two operands of a binary operation.
+   * @throws std::invalid_argument if they are not on the same grid. Two
+   * separately built grids with equal parameters are not the same grid: their
+   * samples are different arrays and pairing them elementwise is meaningless.
+   */
   Binary(L&& l, R&& r, Op op = Op{})
       : _l{std::forward<L>(l)}, _r{std::forward<R>(r)}, _op{std::move(op)} {
     // Handle identity, in all build modes. Two separately built grids with
@@ -90,10 +97,12 @@ class Binary {
   /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _l.Grid(); }
 
+  /** @brief The value at the grid point @p iTheta, @p iPhi. */
   Scalar operator[](Int iTheta, Int iPhi) const {
     return _op(_l[iTheta, iPhi], _r[iTheta, iPhi]);
   }
 
+  /** @brief Writes every sample into @p target. */
   template <typename S>
   requires std::convertible_to<Scalar, S>
   void EvaluateInto(std::span<S> target) const {
@@ -110,6 +119,9 @@ class Binary {
 //                                   Unary                                   //
 //--------------------------------------------------------------------------//
 
+/// A unary operation on a spin-weighted node, applied lazily. Its scalar and
+/// value kind are derived from the operation, and its upper index from the
+/// rule, so the reality constraint holds by construction.
 template <typename Op, typename Rule, typename A>
 class Unary {
   using ANode = Node<A>;
@@ -122,7 +134,8 @@ class Unary {
 
   using Scalar = std::invoke_result_t<Op, typename ANode::Scalar>;  ///< The value type: Real when real-valued, Complex otherwise.
   using Value =
-      std::conditional_t<RealFloatingPoint<Scalar>, RealValued, ComplexValued>;
+      std::conditional_t<RealFloatingPoint<Scalar>, RealValued,
+                         ComplexValued>;  ///< Whether that scalar is real.
 
   /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = Rule::template Apply<ANode::UpperIndex>;
@@ -138,16 +151,19 @@ class Unary {
                 "closure lemma violated: a real-valued result away from upper "
                 "index zero");
 
+  /** @brief Wraps the operand of a unary operation. */
   Unary(A&& a, Op op = Op{})
       : _a{std::forward<A>(a)}, _op{std::move(op)} {}
 
   /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _a.Grid(); }
 
+  /** @brief The value at the grid point @p iTheta, @p iPhi. */
   Scalar operator[](Int iTheta, Int iPhi) const {
     return _op(_a[iTheta, iPhi]);
   }
 
+  /** @brief Writes every sample into @p target. */
   template <typename S>
   requires std::convertible_to<Scalar, S>
   void EvaluateInto(std::span<S> target) const {

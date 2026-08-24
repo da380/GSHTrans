@@ -47,10 +47,16 @@ class RadialMajor {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
   using Scalar = typename std::remove_cvref_t<
-      decltype(std::declval<const Stack&>().Data())>::value_type;
+      decltype(std::declval<const Stack&>()
+                   .Data())>::value_type;  ///< The stack's value type.
 
   RadialMajor() = delete;
 
+  /**
+   * @brief Repacks a stack into radial lines.
+   * @param stack The radius-major stack to transpose.
+   * @param policy Whether the transpose may thread.
+   */
   explicit RadialMajor(const Stack& stack,
                        Execution policy = Execution::Sequential())
       : _nR{stack.NumberOfRadii()},
@@ -61,6 +67,7 @@ class RadialMajor {
 
   /** @brief How many radii the stack holds. */
   auto NumberOfRadii() const { return _nR; }
+  /** @brief How many radial lines there are, one per element of a slice. */
   auto NumberOfLines() const { return _lines; }
 
   /// A buffer of the same shape, not transposed from anything. Scratch for an
@@ -82,10 +89,12 @@ class RadialMajor {
     return Data().subspan(Offset(j), static_cast<std::size_t>(_nR));
   }
 
+  /// The same, read-only.
   auto Line(Int j) const {
     return Data().subspan(Offset(j), static_cast<std::size_t>(_nR));
   }
 
+  /** @brief Every line index. */
   auto LineIndices() const {
     return std::ranges::views::iota(Int{0}, _lines);
   }

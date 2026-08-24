@@ -54,14 +54,20 @@ namespace GSHTrans {
 /// prone to overshoot than a global spline.
 class RadialInterpolation {
  public:
+  /** @brief Piecewise linear, which cannot overshoot. */
   static RadialInterpolation Linear() { return RadialInterpolation(Kind::Line); }
+  /** @brief A global cubic spline: smooth, and able to overshoot. */
   static RadialInterpolation CubicSpline() {
     return RadialInterpolation(Kind::Cubic);
   }
+  /** @brief Akima's local scheme, the compromise between the two. */
   static RadialInterpolation Akima() { return RadialInterpolation(Kind::Akima); }
 
+  /** @brief Whether Linear() was asked for. */
   bool IsLinear() const { return _kind == Kind::Line; }
+  /** @brief Whether CubicSpline() was asked for. */
   bool IsCubicSpline() const { return _kind == Kind::Cubic; }
+  /** @brief Whether Akima() was asked for. */
   bool IsAkima() const { return _kind == Kind::Akima; }
 
   /** @brief Compares componentwise. */

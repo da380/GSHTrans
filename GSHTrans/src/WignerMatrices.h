@@ -92,6 +92,15 @@ class WignerMatrices {
     return WignerMatrices(lMax, mMax, nMax, theta, true);
   }
 
+  /**
+   * @brief The whole table, computed at construction.
+   * @param lMax The largest degree.
+   * @param mMax The largest order.
+   * @param nMax The largest upper index.
+   * @param theta The colatitudes.
+   * @param reflected Whether only the non-negative orders are stored, the
+   * rest being reached through Sign(); see Reflected().
+   */
   template <std::ranges::range Range>
   requires RealFloatingPoint<std::ranges::range_value_t<Range>>
   WignerMatrices(Int lMax, Int mMax, Int nMax, Range &&theta,
@@ -150,6 +159,7 @@ class WignerMatrices {
   // match Wigner's exactly, since a grid hands both the same NRange.
   /** @brief The largest degree stored. */
   auto MaxDegree() const { return _lMax; }
+  /** @brief The largest order stored. */
   auto MaxOrder() const { return _mMax; }
 
   /// Zero when reflected, whatever the alphabet: the negative orders are not
@@ -163,6 +173,7 @@ class WignerMatrices {
     }
   }
 
+  /** @brief Whether only the non-negative orders are stored. */
   auto IsReflected() const { return _reflected; }
 
   /// The reflection itself, as one function so that no caller writes the sign
@@ -180,10 +191,12 @@ class WignerMatrices {
   /// Where the mirror of colatitude i lives.
   auto MirrorAngle(Int iTheta) const { return _nTheta - 1 - iTheta; }
 
+  /** @brief Every order stored. */
   auto Orders() const {
     return std::ranges::views::iota(MinOrder(), MaxOrder() + 1);
   }
 
+  /** @brief How many orders are stored. */
   auto NumberOfOrders() const { return MaxOrder() - MinOrder() + 1; }
 
   /** @brief The smallest upper index covered. */
@@ -205,28 +218,32 @@ class WignerMatrices {
     return std::ranges::views::iota(MinUpperIndex(), MaxUpperIndex() + 1);
   }
 
+  /** @brief How many upper indices are covered. */
   auto NumberOfUpperIndices() const {
     return MaxUpperIndex() - MinUpperIndex() + 1;
   }
 
+  /** @brief How many colatitudes the table holds. */
   auto NumberOfAngles() const { return _nTheta; }
 
   /// The lowest degree present at (n, m), and how many there are.
   ///
   /// A d-function vanishes identically unless l >= |n| and l >= |m|, so the
   /// matrix at (n, m) starts at max(|n|, |m|) and its height falls linearly in
-  /// |m|. That is the source of the load imbalance step M4 has to divide work
-  /// for rather than count orders.
+  /// |m|. That is the source of the load imbalance a parallel matrix kernel
+  /// has to divide work for rather than count orders.
   auto MinDegree(Int n, Int m) const {
     assert(std::abs(n) <= _nMax);
     assert(m >= MinOrder() && m <= MaxOrder());
     return std::max(std::abs(n), std::abs(m));
   }
 
+  /** @brief How many degrees are present at @p n and @p m. */
   auto NumberOfDegrees(Int n, Int m) const {
     return _lMax - MinDegree(n, m) + 1;
   }
 
+  /** @brief Every degree present at @p n and @p m. */
   auto Degrees(Int n, Int m) const {
     return std::ranges::views::iota(MinDegree(n, m), _lMax + 1);
   }

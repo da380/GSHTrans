@@ -60,6 +60,7 @@ struct OrbitTable {
 
   /** @brief The tensor rank. */
   static constexpr Int Rank = _Rank;
+  /** @brief How many components there are, stored or not. */
   static constexpr Int Size = MultiIndex<Rank, SlotSet>::Size;
 
   /// For each of the 3^Rank components: the flat index of the component
@@ -67,9 +68,9 @@ struct OrbitTable {
   /// relation conjugates. So
   ///
   ///   T^{flat} = sign[flat] * (conjugate[flat] ? conj : id)(T^{representative[flat]}).
-  std::array<Int, Size> representative{};
-  std::array<Int, Size> sign{};
-  std::array<bool, Size> conjugate{};
+  std::array<Int, Size> representative{};  ///< The component actually stored.
+  std::array<Int, Size> sign{};           ///< The sign relating the two.
+  std::array<bool, Size> conjugate{};     ///< Whether the relation conjugates.
 
   /// Where a component lives in the buffer, or -1 if it is not stored -- either
   /// because another member of its orbit is, or because the orbit is
@@ -78,11 +79,12 @@ struct OrbitTable {
 
   /// The stored components in slot order, and how many there are.
   std::array<Int, Size> stored{};
-  Int storedCount{};
+  Int storedCount{};  ///< How many components are stored.
 
   /// Per component, the constraint its orbit imposes. Constant along an orbit.
   std::array<ComponentConstraint, Size> constraint{};
 
+  /** @brief The upper index of the component with that flat index. */
   constexpr Int UpperIndexOf(Int flat) const {
     return MultiIndex<Rank, SlotSet>::FromFlat(flat).UpperIndex();
   }
@@ -183,16 +185,19 @@ constexpr auto MakeOrbitTable() {
 /// The stored-component table for a tensor: permutation symmetry always, the
 /// reality condition only for a real tensor.
 ///
-/// This is the switch the reality reduction turns on, and turning it on was the whole
-/// of the change to this file. A real tensor's components are related by
+/// This is the switch the reality reduction turns on. A real tensor's
+/// components are related by
 /// T^{-alpha} = (-1)^N conj(T^alpha), so the negation joins the generating set
 /// and the orbits get larger and fewer; a complex tensor has no such relation
 /// and keeps every component of every permutation orbit.
 struct RealTensor {
+  /** @brief The negation joins the generating set. */
   static constexpr bool ReducesOnReality = true;
 };
 
+/// A tensor with no reality relation between its components.
 struct ComplexTensor {
+  /** @brief Every component of every permutation orbit is kept. */
   static constexpr bool ReducesOnReality = false;
 };
 

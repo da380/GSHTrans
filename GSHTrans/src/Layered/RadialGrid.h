@@ -88,12 +88,16 @@ class RadialGrid {
     return std::ranges::views::iota(Int{0}, NumberOfRadii());
   }
 
+  /** @brief Every radius, in increasing order. */
   auto Radii() const { return std::span<const Real>(_impl->radii); }
   /** @brief The quadrature weight at every point. */
   auto Weights() const { return std::span<const Real>(_impl->weights); }
+  /** @brief Whether the grid carries weights, and so can integrate. */
   auto HasWeights() const { return !_impl->weights.empty(); }
 
+  /** @brief The radius at index @p i. */
   Real Radius(Int i) const { return _impl->radii[i]; }
+  /** @brief The quadrature weight at index @p i. */
   Real Weight(Int i) const { return _impl->weights[i]; }
 
   //------------------------------------------------------------------------//
@@ -105,10 +109,12 @@ class RadialGrid {
   /// does when there are none.
   auto HasElements() const { return !_impl->starts.empty(); }
 
+  /** @brief How many elements there are, zero if the grid has none. */
   auto ElementCount() const {
     return HasElements() ? static_cast<Int>(_impl->starts.size()) - 1 : Int{0};
   }
 
+  /** @brief Every element index. */
   auto ElementIndices() const {
     return std::ranges::views::iota(Int{0}, ElementCount());
   }
@@ -116,9 +122,12 @@ class RadialGrid {
   /// Element k holds the radii [ElementStart(k), ElementEnd(k)), which is the
   /// half-open form everything else here uses.
   Int ElementStart(Int k) const { return _impl->starts[k]; }
+  /** @brief One past element @p k's last radius index. */
   Int ElementEnd(Int k) const { return _impl->starts[k + 1]; }
+  /** @brief How many radii element @p k holds. */
   Int ElementSize(Int k) const { return ElementEnd(k) - ElementStart(k); }
 
+  /** @brief Every radius index belonging to element @p k. */
   auto ElementRadiusIndices(Int k) const {
     return std::ranges::views::iota(ElementStart(k), ElementEnd(k));
   }
