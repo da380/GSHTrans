@@ -474,6 +474,93 @@ TEST(GaussLegendreGrid, AcceptsUnalignedCallerStorage) {
   }
 }
 
+//--------------------------------------------------------------------------//
+//     The separation: what SphericalGrid asks of a grid, and nothing more   //
+//--------------------------------------------------------------------------//
+//
+// core-plan.md section 13. The transform lives in SphericalGrid and needs only
+// colatitudes, weights, nPhi and uniform longitudes; GaussLegendreGrid is the
+// quadrature and nothing else. No second grid is shipped to demonstrate that
+// ([C27]'s G3), but the contract the base states has to be exercised, and the
+// cheapest honest way is a fixture that reaches the protected constructor.
+namespace {
+struct ProbeGrid : GSHTrans::SphericalGrid<double, GSHTrans::All,
+                                           GSHTrans::All> {
+  using Base = GSHTrans::SphericalGrid<double, GSHTrans::All, GSHTrans::All>;
+  ProbeGrid(std::ptrdiff_t lMax, std::ptrdiff_t nMax,
+            std::vector<double> coLatitudes, std::vector<double> weights)
+      : Base{lMax,   nMax, std::move(coLatitudes), std::move(weights),
+             FFTWpp::Estimate} {}
+};
+}  // namespace
+
+// The base is complete: handed Gauss-Legendre's own nodes and weights, it
+// answers exactly as GaussLegendreGrid does. That is the check that the
+// separation is faithful rather than merely compiling, and it is stronger
+// than a second grid would be, since any difference is attributable to the
+// move alone.
+TEST(SphericalGrid, IsCompleteWithoutTheQuadratureThatMadeIt) {
+  constexpr auto lMax = std::ptrdiff_t{6};
+  constexpr auto n = std::ptrdiff_t{2};
+  using Grid = GaussLegendreGrid<double, All, All>;
+  using Complex = std::complex<double>;
+
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+
+  auto coLatitudes = std::vector<double>();
+  for (auto theta : grid.CoLatitudes()) coLatitudes.push_back(theta);
+  auto weights = std::vector<double>();
+  for (auto w : grid.CoLatitudeWeights()) weights.push_back(w);
+  auto probe = ProbeGrid(lMax, 2, coLatitudes, weights);
+
+  ASSERT_EQ(probe.FieldSize(), grid.FieldSize());
+  ASSERT_EQ(probe.NumberOfLongitudes(), grid.NumberOfLongitudes());
+
+  auto field = FFTWpp::vector<Complex>(
+      static_cast<std::size_t>(grid.FieldSize()));
+  for (std::size_t j = 0; j < field.size(); ++j) {
+    field[j] = Complex(static_cast<double>(j % 13) / 13,
+                       static_cast<double>(j % 7) / 7);
+  }
+
+  const auto size = static_cast<std::size_t>(grid.CoefficientSize(lMax, n));
+  auto viaGrid = FFTWpp::vector<Complex>(size);
+  auto viaProbe = FFTWpp::vector<Complex>(size);
+  grid.ForwardTransformation(lMax, n, field, viaGrid);
+  probe.ForwardTransformation(lMax, n, field, viaProbe);
+
+  for (std::size_t j = 0; j < size; ++j) {
+    EXPECT_EQ(viaProbe[j], viaGrid[j]) << "coefficient " << j;
+  }
+}
+
+// [C27]'s contract, checked rather than trusted. A grid that gets its nodes
+// wrong otherwise fails inside the Wigner recursion, where the message would
+// be about something else entirely.
+TEST(SphericalGrid, RefusesNodesThatAreNotAQuadrature) {
+  const auto good = std::vector<double>{0.5, 1.2, 2.0};
+  const auto weights = std::vector<double>{1.0, 1.0, 1.0};
+
+  EXPECT_NO_THROW(ProbeGrid(2, 0, good, weights));
+
+  // One weight per node.
+  EXPECT_THROW(ProbeGrid(2, 0, good, std::vector<double>{1.0, 1.0}),
+               std::invalid_argument);
+  // Strictly increasing.
+  EXPECT_THROW(ProbeGrid(2, 0, std::vector<double>{0.5, 2.0, 1.2}, weights),
+               std::invalid_argument);
+  EXPECT_THROW(ProbeGrid(2, 0, std::vector<double>{0.5, 1.2, 1.2}, weights),
+               std::invalid_argument);
+  // Strictly inside (0, pi) -- the condition Interpolate's polar padding
+  // rests on, and where a grid containing the pole would be caught.
+  EXPECT_THROW(ProbeGrid(2, 0, std::vector<double>{0.0, 1.2, 2.0}, weights),
+               std::invalid_argument);
+  EXPECT_THROW(
+      ProbeGrid(2, 0, std::vector<double>{0.5, 1.2, std::numbers::pi_v<double>},
+                weights),
+      std::invalid_argument);
+}
+
 // The grid is a value-semantic handle over shared immutable state
 // (core-plan.md step B). Copying one must not copy the Wigner table, which at
 // production sizes is hundreds of megabytes against a couple for a field.

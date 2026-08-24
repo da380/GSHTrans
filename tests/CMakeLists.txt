@@ -84,7 +84,7 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/Blas.h
   GSHTrans/src/Concepts.h
   GSHTrans/src/GaussLegendreGrid.h
-  GSHTrans/src/GridBase.h
+  GSHTrans/src/SphericalGrid.h
   GSHTrans/src/Indexing.h
   GSHTrans/src/Policies.h
   GSHTrans/src/Tuning.h

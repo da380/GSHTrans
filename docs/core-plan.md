@@ -3389,3 +3389,152 @@ that a machine's answer is worth writing down — and not for the search.
 And the caveat §10 states, which this section does not escape: a tuner
 measures which of the options we have is best on a given machine. It does not
 say whether the option set is the right one.
+
+---
+
+## 13. Separating the grid from the transform
+
+Written 2026-08-24, after an assessment of what implementing Driscoll–Healy
+would take. **DH is not being implemented**, and may never be; the assessment
+is in the session record rather than here, and its conclusion was that the
+computational case is weak — Rexer & Hirt (2015) measure Gauss–Legendre
+outperforming DH at equal precision, because DH needs `2L` latitudes to GL's
+`L`. What the assessment did turn up is that the *separation* is worth having
+on its own, and that is this section.
+
+### 13.1 What was measured, and it is the reason to do this
+
+**`GaussLegendreGrid` is 1722 lines, of which about eleven are actually
+Gauss–Legendre.** Construction of the quadrature, `CoLatitudes()`,
+`CoLatitudeWeights()`, three sites reading `quad.W(iTheta)` in the forward
+kernels, one reading `quad.X(iTheta)` for the generated Wigner path, and
+passing the nodes to the two Wigner constructors. Everything else — both
+Legendre kernels, the Fourier stages, the batch descriptors, chunking,
+threading, the plan cache, the Wigner tables in both layouts, the M6
+reflection — needs only a list of colatitudes, a list of weights, `nPhi`, and
+the fact that the longitudes are uniform from zero.
+
+**Nothing above the transform names the grid.** Seven mentions of
+`GaussLegendreGrid` outside its own header; six are comments and the seventh
+is an include. The field, tensor, expansion and layered layers all go through
+the `AngularGrid` concept, which is the seam that actually works.
+
+**And `GridBase`'s CRTP has exactly one derived class**, which is why it has
+never been under any pressure to be right. It is a base class serving a second
+grid that never arrived.
+
+So the shape of the problem is the opposite of what it looks like. The library
+is already grid-agnostic everywhere except in the one file where the
+abstraction was supposed to live.
+
+### 13.2 Decisions
+
+**[C24] The transform moves to a grid-agnostic class, and
+`GaussLegendreGrid` becomes the quadrature and nothing else.** The new class
+owns what does not depend on which quadrature produced the nodes: the
+degrees, `nPhi`, the colatitudes and weights as data, the policy values, the
+Wigner tables in whichever layout, and every transform entry point. A derived
+grid supplies nodes and weights through a protected constructor and adds no
+data of its own.
+
+*The measurement above is the whole argument.* This is not speculative
+generality: the code is already written to a narrower interface than its file
+layout suggests, and the refactor makes the file layout tell the truth.
+
+**[C25] `GridBase`'s CRTP is retired and its helpers become concrete.** Two
+reasons, and the second is the one that forces it.
+
+It has one derived class, so the indirection buys nothing today. And **the
+CRTP cannot express what this refactor needs**: a base cannot call
+`Derived().CoLatitudes()` from its own constructor, because the derived object
+does not exist yet — and building the Wigner table at construction is exactly
+that call. Keeping the CRTP would mean two-phase initialisation, with a grid
+briefly existing without its table. Once the class owns the nodes itself there
+is nothing left to defer, and `Points()`, `FieldSize()`, `CoefficientSize()`
+and the rest are ordinary member functions.
+
+**[C26] Inheritance with a protected constructor, not composition.** The
+alternative — a `TransformEngine` the grid holds and forwards to — was
+considered and rejected: it means writing and maintaining forty forwarding
+methods, and the grid's public surface would drift from the engine's the first
+time one of them was missed.
+
+*Slicing is the objection to inheritance and it does not bite here*, because a
+derived grid adds no data members. A `GaussLegendreGrid` copied into its base
+loses `ForBand` and nothing else. Recorded rather than left to be discovered.
+
+**[C27] The contract a derived grid meets is stated on the constructor, and
+it is short.** Colatitudes strictly increasing and strictly inside `(0, π)`;
+weights of the same length; both checked. `nPhi` is a defaulted constructor
+argument rather than something the derived grid must supply, since it is about
+resolving orders `|m| ≤ lMax` and not about the quadrature — a scheme that
+needs a particular longitude count passes one.
+
+*The interior-to-`(0, π)` condition is a real constraint and worth stating
+where it will be read.* It is what `Interpolate`'s polar padding rests on
+(`field-algebra-plan.md` §22.1), and it is where DH would have needed
+thinking, since its standard grid contains the pole.
+
+**[C28] The M6 reflection's requirement moves with it, and stays a
+requirement.** The matrix kernel stores non-negative orders only when the
+node set is symmetric about `π/2`, and checks that it is. That check belongs
+to the new class, not to Gauss–Legendre, and a grid whose nodes are not
+symmetric simply does not get the halved table. Stating it here is what stops
+a future grid silently failing the check and nobody knowing why.
+
+### 13.3 The steps
+
+**G1 — the new class, with `GaussLegendreGrid` on top of it.** One commit, and
+it is a move rather than a rewrite: the transform methods are transplanted
+unchanged, the eleven Gauss–Legendre lines stay behind, and `_impl->quad.X(i)`
+and `_impl->quad.W(i)` become indexed reads of the two vectors the base now
+holds.
+
+***The acceptance criterion is that the existing suite passes untouched.***
+That is the same check `field-algebra-plan.md` §18's alphabet generalisation
+used, and it is the right one: this changes no behaviour and no public
+spelling, so any test that has to move is evidence the move was not clean.
+
+*Done, and the criterion was met literally:* **no test file, no example and no
+other library header changed.** `GaussLegendreGrid.h` goes from **1722 lines
+to 153** — the quadrature, `ForBand`, and two `With` overrides that keep the
+derived type — and `SphericalGrid.h` holds the rest together with what
+`GridBase` used to defer.
+
+*Two things the move turned up, neither of them deep.* The old code assigned
+`LegendrePolynomial::GaussQuadrature(n)` to a `Quadrature1D`, relying on an
+implicit conversion from the pair it actually returns; lifting it into a
+function with `auto` did not trigger that, so the construction is now
+explicit. And `With()` had to be overridden in the derived class: the base's
+returns a base, which would silently lose `ForBand`. Both cost a comment.
+
+*What the two new tests are for*, since G3 declines to build a second grid to
+prove the point. `IsCompleteWithoutTheQuadratureThatMadeIt` hands the base
+Gauss-Legendre's own nodes and weights through the protected constructor and
+requires the transform to agree **exactly** with the real grid's — which is a
+stronger check than a second grid would be, because any difference is
+attributable to the move alone. `RefusesNodesThatAreNotAQuadrature` exercises
+[C27]'s contract, including the interior-to-`(0, π)` condition that a grid
+containing the pole would fail.
+
+**G2 — the concept says what it now knows.** *Not done, and deferred rather
+than dropped.* `InterpolateDetails::SeparableAngularGrid` exists because
+`AngularGrid` does not promise the two axes separately, and the new base does
+promise them — so the local concept may be removable. It is left alone here
+because G1's whole claim is that nothing outside the two grid headers moved,
+and this would move something. Worth a few minutes on its own.
+
+**G3 — a second grid is *not* built.** Not now, and the plan does not assume
+one. The test that the separation is real is G1's suite, not a second
+implementation; adding one to prove the point would be building a thing
+nobody asked for.
+
+### 13.4 What this is not
+
+Not a step towards Driscoll–Healy, and the section should not be read as one.
+It is worth doing because a 1722-line file with eleven lines of subject matter
+in it is worth splitting whatever comes next, and because `GridBase` currently
+promises an extensibility it does not provide. If a second grid is ever
+wanted — DH, an equiangular scheme with a better sampling theorem, or a plain
+lat-lon grid for interop — this is what would make it small. If none ever is,
+the file is still honest.

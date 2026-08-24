@@ -8,7 +8,7 @@
 #include "src/Blas.h"
 #include "src/Concepts.h"
 #include "src/GaussLegendreGrid.h"
-#include "src/GridBase.h"
+#include "src/SphericalGrid.h"
 #include "src/Indexing.h"
 #include "src/Policies.h"
 #include "src/Tuning.h"
