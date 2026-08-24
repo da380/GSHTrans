@@ -34,7 +34,7 @@ serve as the oracle §4 hoped for (`3j-plan.md` §1).
 | 3 | specialisations for common objects | **done** as names, §18's T5. The rank-specific *operations* are open; see below |
 | 4 | project structure | **done**, except the `src/` rename, declined |
 | 5 | dependencies | **done** upstream; GaussQuad, FFTWpp and Interpolation all refactored |
-| 6 | Wigner 3-j symbols | **done** -- `3j-plan.md`, T1 to T5. Covered, self-checking, and with Racah as a fallback; T2 found a band neither method reaches, and it is refused rather than answered |
+| 6 | Wigner 3-j symbols | **done** -- `3j-plan.md`, T1 to T6. Schulten-Gordon replaced both earlier schemes; the band neither of them reached is gone, and the working range now extends past l = 1000 |
 | 7 | the `Interpolation` library | **done** -- adopted as an optional dependency, §19.5 [R1]; it answered the hand-over note and §21 records what that changed |
 | 8 | how three-dimensional the 3-D fields are | **done** -- §8A is §19, §8B is §20 |
 | 9 | interpolating a field, as a callable | **done** -- `field-algebra-plan.md` §22, P1 to P5; the radial half was §19's `Resample` |
@@ -1095,17 +1095,26 @@ and things that are waiting.
   costs about a second, which is cheaper than remembering it. `core-plan.md`
   §12.6 states the size at which that reverses.
 
-**Independent of all of it:** the **3-j work** (§6) is **done**. The
-orthogonality test did go in first, as this entry says it should, and it
-turned out to be worth more than a test: it is cheap enough to run at
-construction, so a table that the recursion has lost is now refused rather
-than returned. Racah's closed form covers the near-stretched region the
-recursion is worst at. What is left is a band at intermediate shapes above
-about `l = 80` and fat triangles above about `l = 160` that neither classical
-method reaches; closing it means Schulten-Gordon or exact integer arithmetic,
-and `3j-plan.md` [J4] says that choice should be made together with 6-j.
+**Independent of all of it:** the **3-j work** (§6) is **done**, and went
+further than this entry expected. The orthogonality test went in first, as it
+says it should, and was worth more than a test — cheap enough to run at
+construction. Then Racah's closed form was added as a fallback, and the
+measurement that justified it also found a band neither method could reach.
+So **Schulten-Gordon was implemented and replaced both**: each row recursed
+inward from both ends, matched in the middle, normalised from the unitary
+property. It is better than either predecessor everywhere measured, at 1.1×
+to 1.3× the cost, and the band is gone — cyclic-permutation agreement is
+1e-16 at (200,200,200) and 1e-15 at (1000,1000,1999).
+
+Two things worth carrying forward. The completeness relation stopped being a
+useful runtime check the moment Schulten-Gordon normalised by it, so the check
+is now the **recurrence residual**; and the suite rests on **cyclic-permutation
+invariance**, which is the only thing that caught the one real bug — a phase
+read back from an array element that the rescaling had flushed to zero.
 There was one 3-j code in this repository written out three times; there is
-now one, and it is exercised.
+now one, and it is exercised. 6-j remains unbuilt, and [J4]'s advice about
+deciding it alongside `wigxjpf` is spent, since the 3-j gap it was conditioned
+on is closed.
 
 **No longer on the list, because it is finished:** `core-plan.md`'s efficiency
 work. *This paragraph twice said otherwise and is now retired.* The
