@@ -135,7 +135,7 @@ TEST(TensorAlgebra, ExpressionsComposeWithThePhaseOneAlgebra) {
   const auto& tensor = t;
   auto transposed = Transpose(tensor);
 
-  // The antisymmetric part of one component pair, formed as a phase-1
+  // The antisymmetric part of one component pair, formed as a spin-weighted
   // expression over two tensor expressions. Both terms are at upper index 1,
   // so the subtraction is admissible; had they not been, this would not
   // compile.
@@ -504,7 +504,7 @@ TEST(TensorAlgebra, TheTangentialTraceHasNoRadialTerm) {
 
 // Crossing bundles is done by embedding at the call site and never
 // implicitly, so a product of operands from different alphabets does not
-// compile (field-algebra-plan.md section 18.2 [D10]).
+// compile.
 TEST(TensorAlgebra, ProductsRejectOperandsFromDifferentBundles) {
   static_assert(Multipliable<Tangential1, Tangential1>);
   static_assert(Multipliable<General2, General2>);
@@ -647,7 +647,7 @@ TEST(TensorAlgebra, ProjectingAnEmbeddedTensorGivesItBack) {
   same.template operator()<1, 1>();
 }
 
-// What the pair is for: [D10] says a product across bundles is written by
+// What the pair is for: a product across bundles is written by
 // embedding at the call site, and this is that sentence as code.
 TEST(TensorAlgebra, EmbeddingIsHowAProductCrossesBundles) {
   auto grid = TestGrid();

@@ -108,7 +108,7 @@ static_assert(!AdmitsForward<Grid, Vec<Real>, std::span<const Complex>>);
 static_assert(!AdmitsInverse<Grid, Vec<Complex>, std::span<const Real>>);
 
 // A grid storing only non-negative orders serves real fields alone: the
-// complex path does not compile there, rather than throwing (core-plan step A).
+// complex path does not compile there, rather than throwing.
 static_assert(AdmitsForward<ScalarGrid, Vec<Real>, Vec<Complex>>);
 static_assert(!AdmitsForward<ScalarGrid, Vec<Complex>, Vec<Complex>>);
 static_assert(AdmitsInverse<ScalarGrid, Vec<Complex>, Vec<Real>>);
@@ -122,8 +122,8 @@ TEST(Concepts, CompileTimeSurfaceIsPinned) { SUCCEED(); }
 //                          The batch descriptor                             //
 //--------------------------------------------------------------------------//
 //
-// The layouts of core-plan.md [C9], checked as addresses rather than as
-// accessors: what matters about (count, stride, dist) is where element j of
+// The batch layouts, checked as addresses rather than as accessors: what
+// matters about (count, stride, dist) is where element j of
 // field k actually lands, so the tests enumerate that.
 
 TEST(Batch, ContiguousLaysFieldsEndToEnd) {
@@ -227,16 +227,16 @@ constexpr auto mebibyte = Int{1} << 20;
 }  // namespace
 
 TEST(Chunking, ReproducesTheTwoMeasuredAnchors) {
-  // P2's optimum of eight was measured on a 16 MiB laptop at lMax = 256,
+  // The optimum of eight was measured on a 16 MiB laptop at lMax = 256,
   // running sequentially -- so one thread had the whole cache.
   EXPECT_EQ(Chunking::ForCache(16 * mebibyte).Count(bytesAt256, 1), 8);
 
-  // P8's prediction for a 256 MiB, 64-core machine at full width. The point
+  // the prediction for a 256 MiB, 64-core machine at full width. The point
   // of dividing by the running threads rather than by a fixed per-core figure
   // is that both of these come out right.
   EXPECT_EQ(Chunking::ForCache(256 * mebibyte).Count(bytesAt256, 64), 2);
 
-  // And the collapse P8 warned about, if the same cache is divided by
+  // And the collapse to guard against, if the same cache is divided by
   // hardware threads instead of by the cores actually doing the work.
   EXPECT_EQ(Chunking::ForCache(256 * mebibyte).Count(bytesAt256, 128), 1);
 }
@@ -287,7 +287,7 @@ TEST(Chunking, RejectsPoliciesThatDescribeNothing) {
 // The concept gained the two axes when SphericalGrid took over the transform:
 // grids on this library's terms are separable, so Interpolate's local
 // refinement asking for them separately was describing every grid there is
-// and went away (core-plan.md section 13, G2).
+// and went away.
 //
 // Asserted both ways, because a requirement nothing can fail is decoration. A
 // type carrying everything the concept asked for *before* that change must now

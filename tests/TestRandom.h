@@ -14,13 +14,9 @@
 
 // Seeded random data for the tests.
 //
-// These replace GridBase::RandomComplexCoefficient and
-// GridBase::RandomRealCoefficient, which core-plan.md F12 removed from the
-// library: they were test scaffolding living on a production class, and each
-// seeded a fresh std::random_device per call, so a test that failed could not
-// be rerun on the data that failed it.
-//
-// Everything here is explicit about its seed. Tests draw one seed from
+// Everything here is explicit about its seed, because drawing a fresh
+// std::random_device per call means a test that fails cannot be rerun on the
+// data that failed it. Tests draw one seed from
 // TestSeed(), thread it through, and report it on failure; setting
 // GSHTRANS_TEST_SEED to that value reproduces the run exactly, and setting it
 // to "random" goes back to unseeded exploration.
@@ -75,7 +71,7 @@ void RandomComplexCoefficient(const Grid& grid, Int lMax, Int n, Range& range,
 
 // Fill `range` with the reduced (m >= 0) coefficients of a random real-valued
 // field of degree lMax. There is no upper index: real-valued fields exist only
-// at n = 0 (core-plan.md step A).
+// at n = 0.
 template <typename Grid, std::ranges::range Range>
 requires requires() {
   requires GSHTrans::ComplexFloatingPoint<std::ranges::range_value_t<Range>>;

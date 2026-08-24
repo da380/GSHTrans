@@ -38,7 +38,7 @@ int CheckAdditionTheorem() {
       auto lMin = std::max(std::abs(n), std::abs(np));
       for (auto l = lMin; l <= lMax; l++) {
         // The stored values carry the orthonormal factor sqrt((2l+1)/(4 pi)),
-        // the only normalisation the library offers (core-plan.md step A2), so
+        // the only normalisation the library offers, so
         // sum_m d^l_{nm} d^l_{n'm} = delta_{nn'} (2l+1)/(4 pi). Undo that
         // factor and the check is the addition theorem as written.
         const auto normalisation =

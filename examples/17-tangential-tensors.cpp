@@ -49,7 +49,8 @@ int main() {
 
   // Reality reduces further, and here it reduces further than it does in the
   // general bundle: negation has no fixed point without a zero letter, so
-  // nothing is pinned to a single real number and phase 4's second buffer is
+  // nothing is pinned to a single real number and the reality reduction's
+  // second buffer is
   // empty.
   using RealTangential2 = TangentialRank2Field<Grid>;
   std::cout << "a real rank-2 tensor, reals per point\n"

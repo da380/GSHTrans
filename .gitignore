@@ -17,21 +17,16 @@ docs/*.toc
 docs/*.fdb_latexmk
 docs/*.fls
 
-# Local reference material: open-access papers kept in docs/ while the
-# reference documentation is written. Not ours to redistribute, and not
-# wanted in the history. canonical-components.pdf is ours and is tracked.
-# Papers are ignored by default and our own documents are opted in, so a
-# paper dropped into docs/ later is caught without anyone remembering to.
+# Local reference material: papers kept in docs/ while the documentation is
+# written. Not ours to redistribute, and not wanted in the history. Papers
+# are ignored by default and our own two documents are opted in, so one
+# dropped into docs/ later is caught without anyone remembering to.
 docs/*.pdf
 !docs/canonical-components.pdf
+!docs/gshtrans-reference.pdf
 
-# The same, for reference *source*: SLATEC's 3j routines were read while
-# Schulten-Gordon was implemented (docs/3j-plan.md T6). SLATEC itself is
-# public domain, but the F90 port that circulates is not necessarily, and
-# either way it is not ours and the library derives nothing from it beyond
-# the algorithm, which is the paper's. Keep it locally, out of the history.
+# The same, for reference *source*: Fortran routines read while the 3-j
+# recursion was implemented. Not ours, and the library derives nothing from
+# them beyond the algorithm, which is the paper's.
 docs/*.f
 docs/*.f90
-# wig2.f is Woodhouse's original and predates all of this; it stays.
-!docs/wig2.f
-!docs/gshtrans-reference.pdf

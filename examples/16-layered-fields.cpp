@@ -53,7 +53,8 @@ int main() {
             << stack.FieldSize() << ", total " << stack.Size() << "\n";
 
   // Slice(i) is a view over the stack's own storage, so writing through it
-  // writes the stack. It is an ordinary phase-1 node: the index algebra and
+  // writes the stack. It is an ordinary spin-weighted node: the index
+  // algebra and
   // the lazy evaluation lift with no extra machinery.
   for (auto i : stack.RadiusIndices()) {
     const auto r = radial.Radius(i);

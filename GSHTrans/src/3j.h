@@ -213,8 +213,7 @@ inline std::pair<int, int> OrderRange(int l2, int l3, int m1) {
  *
  * Schulten, K. and Gordon, R. G., J. Math. Phys. 16 (1975) 1961, and the
  * companion at 1971 for the semiclassical picture behind the turning points.
- * The control flow was checked against SLATEC's DRC3JM; docs/3j-plan.md T6
- * records what was changed and why.
+ * The control flow was checked against SLATEC's DRC3JM.
  */
 template <NumericConcepts::Real T>
 int SchultenGordonRow(int l1, int l2, int l3, int m1, std::span<T> g) {
@@ -289,7 +288,7 @@ int SchultenGordonRow(int l1, int l2, int l3, int m1, std::span<T> g) {
   // degree spans a dynamic range of 1e201, so the rescaling above flushes the
   // tail to zero and the sign with it, and whole rows come out negated with
   // every magnitude correct to rounding. Neither the completeness relation
-  // nor the recurrence residual can see that ([J8]).
+  // nor the recurrence residual can see that.
   auto tailSign = (g[n - 1] >= 0) ? T{1} : T{-1};
 
   if (last < n - 1) {
@@ -370,7 +369,7 @@ T ResidualTolerance(int steps) {
 /**
  * @brief Checks a completed row against the recurrence that defines it.
  * @details This is the runtime self-check, and it replaced the completeness
- * relation when the algorithm changed ([J6]). Completeness was the right
+ * relation when the algorithm changed. Completeness was the right
  * check for a one-directional recursion seeded from a closed form; it is
  * nearly worthless against Schulten-Gordon, which normalises every row by
  * that very identity, so the sum is one by construction whatever the row
@@ -468,7 +467,7 @@ void Wigner3jPlane(int l1, int l2, int l3, std::span<T> table) {
           "Wigner3jMatrix: the recurrence is not satisfied for degrees (" +
           std::to_string(l1) + ", " + std::to_string(l2) + ", " +
           std::to_string(l3) + ") at m1 = " + std::to_string(m1) +
-          ". The values are not to be trusted. See docs/3j-plan.md.");
+          ". The values are not to be trusted.");
     }
 
     for (auto k = 0; k < n; ++k) {

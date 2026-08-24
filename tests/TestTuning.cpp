@@ -20,7 +20,7 @@ using Grid = GaussLegendreGrid<Real, All, All>;
 auto TestGrid(Int lMax, Int nMax) { return Grid(lMax, nMax, FFTWpp::Estimate); }
 
 //--------------------------------------------------------------------------//
-//                     W2: the timing core's discipline                      //
+//                     The timing core's discipline                        //
 //--------------------------------------------------------------------------//
 
 TEST(Tuning, BestSecondsTakesTheBestWindowAndWarmsUpFirst) {
@@ -35,12 +35,12 @@ TEST(Tuning, BestSecondsTakesTheBestWindowAndWarmsUpFirst) {
 }
 
 //--------------------------------------------------------------------------//
-//                     W3: what tuning the chunk promises                    //
+//                    What tuning the chunk promises                       //
 //--------------------------------------------------------------------------//
 
-// The acceptance criterion of core-plan.md section 12.5, and it is
-// deliberately not "it finds the optimum". There may not be one resolvable --
-// section 8 records the lMax = 128 peak swapping between two runs of the same
+// The acceptance criterion, and it is deliberately not "it finds the
+// optimum". There may not be one resolvable -- the lMax = 128 peak has been
+// seen to swap between two runs of the same
 // binary -- so the property a caller needs, and the only one that is
 // testable, is that tuning never returns something worse than doing nothing.
 //
@@ -108,7 +108,7 @@ TEST(Tuning, ATunedGridAnswersIdentically) {
   }
 }
 
-// [C19]: Tune hands back values rather than a configured grid, so nothing is
+// Tune hands back values rather than a configured grid, so nothing is
 // substituted behind the caller's back. The grid it was asked about is
 // untouched, and using the answer is the caller's own step.
 TEST(Tuning, LeavesTheGridItWasAskedAboutAlone) {
@@ -155,10 +155,10 @@ TEST(Tuning, RefusesAnEmptyBatch) {
 }
 
 //--------------------------------------------------------------------------//
-//                    W5: choosing between the two kernels                   //
+//                  Choosing between the two kernels                       //
 //--------------------------------------------------------------------------//
 
-// [C19]: every way the matrix kernel can be unavailable is named rather than
+// every way the matrix kernel can be unavailable is named rather than
 // collapsing silently to "use the loop". Generated values are one of the
 // three, and the only one testable in every build.
 TEST(Tuning, RefusesTheMatrixKernelForGeneratedValues) {

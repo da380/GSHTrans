@@ -53,7 +53,7 @@ TEST(Wigner, CheckConventionLongDouble) {
   EXPECT_EQ(CheckWignerConvention<long double>(), 0);
 }
 
-// The seed row and the boundary orders come from recursions (T11); the closed
+// The seed row and the boundary orders come from recursions; the closed
 // forms they replaced are the definition they answer to.
 TEST(Wigner, CheckBoundaryRecursionDouble) {
   EXPECT_LT(CheckWignerBoundary<double>(),
@@ -98,9 +98,9 @@ TEST(Wigner, SingleMaximumUpperIndexAccess) {
   CheckSingleUpperIndexAccess(-5);
 }
 
-// -- The transform-major layout (core-plan.md section 11, step M1).
+// -- The transform-major layout.
 //
-// The claim M1 has to establish is that [n][m][l][theta] holds the same values
+// The claim to establish is that [n][m][l][theta] holds the same values
 // as [n][theta][(l, m)], value for value and bit for bit. Bit-identity is the
 // right standard rather than a tolerance: both layouts run the same recursion
 // through WignerDetails::ComputeBlock with the same seeds and the same
@@ -203,7 +203,8 @@ TEST(WignerMatrices, AgreesForNonNegativeOrders) {
 }
 
 // The matrix at (n, m) starts at degree max(|n|, |m|) and its height falls
-// linearly in |m|. That is the load imbalance step M4 has to divide work for,
+// linearly in |m|. That is the load imbalance a parallel kernel has to
+// divide work for,
 // so it is worth pinning as a property rather than leaving it implied by the
 // agreement test.
 TEST(WignerMatrices, MatrixHeightFallsWithOrder) {
@@ -228,7 +229,7 @@ TEST(WignerMatrices, MatrixHeightFallsWithOrder) {
   EXPECT_EQ(matrices.NumberOfDegrees(0, -lMax), 1);
 }
 
-// -- The reflected layout (core-plan.md section 11, step M6).
+// -- The reflected layout.
 //
 // D&T (C.118) in this library's stored values reads
 //

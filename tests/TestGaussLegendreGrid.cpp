@@ -169,8 +169,7 @@ TEST(GaussLegendreGrid, RejectsUnsupportedTransformRequests) {
 }
 
 // nPhi must exceed 2 * lMax so that the orders m = +-lMax are separate
-// discrete modes, and should be a length FFTW transforms quickly
-// (core-plan.md F2, step D).
+// discrete modes, and should be a length FFTW transforms quickly.
 static_assert(FastFFTSize(1) == 1);
 static_assert(FastFFTSize(2) == 2);
 static_assert(FastFFTSize(11) == 11);
@@ -264,7 +263,7 @@ TEST(GaussLegendreGrid, ForBandGivesRequestedHeadroom) {
 
 // The colatitude loop accumulates, so out had to arrive zeroed -- an unstated,
 // unchecked precondition that every caller met by accident. Transforming twice
-// into one buffer doubled the answer (core-plan.md F1).
+// into one buffer doubled the answer.
 TEST(GaussLegendreGrid, ForwardTransformOwnsItsOutputBuffer) {
   using Real = double;
   using Complex = std::complex<Real>;
@@ -307,7 +306,7 @@ TEST(GaussLegendreGrid, ForwardTransformOwnsItsOutputBuffer) {
 }
 
 // Size mismatches were assert-only, so a short output range was a silent heap
-// overflow under NDEBUG (core-plan.md F5). This test is meaningful only
+// overflow under NDEBUG. This test is meaningful only
 // because the suite is run in Release as well as Debug.
 TEST(GaussLegendreGrid, RejectsMismatchedRangeSizes) {
   using Real = double;
@@ -349,7 +348,7 @@ TEST(GaussLegendreGrid, RejectsMismatchedRangeSizes) {
 }
 
 // The FFT plans are executed on the grid's own aligned buffers, never on
-// caller storage (core-plan.md F3), so a caller may hand over any storage
+// caller storage, so a caller may hand over any storage
 // aligned for its scalar type -- which is what the field layer promises about
 // slice targets. Here the ranges are offset views into plain std::vectors,
 // chosen so that they are not on a 64-byte boundary: fftw_malloc'd storage is,
@@ -477,10 +476,10 @@ TEST(GaussLegendreGrid, AcceptsUnalignedCallerStorage) {
 //     The separation: what SphericalGrid asks of a grid, and nothing more   //
 //--------------------------------------------------------------------------//
 //
-// core-plan.md section 13. The transform lives in SphericalGrid and needs only
-// colatitudes, weights, nPhi and uniform longitudes; GaussLegendreGrid is the
-// quadrature and nothing else. No second grid is shipped to demonstrate that
-// ([C27]'s G3), but the contract the base states has to be exercised, and the
+// The transform lives in SphericalGrid and needs only colatitudes, weights,
+// nPhi and uniform longitudes; GaussLegendreGrid is the quadrature and
+// nothing else. No second grid is shipped to demonstrate that, but the
+// contract the base states has to be exercised, and the
 // cheapest honest way is a fixture that reaches the protected constructor.
 namespace {
 struct ProbeGrid
@@ -533,7 +532,8 @@ TEST(SphericalGrid, IsCompleteWithoutTheQuadratureThatMadeIt) {
   }
 }
 
-// [C27]'s contract, checked rather than trusted. A grid that gets its nodes
+// The derived grid's contract, checked rather than trusted. A grid that
+// gets its nodes
 // wrong otherwise fails inside the Wigner recursion, where the message would
 // be about something else entirely.
 TEST(SphericalGrid, RefusesNodesThatAreNotAQuadrature) {
@@ -560,21 +560,21 @@ TEST(SphericalGrid, RefusesNodesThatAreNotAQuadrature) {
       std::invalid_argument);
 }
 
-// The grid is a value-semantic handle over shared immutable state
-// (core-plan.md step B). Copying one must not copy the Wigner table, which at
+// The grid is a value-semantic handle over shared immutable state. Copying
+// one must not copy the Wigner table, which at
 // production sizes is hundreds of megabytes against a couple for a field.
 TEST(GaussLegendreGrid, IsAValueSemanticHandle) {
   using Grid = GaussLegendreGrid<double, All, All>;
 
   static_assert(!std::is_default_constructible_v<Grid>,
-                "a grid without a quadrature is not a grid (F4)");
+                "a grid without a quadrature is not a grid");
   static_assert(std::copy_constructible<Grid>);
   static_assert(std::is_copy_assignable_v<Grid>);
   static_assert(std::is_nothrow_move_constructible_v<Grid>);
-  // Small and trivially cheap to copy, which is the property F9 is about:
+  // Small and trivially cheap to copy, which is the property that matters:
   // copying a grid used to copy hundreds of megabytes of Wigner table.
   //
-  // It used to be exactly a shared_ptr. [C18] added the chunking policy and
+  // It used to be exactly a shared_ptr, before the chunking policy and
   // the planner flag beside it -- read per call, deciding nothing about the
   // table -- so that changing either is a pointer copy rather than a table
   // rebuild. That grows the handle by a few words and changes nothing about
@@ -648,8 +648,8 @@ TEST(GaussLegendreGrid, IsUsableThroughAConstHandle) {
             grid.FieldSize());
 }
 
-// Plans and work buffers are made once per thread per shape and kept
-// (core-plan.md step E). Two things that must stay true: a grid shared between
+// Plans and work buffers are made once per thread per shape and kept.
+// Two things that must stay true: a grid shared between
 // threads still gives every thread the right answer, and a thread that uses
 // several grids gets the right buffers for each.
 TEST(GaussLegendreGrid, OneGridServesManyThreads) {
@@ -736,7 +736,7 @@ TEST(GaussLegendreGrid, OneThreadServesManyGrids) {
   }
 }
 
-// Threading (core-plan.md step H). The forward transform divides the
+// Threading. The forward transform divides the
 // colatitudes between threads and reduces private partial sums; the inverse
 // divides them and writes disjoint rows.
 TEST(GaussLegendreGrid, ParallelAgreesWithSequential) {
@@ -852,7 +852,7 @@ TEST(GaussLegendreGrid, ExecutionPolicyDefaultsToSequential) {
 
 // The round-trip tests draw their grid, degree, upper index and coefficients
 // from one seeded generator, and report the seed so that a failure can be
-// reproduced with GSHTRANS_TEST_SEED (core-plan.md F12).
+// reproduced with GSHTRANS_TEST_SEED.
 TEST(GaussLegendreGrid, Coeff2CoeffDoubleR2C) {
   const auto seed = GSHTransTest::TestSeed();
   auto gen = GSHTransTest::MakeGenerator(seed);
@@ -888,7 +888,7 @@ TEST(GaussLegendreGrid, Coeff2CoeffLongDoubleC2C) {
 // express. Exactly, not approximately -- batching changes the order in which
 // the Wigner values are fetched but not the order in which anything is summed,
 // so any difference at all would mean the loop had been restructured rather
-// than widened (core-plan.md step F, tier 1).
+// than widened.
 
 namespace {
 
@@ -907,7 +907,7 @@ auto BatchField(std::ptrdiff_t size, std::ptrdiff_t k) {
 
 }  // namespace
 
-// [C18]: the chunking policy and the planner flag live on the handle, not
+// the chunking policy and the planner flag live on the handle, not
 // beside the table, so a grid with a different chunk is a pointer copy and
 // shares one table. Two properties make that safe, and both are asserted
 // rather than argued.
@@ -1017,7 +1017,7 @@ TEST(BatchedTransform, InterleavedBatchMatchesSeparateCalls) {
 
   // Point-major storage five components wide, of which the call touches
   // three: this is the layout the field plan would otherwise have had to
-  // repack before transforming ([C9]).
+  // repack before transforming.
   constexpr auto width = std::ptrdiff_t{5};
   auto fields = FFTWpp::vector<BatchComplex>(width * fieldSize);
   const auto sentinel = BatchComplex{-7.0, 11.0};
@@ -1271,7 +1271,7 @@ TEST(BatchedTransform, ChunkingPolicyIsCarriedByTheGrid) {
 //--------------------------------------------------------------------------//
 //
 // A grid asked for WignerValues::Generated() builds no table and runs the
-// recursion inside each transform instead (core-plan.md step F', T11).
+// recursion inside each transform instead.
 //
 // The oracle throughout is the stored grid, and the comparison is **exact**.
 // This is the same recursion, seeded the same way, evaluated in the same order
@@ -1500,7 +1500,7 @@ TEST(GeneratingGrid, BuildsNoTableAndForBandCarriesThePolicy) {
 //
 // Serving both with the thread count starved the inverse -- a chunk of one at
 // lMax = 256 and k = 8 on eight threads, where the whole batch fits, which
-// measured 2.2x slower (core-plan.md section 10).
+// measured 2.2x slower.
 TEST(BatchedTransform, ChunkRuleCountsCopiesNotThreads) {
   // One field's coefficients at lMax = 256, n = 2.
   constexpr auto bytesPerField = std::ptrdiff_t{66045} * 16;
@@ -1510,8 +1510,8 @@ TEST(BatchedTransform, ChunkRuleCountsCopiesNotThreads) {
       << "a shared block should be allowed a wider chunk than a private one";
 
   // Both of the anchors the formula was built on, and both are
-  // forward-shaped: P2's optimum of eight was measured sequentially, so one
-  // copy had the whole cache, and P8's prediction of two is sixty-four private
+  // forward-shaped: the optimum of eight was measured sequentially, so one
+  // copy had the whole cache, and the prediction of two is sixty-four private
   // accumulators sharing 256 MiB.
   EXPECT_EQ(laptop.Count(bytesPerField, 1), 8);
   EXPECT_EQ(
@@ -1523,7 +1523,7 @@ TEST(BatchedTransform, ChunkRuleCountsCopiesNotThreads) {
   EXPECT_EQ(Chunking::Fixed(5).Count(bytesPerField, 64), 5);
 }
 
-// -- The matrix kernel's Fourier stage (core-plan.md section 11, step M2).
+// -- The matrix kernel's Fourier stage.
 //
 // Section 11 asked for this to be checked against the loop kernel's own FFT
 // stage. It is checked against a naive DFT written out here instead, which is
@@ -1669,7 +1669,8 @@ TEST(FourierStage, BlockingChangesNothing) {
 
 // The caller's stride enters at PackRow and nowhere else, so an interleaved
 // batch -- tensor components stored point by point -- must give the same
-// answer as the same fields laid end to end. This is the [C9] path, and it is
+// answer as the same fields laid end to end. This is the interleaved path,
+// and it is
 // the one that would break silently if the pack were written against
 // contiguity.
 TEST(FourierStage, InterleavedBatchMatchesContiguous) {
@@ -1705,7 +1706,8 @@ TEST(FourierStage, InterleavedBatchMatchesContiguous) {
   }
 }
 
-// A sub-range of a batch, which is what the chunking of step M3 will hand it.
+// A sub-range of a batch, which is what the matrix kernel's chunking hands
+// it.
 TEST(FourierStage, TransformsASubRangeOfTheBatch) {
   constexpr auto lMax = std::ptrdiff_t{4};
   constexpr auto count = std::ptrdiff_t{4};
@@ -1814,9 +1816,9 @@ TEST(FourierStage, TheAliasingGuardChangesNoAnswers) {
   }
 }
 
-// -- The matrix kernel (core-plan.md section 11, step M3).
+// -- The matrix kernel.
 //
-// [C12] keeps both kernels permanently, and this is what that buys: the same
+// Both kernels are kept permanently, and this is what that buys: the same
 // inputs through two independent arrangements of the same sum. A GEMM sums in
 // whatever order its kernel chooses, so this cannot be a bit comparison the
 // way the batched-against-unbatched tests are -- but to a tolerance it checks
@@ -1909,7 +1911,7 @@ TEST(MatrixKernel, ForwardAgreesForARealField) {
   CheckKernelsAgreeForward<Grid, double>(12, 12, 0, 4, 1e-13);
 }
 
-// A grid that stores only m >= 0 -- the real scalar grid of [C1] -- has a
+// A grid that stores only m >= 0 -- the real scalar grid -- has a
 // different Wigner layout again, since its matrices exist only at
 // non-negative orders. Worth its own case because everything above runs on a
 // grid holding all orders and merely declining to use half of them.
@@ -2073,7 +2075,7 @@ TEST(MatrixKernel, RoundTripsOnItsOwn) {
 #endif  // GSHTRANS_HAVE_BLAS
 
 #ifdef GSHTRANS_HAVE_BLAS
-// Threading over orders (core-plan.md section 11, step M4).
+// Threading over orders.
 //
 // The orders write disjoint output, so a threaded run must give the *same*
 // answer as a sequential one -- not a close one. Bit-exact is the right

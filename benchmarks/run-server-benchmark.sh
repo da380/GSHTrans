@@ -7,22 +7,25 @@
 #
 # Everything lands in one text file, which is the thing to send back.
 #
-# What this exists to settle (core-plan.md):
+# What this exists to settle:
 #
-#   [C11]  Step H threads the transform over colatitudes, with a private
-#          accumulator per thread in the forward direction. That was measured
-#          to eight threads on a laptop and is predicted not to survive
-#          64-128, because the accumulators become the dominant memory traffic
-#          and the colatitude axis is only lMax + 1 long. The alternatives --
-#          m-block threading, threading over the batch axis, a two-dimensional
-#          split -- cannot be chosen without these numbers, and choosing on
-#          laptop numbers would repeat the error section 9 records.
+#   threads
+#          The transform threads over colatitudes, with a private accumulator
+#          per thread in the forward direction. That was measured to eight
+#          threads on a laptop and is predicted not to survive 64-128, because
+#          the accumulators become the dominant memory traffic and the
+#          colatitude axis is only lMax + 1 long. The alternatives -- m-block
+#          threading, threading over the batch axis, a two-dimensional split
+#          -- cannot be chosen without these numbers, and choosing on laptop
+#          numbers would repeat an error already made once.
 #
-#   step H The lMax = 256 shortfall (2.7x against 4.2x at 128) had two
-#          unseparated candidates. T10 removed one of them, below the laptop's
-#          noise floor. The fwd/inv column separates the other.
+#   scaling
+#          The lMax = 256 shortfall (2.7x against 4.2x at 128) had two
+#          unseparated candidates. One of them has since gone, below the
+#          laptop's noise floor. The fwd/inv column separates the other.
 #
-#   step F P8 sizes a transform's chunk as perCoreL3 / (2 * 16 * nCoefficients).
+#   chunk  The heuristic sizes a transform's chunk as
+#          perCoreL3 / (2 * 16 * nCoefficients).
 #          The header records this machine's per-core L3, which is the input.
 #
 #   NUMA   Not yet in the plan, and testable here for the first time. The
@@ -76,11 +79,12 @@ echo "Build"
 echo "=============================================================================="
 #
 # Release is -O3 -DNDEBUG. NDEBUG only turns off the point-index asserts; the
-# transform's size checks have thrown in every build mode since T4, so nothing
+# transform's size checks throw in every build mode, so nothing
 # that guards correctness is being compiled out.
 #
-# -march=native, because the decisions these numbers feed -- step F's chunk
-# size, [C11]'s decomposition -- are decisions about this machine, so it should
+# -march=native, because the decisions these numbers feed -- the chunk size,
+# the threading decomposition -- are decisions about this machine, so it
+# should
 # be compiled the way it will be deployed. The one machine where that is not
 # obviously right is a Skylake-SP or Cascade Lake Xeon, where heavy AVX-512
 # pulls the clock down and buys nothing for load/store-bound work; if lscpu
@@ -202,4 +206,5 @@ echo "==========================================================================
 echo
 echo "Optional, and worth one run if the machine is idle and has the memory:"
 echo "  $binary huge        # lMax = 1024, a 43 GB table, ~10 minutes"
-echo "It is the only point far enough past last-level cache to speak to step F'."
+echo "It is the only point far enough past last-level cache to speak to"
+echo "generated Wigner values."

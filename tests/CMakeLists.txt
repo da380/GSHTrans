@@ -71,7 +71,7 @@ add_executable(TestRealFieldSymmetry
                TestRealFieldSymmetry.cpp)
 target_link_libraries(TestRealFieldSymmetry PRIVATE GSHTrans gtest_main)
 
-# Every core header must compile on its own, and twice (core-plan.md F10).
+# Every core header must compile on its own, and twice.
 # One translation unit per header, generated at configure time.
 #
 # The list is now every header the library ships, plus the umbrella module

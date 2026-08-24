@@ -22,9 +22,9 @@
 // This matters because d^l_{mN} = (-1)^{N-m} d^l_{Nm}: the two candidate
 // conventions differ by a sign on exactly those entries with N - m odd, and
 // nothing in the class's indexing distinguishes them. The convention becomes
-// observable in stored data at phase 4 of the field-algebra plan (the reality
-// phase (-1)^N over an orbit of stored components), so a silent transposition
-// here would surface as wrong numbers a long way from its cause.
+// observable once the reality reduction sums a phase (-1)^N over an orbit of
+// stored components, so a silent transposition here would surface as wrong
+// numbers a long way from its cause.
 //
 // The l = 1 row of D&T (C.115) is written out in full below. It discriminates:
 // the four entries with N - m odd change sign under transposition. The N = 0

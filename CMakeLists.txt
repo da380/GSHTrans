@@ -1,9 +1,8 @@
 # 3.24, not the 3.20 this declared until now. Every dependency below is
 # declared with FetchContent_Declare(... FIND_PACKAGE_ARGS), which is a 3.24
 # feature, so a 3.20 configure never worked -- it simply failed later and less
-# clearly. field-algebra-plan.md section 19.4 recorded this as a known
-# one-line defect; raising the floor does not break anyone who was working,
-# because nobody between 3.20 and 3.23 was.
+# clearly. Raising the floor does not break anyone who was working, because
+# nobody between 3.20 and 3.23 was.
 cmake_minimum_required(VERSION 3.24)
 
 project(GSHTrans
@@ -106,7 +105,7 @@ FetchContent_MakeAvailable(NumericConcepts GaussQuad FFTWpp)
 # Nothing angular wants a one-dimensional interpolator: the transform, the
 # index algebra and the surface gradient are complete without it, and so are
 # all three ready-made radial derivatives, which are self-contained by
-# design (field-algebra-plan.md section 19.5 [R4]). What it buys is
+# design. What it buys is
 # resampling a layered field onto a different radial grid, where the whole
 # menu of schemes comes for the price of a policy argument.
 #
@@ -116,7 +115,7 @@ FetchContent_MakeAvailable(NumericConcepts GaussQuad FFTWpp)
 #
 # Tracking main, like the three above. Interpolation's own README asks
 # consumers to pin a reviewed commit, which is right for a stranger and wrong
-# for four libraries with one author that move together (section 19.5 [R2]).
+# for four libraries with one author that move together.
 option(GSHTRANS_WITH_INTERPOLATION
        "Radial resampling, built on da380/Interpolation" ON)
 
@@ -129,7 +128,7 @@ if(GSHTRANS_WITH_INTERPOLATION)
   FetchContent_MakeAvailable(Interpolation)
 endif()
 
-# The GEMM behind the matrix transform kernel (core-plan.md section 11 [C14]).
+# The GEMM behind the matrix transform kernel.
 #
 # Found and not fetched, unlike the four above, because BLAS is neither
 # header-only nor ours: a system OpenBLAS, MKL or Accelerate is what a caller
@@ -149,8 +148,7 @@ endif()
 # A note for whoever links this against a threaded BLAS: the matrix kernel
 # threads over orders itself, so the BLAS must be single-threaded when it
 # does. A BLAS on the same OpenMP runtime gets that for free; one with its own
-# pthread pool needs OPENBLAS_NUM_THREADS=1 or its equivalent. See section 11,
-# step M4.
+# pthread pool needs OPENBLAS_NUM_THREADS=1 or its equivalent.
 set(GSHTRANS_WITH_BLAS AUTO CACHE STRING
     "Matrix transform kernel, built on a system BLAS (AUTO, ON, OFF)")
 set_property(CACHE GSHTRANS_WITH_BLAS PROPERTY STRINGS AUTO ON OFF)
@@ -247,8 +245,7 @@ target_include_directories(GSHTrans INTERFACE
 # the three dependencies -- FFTWpp and GaussQuad -- carried no install rules
 # at all, so a config file calling find_dependency on them would have produced
 # a package that fails at configure time. Both now ship packages of their own,
-# which is what unblocked this; see docs/FFTWpp-for-GSHTrans.md and
-# docs/GaussQuad-for-GSHTrans.md.
+# which is what unblocked this.
 #
 # Consumption by add_subdirectory or FetchContent still works and is
 # unaffected.

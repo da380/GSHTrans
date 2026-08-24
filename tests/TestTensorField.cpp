@@ -110,7 +110,7 @@ TEST(TensorField, ComponentsAreSpinWeightedNodes) {
   static_assert(SpinWeighted<decltype(t.Component<1, 0>())>);
   static_assert(SpinWeighted<decltype(constT.Component<1, 0>())>);
 
-  // And they participate in the phase-1 algebra like any other node. The
+  // And they participate in the spin-field algebra like any other node. The
   // product of two components lands at the sum of their upper indices, and
   // conj reverses -- so this is integrable, which a component pair at
   // unequal upper index would not be.
@@ -173,7 +173,8 @@ TEST(TensorField, AntisymmetricComponentsAreTheNegativeOfTheirRepresentative) {
 
   t.Component<-1, 0>()[0, 0] = Complex{2.0, -3.0};
 
-  // The transposed component is a phase-1 expression, not a view, and it
+  // The transposed component is a spin-weighted expression, not a view, and
+  // it
   // evaluates to the negative.
   const auto& constT = t;
   EXPECT_EQ((constT.Component<0, -1>()[0, 0]), (Complex{-2.0, 3.0}));
@@ -552,7 +553,8 @@ TEST(TensorField, ComponentViewsAreStridedInPointMajor) {
   static_assert(SpinWeighted<decltype(u)>);
 }
 
-// The point of [C9]: a point-major tensor is transformable in place, with the
+// The point of the batch descriptor: a point-major tensor is transformable
+// in place, with the
 // batch descriptor doing the work a repack would otherwise have to.
 TEST(TensorField, BothLayoutsTransformToTheSameCoefficients) {
   constexpr auto lMax = Int{5};
@@ -618,7 +620,7 @@ TEST(TensorField, BothLayoutsTransformToTheSameCoefficients) {
 // A tangential tensor has no radial slot: its indices are drawn from {-1, +1}
 // and it has 2^Rank components rather than 3^Rank. It is another object in
 // another bundle, not a general tensor that happens to vanish in some
-// directions (field-algebra-plan.md section 18.2 [D8]).
+// directions.
 //
 // Nothing below is a special case inside the library. Every count comes out of
 // the same orbit walk over whichever multi-indices exist, which is the check
@@ -682,10 +684,9 @@ TEST(TensorField, ARadialComponentOfATangentialTensorIsNotAComponent) {
   SUCCEED();
 }
 
-// The payoff of the alphabet, and the thing phase 4 could not do: negation
-// has no fixed point when there is no zero letter, so every orbit has size
-// two, nothing is pinned, and the second buffer is empty
-// (field-algebra-plan.md section 18.2 [D6]).
+// The payoff of the alphabet: negation has no fixed point when there is no
+// zero letter, so every orbit has size two, nothing is pinned, and the
+// second buffer is empty.
 TEST(TensorField, ARealTangentialTensorHasNoPinnedComponents) {
   static_assert(RealTangential2::StoredComponents == 2);
   static_assert(RealTangential2::ComplexComponents == 2);
@@ -740,7 +741,8 @@ TEST(TensorField, ASymmetricRealTangentialTensorIsARealSymmetricTwoByTwo) {
 }
 
 // The transform with an empty real buffer, which nothing has exercised before:
-// phase 4 introduced that buffer and no tensor until now has had none of it.
+// The reality reduction introduced that buffer, and no tensor until now has
+// had none of it.
 TEST(TensorField, ARealTangentialTensorRoundTripsWithNoRealBuffer) {
   constexpr auto lMax = Int{6};
   auto grid = Grid(lMax, 2, FFTWpp::Estimate);

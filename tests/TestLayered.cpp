@@ -107,7 +107,7 @@ TEST(LayeredSpinField, IsAStackOfAngularSlices) {
   EXPECT_EQ(f.NumberOfRadii(), nR);
   EXPECT_EQ(f.Size(), nR * f.FieldSize());
 
-  // A slice is an ordinary phase-1 node, not a new kind of object.
+  // A slice is an ordinary spin-weighted node, not a new kind of object.
   auto slice = f.Slice(2);
   static_assert(SpinWeighted<decltype(slice)>);
   static_assert(decltype(slice)::UpperIndex == 1);
@@ -856,7 +856,8 @@ TEST(LayeredTensorField, ATangentialStackRoundTripsThroughBothBridges) {
   compare(e.ComponentStack<-1, 1>(), back.ComponentStack<-1, 1>());
 }
 
-// [D9] again, on the layered side: grad_1 moves slots between e_0 and e_+-,
+// The same again, on the layered side: grad_1 moves slots between e_0 and
+// e_+-,
 // so it does not close on the tangential bundle and takes no operand from it.
 TEST(LayeredGradient, TakesNoTangentialOperand) {
   using General = LayeredTensorExpansion<2, NoSymmetry<2>, ComplexTensor, Grid>;
@@ -1407,7 +1408,7 @@ TEST(RadialGrid, AContinuousMeshDuplicatesItsInteriorBoundaries) {
   EXPECT_EQ(mesh.NumberOfRadii(), 6);
 
   // Five distinct radii held as six nodes: nR + nElements - 1, which is the
-  // price [E1] records.
+  // price of the element structure.
   EXPECT_EQ(mesh.Radius(2), mesh.Radius(3));
 }
 
@@ -1538,7 +1539,7 @@ TEST(RadialDerivatives, TheElementDerivativeDoesNotCoupleTheElements) {
 }
 
 // At an interface the derivative is two numbers, one per side, each at its own
-// index -- which is what a discontinuity is, and what [E1]'s disjoint blocks
+// index -- which is what a discontinuity is, and what the disjoint blocks
 // buy. A field with a jump has different slopes above and below, and this
 // reports both rather than averaging them into one that is neither.
 TEST(RadialDerivatives, TheElementDerivativeGivesBothSidesAtAnInterface) {

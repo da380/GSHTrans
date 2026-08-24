@@ -84,8 +84,8 @@ struct Padded {
 // Build one from a field's samples and the two polar rows.
 //
 // The polar rows are arguments rather than being computed here, so that the
-// padding can be tested without an expansion -- which is what makes P1 of
-// section 22.3 a step of its own. Each is nPhi values at the grid's own
+// padding can be tested without an expansion. Each is nPhi values at the
+// grid's own
 // longitudes; the wrap column is added to them exactly as it is to every
 // interior row, which is right because exp(i N 2pi) = exp(i N 0) for integer
 // N and so the polar row closes on itself like any other.

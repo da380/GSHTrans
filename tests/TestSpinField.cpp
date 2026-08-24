@@ -13,7 +13,7 @@
 // Test family 1: the compile-time algebra.
 //
 // Almost everything here is a static_assert, so the runtime bodies are empty
-// and the value is that the file compiles. It grows through the phase-1 steps:
+// and the value is that the file compiles. It grows through the layer:
 // this instalment covers the node concept and the traits underneath it, before
 // any node exists to use them.
 
@@ -1312,7 +1312,7 @@ TEST(SpinField, StorageOrderMatchesTheTransform) {
   EXPECT_GT(std::abs(given[indices.Index(band, -band)]), 1.0e-12);
 
   // An expression can be transformed by materialising it, which is the seam
-  // phase 5 replaces with a direct EvaluateInto.
+  // the spectral side replaces with a direct EvaluateInto.
   auto doubled = Materialise(u * 2.0);
   auto doubledData = doubled.Data();
   auto doubledCoefficients = FFTWpp::vector<Complex>(indices.Size());

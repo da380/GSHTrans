@@ -26,9 +26,9 @@ differ.  Part~II explains the numerical methods: what the algorithms are,
 why they were chosen, and the handful of places where the reasoning is
 subtle enough to be worth writing down.  Neither part is a derivation.
 The companion note \code{canonical-components.tex} carries the
-mathematical arguments; \code{core-plan.md} and
-\code{field-algebra-plan.md} carry the design decisions and the
-measurements behind them.
+mathematical arguments; the headers themselves carry the design decisions
+and the measurements behind them, and \code{lessons.md} carries the
+handful worth not learning twice.
 
 Statements here are either verified by a test in the library or read
 directly from a cited source.  The two places where a convention remains
@@ -603,7 +603,7 @@ the old ones, and inferring a symmetry from an operator is the problem
 \code{Materialise} declined to solve.  $\nabla_1$ of a real tensor is
 real, so only the reduced set is computed.
 
-\paragraph{It needed one thing phase 5 had left out.}  Every term is a
+\paragraph{It needed one thing the spectral side had left out.}  Every term is a
 coefficient of some component at fixed $(l,m)$, and the shifted components
 need not be stored.  \code{TensorExpansion::Coefficient} now answers for
 \emph{any} representable component, resolving the stored case, a
@@ -1206,9 +1206,8 @@ unaffected, because their terms are measured moments apart.
 \label{sec:gemm}
 
 This was the one substantial piece of performance work the library had not
-done, and \code{core-plan.md} \S10 named it as the lever aimed at what
-actually binds.  \textbf{It is now built} --- \code{TransformKernel::Matrix()},
-\code{core-plan.md} \S11, steps M1 to M6.
+done, and it is the lever aimed at what actually binds.  \textbf{It is now
+built} --- \code{TransformKernel::Matrix()}.
 
 What follows is the argument as it was made, in enough detail to be argued
 with, because the argument is what the measurement was read against; \S12.7
@@ -1286,7 +1285,7 @@ nothing at all in the regime where the stage is bandwidth-bound --- which
 it is, unbatched, on eight threads at $l_{\max}=128$, where it already
 reaches 39--40\,GB/s against a roof near 42.  It buys everything in the
 batched regime, where the same stage runs at about a fifth of the roof and
-under a tenth of compute peak.  Since phases 2 to 5 always batch, that is
+under a tenth of compute peak.  Since the field layer always batches, that is
 the regime that matters, but the distinction should be kept in view: a
 benchmark run unbatched will show the restructure doing nothing, and be
 right.
@@ -1316,7 +1315,7 @@ The transpose is nearly free, for the same reason it was free in tier 1
 transforms and output distance 1 writes the result directly in
 $[m][\theta][\kappa]$ order.  \emph{Nearly}, and this paragraph used to say
 \emph{free} and to specify a single call over all $n_\theta k$ rows.  Both
-were corrected by measurement at \code{core-plan.md} M2.  The strided write
+were corrected by measurement.  The strided write
 costs four to eight times as much when the number of transforms times 16 is a
 power of two, because successive orders then collide in the same cache sets;
 and a \emph{small} block of colatitudes per call beats one large one by
@@ -1387,8 +1386,7 @@ the single $(n,m)$ block that a per-order product wants means either keeping
 all of it --- which is the table, and not having one is the entire purpose of
 generation --- or re-running the recursion once per order, $2l_{\max}+1$
 times over.  There is no third way, so the two are not combinable rather than
-merely awkward to combine, and \code{core-plan.md} [C17] refuses the pair at
-grid construction.  Since the generated path measured slower anyway
+merely awkward to combine, and the pair is refused at grid construction.  Since the generated path measured slower anyway
 (\S\ref{sec:storage}), nothing is lost.
 
 \paragraph{It costs the exact-equality tests, and buys a better one.}  A
@@ -1396,8 +1394,8 @@ GEMM sums in whatever order its kernel chooses, so a GEMM path cannot be
 bit-compared against the current one; the batched-against-unbatched tests,
 which presently demand exact equality precisely because tier 1 does
 \emph{not} reorder any sum, become tolerance comparisons on that path.
-\code{core-plan.md} [C12] turns that trade around by keeping \emph{both}
-kernels permanently: the loop path is then an oracle for the matrix path on
+The library turns that trade around by keeping \emph{both} kernels
+permanently: the loop path is then an oracle for the matrix path on
 identical inputs, which checks the layout, the indexing, the FFT ordering
 and the accumulation together, and which does not exist today.  The two are
 not independent in the $d$ values, since both read the same recursion ---
@@ -1407,8 +1405,8 @@ but that half is pinned separately, against the $l=1$ table and against
 \paragraph{Which BLAS.}  An earlier draft of this paragraph said Eigen was
 already a dependency and could supply the kernel.  It is not: Eigen left the
 tree when GaussQuad dropped it, and nothing in the library names it now.  So
-there is no free GEMM to start from, and \code{core-plan.md} [C14] takes the
-decision rather than defaulting into one --- an optional BLAS, found and not
+there is no free GEMM to start from, so the decision is taken rather than
+defaulted into --- an optional BLAS, found and not
 fetched, under \code{GSHTRANS\_WITH\_BLAS}, in the pattern the optional
 \code{Interpolation} dependency established.  A build without it does not
 offer the matrix kernel, exactly as a build without \code{Interpolation}
@@ -1419,7 +1417,7 @@ requirement.
 \subsection{What it measured, and where the argument was wrong}
 \label{sec:gemmdone}
 
-Built as \code{core-plan.md} \S11 describes, in six steps: the transposed
+Built in six steps: the transposed
 table, the Fourier stage run first and landed order-major, the forward and
 inverse kernels, threading over orders, the measurement, and the reflection.
 Batched at $l_{\max}=256$ on eight threads it is worth \textbf{5.8 to
@@ -1533,8 +1531,8 @@ $g(m_{2\max})$: a near-stretched row at high degree spans a dynamic range of
 $10^{201}$, so the rescaling flushes that element to zero and the sign with
 it.
 
-This replaced two earlier schemes, and \code{docs/3j-plan.md} records the
-measurements.  A one-directional recursion fails exponentially near
+This replaced two earlier schemes.  A one-directional recursion fails
+exponentially near
 \emph{stretched} triangles --- where one degree approaches the sum of the
 other two, which is the top of every coupling sum rather than an exotic
 corner --- and Racah's closed form covers exactly that region and no more.
@@ -1556,8 +1554,8 @@ refused rather than returned.
 \label{sec:tuning}
 
 Several of the library's choices are properties of the machine rather than of
-the mathematics, and \code{core-plan.md} \S12 records that they cannot be
-settled by reasoning.  \code{Tuning.h} times the alternatives on the caller's
+the mathematics, and cannot be settled by reasoning.  \code{Tuning.h} times
+the alternatives on the caller's
 own problem and returns \emph{values} --- never a configured grid, so nothing
 is substituted silently, which matters most for the piece of machinery most
 likely to do so.
@@ -1573,8 +1571,9 @@ Measured on one laptop: the kernel choice is worth 1.9 to $5.8\times$ and
 picks the matrix kernel in every configuration tried, while the chunk is worth
 at most $1.28\times$ and nothing at all in thirteen of eighteen.  Both are
 cheap enough to run at start-up, which is why no persistence layer was built:
-the measurement is cheaper than remembering it, and \code{core-plan.md}
-\S12.6 names the size at which that reverses.  A candidate must beat the
+the measurement is cheaper than remembering it.  That reverses at around
+$l_{\max}=512$, where building the tables stops being cheap.  A candidate
+must beat the
 incumbent by ten per cent to displace it, that being the measured noise floor.
 
 \section{What has not been done, and why}
@@ -1598,8 +1597,8 @@ the experiment would mean anything.
 $d^l_{Nm}$ is negligible --- it falls off like $\sin^{|m|}\theta$ --- is the
 one option that makes the problem smaller rather than making the machine work
 harder.  \emph{This paragraph used to add that it probably dominates both of
-the reductions above.  Measured, it does not.}  \code{core-plan.md} \S11.7
-prices it at about $1.15\times$ at $l_{\max}=256$ for the rectangular trim a
+the reductions above.  Measured, it does not.}  It prices at about
+$1.15\times$ at $l_{\max}=256$ for the rectangular trim a
 GEMM can take, and $1.40\times$ at $l_{\max}=1024$ for the triangular ceiling
 --- against the $1.5$ to $2\times$ that was assumed.  The decay is real but
 slower to a useful tolerance than the argument suggests: at $10^{-15}$,

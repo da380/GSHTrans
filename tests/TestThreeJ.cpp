@@ -8,7 +8,7 @@
 
 #include "RacahReference.h"
 
-// T1 of docs/3j-plan.md: the test family, before any algorithm changes.
+// The test family for 3j.h.
 //
 // `3j.h` had no coverage at all although it is public API, and the reason
 // this file can be written without a reference implementation is the
@@ -23,7 +23,7 @@
 // Half of what is asserted here is where the identity **fails**, which is as
 // important as where it holds: the existing recursion is run in its unstable
 // direction near stretched triangles, and pinning the boundary is what turns
-// an unknown into a known one. T4 will invert those assertions when Racah's
+// an unknown into a known one. Those assertions are inverted where Racah's
 // closed form covers the region.
 
 namespace {
@@ -74,7 +74,7 @@ TEST(ThreeJ, CompletenessHoldsAwayFromStretched) {
 //                        l = 30 : 4.1e-03
 //
 // so the failure is **exponential from about l = 20** rather than a cliff at
-// 30, which sharpens what 3j-plan.md section 1 records. Two assertions
+// 30 rather than a cliff at 30. Two assertions
 // therefore, at two tolerances, so that the shape of the decay is pinned and
 // not just its ends.
 TEST(ThreeJ, CompletenessHoldsAtTheStretchedEdgeForModestDegrees) {
@@ -102,7 +102,7 @@ TEST(ThreeJ, AnswersEverythingTheOldSchemesCouldNot) {
     ASSERT_NO_THROW(Wigner3jMatrix<double>(l, l, 2 * l)) << "l = " << l;
     EXPECT_NEAR(Completeness<double>(l, l, 2 * l), 1.0, 1e-12) << "l = " << l;
   }
-  // The band of 3j-plan.md T2, which neither classical method reached.
+  // The band neither classical method reached.
   for (const auto& t : std::vector<std::array<int, 3>>{{80, 80, 120},
                                                        {90, 90, 135},
                                                        {100, 100, 150},
@@ -117,7 +117,7 @@ TEST(ThreeJ, AnswersEverythingTheOldSchemesCouldNot) {
   }
 }
 
-// The runtime check is the recurrence residual, not completeness ([J6]).
+// The runtime check is the recurrence residual, not completeness.
 // Completeness cannot fail here -- every row is normalised by that identity --
 // so it is asserted above as a property and relied on nowhere.
 //
@@ -164,7 +164,7 @@ TEST(ThreeJ, MatchesTheClosedFormWithAZeroDegree) {
 //
 // Every factorial in the general formula cancels at that corner, which is
 // what makes this a strong test: there is no arithmetic in the expected value
-// to be wrong in the same way the code is. It is also the case T4's Racah
+// to be wrong in the same way the code is. It is also the case Racah's
 // path must reproduce, since the sum there has exactly one term.
 TEST(ThreeJ, MatchesTheClosedFormAtTheStretchedCorner) {
   for (auto l1 : {1, 2, 3, 5, 8, 16}) {
@@ -278,7 +278,7 @@ TEST(ThreeJ, TheSingleSymbolEntryPointAgreesWithTheTable) {
 }
 
 //--------------------------------------------------------------------------//
-//        [J7]: the structural checks, which carry the weight now            //
+//        the structural checks, which carry the weight now            //
 //--------------------------------------------------------------------------//
 //
 // With one implementation there is no second one to compare against, so the

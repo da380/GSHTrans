@@ -23,7 +23,6 @@
 // Every row is checked against the recurrence that defines it before it is
 // handed back, so a table that has gone wrong is refused rather than returned.
 //
-// See docs/3j-plan.md.
 
 #include <GSHTrans/Core>
 #include <cmath>

@@ -57,7 +57,7 @@ namespace GSHTrans {
 /// scattered into place. The recursion, the seeds, the evaluation order and
 /// the orthonormalisation are Wigner's own -- WignerDetails::ComputeBlock is
 /// called with the same arguments -- so the values are bit-identical to the
-/// stored path by construction rather than by tolerance. M1's test checks
+/// stored path by construction rather than by tolerance. The test checks
 /// exactly that.
 ///
 /// -- The write pattern, named because it is the one cost here.
@@ -65,7 +65,7 @@ namespace GSHTrans {
 /// A block computed for one (n, theta) scatters across every matrix, at stride
 /// NumberOfAngles() in the degree. That is one cache line per value written in
 /// the worst case. It is paid once, at construction, in parallel, and section
-/// 11's M1 records what it measures; blocking over colatitudes would fix it
+/// the loop kernel's; blocking over colatitudes would fix it
 /// and is not done until something says it needs fixing.
 template <RealFloatingPoint _Real, OrderIndexRange _MRange = All,
           IndexRange _NRange = All>
@@ -79,7 +79,7 @@ class WignerMatrices {
 
   WignerMatrices() = default;
 
-  /// Every order the alphabet has. What M1 built.
+  /// Every order the alphabet has.
   template <std::ranges::range Range>
   requires RealFloatingPoint<std::ranges::range_value_t<Range>>
   static auto Full(Int lMax, Int mMax, Int nMax, Range &&theta) {

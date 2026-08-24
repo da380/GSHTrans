@@ -276,7 +276,8 @@ TEST(Orbits, TheTableIsInternallyConsistent) {
 }
 
 // A real tensor reduces on both relations, a complex one on permutation
-// symmetry alone. This is the switch phase 2 left for phase 4.
+// symmetry alone. This is the switch the tensor layer leaves for the
+// reality reduction.
 TEST(Orbits, RealityReducesOnlyARealTensor) {
   static_assert(RealTensor::ReducesOnReality);
   static_assert(!ComplexTensor::ReducesOnReality);
@@ -350,8 +351,7 @@ TEST(MultiIndex, ARadialSlotIsNotATangentialIndex) {
 
 // N = sum of the slots still, but now every slot is odd, so N has the parity
 // of the rank and |N| <= Rank. Nothing is told this: it falls out of the
-// enumeration, which is why it is a test and not a check
-// (field-algebra-plan.md section 18.2 [D5]).
+// enumeration, which is why it is a test and not a check.
 TEST(MultiIndex, TheTangentialUpperIndexHasTheParityOfTheRank) {
   constexpr auto check = []<Int Rank>() {
     using Index = MultiIndex<Rank, TangentialSlots>;
@@ -406,7 +406,8 @@ TEST(MultiIndex, TangentialNegationHasNoFixedPoint) {
 // With no permutation symmetry, negation is fixed-point-free, so every orbit
 // has size two: 2^{Rank-1} stored components, none of them pinned. That last
 // is the interesting half -- the pinned components are the second buffer
-// phase 4 had to introduce, and a tangential tensor with no symmetry does not
+// the reality reduction had to introduce, and a tangential tensor with no
+// symmetry does not
 // have one.
 TEST(Orbits, ATangentialTensorWithoutSymmetryHasNoPinnedComponents) {
   static_assert((StoredCount<1, NoSymmetry<1>, true, TangentialSlots>()) == 1);

@@ -31,7 +31,6 @@
 // coordinate pole is genuinely not single-valued, because the frame e_+-
 // depends on the azimuth of approach.
 //
-// See field-algebra-plan.md section 22.
 
 #include <GSHTrans/All>
 #include <cmath>

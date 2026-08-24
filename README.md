@@ -12,45 +12,31 @@ when it is run.
 
 ## Status
 
-The rebuild is complete through the layers below, against three planning
-documents in `docs/`. Each records its decisions and the measurements behind
-them, including the ones that turned out to be wrong.
+The library is complete through the layers below.
 
-* **`docs/core-plan.md`** — the numerical core: `GaussLegendreGrid`, `Wigner`,
-  `Indexing`, `Views`. Steps A–H are landed, with the batched transform, the
-  plan cache, threading, and Wigner values generated on the fly as a
-  construction-time policy. §11's transform-major restructure is built through
-  M6, all of it: `TransformKernel::Matrix()` is a second construction-time
-  kernel beside the loop one, worth 3–6× where it is worth anything and
-  storing half the table, with the loop kernel kept as its oracle. §12 adds
-  the tuning mechanism. **Nothing in that document is scheduled now**: polar
-  truncation was measured at ~1.15× rather than the 1.5–2× assumed and
-  dropped (§11.7), and the wisdom store was measured to be unearned (§12.6).
-* **`docs/field-algebra-plan.md`** — the field layer, and everything built on
-  it:
-
-  | | |
-  |---|---|
-  | phases 1–5 | spin fields, tensor storage, tensor algebra, reality reduction, the spectral side |
-  | §16 | the contravariant derivative — D&T's surface gradient |
-  | §17 | layered (three-dimensional) fields, the radial seam, `RadialMajor` |
-  | §18 | tangential tensors, the intrinsic derivative, the bundle maps |
-  | §19 | ready-made radial derivatives, and resampling |
-  | §20 | the element partition on `RadialGrid` |
-  | §21 | what the `Interpolation` update changed |
-  | §22 | interpolating a field, as a callable of the two angles |
-
-* **`docs/3j-plan.md`** — the Wigner 3-j symbols, which touch no grid, no
-  transform and no field, and so are their own document. Complete: the
-  Schulten–Gordon recursion, and what it replaced.
+* **The numerical core** — `GaussLegendreGrid`, `Wigner`, `Indexing`, `Views`:
+  the batched transform, the plan cache, threading, and Wigner values either
+  held as a table or generated on the fly, as a construction-time policy. Two
+  Legendre kernels are carried permanently, `TransformKernel::Loop()` and,
+  where a BLAS is present, `TransformKernel::Matrix()` — the second worth 3–6×
+  where it is worth anything and storing half the table, with the first kept
+  as its oracle. `Tuning.h` chooses between them by measuring the caller's own
+  problem.
+* **The field layer** — spin fields, tensor storage and algebra, the reality
+  reduction, and the spectral side; the contravariant derivative, which is
+  D&T's surface gradient; layered (three-dimensional) fields, the radial seam
+  and `RadialMajor`; tangential tensors, the intrinsic derivative and the
+  bundle maps; ready-made radial derivatives and resampling; the element
+  partition on `RadialGrid`; and interpolation of a field as a callable of the
+  two angles.
+* **The Wigner 3-j symbols**, which touch no grid, no transform and no field:
+  the Schulten–Gordon recursion, checked against the recurrence that defines
+  it.
 
 `docs/canonical-components.tex` is the authority on the mathematics and the
-conventions; the plans defer to it. `docs/gshtrans-reference.tex` describes
-the library that exists.
-
-Read `core-plan.md` §8 before touching core code, and
-`field-algebra-plan.md` §18.2 and §19.5 before touching the tensor bundles or
-the radial seam — those are where the decisions live.
+conventions, and the code defers to it by name. `docs/gshtrans-reference.tex`
+describes the library that exists. `docs/lessons.md` is a short record of the
+things worth not learning twice.
 
 ## The spin-field algebra
 
@@ -161,9 +147,9 @@ at `n = 0`; a real transform at `n ≠ 0` throws.
 
 **Two Legendre kernels, chosen at construction and both kept.**
 `TransformKernel::Loop()` is the default and is what the library has always
-done. `TransformKernel::Matrix()` is the transform-major restructure of
-`core-plan.md` §11: every FFT first, then one `dgemm` per order against a
-table laid out `[n][m][l][θ]`. It needs a BLAS — `GSHTRANS_WITH_BLAS`, which
+done. `TransformKernel::Matrix()` is the transform-major arrangement of the same
+sum: every FFT first, then one `dgemm` per order against a table laid out
+`[n][m][l][θ]`. It needs a BLAS — `GSHTRANS_WITH_BLAS`, which
 is `AUTO` by default and found rather than fetched — and a build without one
 does not offer it at all.
 
@@ -250,8 +236,8 @@ Measured on the development laptop: the kernel choice is worth **1.9–5.8×**
 and picks the matrix kernel in every configuration tried; the chunk is worth
 at most **1.28×** and nothing at all in thirteen of eighteen, the conservative
 default being good. Both are cheap enough to run at start-up, which is why
-there is no persistence layer — `core-plan.md` §12.6 gives the size at which
-that would change. A candidate must beat the incumbent by 10% to displace it,
+there is no persistence layer; that would change at around `lMax` 512, where
+building the tables to measure them stops being cheap. A candidate must beat the incumbent by 10% to displace it,
 since that is the measured noise floor and picking the winner of a 7%
 difference is picking noise.
 
@@ -292,8 +278,7 @@ the recurrence coefficient rather than locating it analytically.
 
 That matters because a one-directional recursion loses these values near
 *stretched* triangles, where one degree approaches the sum of the other two —
-which is the top of every coupling sum rather than an exotic corner.
-`docs/3j-plan.md` records the two schemes this replaced and why. Measured
+which is the top of every coupling sum rather than an exotic corner. Measured
 against an independent route (cyclic-permutation invariance, which runs the
 recursion along different lines) it agrees to `1e-16` at `(200,200,200)` and
 `1e-15` at `(1000,1000,1999)`.
@@ -305,7 +290,7 @@ once the algorithm began normalising by it.
 
 `CouplingElement(m, mp)` and `FillCouplingMatrix` give the same symbols in the
 layout normal-mode codes expect — the first order negated with an alternating
-phase, which is the array `wig2.f` returned. It is a convention, not a second
+phase, which is what Woodhouse's original routine returned. It is a convention, not a second
 calculation, and the conversion is its own inverse.
 
 6-j is not implemented. If it is ever wanted, the same paper covers it.
@@ -401,7 +386,7 @@ GSHTrans/Expansion     umbrella: the spectral side
 GSHTrans/Layered       umbrella: three-dimensional fields
 GSHTrans/All           all of them
 GSHTrans/src/          the headers themselves
-docs/                  the plans, the theory note, and the reference
+docs/                  the theory note, the reference, the lessons
 tests/  examples/  benchmarks/  scripts/
 ```
 

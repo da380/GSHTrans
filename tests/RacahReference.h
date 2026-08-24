@@ -12,7 +12,7 @@
 //
 // It lives in the test tree rather than the library because it is not an
 // alternative production path -- it was measured against the recursion and
-// loses badly over most of the triangle space (docs/3j-plan.md T2). What it
+// loses badly over most of the triangle space. What it
 // is good at is the region where its sum is *short*:
 //
 //     length = min(l1+l2-l3, l1-m1, l2+m2) - max(0, l2-l3-m1, l1-l3+m2) + 1

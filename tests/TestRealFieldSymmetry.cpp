@@ -9,13 +9,13 @@
 #include <string>
 
 // Reality relations between canonical components, and the removal of
-// real-valued transforms at nonzero upper index (core-plan.md step A).
+// real-valued transforms at nonzero upper index.
 //
 // The relation this file exercises is theory note eq:basiclevel,
 //
 //     (conj f)^{-N}_{l,-m} = (-1)^{m-N} conj(f^N_{lm}),
 //
-// which is true at every N and is the engine of phase 4's reality reduction.
+// which is true at every N and is the engine of the reality reduction.
 // It relates two *different* fields, f and conj(f), and it survives.
 //
 // What does not survive is the self-relation
@@ -177,7 +177,7 @@ TEST(RealFieldSymmetry, RealFieldIsSelfConjugateAtUpperIndexZero) {
 }
 
 // The orders m = +-lMax are separate discrete modes now that nPhi exceeds
-// 2 * lMax (core-plan.md step D). Both carry the amplitude the sample field
+// 2 * lMax. Both carry the amplitude the sample field
 // puts into cos(lMax * phi), and neither is zeroed. Before step D the complex
 // transform zeroed (lMax, lMax) outright and the reduced storage held the sum
 // of the two, so this test replaces one that asserted the opposite.
@@ -210,7 +210,7 @@ TEST(RealFieldSymmetry, HighestOrdersAreResolvedSeparately) {
 
 // eq:basiclevel at n = 2, through complex transforms of a real-valued field:
 // the coefficients of conj(f) at -N are determined by those of f at +N. This
-// relation is true at every N and is the oracle phase 4 reuses.
+// relation is true at every N and is the oracle the reality reduction reuses.
 TEST(RealFieldSymmetry, FullTransformsSatisfyCrossUpperIndexIdentity) {
   auto grid = Grid(lMax, nSpin, FFTWpp::Estimate);
   auto realSamples = FFTWpp::vector<Real>(grid.FieldSize());
@@ -293,7 +293,7 @@ TEST(RealFieldSymmetry, RealTransformsAreRejectedAtNonzeroUpperIndex) {
 
 // An MRange = NonNegative grid is a real scalar grid: it serves real transforms
 // at upper index zero and nothing else, so a nonzero maximum upper index leaves
-// it able to serve nothing (core-plan.md [C1]).
+// it able to serve nothing.
 TEST(RealFieldSymmetry, ScalarGridRejectsNonzeroMaximumUpperIndex) {
   for (auto nMax : {1, static_cast<int>(nSpin)}) {
     const auto message =

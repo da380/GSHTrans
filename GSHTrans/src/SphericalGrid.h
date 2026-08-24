@@ -81,7 +81,7 @@ class SphericalGrid {
   // out-of-memory event.
   //
   // There is no default constructor: a grid without nodes is not a grid, and
-  // reading MaxDegree() on a default-constructed one was undefined (F4).
+  // reading MaxDegree() on a default-constructed one was undefined.
   SphericalGrid() = delete;
 
  protected:
@@ -601,7 +601,7 @@ class SphericalGrid {
   /// Section 12 of the reference note says the transpose is free, on the
   /// grounds that one plan_many with output stride howMany and output distance
   /// 1 lands the data in the order above at no cost, exactly as tier-1
-  /// batching landed it in [m][k] order (P6). **Measured, that is true only
+  /// batching landed it in [m][k] order. **Measured, that is true only
   /// away from one specific hazard, and false at it.** The output write has
   /// stride `howMany` complex doubles, so when `howMany * 16` is a power of two
   /// the writes for successive orders collide in the same cache sets, and the
@@ -657,7 +657,8 @@ class SphericalGrid {
     // so the blocks are disjoint on both sides; the workspace and its plan are
     // thread_local already, so a thread finds or makes its own.
     //
-    // Left sequential in M2, which made it a 29 per cent Amdahl term as soon
+    // Left sequential at first, which made it a 29 per cent Amdahl term as
+    // soon
     // as the Legendre stage threaded -- and the matrix kernel stopped scaling
     // past two threads because of it.
     const auto blocks = (nTheta + block - 1) / block;
@@ -845,7 +846,7 @@ class SphericalGrid {
           out(count * FFTWpp::DataSize<In, Out>(nPhi).second),
           plan(MakePlan(in, out, nPhi, count, flag)) {}
 
-    // The layouts are the whole of P6's "batching the FFT is free": FFTWpp
+    // The layouts are the whole of "batching the FFT is free": FFTWpp
     // passes rank, howMany, embed, stride and dist straight through to
     // plan_many, so the batch costs a descriptor rather than a repack.
     //
@@ -855,7 +856,7 @@ class SphericalGrid {
     // *coefficient* side the batch index runs fastest, so the data lands in
     // [m][k] order and the Legendre stage's inner loop over the batch is
     // unit-stride. That layout costs nothing to ask for here and is the one
-    // P2's batching measurement was made on.
+    // the batching measurement was made on.
     static auto MakePlan(FFTWpp::vector<In>& in, FFTWpp::vector<Out>& out,
                          Int nPhi, Int count, FFTWpp::Flag flag) {
       const auto sizes = FFTWpp::DataSize<In, Out>(nPhi);
@@ -909,7 +910,7 @@ class SphericalGrid {
 
   // Plans and buffers used to be created on every call -- two allocations and
   // a plan per transform, with FFTW's non-re-entrant planner run each time
-  // (P7). They are now made once per thread per shape and kept. Held by
+  //. They are now made once per thread per shape and kept. Held by
   // pointer so that the plan's reference to its buffers survives any
   // rehashing of the cache.
   template <RealOrComplexFloatingPoint Scalar, bool IsForward>
@@ -1260,7 +1261,7 @@ class SphericalGrid {
       // colatitude. The Legendre stage works on our own buffers, whose layout
       // we choose, and the choice is the one the batched loop above wants
       // above. It costs one pass over the coefficients against a colatitude
-      // loop that reads the whole Wigner block, which T4 measured to be
+      // loop that reads the whole Wigner block, which measures
       // invisible for the same reason in the other direction.
       //
       // Gathered by the calling thread before the parallel region opens, and
@@ -1335,7 +1336,8 @@ class SphericalGrid {
   void OverOrders(Int minOrder, Int lMax, Int c, Execution policy,
                   Body&& body) const {
     // Room for a paired product and a paired right-hand side at once: step
-    // M6 puts the orders +m and -m through one GEMM, so the widest case is
+    // The reflection puts the orders +m and -m through one GEMM, so the
+    // widest case is
     // two columns of each, and the right-hand side is nTheta rows deep.
     const auto scratchSize = static_cast<std::size_t>(
         2 * c * (lMax + 1 + static_cast<Int>(this->NumberOfCoLatitudes())));
@@ -1356,7 +1358,7 @@ class SphericalGrid {
     // to set anything. A BLAS on its own pthread pool is unaffected and still
     // needs the caller's environment, which is what the CMake comment says.
     //
-    // Found by falling into it: the M5 benchmark's sequential rows reported
+    // Found by falling into it: the benchmark's sequential rows reported
     // table traffic at twice single-core bandwidth, because "GSHTrans
     // sequential" had been letting the BLAS take the whole machine.
     const auto threads = RunInParallel(policy) ? ThreadCount(policy) : 1;
@@ -1437,7 +1439,7 @@ class SphericalGrid {
       // The table halves, because only m >= 0 is stored. And the two
       // right-hand sides go into **one** GEMM rather than two, which doubles
       // N from 2c to 4c -- N being the skinniest dimension in the problem and
-      // the one M5 measured as limiting, at 55 to 95 Gflop/s against peak.
+      // the one measured as limiting, at 55 to 95 Gflop/s against peak.
       //
       // The arithmetic does *not* halve: the same products are still done,
       // of the same shapes.

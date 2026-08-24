@@ -18,7 +18,6 @@
 //      chooses, so the matrix path cannot be verified against itself; it is
 //      verified against the loop path on identical inputs.
 //
-// See core-plan.md section 11.
 
 #include <GSHTrans/All>
 #include <chrono>

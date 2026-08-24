@@ -31,7 +31,7 @@ auto Coeff2Coeff(GSHTransTest::Generator& gen) {
   auto nMax = std::min(lMax, Int(4));
   auto grid = Grid(lMaxGrid, nMax);
 
-  // Real-valued fields exist only at upper index zero (core-plan.md step A).
+  // Real-valued fields exist only at upper index zero.
   auto n = RealFloatingPoint<Scalar>
                ? Int{0}
                : GSHTransTest::RandomUpperIndex<NRange>(gen, nMax);

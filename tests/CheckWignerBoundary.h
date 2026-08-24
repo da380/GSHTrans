@@ -11,7 +11,7 @@
 // The values Wigner.h now generates by recursion, checked against the closed
 // forms they replaced.
 //
-// Two paths, both introduced by core-plan.md task T11. The seed row at
+// Two paths. The seed row at
 // l = |n| comes from an exact binomial row, and the boundary orders m = +-l at
 // every higher degree come from a one-term recursion in l, where both used to
 // be evaluated by WignerMinOrder and WignerMaxOrder. Those closed forms remain

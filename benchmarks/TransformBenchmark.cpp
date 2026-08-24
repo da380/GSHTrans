@@ -1,8 +1,9 @@
-// The benchmark harness of core-plan.md section 5.
+// The transform benchmark harness.
 //
 // Steps E to H are each supposed to be preceded by the measurement that
 // justifies them, and this is that measurement. In particular it checks
-// finding P1 -- that the transform is Legendre-stage bandwidth-bound by a wide
+// central finding -- that the transform is Legendre-stage bandwidth-bound by
+// a wide
 // margin -- which is currently an arithmetic estimate and which the whole case
 // for batching rests on.
 //
@@ -61,7 +62,7 @@ long ResidentMegabytes() {
 }
 
 //--------------------------------------------------------------------------//
-//                             Machine facts                                //
+//                              Machine facts                               //
 //--------------------------------------------------------------------------//
 //
 // Printed at the top of every run. The numbers below are unreadable without
@@ -123,7 +124,7 @@ int PhysicalCores() {
 }
 
 // Size in kilobytes of the cache at this level on cpu0, and how many hardware
-// threads share it. The second is what step F's chunk formula needs: P8 sizes
+// threads share it. The second is what the chunk formula needs: it sizes
 // a chunk against per-core last-level cache, not against the whole of it.
 long CacheKilobytes(int level, int& sharedBy) {
   sharedBy = 0;
@@ -280,7 +281,7 @@ double TimePerCall(Action&& action, double target = 0.15, int windows = 5) {
 }
 
 //--------------------------------------------------------------------------//
-//                          Bandwidth roofs                                 //
+//                             Bandwidth roofs                              //
 //--------------------------------------------------------------------------//
 //
 // Two of them, because the transform's GB/s column needs a ceiling and the
@@ -364,7 +365,7 @@ double ScanBandwidthGBs(double bytes, int threads, int touch, int windows = 5) {
 // Bytes of Wigner values one transform at this degree and upper index streams:
 // the (l, m) block for that upper index, once per colatitude.
 // Bytes the *matrix* kernel streams: the same values, but only for m >= 0,
-// the rest coming from the reflection (step M6). Order zero is its own
+// the rest coming from the reflection. Order zero is its own
 // reflection and is counted once, so this is a shade over half.
 double ReflectedWignerBytes(Int lMax, Int n) {
   const auto nTheta = lMax + 1;
@@ -422,11 +423,11 @@ double TableMegabytes(Int lMax, Int nMax) {
   return bytes / 1e6;
 }
 
-// The thread-scaling table [C11] needs, with both directions side by side.
+// The thread-scaling table, with both directions side by side.
 //
 // Side by side is the design, not the presentation. Step H left the lMax = 256
 // shortfall with two unseparated candidates -- thread-private accumulators
-// competing for last-level cache, and a serialised reduction -- and T10
+// competing for last-level cache, and a serialised reduction -- and later work
 // removed the second without being able to measure the first. The inverse
 // transform's colatitudes write disjoint rows of the field and share only
 // read-only input, so it carries no accumulator and does no reduction; the
@@ -434,7 +435,7 @@ double TableMegabytes(Int lMax, Int nMax) {
 // thread accumulates privately and the partials are summed at the end.
 // Everything else about the two is the same stream over the same table. The
 // fwd/inv column is therefore the accumulator's cost with the rest divided
-// out, and its growth with thread count is the answer [C11] is waiting for.
+// out, and its growth with thread count is the answer wanted.
 void RunScaling(Int lMax, Int nMax, int windows) {
   const auto n = nMax;
   const auto started = Clock::now();
@@ -541,7 +542,7 @@ int main(int argc, char** argv) {
   for (auto i = 1; i < argc; ++i) sectionsWanted.push_back(argv[i]);
 
   std::printf(
-      "GSHTrans transform benchmark (core-plan.md section 5), "
+      "GSHTrans transform benchmark, "
       "harness revision %d\n",
       revision);
   std::printf("double precision, single field per call (k = 1)\n");
@@ -567,7 +568,7 @@ int main(int argc, char** argv) {
   PrintMachineFacts();
 
   //------------------------------------------------------------------------//
-  //                          Bandwidth roofs                                //
+  //                            Bandwidth roofs                             //
   //------------------------------------------------------------------------//
 
   if (Want("stream") || Want("roof")) {
@@ -598,7 +599,7 @@ int main(int argc, char** argv) {
   }
 
   //------------------------------------------------------------------------//
-  //                       Grid construction and size                        //
+  //                       Grid construction and size                       //
   //------------------------------------------------------------------------//
 
   if (Want("grid")) {
@@ -623,7 +624,7 @@ int main(int argc, char** argv) {
     }
 
     //------------------------------------------------------------------------//
-    //                        Transforms, and the split //
+    //                       Transforms, and the split                        //
     //------------------------------------------------------------------------//
   }
 
@@ -682,7 +683,7 @@ int main(int argc, char** argv) {
                                             complexField);
                }));
 
-        // Real-valued fields exist only at upper index zero (core step A).
+        // Real-valued fields exist only at upper index zero.
         if (n == 0) {
           report("real", "forward", TimePerCall([&] {
                    grid.ForwardTransformation(lMax, 0, realField, realFull);
@@ -701,12 +702,12 @@ int main(int argc, char** argv) {
     }
 
     //------------------------------------------------------------------------//
-    //                              Threading //
+    //                               Threading                                //
     //------------------------------------------------------------------------//
   }
 
   if (Want("threading")) {
-    PrintHeader("Threading (core-plan.md step H)");
+    PrintHeader("Threading");
     std::printf("%6s %4s %9s %8s %10s %9s %9s\n", "lMax", "n", "direction",
                 "threads", "time(ms)", "speedup", "GB/s");
     for (auto lMax : {Int{128}, Int{256}}) {
@@ -742,7 +743,7 @@ int main(int argc, char** argv) {
   }
 
   //------------------------------------------------------------------------//
-  //          Generated Wigner values against the stored table (F')          //
+  //            Generated Wigner values against the stored table            //
   //------------------------------------------------------------------------//
 
   if (Want("generated")) {
@@ -754,7 +755,7 @@ int main(int argc, char** argv) {
         "two paths agree bit for bit, so the only questions are what it costs\n"
         "and what it saves. Both grids are built in this process and the two\n"
         "are timed alternately, which is the only way a comparison on a\n"
-        "clock-scaling machine means anything (core-plan.md section 8).\n\n");
+        "clock-scaling machine means anything.\n\n");
 
     std::printf("Construction, and what it leaves resident.\n");
     std::printf("%6s %5s %11s %11s %10s %10s\n", "lMax", "nMax", "stored(s)",
@@ -797,7 +798,7 @@ int main(int argc, char** argv) {
         "amortises over a chunk exactly as a table stream does, but the\n"
         "cache-fitting rule that sets the stored optimum is about the\n"
         "coefficient array and says nothing about a table that is not there,\n"
-        "so the two paths need not want the same chunk (P2, [C9]).\n");
+        "so the two paths need not want the same chunk.\n");
     std::printf("%6s %4s %4s %8s %10s %11s %11s %9s %11s\n", "lMax", "n", "k",
                 "threads", "direction", "stored(ms)", "gen(ms)", "gen/stored",
                 "genWhole  storedWhole");
@@ -868,16 +869,14 @@ int main(int argc, char** argv) {
   }
 
   //------------------------------------------------------------------------//
-  //             Thread scaling to the full machine ([C11])                  //
+  //                   Thread scaling to the full machine                   //
   //------------------------------------------------------------------------//
 
   //------------------------------------------------------------------------//
-  //                     Loop kernel against matrix kernel                    //
+  //                   Loop kernel against matrix kernel                    //
   //------------------------------------------------------------------------//
 
 #ifdef GSHTRANS_HAVE_BLAS
-  // Step M5 of core-plan.md section 11.
-  //
   // Three requirements, each guarding a way this measurement can mislead, and
   // section 11.4 states them as part of the step rather than as presentation.
   //
@@ -907,7 +906,7 @@ int main(int argc, char** argv) {
 
     for (const auto batched : {false, true}) {
       const auto k = batched ? Int{8} : Int{1};
-      PrintHeader(batched ? "Kernels, batched (k = 8): the regime phases 2-5 "
+      PrintHeader(batched ? "Kernels, batched (k = 8): the regime the field "
                             "run in"
                           : "Kernels, unbatched (k = 1): predicted to gain "
                             "nothing at the roof");
@@ -920,7 +919,7 @@ int main(int argc, char** argv) {
       }
       std::printf(
           "GB/s is the reported kernel's own table traffic over time --\n"
-          "the matrix kernel streams only non-negative orders (M6), a\n"
+          "the matrix kernel streams only non-negative orders, a\n"
           "shade over half. Roof is a one-thread-touched read scan. Where\n"
           "the table fits in cache the first exceeds the second, which says\n"
           "the table is not coming from DRAM rather than that anything is\n"
@@ -980,7 +979,7 @@ int main(int argc, char** argv) {
             // larger than the internal chunk reads the table more than once,
             // which makes this a lower bound there rather than a value.
             // The two kernels stream different amounts: the matrix kernel's
-            // table holds only non-negative orders (M6), so reporting the
+            // table holds only non-negative orders, so reporting the
             // loop kernel's byte count against it would overstate its rate by
             // two and put it above a roof it is nowhere near.
             const auto reported = wantMatrix ? tMatrix : tLoop;
@@ -1024,7 +1023,7 @@ int main(int argc, char** argv) {
   if (WantNamed("kernels-matrix")) RunKernelSection(false, true, false);
 
   //------------------------------------------------------------------------//
-  //          Why the inverse gains less: efficiency against K                //
+  //            Why the inverse gains less: efficiency against K            //
   //------------------------------------------------------------------------//
 
   if (Want("kernels")) {
@@ -1085,7 +1084,7 @@ int main(int argc, char** argv) {
 #endif  // GSHTRANS_HAVE_BLAS
 
   if (Want("server")) {
-    PrintHeader("Thread scaling to the full machine (core-plan.md [C11])");
+    PrintHeader("Thread scaling to the full machine");
     std::printf(
         "Step H's decomposition -- colatitudes, with a private accumulator "
         "per\n"
@@ -1102,14 +1101,14 @@ int main(int argc, char** argv) {
   }
 
   //------------------------------------------------------------------------//
-  //                    Batching, and the chunk heuristic                    //
+  //                   Batching, and the chunk heuristic                    //
   //------------------------------------------------------------------------//
 
   if (Want("batching")) {
-    PrintHeader("Batching (core-plan.md step F, tier 1)");
+    PrintHeader("Batching");
     std::printf(
         "Each row transforms k fields in one call, with the chunk pinned to k\n"
-        "so that the row measures one chunk of that width. P2 measured 2.3x "
+        "so that the row measures one chunk of that width. Measured 2.3x "
         "at\n"
         "an optimum near k = 8 on a 16 MiB laptop, and *worse than no "
         "batching*\n"
@@ -1189,13 +1188,13 @@ int main(int argc, char** argv) {
   }
 
   //------------------------------------------------------------------------//
-  //                    Interpolation (field-algebra-plan.md 22)             //
+  //                             Interpolation                              //
   //------------------------------------------------------------------------//
   //
-  // P5 of section 22, and the step that says whether the local schemes are
+  // The measurement that says whether the local schemes are
   // worth having. Spectral is exact for a band-limited field, so it is the
   // reference the other two are measured against -- which is the whole reason
-  // [I2] built it first, and it is what makes the accuracy of a cheap scheme
+  // It is what makes the accuracy of a cheap scheme
   // measurable on any field rather than only on one with a closed form.
   //
   // Three columns of error rather than one, because the padding exists for
@@ -1380,15 +1379,15 @@ int main(int argc, char** argv) {
         "second grid and interpolating there instead.\n"
         "\nBuilding a local interpolant costs a forward transform, because "
         "the\n"
-        "polar rows are exact ([I3]). Its cheapness is per evaluation, not\n"
+        "polar rows are exact. Its cheapness is per evaluation, not\n"
         "per interpolant, and these two columns are what says so.\n");
   }
 
   //------------------------------------------------------------------------//
-  //                   Tuning (core-plan.md section 12)                      //
+  //                                 Tuning                                 //
   //------------------------------------------------------------------------//
   //
-  // W6: does the mechanism pay? Section 12.5 makes the persistence layer
+  // Does the mechanism pay? What makes the persistence layer
   // conditional on this answer, so the section reports the two tuners side by
   // side and lets the numbers decide.
   //
@@ -1433,7 +1432,7 @@ int main(int argc, char** argv) {
         "and one means the question does not arise -- at k = 1 it never does,\n"
         "since any chunk takes the whole batch in one go.\n"
         "\nKernel column is the matrix kernel against the loop, both built\n"
-        "and timed here. Section 12's [C22] margin is ten per cent, so a\n"
+        "and timed here. The margin is ten per cent, so a\n"
         "column reading 1.00x means the incumbent held rather than that the\n"
         "two were identical.\n"
         "\nBoth are the same measurement a caller would make at start-up, on\n"

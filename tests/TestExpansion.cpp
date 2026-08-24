@@ -54,7 +54,8 @@ TEST(SpinExpansion, RealFieldsUseTheReducedStorage) {
   EXPECT_LT(realOne.Size(), complexOne.Size());
 
   // And it is available only at upper index zero, which is the same
-  // constraint phase 1 puts on a real-valued field. That one is a
+  // constraint the spin-field layer puts on a real-valued field. That one
+  // is a
   // static_assert in the class body rather than a requires-clause, since
   // there is no overload to fall through to -- so it is a hard error and not
   // something a negative test can probe.
@@ -903,7 +904,7 @@ TEST(TensorExpansion, ATangentialTensorRoundTripsThroughBothBridges) {
   }
 }
 
-// [D9]: grad_1 is an operator on the general bundle, so there is no overload
+// grad_1 is an operator on the general bundle, so there is no overload
 // taking a tangential operand. A caller embeds and then differentiates. This
 // pins that as a decision rather than leaving it to be discovered as a
 // compile error nobody wrote down.

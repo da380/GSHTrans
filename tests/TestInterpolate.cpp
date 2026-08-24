@@ -51,7 +51,7 @@ auto Samples(Int n, std::uint_fast32_t seed) {
 }
 
 //--------------------------------------------------------------------------//
-//         P1: the padded grid, which needs no expansion to check            //
+//        The padded grid, which needs no expansion to check               //
 //--------------------------------------------------------------------------//
 
 class PaddedGrid : public ::testing::Test {
@@ -153,7 +153,7 @@ TEST_F(PaddedGrid, RefusesInputsThatDoNotFitTheGrid) {
 }
 
 // A real field pads exactly as a complex one does; the scalar type is carried
-// through rather than promoted, which is what [I9] asks for.
+// through rather than promoted.
 TEST_F(PaddedGrid, PadsARealFieldWithoutPromoting) {
   auto values =
       std::vector<Real>(static_cast<std::size_t>(nTheta * nPhi), Real{2});
@@ -168,7 +168,7 @@ TEST_F(PaddedGrid, PadsARealFieldWithoutPromoting) {
 }
 
 //--------------------------------------------------------------------------//
-//              P2: the spectral interpolant, which is the reference          //
+//          The spectral interpolant, which is the reference               //
 //--------------------------------------------------------------------------//
 
 // Fill an expansion with arbitrary but reproducible coefficients.
@@ -192,7 +192,7 @@ void Fill(Expansion& e, std::uint_fast32_t seed) {
 }
 
 // The interpolant must be copyable, because ProjectFunction takes its
-// callable by value and copies it into a lambda -- which is [I8]'s whole
+// callable by value and copies it into a lambda -- which is the whole
 // point, and the property most easily broken by a change of storage.
 static_assert(std::copy_constructible<SpectralInterpolant<2, Grid>>);
 static_assert(
@@ -252,8 +252,8 @@ TEST(SpectralInterpolant, MatchesEvaluateForARealField) {
 
 // Off the grid, where agreement with Evaluate says nothing, the oracle is a
 // closed form. The l = 1 generalised Legendre functions of Dahlen & Tromp
-// (C.115) are the table field-algebra-plan.md section 2 uses to pin the
-// convention, so this is the same oracle at a different point.
+// (C.115) are the table the library's convention is pinned against, so this
+// is the same oracle at a different point.
 TEST(SpectralInterpolant, IsExactOnALowDegreeHarmonic) {
   constexpr Int N = 1;
   auto grid = Grid(1, 1);
@@ -314,8 +314,8 @@ TEST(SpectralInterpolant, AnswersAtThePolesByTheStatedRule) {
 }
 
 // A pole value depends on phi at N != 0, which is the frame ambiguity rather
-// than a defect, and is the fact section 9 of thoughts.md got wrong. Pinned
-// because a polar row built as a constant would pass every other test here.
+// than a defect. Pinned because a polar row built as a constant would pass
+// every other test here.
 TEST(SpectralInterpolant, PoleValueVariesWithLongitudeAtNonzeroUpperIndex) {
   constexpr Int N = 2;
   auto grid = Grid(6, 2);
@@ -330,7 +330,7 @@ TEST(SpectralInterpolant, PoleValueVariesWithLongitudeAtNonzeroUpperIndex) {
 }
 
 //--------------------------------------------------------------------------//
-//        P3: the polar rows, and Interpolate on a field                      //
+//           The polar rows, and Interpolate on a field                    //
 //--------------------------------------------------------------------------//
 
 // Every scheme here passes through its own nodes, so this is the identity
@@ -392,7 +392,7 @@ TEST(FieldInterpolant, EverySchemeReproducesARealFieldAtEveryNode) {
 // being no worse than the same schemes manage in the interior.
 //
 // So this asserts the exactness where it is claimed and not where it is not,
-// which is the distinction section 22's P5 exists to measure.
+// which is the distinction the benchmark exists to measure.
 TEST(FieldInterpolant, LocalSchemesAreExactAtThePolarNodes) {
   constexpr Int N = 2;
   const Int lMax = 8;
@@ -470,10 +470,10 @@ static_assert(requires { Scheme::Bicubic(); });
 #endif  // GSHTRANS_HAVE_INTERPOLATION
 
 //--------------------------------------------------------------------------//
-//     P4: the interpolant as a function on the sphere, and remeshing         //
+//   The interpolant as a function on the sphere, and remeshing            //
 //--------------------------------------------------------------------------//
 
-// [I8]: modelling ScalarFunctionS2 is the point of the feature rather than a
+// modelling ScalarFunctionS2 is the point of the feature rather than a
 // bonus, because it is what makes remeshing one line. Asserted because it is
 // the property most easily broken by a change of signature.
 static_assert(ScalarFunctionS2<SpectralInterpolant<2, Grid>, Real, Complex>);
@@ -501,7 +501,7 @@ TEST(FieldInterpolant, RemeshesOntoAnotherGridExactly) {
   const auto want = Evaluate(eFine);
 
   // And by handing the interpolant to the field constructor, which is the
-  // one-line remesh [I8] promises.
+  // one-line remesh this promises.
   const auto got = SpinField<N, Grid>(fine, Interpolate(field));
 
   auto worst = Real{0};
@@ -512,7 +512,7 @@ TEST(FieldInterpolant, RemeshesOntoAnotherGridExactly) {
 }
 
 // ProjectFunction takes its callable by value and copies it into a lambda, so
-// this exercises the copyability that [I1]'s shared state exists to provide.
+// this exercises the copyability the shared state exists to provide.
 TEST(FieldInterpolant, SurvivesProjectFunctionWhichCopiesIt) {
   const Int lMax = 6;
   auto grid = Grid(lMax, 0);
