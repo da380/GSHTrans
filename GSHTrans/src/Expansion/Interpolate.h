@@ -29,6 +29,11 @@
 #include <string>
 #include <vector>
 
+#ifdef GSHTRANS_HAVE_INTERPOLATION
+#include <Interpolation/BicubicSpline.hpp>
+#include <Interpolation/Bilinear.hpp>
+#endif
+
 #include "../Concepts.h"
 #include "../Indexing.h"
 #include "../Policies.h"
@@ -168,6 +173,53 @@ auto Pad(const GridType& grid, std::span<const Scalar> samples,
   pushRow(south);
 
   return padded;
+}
+
+// The two polar rows, from the expansion.
+//
+// Neither pole is a grid point, so a local scheme has nothing to interpolate
+// against there and would extrapolate -- exactly where a spin-weighted field
+// is most delicate. The rows below remove the extrapolation entirely, and they
+// are exact rather than a fudge, because at a pole all but one order vanishes
+// (section 22.1, measured over |N| <= 2 and l <= 5):
+//
+//     f(0,  phi) = exp(+i N phi) sum_l           f^N_{l,+N} sqrt((2l+1)/4pi)
+//     f(pi, phi) = exp(-i N phi) sum_l (-1)^{l-N} f^N_{l,-N} sqrt((2l+1)/4pi)
+//
+// The phi dependence is the point rather than an inconvenience: a
+// spin-weighted field at a coordinate pole is not single-valued, because the
+// frame e_pm depends on the azimuth of approach. So a polar row is a row, and
+// a constant one would be wrong at every N != 0.
+template <RealOrComplexFloatingPoint Scalar, typename Expansion,
+          SeparableAngularGrid GridType>
+auto PolarRows(const Expansion& expansion, const GridType& grid) {
+  using Real = typename GridType::Real;
+  using Complex = std::complex<Real>;
+  constexpr auto N = Expansion::UpperIndex;
+  constexpr auto pi = std::numbers::pi_v<Real>;
+
+  auto north = Complex{};
+  auto south = Complex{};
+  for (auto l : expansion.Degrees()) {
+    const auto norm = std::sqrt((2 * static_cast<Real>(l) + 1) / (4 * pi));
+    const auto sign = (l - N) % 2 == 0 ? Real{1} : Real{-1};
+    north += expansion[l, N] * norm;
+    south += expansion[l, -N] * norm * sign;
+  }
+
+  auto rows = std::pair<std::vector<Scalar>, std::vector<Scalar>>{};
+  for (auto phi : grid.Longitudes()) {
+    const auto up = north * std::polar(Real{1}, static_cast<Real>(N) * phi);
+    const auto down = south * std::polar(Real{1}, -static_cast<Real>(N) * phi);
+    if constexpr (RealFloatingPoint<Scalar>) {
+      rows.first.push_back(std::real(up));
+      rows.second.push_back(std::real(down));
+    } else {
+      rows.first.push_back(up);
+      rows.second.push_back(down);
+    }
+  }
+  return rows;
 }
 
 }  // namespace InterpolateDetails
@@ -344,6 +396,138 @@ auto Interpolate(const SpinExpansion<N, GridType, Value>& expansion,
   return SpectralInterpolant<N, GridType, Value>(expansion.MaxDegree(),
                                                  expansion.Data());
 }
+
+// A field, spectrally: expand and sum. The degree is the truncation at which
+// the expansion is taken, defaulting to the grid's own -- which is what an
+// oversampled ForBand grid wants to be able to say.
+template <SpinWeighted F>
+auto Interpolate(const F& field, Scheme::SpectralTag = Scheme::Spectral(),
+                 std::ptrdiff_t lMax = -1) {
+  const auto degree = lMax < 0 ? field.Grid().MaxDegree() : lMax;
+  const auto expansion = Expand(field, degree);
+  return SpectralInterpolant<F::UpperIndex, typename F::GridType,
+                             typename F::Value>(degree, expansion.Data());
+}
+
+#ifdef GSHTRANS_HAVE_INTERPOLATION
+
+//--------------------------------------------------------------------------//
+//                            The local interpolants                         //
+//--------------------------------------------------------------------------//
+
+// One of Interpolation's rectilinear schemes over the *padded* grid: the
+// field's own samples, plus the wrap column and the two polar rows. After the
+// padding and [I4]'s domain rules, no query reaches upstream's edge-cell
+// continuation at all, which is the property that makes those schemes usable
+// on a sphere.
+//
+// The upstream object is given std::span rather than the deduction guide's
+// views, for two reasons that both matter. A span is a view, so it satisfies
+// upstream's constraints; and it is a type this class can *spell*, which lets
+// the padded arrays and the interpolant over them live in one State and be
+// initialised in order. Handing upstream an owning view instead would make
+// this class move-only, and it has to be copyable -- ProjectFunction takes its
+// callable by value ([I8]).
+template <std::ptrdiff_t _N, InterpolateDetails::SeparableAngularGrid _Grid,
+          RealOrComplexValued _Value, typename _Upstream>
+class LocalInterpolant {
+ public:
+  using Int = std::ptrdiff_t;
+  static constexpr Int UpperIndex = _N;
+  using GridType = _Grid;
+  using Value = _Value;
+  using Real = typename _Grid::Real;
+  using Complex = std::complex<Real>;
+  using Scalar =
+      std::conditional_t<std::same_as<Value, RealValued>, Real, Complex>;
+
+  explicit LocalInterpolant(InterpolateDetails::Padded<Real, Scalar> padded)
+      : _state{std::make_shared<const State>(std::move(padded))} {}
+
+  Scalar operator()(Real theta, Real phi) const {
+    constexpr auto pi = std::numbers::pi_v<Real>;
+    if (!(theta >= 0) || !(theta <= pi)) {
+      throw std::invalid_argument(
+          "Interpolate: the colatitude must lie in [0, pi]");
+    }
+    phi = std::fmod(phi, 2 * pi);
+    if (phi < 0) phi += 2 * pi;
+    return _state->upstream(theta, phi);
+  }
+
+ private:
+  struct State {
+    InterpolateDetails::Padded<Real, Scalar> padded;
+    _Upstream upstream;
+
+    // padded is declared first, so it is built first and the spans below
+    // point at arrays that already exist. State is never moved -- it is
+    // reached only through a shared_ptr -- so they stay valid.
+    explicit State(InterpolateDetails::Padded<Real, Scalar> paddedIn)
+        : padded{std::move(paddedIn)},
+          upstream(std::span<const Real>(padded.theta),
+                   std::span<const Real>(padded.phi),
+                   std::span<const Scalar>(padded.values)) {}
+  };
+
+  std::shared_ptr<const State> _state;
+};
+
+namespace InterpolateDetails {
+
+// Which upstream type a scheme tag names.
+template <typename Tag, typename Real, typename Scalar>
+struct UpstreamFor;
+
+template <typename Real, typename Scalar>
+struct UpstreamFor<Scheme::BilinearTag, Real, Scalar> {
+  using Type =
+      Interpolation::Bilinear<std::span<const Real>, std::span<const Real>,
+                              std::span<const Scalar>>;
+};
+
+template <typename Real, typename Scalar>
+struct UpstreamFor<Scheme::BicubicTag, Real, Scalar> {
+  using Type = Interpolation::BicubicSpline<
+      std::span<const Real>, std::span<const Real>, std::span<const Scalar>>;
+};
+
+template <typename Tag>
+concept LocalScheme = std::same_as<Tag, Scheme::BilinearTag> or
+                      std::same_as<Tag, Scheme::BicubicTag>;
+
+}  // namespace InterpolateDetails
+
+// A field, locally. The forward transform is for the polar rows and nothing
+// else ([I3]): two columns of coefficients out of a whole expansion, which is
+// the construction cost this scheme carries and the reason its cheapness is
+// per evaluation rather than per interpolant.
+template <SpinWeighted F, InterpolateDetails::LocalScheme Tag>
+auto Interpolate(const F& field, Tag, std::ptrdiff_t lMax = -1) {
+  using Real = typename F::Real;
+  using Scalar = typename F::Scalar;
+  using Upstream =
+      typename InterpolateDetails::UpstreamFor<Tag, Real, Scalar>::Type;
+
+  const auto& grid = field.Grid();
+  const auto degree = lMax < 0 ? grid.MaxDegree() : lMax;
+
+  auto samples = std::vector<Scalar>(
+      static_cast<std::size_t>(grid.FieldSize()));
+  field.EvaluateInto(std::span<Scalar>(samples));
+
+  const auto expansion = Expand(field, degree);
+  const auto rows =
+      InterpolateDetails::PolarRows<Scalar>(expansion, grid);
+
+  auto padded = InterpolateDetails::Pad<typename F::GridType, Scalar>(
+      grid, samples, rows.first, rows.second);
+
+  return LocalInterpolant<F::UpperIndex, typename F::GridType,
+                          typename F::Value, Upstream>(std::move(padded));
+}
+
+#endif  // GSHTRANS_HAVE_INTERPOLATION
 
 }  // namespace GSHTrans
 

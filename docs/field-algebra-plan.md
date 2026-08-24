@@ -3135,6 +3135,16 @@ column is the copy of `iPhi = 0`, exactly; the axes are `[0, θ…, π]` and
 node*, that its axes are strictly increasing so upstream accepts them, and
 that the wrap column equals column zero. None of that needs an interpolant.
 
+*Done.* Seven tests, at 333. One thing the compiler found rather than the
+reading: `SeparableAngularGrid` was first written as
+`*std::ranges::begin(grid.CoLatitudes())` and **rejected `GaussLegendreGrid`**
+— an axis accessor returns a view by value, `views::all` of a prvalue
+container is an `owning_view`, and that is not a borrowed range, so
+`ranges::begin` on the returned prvalue is ill-formed. Written against
+`range_value_t` instead. Worth recording because the concept was
+unsatisfiable for a grid that plainly has both axes, and the error said
+nothing about why.
+
 **P2 — `Scheme::Spectral()`.** The direct sum of §22.1, over an expansion, in
 per-thread scratch through `WignerDetails::ComputeBlock` against the tables
 `PreComputeTables` builds — the same recursion `WignerValues::Generated()`
@@ -3148,6 +3158,16 @@ single harmonic at an off-grid point, where an analytic answer exists.
 *The known cost, stated so it is not a surprise:* `O(lMax²)` a point, and a
 Wigner block per point. Evaluating on a whole second grid is a transform's
 work done the slow way, which is why §9 wants the crossover measured — see P5.
+
+*Done.* Five tests, at 338, and they passed first try — which is the
+measurement of §22.1 doing its job, since every convention in the sum had
+already been checked against running code before a line of it was written.
+`exp(imφ)` is built with `polar` for every order at once rather than by a
+recurrence: it is `O(lMax)` against the sum's `O(lMax²)`, so about one per
+cent of the work, and it carries none of the phase drift a recurrence would
+accumulate out to `m = lMax`. The tests bite, checked by perturbing rather
+than assumed: dropping the `(−1)^m` from the Hermitian partner fails the
+real-field agreement and nothing else.
 
 **P3 — the polar rows, and `Interpolate` on a field.** The two sums of §22.1,
 and the wiring: expand at the requested degree, build the rows, pad, hand the
@@ -3164,10 +3184,47 @@ and the check that the padding's indices line up. Plus that a polar query at
 `N ≠ 0` varies with `φ` as `e^{±iNφ}`, which is the fact §9 got wrong and is
 therefore the one to pin.
 
+*Done, and the first version of two tests overclaimed.* They asserted that a
+local scheme is exact **at a pole**, and it is not: it is exact at a *polar
+node*, which is the grid's own longitudes and nowhere else. Between them the
+row `c·e^{iNφ}` is interpolated along `φ` like any other row, because
+`e^{iNφ}` is not what a local scheme reproduces. Measured at `lMax = 8,
+N = 2`:
+
+| | at a grid longitude | between them |
+|---|---:|---:|
+| bilinear, pole | 2.2e-15 | 1.0e-1 to 2.0e-1 |
+| bicubic, pole | 2.2e-15 | 1.6e-3 to 6.0e-3 |
+| bicubic, interior | — | 9.2e-2 to 3.8e-1 |
+
+**The polar cells are no worse than the interior**, which is what the padding
+was for and is now a number rather than an expectation. The tests assert the
+exactness where it holds and the phase relation at the nodes, and the
+between-nodes behaviour is P5's to measure rather than to assert.
+
+*A third overclaim, smaller:* a query at `φ + 2π` is not bit-identical to one
+at `φ`, because `fmod(2π + 0.3, 2π)` is `0.3` in exact arithmetic and one ulp
+away in floating point. A property of the reduction, not of the interpolant.
+
+*And this sharpens the case for §9's `Hybrid`.* The one thing a local scheme
+cannot do here is reproduce a pure Fourier mode in `φ`, which is exactly what
+a polar row is. Trigonometric interpolation in `φ` — one FFT the library
+already owns — would make the polar rows exact everywhere rather than at
+their nodes. Not built, and now with a measured reason to want it.
+
 **P4 — the domain rules, and `ScalarFunctionS2`.** [I4]'s throw and wrap, and
 the round trip [I8] promises: interpolate a field, hand the callable to a
 second grid's `ProjectFunction`, and require the result to match a direct
 evaluation on that grid.
+
+*Done*, at 346 with the dependency and 325 without — the difference in this
+file being the three local-scheme tests, which are not built rather than
+skipped ([I5], and off is checked rather than claimed). The remesh is the
+test worth naming: a band-limited field sampled on one grid, evaluated on a
+finer one through the interpolant, against the same coefficients evaluated
+there directly. Spectral interpolation is exact for such a field, so the two
+must agree, and they do to `1e-12` — which exercises the whole path and is an
+independent route to the same numbers.
 
 **P5 — measure the cheap schemes against the reference.** The point of [I2],
 and the step that says whether the local schemes are worth having. Over a

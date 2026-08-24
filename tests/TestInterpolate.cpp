@@ -317,4 +317,220 @@ TEST(SpectralInterpolant, PoleValueVariesWithLongitudeAtNonzeroUpperIndex) {
   EXPECT_NEAR(std::abs(a), std::abs(b), 1e-13) << "only the phase should move";
 }
 
+//--------------------------------------------------------------------------//
+//        P3: the polar rows, and Interpolate on a field                      //
+//--------------------------------------------------------------------------//
+
+// Every scheme here passes through its own nodes, so this is the identity
+// test -- the same check RadialResample's turned on, and the one that says
+// the padding's indices line up with the field's.
+template <typename Field, typename Interpolant>
+void ExpectReproducesNodes(const Field& field, const Interpolant& at,
+                           Real tolerance) {
+  const auto& grid = field.Grid();
+  auto worst = Real{0};
+  auto iTheta = Int{0};
+  for (auto theta : grid.CoLatitudes()) {
+    auto iPhi = Int{0};
+    for (auto phi : grid.Longitudes()) {
+      worst = std::max(worst, std::abs(at(theta, phi) - field[iTheta, iPhi]));
+      iPhi++;
+    }
+    iTheta++;
+  }
+  EXPECT_LT(worst, tolerance) << "worst difference at a node " << worst;
+}
+
+TEST(FieldInterpolant, EverySchemeReproducesTheFieldAtEveryNode) {
+  constexpr Int N = 2;
+  const Int lMax = 8;
+  auto grid = Grid(lMax, 2);
+  auto e = SpinExpansion<N, Grid>(grid, lMax);
+  Fill(e, 505);
+  const auto field = Evaluate(e);
+
+  ExpectReproducesNodes(field, Interpolate(field, Scheme::Spectral()), 1e-12);
+#ifdef GSHTRANS_HAVE_INTERPOLATION
+  ExpectReproducesNodes(field, Interpolate(field, Scheme::Bilinear()), 1e-13);
+  ExpectReproducesNodes(field, Interpolate(field, Scheme::Bicubic()), 1e-12);
+#endif
+}
+
+TEST(FieldInterpolant, EverySchemeReproducesARealFieldAtEveryNode) {
+  const Int lMax = 8;
+  auto grid = Grid(lMax, 0);
+  auto e = SpinExpansion<0, Grid, RealValued>(grid, lMax);
+  Fill(e, 606);
+  const auto field = Evaluate(e);
+
+  ExpectReproducesNodes(field, Interpolate(field, Scheme::Spectral()), 1e-12);
+#ifdef GSHTRANS_HAVE_INTERPOLATION
+  ExpectReproducesNodes(field, Interpolate(field, Scheme::Bilinear()), 1e-13);
+  ExpectReproducesNodes(field, Interpolate(field, Scheme::Bicubic()), 1e-12);
+#endif
+}
+
+#ifdef GSHTRANS_HAVE_INTERPOLATION
+
+// The poles are the reason the padding exists, and a polar row is exact where
+// it is a node -- which is at the grid's own longitudes and nowhere else.
+// Between them the row is interpolated along phi like any other row, because
+// exp(i N phi) is not what a local scheme reproduces. Measured: 2e-15 at the
+// nodes against 6e-3 (bicubic) and 1e-1 (bilinear) between them, the latter
+// being no worse than the same schemes manage in the interior.
+//
+// So this asserts the exactness where it is claimed and not where it is not,
+// which is the distinction section 22's P5 exists to measure.
+TEST(FieldInterpolant, LocalSchemesAreExactAtThePolarNodes) {
+  constexpr Int N = 2;
+  const Int lMax = 8;
+  auto grid = Grid(lMax, 2);
+  auto e = SpinExpansion<N, Grid>(grid, lMax);
+  Fill(e, 707);
+  const auto field = Evaluate(e);
+
+  const auto reference = Interpolate(field, Scheme::Spectral());
+  const auto bilinear = Interpolate(field, Scheme::Bilinear());
+  const auto bicubic = Interpolate(field, Scheme::Bicubic());
+
+  for (auto phi : grid.Longitudes()) {
+    for (auto theta : {0.0, pi}) {
+      EXPECT_NEAR(std::abs(bilinear(theta, phi) - reference(theta, phi)), 0.0,
+                  1e-13)
+          << "bilinear at theta = " << theta << ", phi = " << phi;
+      EXPECT_NEAR(std::abs(bicubic(theta, phi) - reference(theta, phi)), 0.0,
+                  1e-13)
+          << "bicubic at theta = " << theta << ", phi = " << phi;
+    }
+  }
+}
+
+// A constant polar row would satisfy every node test above and be wrong at
+// every N != 0, so the phase is pinned separately -- on a local scheme, since
+// that is where a constant row would have been written. At the row's own
+// nodes the ratio between two longitudes is exactly exp(i N (phi - phi')).
+TEST(FieldInterpolant, PolarRowsCarryTheFramePhase) {
+  constexpr Int N = 2;
+  auto grid = Grid(8, 2);
+  auto e = SpinExpansion<N, Grid>(grid, 8);
+  Fill(e, 808);
+  const auto field = Evaluate(e);
+  const auto at = Interpolate(field, Scheme::Bicubic());
+
+  const auto base = at(0.0, 0.0);
+  ASSERT_GT(std::abs(base), 1e-6) << "degenerate test data";
+
+  auto moved = false;
+  for (auto phi : grid.Longitudes()) {
+    const auto want = base * std::exp(Complex(0, N * phi));
+    EXPECT_NEAR(std::abs(at(0.0, phi) - want), 0.0, 1e-13)
+        << "north pole at phi = " << phi;
+    if (std::abs(at(0.0, phi) - base) > 1e-3) moved = true;
+  }
+  EXPECT_TRUE(moved) << "the north pole looks constant in phi";
+}
+
+// The wrap: the last cell used to interpolate against nothing. Just below
+// 2 pi the answer must approach the value at zero, which it cannot do without
+// the extra column.
+TEST(FieldInterpolant, TheLastLongitudeCellClosesOnZero) {
+  const Int lMax = 8;
+  auto grid = Grid(lMax, 0);
+  auto e = SpinExpansion<0, Grid, RealValued>(grid, lMax);
+  Fill(e, 909);
+  const auto field = Evaluate(e);
+  const auto at = Interpolate(field, Scheme::Bilinear());
+
+  EXPECT_NEAR(at(1.0, 2 * pi - 1e-9), at(1.0, 0.0), 1e-7);
+  // And a query past 2 pi is the same point, reduced. Not bit-identical:
+  // fmod(2 pi + 0.3, 2 pi) is 0.3 in exact arithmetic and one ulp away in
+  // floating point, so the two land in the same cell at slightly different
+  // places. That is a property of the reduction, not of the interpolant.
+  EXPECT_NEAR(at(1.0, 2 * pi + 0.3), at(1.0, 0.3), 1e-12);
+}
+
+// Interpolate is a template over the scheme tag, so a build without the
+// dependency does not have these two factories at all. Guarded here so the
+// test file compiles either way, which is what says the guard is real.
+static_assert(requires { Scheme::Bilinear(); });
+static_assert(requires { Scheme::Bicubic(); });
+
+#endif  // GSHTRANS_HAVE_INTERPOLATION
+
+//--------------------------------------------------------------------------//
+//     P4: the interpolant as a function on the sphere, and remeshing         //
+//--------------------------------------------------------------------------//
+
+// [I8]: modelling ScalarFunctionS2 is the point of the feature rather than a
+// bonus, because it is what makes remeshing one line. Asserted because it is
+// the property most easily broken by a change of signature.
+static_assert(
+    ScalarFunctionS2<SpectralInterpolant<2, Grid>, Real, Complex>);
+static_assert(ScalarFunctionS2<SpectralInterpolant<0, Grid, RealValued>, Real,
+                               Real>);
+
+// Remeshing, end to end: a band-limited field sampled on one grid, evaluated
+// on another. Spectral interpolation is exact for such a field, so the
+// remeshed samples must agree with the expansion evaluated on the second grid
+// directly -- which is an independent route to the same numbers.
+TEST(FieldInterpolant, RemeshesOntoAnotherGridExactly) {
+  constexpr Int N = 2;
+  const Int band = 8;
+  auto coarse = Grid(band, 2);
+  auto fine = Grid(band + 4, 2);
+
+  auto e = SpinExpansion<N, Grid>(coarse, band);
+  Fill(e, 1111);
+  const auto field = Evaluate(e);
+
+  // The same coefficients on the finer grid, evaluated there.
+  auto eFine = SpinExpansion<N, Grid>(fine, band);
+  for (auto l : e.Degrees())
+    for (auto m : e.Orders(l)) eFine[l, m] = e[l, m];
+  const auto want = Evaluate(eFine);
+
+  // And by handing the interpolant to the field constructor, which is the
+  // one-line remesh [I8] promises.
+  const auto got = SpinField<N, Grid>(fine, Interpolate(field));
+
+  auto worst = Real{0};
+  for (auto iTheta : fine.CoLatitudeIndices())
+    for (auto iPhi : fine.LongitudeIndices())
+      worst = std::max(worst,
+                       std::abs(got[iTheta, iPhi] - want[iTheta, iPhi]));
+  EXPECT_LT(worst, 1e-12) << "worst difference " << worst;
+}
+
+// ProjectFunction takes its callable by value and copies it into a lambda, so
+// this exercises the copyability that [I1]'s shared state exists to provide.
+TEST(FieldInterpolant, SurvivesProjectFunctionWhichCopiesIt) {
+  const Int lMax = 6;
+  auto grid = Grid(lMax, 0);
+  auto e = SpinExpansion<0, Grid, RealValued>(grid, lMax);
+  Fill(e, 1212);
+  const auto field = Evaluate(e);
+
+  const auto at = Interpolate(field);
+  auto worst = Real{0};
+  auto iPoint = Int{0};
+  for (auto value : grid.ProjectFunction(at)) {
+    worst = std::max(worst, std::abs(value - field.Data()[iPoint]));
+    iPoint++;
+  }
+  EXPECT_EQ(iPoint, grid.FieldSize());
+  EXPECT_LT(worst, 1e-12) << "worst difference " << worst;
+}
+
+TEST(FieldInterpolant, RefusesAColatitudeOffTheSphere) {
+  auto grid = Grid(4, 0);
+  auto e = SpinExpansion<0, Grid, RealValued>(grid, 4);
+  Fill(e, 1010);
+  const auto at = Interpolate(e);
+
+  EXPECT_THROW(at(-0.1, 0.0), std::invalid_argument);
+  EXPECT_THROW(at(pi + 0.1, 0.0), std::invalid_argument);
+  EXPECT_NO_THROW(at(0.0, 0.0));
+  EXPECT_NO_THROW(at(pi, 0.0));
+}
+
 }  // namespace
