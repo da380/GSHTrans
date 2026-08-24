@@ -4,6 +4,8 @@
 
 #include <complex>
 #include <cstddef>
+#include <cstdint>
+#include <random>
 #include <numbers>
 #include <span>
 #include <vector>
@@ -21,18 +23,32 @@ using Grid = GaussLegendreGrid<Real, All, All>;
 
 constexpr auto pi = std::numbers::pi_v<Real>;
 
-// A field's worth of arbitrary but reproducible samples.
-auto Samples(Int n, int seed) {
-  auto values = std::vector<Complex>();
-  values.reserve(static_cast<std::size_t>(n));
-  for (auto i = Int{0}; i < n; i++) {
-    seed = seed * 1103515245 + 12345;
-    const auto a = static_cast<Real>((seed >> 8) % 1000) / 1000;
-    seed = seed * 1103515245 + 12345;
-    const auto b = static_cast<Real>((seed >> 8) % 1000) / 1000;
-    values.emplace_back(a, b);
-  }
-  return values;
+// Arbitrary but reproducible values, in [0, 1).
+//
+// std::mt19937 rather than a hand-rolled congruential step: the first version
+// here multiplied a signed int and overflowed, which is undefined and which
+// UndefinedBehaviorSanitizer duly reported -- every test in this file failed
+// under it while passing everywhere else, because the wraparound it relied on
+// happens to be what the hardware does.
+class Values {
+ public:
+  explicit Values(std::uint_fast32_t seed) : _engine{seed} {}
+
+  Real operator()() { return _distribution(_engine); }
+  Complex Pair() { return Complex((*this)(), (*this)()); }
+
+ private:
+  std::mt19937 _engine;
+  std::uniform_real_distribution<Real> _distribution{0, 1};
+};
+
+// A field's worth of them.
+auto Samples(Int n, std::uint_fast32_t seed) {
+  auto values = Values(seed);
+  auto out = std::vector<Complex>();
+  out.reserve(static_cast<std::size_t>(n));
+  for (auto i = Int{0}; i < n; i++) out.push_back(values.Pair());
+  return out;
 }
 
 //--------------------------------------------------------------------------//
@@ -158,13 +174,12 @@ TEST_F(PaddedGrid, PadsARealFieldWithoutPromoting) {
 
 // Fill an expansion with arbitrary but reproducible coefficients.
 template <typename Expansion>
-void Fill(Expansion& e, int seed) {
+void Fill(Expansion& e, std::uint_fast32_t seed) {
+  auto values = Values(seed);
   for (auto l : e.Degrees()) {
     for (auto m : e.Orders(l)) {
-      seed = seed * 1103515245 + 12345;
-      const auto a = static_cast<Real>((seed >> 8) % 1000) / 1000;
-      seed = seed * 1103515245 + 12345;
-      const auto b = static_cast<Real>((seed >> 8) % 1000) / 1000;
+      const auto a = values();
+      const auto b = values();
       // A real field's m = 0 coefficient is real, by its own reality
       // condition; giving it an imaginary part would make the expansion
       // describe no field at all.

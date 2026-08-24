@@ -364,6 +364,14 @@ merely compiled. Every public header is additionally compiled on its own, and
 twice, so that one which stops standing alone fails the build rather than
 waiting for the first consumer that does not already pull the missing include.
 
+The sanitiser jobs run `Debug` with **leak detection on**, which is not what a
+casual local run does; `scripts/test_sanitized.sh address` is the exact
+configuration and is worth using rather than a hand-rolled one. The clang leg
+is advisory and allowed to fail, since no clang OpenMP runtime is installed on
+the development machine — but it earns its place: it is what found a
+`static constexpr bool` constraint whose later terms named members a
+non-spin-weighted operand does not have, which GCC accepted and clang did not.
+
 ThreadSanitizer is deliberately not offered. The parallelism here is OpenMP,
 GCC's `libgomp` carries no TSan annotations, and every barrier and reduction
 is therefore reported as a race; that is a limitation of the tooling, not a

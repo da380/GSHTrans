@@ -87,6 +87,33 @@ template <typename T>
 using Node = std::remove_cvref_t<T>;
 
 //--------------------------------------------------------------------------//
+//                    What may be evaluated into a field                     //
+//--------------------------------------------------------------------------//
+
+// Whether an expression can be written into a field of upper index N,
+// precision Real and scalar Scalar: the same upper index, the same precision,
+// and a scalar that converts. The last condition is what permits a
+// real-valued expression into a complex field and makes the reverse a compile
+// error rather than a truncation.
+//
+// **A concept, and it has to be one.** This was a `static constexpr bool`
+// member of SpinField, written as a chain of `and`s beginning with
+// SpinWeighted. That is ill-formed for any operand that is not spin-weighted,
+// because `and` short-circuits *evaluation* and not *well-formedness*: the
+// initialiser still names Node<Expr>::UpperIndex, which does not exist. GCC
+// accepted it and clang did not, so a grid passed where a field's constructor
+// was being considered failed to compile there and nowhere else.
+//
+// Concept conjunction is the construct that actually short-circuits: an
+// atomic constraint is only checked once the ones before it are satisfied, so
+// the members below are never named for a type that is not spin-weighted.
+template <typename Expr, std::ptrdiff_t N, typename Real, typename Scalar>
+concept EvaluatesInto =
+    SpinWeighted<Node<Expr>> && (Node<Expr>::UpperIndex == N) &&
+    std::same_as<typename Node<Expr>::Real, Real> &&
+    std::convertible_to<typename Node<Expr>::Scalar, Scalar>;
+
+//--------------------------------------------------------------------------//
 //                          What this layer needs of a grid                  //
 //--------------------------------------------------------------------------//
 

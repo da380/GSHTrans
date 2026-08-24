@@ -81,15 +81,14 @@ class SpinField {
   //                    Construction from an expression                     //
   //------------------------------------------------------------------------//
 
-  // What may be evaluated into a field of this type: the same upper index, the
-  // same precision, and a scalar that converts. The last condition is what
-  // permits a real-valued expression into a complex field and makes the
-  // reverse a compile error rather than a truncation.
+  // What may be evaluated into a field of this type. The condition itself is
+  // SpinWeighted.h's EvaluatesInto, which is a concept rather than a constexpr
+  // bool for a reason recorded there: a chain of `and`s does not stop the
+  // later terms naming members that a non-spin-weighted operand does not
+  // have, and clang rejects what GCC accepted.
   template <typename Expr>
   static constexpr bool Compatible =
-      SpinWeighted<Node<Expr>> and Node<Expr>::UpperIndex == UpperIndex and
-      std::same_as<typename Node<Expr>::Real, Real> and
-      std::convertible_to<typename Node<Expr>::Scalar, Scalar>;
+      EvaluatesInto<Expr, UpperIndex, Real, Scalar>;
 
   // The grid comes from the expression, so a materialised field is on the
   // grid its operands were on and nowhere else.
