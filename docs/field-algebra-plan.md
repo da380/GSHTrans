@@ -2923,3 +2923,275 @@ factorisation, because there is nothing to hoist it into. If that ever
 matters, the ask upstream is a `CubicSpline` constructible from an existing
 `System` — but it does not matter yet, and asking for it now would be asking
 on speculation.
+
+---
+
+## 22. Field interpolation, in detail
+
+Written 2026-08-24, when `thoughts.md` §9 was picked up. That section is the
+assessment — the shape of the callable, the policy house style, and the two
+boundaries that are ours rather than upstream's — and is not repeated. This is
+the work order and the decisions.
+
+### 22.1 What was checked first, and two things §9 got wrong
+
+Five facts, each read off running code rather than from the sketch.
+
+**The layout join is real.** `Interpolation::Bilinear` takes two axis ranges
+and a flat row-major value range with element `(i, j)` at `i · size(y) + j`; a
+field stores `iTheta · nPhi + iPhi`. So a field's colatitudes, longitudes and
+buffer are directly the three arguments, with no transpose and no adaptor.
+That is what §9 claimed and it holds.
+
+**The colatitudes are strictly increasing and interior to `(0, π)`.** At
+`lMax = 6` they run `0.320 … 2.821`, strictly increasing, checked pair by
+pair. Two consequences: no axis has to be reversed, which matters because
+`Interpolation::Detail::ValidateGrid` demands strictly increasing abscissae
+and would otherwise refuse the grid; and the poles genuinely lie outside the
+convex hull of the nodes, so §9's warning about extrapolation there is a
+statement of fact and not a worry.
+
+**The longitudes run `0 … 2π − Δφ`, uniformly.** So the wrap is not
+represented, and a query in the last cell interpolates against nothing.
+
+**The synthesis is the direct sum, exactly.** Reading it off the loop kernel's
+`SynthesiseRow` gives
+
+```
+f(θ, φ) = Σ_l Σ_m  f^N_{lm} · d̄^l_{Nm}(θ) · e^{imφ},
+          d̄^l_{Nm} = sqrt((2l+1)/4π) · d^l_{Nm},
+```
+
+which is precisely what `WignerDetails::ComputeBlock` stores. Checked against
+`Evaluate` at every grid point at `N = 2, lMax = 6`: worst absolute difference
+**5.0 × 10⁻¹⁵**. So `Scheme::Spectral()` is that sum, and it is now a measured
+statement rather than a reading of the transform.
+
+The same sum works off the reduced `m ≥ 0` storage of a real field once the
+Hermitian partner `f_{l,−m} = (−1)^m conj(f_{lm})` is supplied: worst
+difference **8.1 × 10⁻¹⁵** against `Evaluate`, with the sum's imaginary part at
+**5.3 × 10⁻¹⁶**, so it really is real and taking the real part is a projection
+rather than a truncation.
+
+Then the two corrections, and the second is the one that changes the work.
+
+**§9's polar claim is half right.** It says "the value at a pole is computable
+from the expansion, since only the harmonics with `m = -N` survive there".
+Measured over `|N| ≤ 2` and `l ≤ 5`, against `sqrt((2l+1)/4π)`:
+
+```
+θ → 0  :  the order m = +N survives,  d̄ = +sqrt((2l+1)/4π)
+θ → π  :  the order m = −N survives,  d̄ = (−1)^{l−N} sqrt((2l+1)/4π)
+```
+
+So `m = −N` is the *south* pole, `m = +N` is the north, and the south carries
+a sign alternating with the degree. The two rows are therefore
+
+```
+f(0,  φ) = e^{+iNφ} · Σ_l  f^N_{l, +N} · sqrt((2l+1)/4π)
+f(π,  φ) = e^{−iNφ} · Σ_l  (−1)^{l−N} f^N_{l, −N} · sqrt((2l+1)/4π)
+```
+
+Both sums are over `l ≥ |N|`, and both are one coefficient per degree rather
+than a full block, which is why the rows are cheap once an expansion exists.
+
+**And a pole value is φ-dependent at `N ≠ 0`, so a polar row is a row and not
+a constant.** This is not a defect: a spin-weighted field at a coordinate pole
+is genuinely not single-valued, because the frame `e_±` depends on the azimuth
+of approach, and the `e^{±iNφ}` above is exactly that dependence. The padding
+still works — the row is filled from the formula like any other — but a
+constant row would have been wrong at every `N ≠ 0`, and "the value at a pole"
+is the wrong phrase for what is being computed. The same fact is why §15.4's
+trap exists: `a(θ,φ) θ̂` is not smooth at a pole for the same reason.
+
+**So the padding is a copy, and §9's "no repack, no copy" holds only
+unpadded.** The padded array is `(nθ + 2) × (nφ + 1)`, a new buffer:
+2.16 MB at `lMax = 256` against the field's 2.14 MB, and `BicubicSpline` then
+holds three more arrays of that size for its curvatures, so about 8.6 MB for
+one bicubic interpolant. That is a real cost and it is priced here rather than
+discovered.
+
+### 22.2 Decisions taken here
+
+**[I1] An interpolant is a snapshot: it owns every array it reads.** This is a
+deliberate departure from the value-category rule of §3.3, which the library
+applies to expression nodes and which `Interpolation` applies to its own
+ranges, and the reason is that here there is nothing to borrow. The padded
+value array is new storage whatever the caller passed, and the coefficients
+`Spectral` sums are ones we computed. Borrowing would therefore buy nothing
+and cost the trap §7 of `thoughts.md` records against upstream: a spline
+computes its coefficients at construction, so mutating a borrowed field
+afterwards leaves new samples paired with old coefficients, and a field is
+mutable. One sentence — *an interpolant is a snapshot of the field at the
+moment it was made* — removes the trap outright, and it is cheaper to state
+than the rule it replaces.
+
+The cost is stated rather than hidden: an interpolant is a field-sized
+allocation, four of them for a bicubic. A caller who wants many interpolants
+of the same field wants one interpolant.
+
+**[I2] `Spectral` is built first, and is the reference the other two are
+measured against.** §9's argument, adopted: it is exact for a band-limited
+field, pole-safe by construction, and it makes the accuracy of the cheap
+schemes measurable **on any field, without an analytic answer to compare
+against**. This document's repeated experience is that the schemes whose error
+nobody can measure are the ones that turn out to be wrong — §11's cross-kernel
+oracle, §19.5's independent spline, §17.7's crossover — and this is the same
+move a fourth time.
+
+**[I3] The polar rows are exact, and cost one forward transform at
+construction.** The alternative was to pad only when handed an expansion and
+to let a field's interpolant extrapolate at the poles. It is rejected because
+the extrapolation is worst exactly where a spin-weighted field is most
+delicate — `d^l_{Nm}` behaves like `sin^{|m|}θ`, so the last cell before a pole
+is where a local scheme has least to go on and the most curvature to miss.
+
+*What it costs, and the cheaper route not taken.* `Interpolate(field, scheme)`
+expands at the grid's degree, keeps the `m = ±N` columns, and discards the
+rest. That is a full forward transform for two columns of coefficients. A
+cheaper exact route exists — FFT each colatitude row, keep the two Fourier
+bins `m = ±N`, and do the Gauss–Legendre sum against `d^l_{N,±N}(θ_j)`, which
+is the FFT stage and a small sum, and §11's M2 measured the FFT stage at about
+six per cent of a transform. It is not taken, because `Spectral` needs the
+whole expansion anyway ([I2]) so the code is shared, and because a bespoke
+half-transform is a second implementation of the thing §11 spent a section
+making comparable. Recorded so that if construction cost ever becomes the
+complaint, the answer is already written down.
+
+**[I4] `θ` outside `[0, π]` throws; `φ` is wrapped.** The two axes are not
+alike and their boundaries fail differently, so they are answered differently.
+A colatitude outside `[0, π]` is not a point on the sphere and continuing the
+edge cell would return a number worth nothing — the same judgement, and the
+same wording, as §19.6's `Resample` refusing to extrapolate. A longitude
+outside `[0, 2π)` *is* a point on the sphere, and reducing it modulo `2π` is
+exact rather than an approximation, so it is done silently. After the wrap and
+the padding, no query reaches upstream's edge-cell continuation at all, which
+is the property that makes the two schemes usable here.
+
+**[I5] The local schemes are absent, not refused, in a build without
+`Interpolation`.** `Scheme::Bilinear()` and `Scheme::Bicubic()` do not exist
+there and `Scheme::Spectral()` always does, so asking for one is a compile
+error at the call site. This is `core-plan.md` [C17]'s argument applied
+unchanged — the tighter option is the reversible one, since offering a factory
+later with a runtime throw breaks nobody while withdrawing one does — and it
+is the third time the library has taken it, after `TransformKernel::Matrix()`
+and `RadialSplineDerivative.h`.
+
+**[I6] `Scheme` is the fifth policy, and lives in `Policies.h`.** Named
+constructors on a value, not an enum and not a template parameter, for the
+reason that header already gives: it is a decision about the machine or the
+problem rather than about the mathematics, and putting it in a type would make
+the mathematics carry it. `Scheme::Spectral()`, `Scheme::Bilinear()`,
+`Scheme::Bicubic()`.
+
+*One wrinkle worth naming.* The other four policies are consumed at run time by
+code that is the same either way. This one selects between three interpolants
+of **different types**, so `Interpolate` must dispatch on it and return one of
+three. The dispatch is therefore at the call site — `Interpolate` is a
+template returning a scheme-dependent type — and the policy value's job is to
+name the scheme in the caller's source rather than to be read at run time. A
+`Scheme` stored in a variable and passed later still works, because the value
+is `constexpr`-constructible and the overloads take the tag types; what does
+not work is choosing a scheme from a configuration file without a `switch`.
+That is the same limitation [C17] records for `TransformKernel` and it is
+accepted for the same reason.
+
+**[I7] `Interpolate` accepts any `SpinWeighted` node and any `SpinExpansion`;
+tensors and layered fields are deferred with the seam named.** §9's position,
+adopted: the rank-0 case decides everything else. A lazy expression is
+materialised into the interpolant's own buffer, which [I1] makes free of
+consequence. The deferral is not a gap — a tensor interpolant is a
+compile-time loop over components returning a set, which is the same
+return-type problem §12.4 already solved twice, and a layered one is this in
+`(θ, φ)` composed with §19's `Resample` in `r`. Neither needs anything new
+from this step, and building them now would widen the surface before the
+rank-0 accuracy question has an answer.
+
+**[I8] The callable models `ScalarFunctionS2`, and that is the point of the
+feature rather than a bonus.** `Concepts.h` already has the concept, and a
+field constructor already takes it. So an interpolant can be fed straight into
+another grid's constructor and remeshing is one line — which §9 expects to be
+the commonest use of the whole thing. A test asserts the concept is modelled,
+because it is the property most easily broken by a signature change.
+
+**[I9] The result scalar follows the operand's `Value`, and `Spectral` takes
+the real part rather than returning a complex zero-imaginary.** For a
+`RealValued` operand the local schemes interpolate a real buffer and are real
+already; the direct sum is complex arithmetic whose imaginary part is
+`5.3 × 10⁻¹⁶` (§22.1), so discarding it is a projection onto a quantity known
+to be real, and is the same judgement §3.5 made when it gave `abs2` a node of
+its own rather than routing it through `real(conj(f) * f)`.
+
+### 22.3 The steps
+
+**P1 — `Scheme`, and the padded grid.** The policy in `Policies.h`, and the
+padding in a detail namespace: build the `(nθ + 2)` colatitude axis, the
+`(nφ + 1)` longitude axis, and the value array, taking the polar rows as
+arguments so that the padding can be tested without an expansion. The wrap
+column is the copy of `iPhi = 0`, exactly; the axes are `[0, θ…, π]` and
+`[0, φ…, 2π]`.
+
+*The test is that the padded array agrees with the field at every original
+node*, that its axes are strictly increasing so upstream accepts them, and
+that the wrap column equals column zero. None of that needs an interpolant.
+
+**P2 — `Scheme::Spectral()`.** The direct sum of §22.1, over an expansion, in
+per-thread scratch through `WignerDetails::ComputeBlock` against the tables
+`PreComputeTables` builds — the same recursion `WignerValues::Generated()`
+runs, so nothing new is being computed and no second convention can arise.
+One `(l, m)` block per evaluation at the queried `θ`, then the `e^{imφ}` sum.
+
+*The tests are the two agreements measured in §22.1*: against `Evaluate` at
+every grid point, complex and real, to `1e-13`; plus that it is exact on a
+single harmonic at an off-grid point, where an analytic answer exists.
+
+*The known cost, stated so it is not a surprise:* `O(lMax²)` a point, and a
+Wigner block per point. Evaluating on a whole second grid is a transform's
+work done the slow way, which is why §9 wants the crossover measured — see P5.
+
+**P3 — the polar rows, and `Interpolate` on a field.** The two sums of §22.1,
+and the wiring: expand at the requested degree, build the rows, pad, hand the
+padded arrays to the chosen upstream interpolant, and own the lot ([I1]).
+`Interpolate(field, scheme, lMax = grid.MaxDegree())`, the degree being the
+truncation at which the expansion is taken — which is what an oversampled
+`ForBand` grid wants to say, and which `Spectral` uses for its whole sum and
+the local schemes use for their two rows.
+
+*The test that earns this step* is that the interpolant reproduces the field
+at every grid node — all three schemes, since every one of them passes through
+its own nodes, which is the same identity test §19.6's `Resample` turned on
+and the check that the padding's indices line up. Plus that a polar query at
+`N ≠ 0` varies with `φ` as `e^{±iNφ}`, which is the fact §9 got wrong and is
+therefore the one to pin.
+
+**P4 — the domain rules, and `ScalarFunctionS2`.** [I4]'s throw and wrap, and
+the round trip [I8] promises: interpolate a field, hand the callable to a
+second grid's `ProjectFunction`, and require the result to match a direct
+evaluation on that grid.
+
+**P5 — measure the cheap schemes against the reference.** The point of [I2],
+and the step that says whether the local schemes are worth having. Over a
+field of known band, at points off the grid: the error of `Bilinear` and
+`Bicubic` against `Spectral`, as a function of `lMax`, and separately in the
+polar cells against everywhere else — the padding's whole purpose is those
+cells and the number should show it doing something.
+
+Also the crossover §9 asks for: past how many evaluation points does building
+a second grid and transforming onto it beat evaluating point by point? That is
+a benchmark section rather than a test, and it is the honest answer to "which
+should I use".
+
+*And one measurement that guards a claim rather than a scheme:* the bicubic's
+φ boundary. §9 notes that a spline with natural end conditions across the wrap
+is still not a periodic spline, and that whether it matters is a measurement
+rather than an argument. With `NotAKnot` as upstream's default the question is
+sharper, not softer, and P5 is where it gets a number.
+
+### 22.4 What this does not touch
+
+The transform, the grid, the Wigner recursion, and the field algebra. An
+interpolant reads a field and produces a callable; nothing it does is
+observable from inside the expression layer, and no existing type gains a
+member. That is deliberate, and it is what makes [I7]'s deferral cheap: when
+tensors want this, it is a loop over components against an interface that has
+not moved.

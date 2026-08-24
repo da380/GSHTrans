@@ -1,0 +1,251 @@
+# Wigner 3-j symbols: the plan
+
+Written 2026-08-24, when `thoughts.md` §6 was picked up. That section is the
+assessment — what is in `3j.h`, where its stability argument holds and where it
+breaks, and the three routes out — and is not repeated. This is the work order
+and the decisions.
+
+Its own document rather than a section of `core-plan.md` or
+`field-algebra-plan.md`, because it is independent of both: `3j.h` touches no
+grid, no transform and no field, and `thoughts.md` says so in as many words.
+Nothing here blocks or is blocked by anything there.
+
+---
+
+## 1. What was measured, which sharpens §6 rather than repeating it
+
+`thoughts.md` §6 gives a table of the failure. It was reproduced against
+current `main` so that this plan starts from numbers it has checked, and three
+things came out sharper than that table states them.
+
+**The identity is exactly one, over the plane the table already holds.**
+Summing the squared symbols over the whole `(m₁, m₃)` grid at fixed degrees,
+
+```
+Σ_{m₁ m₃}  ( l₁ l₂ l₃ ; m₁ , −(m₁+m₃) , m₃ )²  =  1
+```
+
+which is the standard `Σ_{m₁m₂}(·)² = 1/(2l₃+1)` at fixed `m₃`, summed over
+the `2l₃+1` values of `m₃`. Measured at `(l,l,l)` for `l = 2, 5, 10, 20`: 1 to
+the last digit each time. **It needs no reference implementation, it is one
+loop over a table that has just been built, and it is the whole basis of what
+follows.**
+
+**The boundary is where §6 puts it, and now has a sharp edge.** Taking
+`l₃ = l₁ + l₂` and reporting `(2l₃+1) × Σ`, which should be `2l₃+1` exactly:
+
+| `l` in `(l, l, 2l)` | expected | double | long double |
+|---:|---:|---:|---:|
+| 10 | 41 | 41 | 41 |
+| 20 | 81 | 81 | 81 |
+| 25 | 101 | 101 | 101 |
+| 30 | 121 | **121.49** | 121 |
+| 35 | 141 | `3.7 × 10⁶` | **141.02** |
+| 40 | 161 | `3.3 × 10¹¹` | `1.3 × 10⁵` |
+| 60 | 241 | `5.7 × 10³⁴` | `1.2 × 10²⁸` |
+
+So double is exact to `l = 25`, first departs at 30, and is catastrophic by
+35; long double buys **five to ten degrees** and then fails identically. That
+is the signature §6 identified — a recursion run in its unstable direction,
+which extra precision delays and does not cure.
+
+Away from stretched the boundary is much further out. At `l₃ = 3l₁/2` the sum
+is exact to `l = 40`, departs at 60 (181.06 against 181) and is catastrophic
+by 80. At `(l, l, l)` it holds to `l = 20` and, per §6, to 128.
+
+**And the closed-form seed is exact, not merely accurate.**
+`(j j 0 ; m −m 0) = (−1)^{j−m}/√(2j+1)` reproduces to **zero** absolute
+difference at `j = 1, 4, 30`. Worth knowing because it means a test on that
+family discriminates a wrong phase or a wrong index and nothing else — there
+is no tolerance in which a bug could hide.
+
+**One more fact, and it changes an item on §4's list.** `examples/wigner3j.hpp`
+is **not** an independent implementation. It is the earlier standalone port of
+the same Woodhouse `wig2` routine that `GSHTrans/src/3j.h` was derived from —
+same recursion, same convention, same `(-1)^{m₁}` phase — and its own header
+comment names the same accuracy caveat and even proposes the same completeness
+relation as "a cheap self-diagnostic". So the repository does not hold two
+Wigner 3-j codes worth keeping; it holds one code twice. That removes the
+possibility of using one as an oracle for the other, which was the attractive
+reading of §4's note, and it settles what to do with it.
+
+---
+
+## 2. Decisions taken
+
+**[J1] The completeness relation becomes a runtime self-check, not only a
+test.** `Wigner3jMatrix` sums its own squares at construction and throws if the
+result differs from one by more than a tolerance.
+
+This is the decision the rest of the plan is built on, and the argument for it
+is that **the failure mode is silent and catastrophic**. A library that returns
+`10¹¹²` where it should return a number of order `0.1` is worse than one that
+refuses, because the caller has no way to know: the values are finite, the
+table has the right shape, and a coupling sum built on them produces a
+plausible-looking wrong answer. §6 found this with one line, and the same line
+can stand between every caller and the same surprise.
+
+*It is affordable, which is why it is possible at all.* The table is
+`(2l₁+1)(2l₃+1)` entries and the check is one pass over it — the same order as
+building it, and a small multiple less work. Nothing else in this library gets
+a check that strong for that price; the reason it can here is that the identity
+is exact and needs no reference.
+
+*It detects rather than locates*, which is enough: [J3] recomputes the whole
+table when it fires, so knowing which entry went wrong would buy nothing.
+
+*The tolerance is a decision in itself and is deliberately loose.* The point is
+to catch `10⁶` and above, not to police the last bits — §6's own measurements
+put the honest floor at `10⁻¹⁴` for fat triangles at `l = 128`, and a tight
+tolerance would reject good tables. Something near `10⁻⁸` separates the two
+populations by twenty orders of magnitude, so the choice is not delicate.
+
+**[J2] The duplicate goes, and it is a deletion rather than a promotion.**
+`examples/wigner3j.hpp` and `examples/wigner3j_tests.cpp` are the same
+algorithm as the library's, so keeping them cannot buy the independent-oracle
+check that `Interpolation::CubicSpline` bought `SplineDerivative` (§19.5) or
+that the loop kernel buys the matrix kernel ([C12]). What they would buy is two
+copies of one recursion drifting apart. `examples/wig.cpp` moves onto the
+library's own type, which is what an example should have been doing.
+
+*This is the answer to `thoughts.md` §4's "there are two Wigner 3-j codes in
+the repository and neither is exercised by the suite".* After [J1] and step
+T1 there is one, and it is.
+
+**[J3] The route is the hybrid, and the self-check is what dispatches it.**
+§6 offers three: fix the recursion's direction (Schulten–Gordon), compute
+exactly in integer arithmetic (`wigxjpf`), or hybridise the existing recursion
+with Racah's closed form, and it recommends investigating the third "before
+committing to either of the others". Taken, and the reason is stronger than §6
+had:
+
+Racah's formula is a single alternating sum whose length is
+`min(l₁+l₂−l₃, …) + 1`. **At `l₃ = l₁ + l₂` that sum has exactly one term**,
+so there is no cancellation at all and the only error is the rounding of a
+product of factorials — and one term is the case where the recursion is at its
+worst. Going the other way, the fat triangles that destroy Racah's long
+alternating sum are exactly where the recursion is at the noise floor. The two
+methods fail in complementary regimes, which is the observation §6 makes.
+
+What §6 does not have is the dispatcher. **[J1] supplies it.** The rule is not
+a boundary formula in `(l₁, l₂, l₃)` that someone has to derive, calibrate and
+then re-derive for `long double`:
+
+> Build the table by the existing recursion. Check the identity. If it fails,
+> rebuild by Racah and check again.
+
+That is a dispatch on *the thing that actually went wrong*, it is free of
+tuning constants, it adapts to precision without being told, and it degrades
+correctly on a triple neither method handles — because the second check fires
+too, and the library throws rather than returning nonsense.
+
+*The known cost, so that it is not discovered:* Racah's factorials must be
+formed in log space and exponentiated, and `core-plan.md` T11 records what
+that does — a logarithm of size `O(l log 4)` loses bits in proportion, giving
+about `1000 ε` at the sizes this library works at. For a one-term sum that is
+the whole error, so near-stretched symbols would carry a relative error near
+`10⁻¹³`. Against `10¹¹²`, that is the trade being made, and it should be stated
+in those terms rather than as "exact".
+
+*And what would change the decision:* if the measurement of step T2 shows a gap
+— triples where the recursion fails and Racah's sum is already too long to be
+trusted — then the hybrid does not cover the space and Schulten–Gordon becomes
+the answer rather than the fallback. T2 exists to find out, and it is an
+afternoon.
+
+**[J4] `wigxjpf` is rejected for now, and the condition for revisiting it is
+6-j.** It is C rather than C++, a few thousand lines, and not header-only,
+which cuts against the preference `thoughts.md` §5 states and which this
+library has honoured everywhere except BLAS — and BLAS earned its exception by
+being a thing every target machine already has, which `wigxjpf` is not.
+
+What would earn the exception is wanting 6-j and 9-j as well, since the exact
+route delivers all three and the recursion route means implementing
+Schulten–Gordon again for each. So the decision is made **with 6-j in view**,
+per §6, and the position is: nothing needs 6-j today, the hybrid does not
+foreclose it, and if 6-j is ever wanted the right move is to reconsider
+`wigxjpf` for the whole family rather than to hand-write a second recursion.
+
+**[J5] The stack keeps looping, and the `l₂` recursion is not built.**
+`Wigner3jStack(l₁, l₃)` builds one `Wigner3jMatrix` per middle degree and does
+not use the three-term recursion in `l₂` at all. That is `O(l³)` work where the
+recursion would be `O(l²)`, and it is left alone: the `l₂` recursion has its
+own stability direction to get right, it would need its own self-check, and
+nothing in this library consumes a stack yet. Recorded so that the loop reads
+as a decision rather than as an oversight, and so that whoever wants coupling
+sums at scale knows where the factor of `l` is.
+
+---
+
+## 3. The steps
+
+**T1 — the test family, and the boundary as a known quantity.** Before any
+algorithm changes. Four groups, none needing a reference implementation:
+
+- **the identity**, swept over the triangle space — fat, intermediate and
+  stretched, at several degrees — asserting `Σ = 1` where §1's table says it
+  should hold, and asserting that it *fails* where §1 says it fails. The
+  second half matters as much as the first: it is what stops a later change
+  silently narrowing the working range, and it is the negative test that makes
+  the positive one meaningful;
+- **the closed forms**: `(j j 0; m −m 0) = (−1)^{j−m}/√(2j+1)`, exact to zero
+  per §1, and the stretched form `l₃ = l₁ + l₂`, which is Racah's one-term
+  case and therefore also closed;
+- **exact comparison at small degrees**, against values computed in rational
+  arithmetic and written into the test as literals, which pins the convention
+  and the phase rather than the accuracy;
+- **the symmetries**: the table's own reflection, and invariance under an even
+  permutation of the columns.
+
+*This is the step `thoughts.md` says goes in first*, and it stands on its own:
+after it, `3j.h` has coverage where it had none, and the boundary is a
+documented property rather than something someone rediscovers.
+
+**T2 — price the hybrid, per [J3].** An afternoon, and it is a measurement
+rather than an implementation. Racah in log space, written for the experiment
+and not for keeps; compare against the recursion across the triangle space and
+across degrees; and answer the one question that decides the route — **is there
+a gap?** Plot, or tabulate, the region where the recursion's identity fails
+against the region where Racah's alternating sum has lost too much, and see
+whether they overlap or leave a band uncovered.
+
+If they overlap, [J3] stands and T3 is small. If they do not, the answer is
+Schulten–Gordon and this plan's §2 is amended rather than followed.
+
+**T3 — [J1]'s self-check.** The identity in `Wigner3jMatrix`'s constructor,
+with the tolerance and the throw. It lands before T4 deliberately: a caller who
+picks the library up between the two gets a refusal where they used to get
+`10¹¹²`, which is a strict improvement even with no second algorithm behind it.
+
+*The test is that it fires* — a stretched triple at `l = 40` must throw — *and
+that it does not fire* on the whole of the range T1 established as good, which
+is what says the tolerance is not doing damage.
+
+**T4 — Racah, and the dispatch.** The closed form for one symbol and for a
+table, log-space factorials, and the fallback [J3] describes. The self-check
+runs on the second table too, so a triple neither method handles still throws.
+
+*The test that earns it* is the one T1 wrote as a negative: the stretched
+triples that failed the identity now pass it, and their values agree with the
+`l₃ = l₁ + l₂` closed form where that applies. The negative assertions of T1
+are inverted in the same commit, which is the visible record of what changed.
+
+**T5 — [J2]'s deletion**, and `examples/wig.cpp` rewritten against the
+library's type so that the public interface is exercised from outside the test
+tree, as every other example is.
+
+---
+
+## 4. What this does not touch
+
+The grid, the transform, the Wigner `d`-functions and the field algebra.
+`3j.h` shares no code with `Wigner.h` despite the name — one is rotation-matrix
+elements on a colatitude grid, the other is coupling coefficients of three
+degrees — and nothing in this plan brings them together.
+
+**And what it deliberately does not build:** the Gaunt integrals and coupling
+coefficients that are the reason to want 3-j at all. Those are a consumer, they
+belong wherever the physics does, and building them now would fix an interface
+before there is a caller to fix it for. What T1 to T4 deliver is a 3-j
+implementation that is either right or says it is not, which is the
+precondition for any of it.

@@ -2939,3 +2939,298 @@ restating so that dropping the gate does not read as dropping the question:
 When the machine arrives, the benchmark to run is M5's section and the
 existing `server` one. Until then the laptop's numbers are real numbers about
 a real machine, and two kernels that both exist can be compared on any third.
+
+---
+
+## 12. The wisdom mechanism, in detail
+
+Written 2026-08-24, when `thoughts.md` §10 was picked up. That section is the
+assessment — why these choices cannot be settled by reasoning, and why [C12]
+gave the idea a second and better customer — and is not repeated. This is the
+work order and the decisions, and the first of them is that the knob set is
+smaller than §10 supposed.
+
+### 12.1 What is actually tunable, which is three things and not six
+
+`thoughts.md` §10 lists "five choices whose right answer is machine-dependent"
+and adds `TransformKernel` as a sixth. Read against the code, most of that
+list is not a tuning question, and saying which is the useful part of this
+section.
+
+| knob | where set | tunable? |
+|---|---|---|
+| `Chunking` | construction | **yes** — a scalar, measured at 2.0× (§10 item 1) |
+| `TransformKernel` | construction | **yes** — two implementations of one answer ([C12]) |
+| `thetaBlock` | per call, with a heuristic | **yes**, and smallest of the three |
+| `WignerValues` | construction | **no** — see below |
+| FFTW planner `Flag` | construction | **no** — FFTW already has wisdom |
+| `Execution` threads | per call | **no** — the caller's, by the one-level rule |
+| `RadialMajor` vs `ApplyRadially` | caller's code | **no** — not a library choice at all |
+
+**`WignerValues` is a constraint the caller states, not a knob to optimise.**
+Timing it would pick `Stored` on any machine with memory to spare, because
+T11 measured `Generated` losing in every configuration — and that would be
+the right answer *for time* and the wrong thing to do, because a caller who
+chose `Generated` did so to avoid 648 MB at `lMax = 256` or 5.4 GB at 512. A
+tuner that overrode a memory constraint on a timing argument would be
+substituting its own objective for the caller's. It stays where it is.
+
+**The planner flag is FFTW's business.** Tuning `Estimate` against `Measure`
+against `Patient` is what FFTW's own wisdom does, better and with persistence
+we would be duplicating. What this library could usefully add is a route to
+*import and export* FFTW's wisdom, which `thoughts.md` §5 already records as
+an ask against FFTWpp; that is a different feature and it is not this one.
+
+**Threads are the caller's.** `Execution` is per call and the rule that
+exactly one level threads means the caller is the only one who knows which
+level that is. A tuner choosing a thread count would be choosing for code it
+cannot see.
+
+So the mechanism has **two real customers and a small third**, which is fewer
+than §10 hoped and still enough: the two are the ones measured to matter most,
+at 2.0× and 4.6× respectively.
+
+### 12.2 The obstacle nobody had noticed, and what it forces
+
+**`Chunking` and the planner flag live in `Impl`, beside the table.** So do
+`WignerValues` and `TransformKernel`, and for those two it is right — they
+decide what the table *is*. For the other two it is not: a chunk is a scalar
+the transform reads per call, and the table does not depend on it. Sweeping
+four candidate chunks today therefore means constructing four grids and
+building four tables, which at `lMax = 256, nMax = 2` is 0.16 s and 648 MB
+apiece — to choose an integer.
+
+That is the trap §17.7 of `field-algebra-plan.md` fell into and reported: a
+first version that allocated inside the timed loop measured 3–5× worse and
+never won, and it took the numbers looking wrong to notice. Here it would not
+even be a measurement error, just waste — but it is enough waste to stop the
+tuner being the cheap thing §10 wants it to be.
+
+**[C18] The table and the cheap policies are separated, and the handle carries
+the cheap ones.** `Impl` keeps what decides the table — `lMax`, `nMax`, the
+quadrature, `WignerValues`, `TransformKernel` and the table itself. The
+handle gains `Chunking` and the planner flag as members beside the
+`shared_ptr`. Then
+
+```cpp
+auto tuned = grid.With(Chunking::Fixed(8));
+```
+
+is a pointer copy and two scalars, sharing one table, and a sweep costs one
+table build rather than four.
+
+Three things follow, and the second is the one to check rather than assume.
+
+- **`With` is offered for `Chunking` and the flag and for nothing else.** The
+  two table-deciding policies have no `With`, because there is no table to
+  share: changing either means a different table, which is a different grid,
+  and the constructor is where you say so.
+- **Two grids differing only in chunking share an `Identity()`, and that is
+  correct rather than a leak.** Identity is the field layer's test that two
+  operands index the same buffers, and they do: same points, same degrees,
+  same table, fields interchangeable. A chunk is how the inner loop schedules
+  itself and is not observable in any result — the batched tests demand *exact*
+  equality against unbatched calls, which is the standing check that it is
+  not. So sharing identity is the honest answer and it is also what makes
+  `With` useful, since a tuned grid must stay compatible with fields already
+  built on the untuned one.
+- **`Impl` stays immutable**, which is what keeps a shared grid safe to use
+  concurrently without a lock (step B). Nothing here adds a mutable member;
+  the tuner produces values and hands them back.
+
+*This is worth doing whether or not the tuner is ever built*, which is the
+argument for taking it first. It removes a real cost from any caller sweeping
+chunk widths, including the benchmark harness, which today rebuilds a grid per
+chunk in its `batching` section.
+
+### 12.3 Decisions taken here
+
+**[C19] `Tune` returns policy values; it does not return a grid and it does
+not configure one behind the caller's back.** The shape is
+
+```cpp
+auto choice = Tune<Real>(shape, wisdom);        // measures what it must
+auto grid   = Grid(lMax, nMax, flag, choice.chunking,
+                   WignerValues::Stored(), choice.kernel);
+```
+
+rather than `Grid::Tuned(...)`. **This is the same argument [C17] made and it
+is load-bearing for the same reason.** That decision refused a silent
+substitution — "honouring `Generated` and ignoring `Matrix` lies to the
+benchmark, and that is fatal *specifically under [C12]*, because the entire
+justification for carrying two kernels is being able to compare them". A tuner
+is the piece of machinery most likely to substitute: wisdom naming a kernel
+the build cannot offer, a candidate that failed to construct, a tie resolved
+in favour of the incumbent. Handing the caller the values makes every one of
+those visible in a variable they can print, and makes the wrong ones
+impossible to hide. A `Grid::Tuned` would have had to decide each case in
+silence.
+
+It also keeps the grid's constructor where it is. That constructor already
+takes six arguments and adding a seventh whose meaning is "ignore three of the
+others" is the kind of interface that reads as an accident.
+
+**[C20] The kernel comparison is opt-in, sequential, and priced.** §11.4's M5
+is explicit that comparing kernels means two grids, that at `lMax = 256` both
+live costs 1.3 GB, and that building them in sequence "leaves the second
+starting on a cold cache with different first-touch placement". A tuner has to
+choose one of those and neither is free.
+
+It builds them **in sequence, destroying each before the next**, so peak
+memory is one table rather than two. The cost is three table builds — two to
+measure and one for the winner — which at `lMax = 256, nMax = 2` is about
+0.6 s against 0.16 s for the untuned grid, and the fairness objection is
+answered by repetition rather than by interleaving: each candidate is timed
+several times and the best window taken, which is what §8's noise-floor rule
+already requires and what the harness already does.
+
+**So kernel tuning is not the default.** `Tune` measures the chunk unless
+asked for more, because the chunk needs one table and the kernel needs three.
+A caller who wants the kernel chosen says so, and pays a construction cost
+they can see in the argument they passed.
+
+*The alternative, recorded because it is the better answer if this ever
+matters enough:* both kernels can be compared at a **smaller degree** and the
+answer extrapolated. It is rejected for now because M4's own table shows the
+answer changing sign with size — 4.59× at `lMax = 256, k = 8` on eight
+threads against 1.20× at `k = 1` on the same row — so a proxy measurement is
+exactly the kind of reasoning this mechanism exists because we cannot do.
+
+**[C21] The fingerprint is a guard against the obvious mistake, and is not
+claimed to be more.** §10 requires that "the fingerprint is part of the key",
+because wisdom carried to another machine is worse than none and the failure
+is silent. It is right, and the library cannot portably identify a machine:
+there is no standard way to read a CPU model or a cache size, and a hostname
+is not the property that matters.
+
+So the fingerprint is what is portably available —
+`std::thread::hardware_concurrency()`, the size of `Real`, the GSHTrans
+version, and whether the build has a BLAS — plus, **where it can be read, a
+free-text machine description recorded for a human rather than compared by the
+code.** On Linux that is the model name from `/proc/cpuinfo`; where it cannot
+be read the field is empty and nothing changes. An entry whose portable part
+disagrees is treated as absent, not as an error, so a wisdom file moved
+between machines degrades to no wisdom rather than to wrong wisdom.
+
+**And a caller may name their own machine**, which is the escape hatch for the
+case the portable part cannot see: the same binary on two nodes of a cluster
+with different cache sizes. That tag joins the key. It is offered because the
+alternative is a mechanism that is silently wrong in exactly the environment
+this library is pointed at.
+
+**[C22] A tie goes to the incumbent, and is recorded as a tie.** §8's noise
+floor on the development machine is about ten per cent, and several of the
+differences at stake are smaller. A tuner that picks the nominal winner of a
+7% difference is picking noise, and worse, it will pick differently on the
+next run and the caller will see the choice flapping. So a candidate must beat
+the current best by more than a stated margin to displace it, the default
+being the incumbent — `Chunking::Automatic()`, `TransformKernel::Loop()` — and
+the entry records that the comparison was inconclusive.
+
+That matters beyond tidiness: an entry marked inconclusive is one a later,
+quieter run may usefully revisit, while an entry recording a 3% win looks like
+knowledge.
+
+**[C23] The store is a text file, versioned, and a corrupt or unreadable one
+is not an error.** Text because FFTW's wisdom is text and because a file a
+human can read, diff and hand-edit is the difference between a mechanism
+people trust and one they work around. Not an error because losing tuning is
+not losing correctness: a missing, truncated or unparseable file yields an
+empty wisdom and the defaults, which is exactly what a caller who never called
+`Load` gets. A throw there would turn a performance convenience into a
+deployment failure.
+
+*The one thing that is an error* is asking to `Save` somewhere unwritable,
+because that is a request the caller made and can act on.
+
+### 12.4 The shape of the key
+
+The key is a **problem shape**, per §10, and the useful discipline is keeping
+it small enough that a caller's second run hits it.
+
+```
+(lMax, nMax, precision, MRange, threads, tag)  ->  { chunking, kernel, notes }
+```
+
+Two departures from §10's list, both to make hits likelier.
+
+**Direction is not in the key; it is in the value.** The two directions are
+known to want different chunks — §10 item 1 measured 2.0× on the batched
+inverse from telling them apart — so the entry carries a chunk for each rather
+than the key carrying a direction. That halves the number of measurements a
+caller needs to make before their entry is complete.
+
+**Batch count is not in the key either.** `Chunking::Count` already takes the
+per-field size and the number of live copies and computes a chunk, so what is
+being tuned is the *cache figure that formula uses*, not a chunk for one batch
+size. Tuning the figure rather than the answer means one entry serves every
+`k`, which is what makes the mechanism worth having for an application whose
+batch size varies by component.
+
+*That is a small but real change to what `Chunking::Tuned` means*, and it is
+better than the alternative: `Chunking::ForCache(bytes)` already exists, the
+formula around it has two measured anchors (P8, and §8's corrections to it),
+and a tuner that fits the one number the formula does not know is a tuner
+working with the model rather than against it.
+
+### 12.5 The steps
+
+**W1 — [C18]'s separation.** `Chunking` and the flag move from `Impl` to the
+handle; `With` is added for those two. No behaviour changes and no measurement
+is expected: this is the prerequisite that makes everything below cheap.
+
+*The tests are that a `With` grid answers identically to one constructed with
+the same chunk* — exact equality, both directions, batched, since a chunk is
+not observable in a result — *and that it shares `Identity()` with its parent,
+so a field built on one is usable on the other.* The second is the one that
+would be missed and the one §12.2 rests on.
+
+**W2 — the timing core.** A function that times a candidate on the caller's
+actual problem: several windows, the best taken, the spread reported, and
+[C22]'s margin applied. Nothing persistent, nothing keyed.
+
+It is separate from the benchmark harness deliberately. The harness reports to
+a human and may take minutes; this runs inside a caller's start-up and must
+cost a fraction of building the table beside it. What they share is the
+discipline, and W2 is where the ten-per-cent rule stops being a paragraph in a
+plan and becomes a constant in the library.
+
+**W3 — `Chunking::Tuned`.** The first customer, per §10: sweep candidate cache
+figures on one grid, per direction, and return the pair. One table build, and
+the knob already measured to matter most.
+
+*The acceptance test is not that it finds the optimum* — there may not be one
+resolvable, and §8 records the `lMax = 128` case where the peak swapped
+between runs — *but that it never returns something worse than the default by
+more than the margin*, checked over several sizes. That is the property a
+caller actually needs, and it is testable where "finds the best" is not.
+
+**W4 — `Wisdom`: the key, the fingerprint, load and save.** [C21] and [C23].
+Still no kernel tuning; the store's first content is W3's answers.
+
+*A test worth writing before the code:* a wisdom file written on one
+fingerprint and loaded under another yields no entry, silently. That is the
+failure §10 calls "worse than none" and it should be pinned rather than
+trusted to the comparison being written correctly.
+
+**W5 — kernel tuning, opt-in.** [C20]. Sequential construction, three table
+builds, and an argument the caller has to pass.
+
+**W6 — does the mechanism pay?** The honest closing step, and the one that
+decides whether W4 stays. Tuned against default, on this machine, over the
+sizes the harness already walks: if a tuned grid is not measurably better than
+`Chunking::Automatic()`, then the conservative default is doing its job and
+the persistence layer is machinery without a customer. §10 says as much —
+"if it does not, nothing has been built that has to be maintained" — and W1 to
+W3 are worth having either way.
+
+### 12.6 What this is not
+
+Not an autotuner, per §10, and the distinction is worth keeping in the code as
+well as the prose: FFTW searches a space of plans it generates, this times a
+handful of named alternatives. The name is borrowed for the *persistence* —
+that a machine's answer is worth writing down — and not for the search.
+
+And the caveat §10 states, which this section does not escape: a tuner
+measures which of the options we have is best on a given machine. It does not
+say whether the option set is the right one.

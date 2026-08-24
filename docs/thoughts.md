@@ -10,11 +10,22 @@ the authorities on the numerical core and the field algebra respectively, and
 `gshtrans-reference.tex` on what exists. Where a direction below contradicts a
 decision already taken, it says so rather than quietly overriding it.
 
-**Status, 2026-08-23.** Sections 1 to 6 were the original set and 7 to 10 were
-raised later. Three are still open, and — as of this date — **none of them is
-waiting on a machine.** The `earth-tunya` gate was dropped when
-`core-plan.md` §11 was written; §11.1 says why, and §10 below gained an
+**Status, 2026-08-24.** Sections 1 to 6 were the original set and 7 to 10 were
+raised later. Three were still open, and — as of this date — **all three are
+planned and none is waiting on a machine.** The `earth-tunya` gate was dropped
+when `core-plan.md` §11 was written; §11.1 says why, and §10 below gained an
 argument in the process.
+
+Each plan corrected something this document asserts, which is the usual
+result of reading the code rather than the sketch. §9's polar claim is half
+wrong — the order that survives is `m = +N` at the north pole and `m = −N` at
+the south, and a pole value is φ-dependent at `N ≠ 0`, so a polar row is a row
+and not a constant (`field-algebra-plan.md` §22.1). §10's list of five
+machine-dependent knobs is really three, since `WignerValues` is a constraint
+the caller states rather than a knob to optimise and the planner flag is
+FFTW's own business (`core-plan.md` §12.1). And §6's second 3-j code is not a
+second algorithm at all but the same Woodhouse routine twice, so it cannot
+serve as the oracle §4 hoped for (`3j-plan.md` §1).
 
 | | subject | status |
 |---|---|---|
@@ -23,11 +34,11 @@ argument in the process.
 | 3 | specialisations for common objects | **done** as names, §18's T5. The rank-specific *operations* are open; see below |
 | 4 | project structure | **done**, except the `src/` rename, declined |
 | 5 | dependencies | **done** upstream; GaussQuad, FFTWpp and Interpolation all refactored |
-| 6 | Wigner 3-j symbols | **open**, and independent of everything else |
+| 6 | Wigner 3-j symbols | **planned** -- `3j-plan.md`, its own document since it is independent of everything else |
 | 7 | the `Interpolation` library | **done** -- adopted as an optional dependency, §19.5 [R1]; it answered the hand-over note and §21 records what that changed |
 | 8 | how three-dimensional the 3-D fields are | **done** -- §8A is §19, §8B is §20 |
-| 9 | interpolating a field, as a callable | **open** in the angular variables; the radial half is §19's `Resample` |
-| 10 | a wisdom mechanism for the computational options | **open**, and better argued since `core-plan.md` §11 gave it a second customer |
+| 9 | interpolating a field, as a callable | **planned** -- `field-algebra-plan.md` §22; the radial half was §19's `Resample` |
+| 10 | a wisdom mechanism for the computational options | **planned** -- `core-plan.md` §12, which finds the knob set smaller than this section supposed |
 
 **What is left of §3.** `Deviatoric` needs the metric as a tensor *expression*,
 and there is no constant-tensor node -- the metric's components are numbers
