@@ -1091,4 +1091,8 @@ survives eight CCDs, and whether the generated path wins where the aggregate
 cache is sixteen times larger. Since both transform kernels are kept, that
 comparison is now available on any machine rather than only on that one.
 
-**And `develop` is not merged to `main`.**
+**`develop` is not merged to `main`, and that is deliberate.** This is a
+large update and it stays on the branch until it is fully mature and the
+refactoring artefacts have been cleared up. Neither of those is on the list
+above, because neither is a direction to look into — they are the work of
+settling what is already here, and they come next.
