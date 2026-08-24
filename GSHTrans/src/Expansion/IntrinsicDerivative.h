@@ -7,6 +7,7 @@
 #include "../Concepts.h"
 #include "../Tensor/MultiIndex.h"
 #include "ContravariantDerivative.h"
+#include "Eth.h"
 #include "TensorExpansion.h"
 
 namespace GSHTrans {

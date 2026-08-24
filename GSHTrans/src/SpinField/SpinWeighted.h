@@ -24,7 +24,8 @@ namespace GSHTrans {
 //
 // The unit is deliberately a single component, not a tensor. For rank >= 2 a
 // collection labelled only by an upper index does not determine a tensor (see
-// section 2 of the theory note), so tensors are built from these at the
+// section 2 of the theory note, docs/canonical-components.tex), so tensors
+// are built from these at the
 // tensor layer rather than being what this layer is about.
 
 // The scalar a node evaluates to: Real when the node is real-valued, Complex

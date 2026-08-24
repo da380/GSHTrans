@@ -15,7 +15,8 @@ namespace GSHTrans {
 //                        Raising and lowering the index                     //
 //--------------------------------------------------------------------------//
 
-// The operators that connect different upper indices (theory note section 6).
+// The operators that connect different upper indices; see section 6 of the
+// theory note, docs/canonical-components.tex.
 //
 // They are the reason the library has two representations rather than one.
 // Everything in the field algebra is local in (theta, phi); these are local in
@@ -102,6 +103,20 @@ constexpr Real LoweringFactor(Int l, Int n) {
   const auto a = static_cast<Real>(l + n);
   const auto b = static_cast<Real>(l - n + 1);
   return std::sqrt(a * b);
+}
+
+// Omega^{s}_l = sqrt((l + s)(l - s + 1) / 2), so that Omega^{+N} is
+// Omega(l, N) and Omega^{-N} is Omega(l, -N).
+//
+// D&T's coefficient rather than eth's, and it lives here beside eth's own two
+// because both derivatives that use it -- the contravariant one and the
+// intrinsic one -- are built from the same raising and lowering, and this is
+// where a reader looking for the factor will come.
+template <RealFloatingPoint Real>
+Real Omega(Int l, Int s) {
+  const auto a = static_cast<Real>(l + s);
+  const auto b = static_cast<Real>(l - s + 1);
+  return std::sqrt(a * b / 2);
 }
 
 }  // namespace EthDetails

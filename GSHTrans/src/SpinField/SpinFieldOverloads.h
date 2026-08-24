@@ -202,7 +202,8 @@ auto operator-(A&& a) {
   return Unary<SpinFieldOps::Negated, IndexRules::Same, A>(std::forward<A>(a));
 }
 
-// Conjugation reverses the upper index (theory note section 5).
+// Conjugation reverses the upper index; see section 5 of the theory note,
+// docs/canonical-components.tex.
 template <SpinFieldExpr A>
 auto conj(A&& a) {
   return Unary<SpinFieldOps::Conjugated, IndexRules::Negate, A>(

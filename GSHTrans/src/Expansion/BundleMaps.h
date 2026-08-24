@@ -38,16 +38,11 @@ namespace GSHTrans {
 // one, and is what a caller writes when they want the ambient gradient of a
 // tangential tensor at all.
 
-namespace BundleDetails {
-
-// Whether a multi-index given as a compile-time array has a radial slot.
-template <auto Indices>
-constexpr bool AnyRadialIn() {
-  for (auto alpha : Indices) {
-    if (alpha == 0) return true;
-  }
-  return false;
-}
+// A detail namespace of its own rather than the spatial pair's: the two
+// headers are unrelated beyond their subject, and sharing one namespace would
+// make a name collision between them a confusing error instead of an
+// impossible one.
+namespace SpectralBundleDetails {
 
 // Copy one component's block across, at every degree and order it carries.
 //
@@ -93,7 +88,7 @@ void FillFrom(Result& result, const Operand& operand) {
               MultiIndex<Result::Rank,
                          typename Result::SlotSet>::FromFlat(flat)
                   .Slots();
-          if constexpr (!SkipRadial || !AnyRadialIn<indices>()) {
+          if constexpr (!SkipRadial || !HasRadialSlotIn<indices>()) {
             CopyComponent<indices>(result, operand);
           }
         }(),
@@ -102,7 +97,7 @@ void FillFrom(Result& result, const Operand& operand) {
         Result::StoredComponents)>{});
 }
 
-}  // namespace BundleDetails
+}  // namespace SpectralBundleDetails
 
 // Tangential into the general. Rank, symmetry, reality and grid unchanged --
 // a permutation preserves the slot sum and maps radial slots to radial slots,
@@ -117,7 +112,7 @@ auto Embed(const TensorExpansion<Rank, Symmetry, Reality, Grid,
       TensorExpansion<Rank, Symmetry, Reality, Grid, TangentialSlots>;
   using Result = TensorExpansion<Rank, Symmetry, Reality, Grid, AllSlots>;
   auto result = Result(operand.Grid(), operand.MaxDegree());
-  BundleDetails::FillFrom<Result, Operand, true>(result, operand);
+  SpectralBundleDetails::FillFrom<Result, Operand, true>(result, operand);
   return result;
 }
 
@@ -131,7 +126,7 @@ auto Tangential(
   using Result =
       TensorExpansion<Rank, Symmetry, Reality, Grid, TangentialSlots>;
   auto result = Result(operand.Grid(), operand.MaxDegree());
-  BundleDetails::FillFrom<Result, Operand, false>(result, operand);
+  SpectralBundleDetails::FillFrom<Result, Operand, false>(result, operand);
   return result;
 }
 

@@ -1687,7 +1687,8 @@ class SphericalGrid {
     // A spin-weighted field of nonzero upper index cannot be real-valued:
     // real-valuedness is not preserved by the frame rotation
     // e_{+-} -> e^{-+ i psi} e_{+-}, so it is not a property any component of
-    // any tensor can have at N != 0 (theory note section 7, item 5). The
+    // any tensor can have at N != 0; see section 7, item 5, of the theory
+    // note, docs/canonical-components.tex. The
     // reduced m >= 0 coefficient storage that a real transform uses assumes
     // the self-relation f^N_{l,-m} = (-1)^{m-N} conj(f^N_{lm}), which holds
     // only when f is its own conjugate, i.e. only at N = 0. n is a runtime

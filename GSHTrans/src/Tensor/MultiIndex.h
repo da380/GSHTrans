@@ -86,12 +86,39 @@ constexpr bool AreSlotLetters() {
   return (IsSlotLetter<Slots>(Alphas) and ...);
 }
 
+// Whether a multi-index has a radial slot, in the two spellings the bundle
+// maps meet it in: as a pack of letters and as a compile-time array.
+//
+// The radial letter is zero, so this is what tells a component of the general
+// bundle from one that is also a component of the tangential bundle -- the
+// question both Embed and Tangential are built on, spatially and spectrally.
+// It lives here rather than in either of them because it is a fact about the
+// alphabet, and because two copies of it drifting apart is exactly the kind
+// of thing that would not show up as a compile error.
+/** @brief Whether a multi-index given as a pack of letters has a radial
+ * slot. */
+template <std::ptrdiff_t... Alphas>
+constexpr bool HasRadialSlot() {
+  return ((Alphas == 0) or ...);
+}
+
+/** @brief Whether a multi-index given as a compile-time array has a radial
+ * slot. */
+template <auto Indices>
+constexpr bool HasRadialSlotIn() {
+  for (auto alpha : Indices) {
+    if (alpha == 0) return true;
+  }
+  return false;
+}
+
 //--------------------------------------------------------------------------//
 //                              The multi-index                              //
 //--------------------------------------------------------------------------//
 
 /// The label of one canonical component of a rank-p tensor: p slots, each
-/// carrying alpha drawn from the alphabet above (theory note section 2).
+/// carrying alpha drawn from the alphabet above; see section 2 of the theory
+/// note, docs/canonical-components.tex.
 ///
 /// The distinction this type exists to keep is that the multi-index is *not*
 /// the upper index. The upper index is the signed sum of the slots (eq:N), and

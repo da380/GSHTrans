@@ -34,18 +34,6 @@ namespace GSHTrans {
 // handle. See Expansion/BundleMaps.h for why the spectral pair is not built
 // this way.
 
-namespace BundleDetails {
-
-using Int = std::ptrdiff_t;
-
-// Whether a multi-index given as a pack has a radial slot.
-template <Int... Alphas>
-constexpr bool AnyRadial() {
-  return ((Alphas == 0) or ...);
-}
-
-}  // namespace BundleDetails
-
 //--------------------------------------------------------------------------//
 //                        Tangential into the general                        //
 //--------------------------------------------------------------------------//
@@ -87,7 +75,7 @@ class EmbedNode {
       return false;
     } else if constexpr (!AreSlotLetters<SlotSet, Alphas...>()) {
       return false;
-    } else if constexpr (BundleDetails::AnyRadial<Alphas...>()) {
+    } else if constexpr (HasRadialSlot<Alphas...>()) {
       return false;
     } else {
       return OperandType::template Represents<Alphas...>;

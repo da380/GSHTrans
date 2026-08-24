@@ -25,8 +25,8 @@ namespace GSHTrans {
 /// Named SpinField rather than CanonicalComponentField because "canonical
 /// component" belongs to the tensor layer, where a component is identified by a
 /// multi-index and not by an upper index -- for rank >= 2 the two are different
-/// things, and a collection labelled only by N does not determine a tensor
-/// (theory note section 2).
+/// things, and a collection labelled only by N does not determine a tensor.
+/// See section 2 of the theory note, docs/canonical-components.tex.
 template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value = ComplexValued>
 class SpinField {

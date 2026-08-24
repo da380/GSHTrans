@@ -9,6 +9,7 @@
 
 #include "../Concepts.h"
 #include "../Tensor/MultiIndex.h"
+#include "Eth.h"
 #include "TensorExpansion.h"
 
 namespace GSHTrans {
@@ -49,19 +50,6 @@ namespace GSHTrans {
 // is that its sigma = 0 block is stored and zero -- a rank-(q+1) tensor whose
 // e_0 slot vanishes is an ordinary tensor, and keeping it as one leaves the
 // result composable with contraction, further gradients and the transform.
-
-namespace EthDetails {
-
-// Omega^{s}_l = sqrt((l + s)(l - s + 1) / 2), so that Omega^{+N} is
-// Omega(l, N) and Omega^{-N} is Omega(l, -N).
-template <RealFloatingPoint Real>
-Real Omega(std::ptrdiff_t l, std::ptrdiff_t s) {
-  const auto a = static_cast<Real>(l + s);
-  const auto b = static_cast<Real>(l - s + 1);
-  return std::sqrt(a * b / 2);
-}
-
-}  // namespace EthDetails
 
 namespace ContravariantDetails {
 

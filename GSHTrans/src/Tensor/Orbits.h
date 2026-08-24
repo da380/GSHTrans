@@ -26,7 +26,8 @@ namespace GSHTrans {
 // algorithm does not care which generators it is given, which is the point:
 // reality adds negation to the set and nothing else changes.
 //
-// The theory note's own tables are the check. Under negation alone a real
+// The tables in the theory note, docs/canonical-components.tex, are the
+// check. Under negation alone a real
 // rank-2 tensor stores 5 of its 9 components and a rank-4 one stores 41 of 81;
 // a symmetric real rank-2 tensor has four orbits carrying six reals per point,
 // which is the number of independent entries of a real symmetric 3x3 matrix.

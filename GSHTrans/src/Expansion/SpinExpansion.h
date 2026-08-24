@@ -29,8 +29,9 @@ namespace GSHTrans {
 //                       A spin field in the spectral domain                 //
 //--------------------------------------------------------------------------//
 
-/// The coefficients f^N_{lm} of a field of upper index N (theory note
-/// eq:expansion), for degrees |N| <= l <= lMax.
+/// The coefficients f^N_{lm} of a field of upper index N, for degrees
+/// |N| <= l <= lMax. See eq:expansion of the theory note,
+/// docs/canonical-components.tex.
 ///
 /// This is the spectral counterpart of SpinField, and it exists for the same
 /// reason: a raw coefficient buffer is untyped, so nothing stops a caller

@@ -285,7 +285,8 @@ auto Transpose(T&& tensor) {
 ///
 /// The component is a spin-weighted product, so its upper index is the sum of the
 /// two operands' -- which is eq:N applied to the concatenated multi-index, and
-/// the theory note says so in as many words. Nothing here has to arrange that;
+/// the theory note, docs/canonical-components.tex, says so in as many words.
+/// Nothing here has to arrange that;
 /// it is what "upper indices add under pointwise multiplication" means.
 template <typename LeftOperand, typename RightOperand>
 class TensorProductNode {

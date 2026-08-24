@@ -14,6 +14,18 @@
 // varies between OpenBLAS, MKL and Accelerate -- so depending on it would
 // make the build fragile in exchange for an argument order. The Fortran
 // symbol is the one thing every BLAS agrees on.
+//
+// -- **These declarations assume an LP64 BLAS**, whose integer arguments are
+// 32 bits. That is the default build of every implementation this library has
+// been used against. An ILP64 BLAS -- MKL's 64-bit-integer build, which is a
+// reasonable choice for very large problems -- passes 64-bit integers instead,
+// and because the symbol names are the same in both, linking against one would
+// not fail: it would pass the wrong thing. There is no portable way to detect
+// which a library is from here, so this is a constraint on how the library is
+// configured rather than something the code can check. Note also that the
+// trailing underscore, while near-universal, is a convention rather than a
+// guarantee; a platform that spells the symbols differently breaks here and
+// nowhere else.
 
 #ifdef GSHTRANS_HAVE_BLAS
 
