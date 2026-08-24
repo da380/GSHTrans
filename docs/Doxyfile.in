@@ -61,6 +61,8 @@ GROUP_NESTED_COMPOUNDS = NO
 # are not API. They are documented in the source and excluded from the output;
 # a reader who needs them is reading the header.
 INTERNAL_DOCS          = NO
+EXCLUDE_SYMBOLS        = *Details *Details::* SpinFieldOps SpinFieldOps::* \
+                         IndexRules IndexRules::*
 
 HAVE_DOT               = NO
 GENERATE_HTML          = YES

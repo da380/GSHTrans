@@ -16,11 +16,10 @@
 #include "NumericConcepts/Numeric.hpp"
 #include "NumericConcepts/Ranges.hpp"
 
-namespace GSHTrans {
-
 /**
- * @file Wigner3j.hpp
- * @brief Wigner 3j symbols by stable recursion over the (m1, m3) plane.
+ * @file 3j.h
+ * @brief Wigner 3-j symbols by stable recursion over the @f$(m_1, m_3)@f$
+ * plane.
  *
  * @details For fixed degrees (l1, l2, l3) the full table of symbols
  *
@@ -44,13 +43,10 @@ namespace GSHTrans {
  * (column-permutation invariance, which runs the recursion along different
  * lines) it agrees to 1e-16 at (200,200,200) and 1e-15 at (1000,1000,1999).
  *
- * This replaced two earlier schemes, and docs/3j-plan.md records why. A port
- * of Woodhouse's wig2.f ran the three-term recursion in one direction only,
- * and failed exponentially near stretched triangles -- unusable past l = 30
- * there. Racah's closed form was added as a fallback and covers exactly the
- * region that one cannot, but the two together still left a band at
- * intermediate shapes above l = 80 that neither reached. Schulten-Gordon
- * covers all of it, at 1.1x to 1.3x the cost of the scheme it replaces.
+ * Recursing in one direction only -- from a closed-form seed at a corner --
+ * is the obvious alternative and is not safe: it fails exponentially near
+ * *stretched* triangles, where one degree approaches the sum of the other
+ * two, which is the top of every coupling sum rather than an exotic corner.
  *
  * A second layout is offered beside the plain table -- see CouplingElement()
  * and FillCouplingMatrix -- in which the first order is negated and carries an
@@ -59,12 +55,16 @@ namespace GSHTrans {
  * so codes written against that routine want it. It is a phase and a
  * relabelling of the table below, not a separate algorithm.
  *
- * All degrees and orders are integers (no half-integer support).
+ * All degrees and orders are integers; there is no half-integer support.
+ *
+ * @see Schulten, K. and Gordon, R. G., J. Math. Phys. 16 (1975) 1961.
  */
 
-/*------------------------------------------------------------------------*/
-/*                          Concepts and helpers                          */
-/*------------------------------------------------------------------------*/
+namespace GSHTrans {
+
+//--------------------------------------------------------------------------//
+//                            Concepts and helpers                           //
+//--------------------------------------------------------------------------//
 
 /**
  * @brief Concept for a contiguous, sized range of real numbers that can be
