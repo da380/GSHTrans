@@ -68,6 +68,16 @@ EXCLUDE_SYMBOLS        = *Details *Details::* SpinFieldOps SpinFieldOps::* \
 
 HAVE_DOT               = NO
 GENERATE_HTML          = YES
+
+# The mathematics is rendered by MathJax in the browser rather than by doxygen
+# shelling out to latex. There is a good deal of it -- the @f$...@f$ formulas
+# in Wigner.h, WignerMatrices.h and Policies.h among others -- and the latex
+# route needs a TeX installation present wherever the documentation is built,
+# which is a heavy dependency for a CI leg whose job is to check that every
+# entity is documented. MathJax needs nothing installed.
+USE_MATHJAX            = YES
+MATHJAX_VERSION        = MathJax_3
+MATHJAX_RELPATH        = https://cdn.jsdelivr.net/npm/mathjax@3
 GENERATE_LATEX         = NO
 GENERATE_TREEVIEW      = YES
 DISABLE_INDEX          = NO
