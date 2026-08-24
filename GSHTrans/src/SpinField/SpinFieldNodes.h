@@ -38,10 +38,10 @@ class Binary {
   using RNode = Node<R>;
 
  public:
-  using Int = std::ptrdiff_t;
-  using Real = typename LNode::Real;
-  using Complex = std::complex<Real>;
-  using GridType = typename LNode::GridType;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Real = typename LNode::Real;  ///< The precision.
+  using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
+  using GridType = typename LNode::GridType;  ///< The angular grid this is defined on.
 
   // The scalar is whatever the operation returns, and the value kind follows
   // from it. Deriving it rather than declaring it is what makes the reality
@@ -86,6 +86,7 @@ class Binary {
     }
   }
 
+  /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _l.Grid(); }
 
   Scalar operator[](Int iTheta, Int iPhi) const {
@@ -113,12 +114,12 @@ class Unary {
   using ANode = Node<A>;
 
  public:
-  using Int = std::ptrdiff_t;
-  using Real = typename ANode::Real;
-  using Complex = std::complex<Real>;
-  using GridType = typename ANode::GridType;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Real = typename ANode::Real;  ///< The precision.
+  using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
+  using GridType = typename ANode::GridType;  ///< The angular grid this is defined on.
 
-  using Scalar = std::invoke_result_t<Op, typename ANode::Scalar>;
+  using Scalar = std::invoke_result_t<Op, typename ANode::Scalar>;  ///< The value type: Real when real-valued, Complex otherwise.
   using Value =
       std::conditional_t<RealFloatingPoint<Scalar>, RealValued, ComplexValued>;
 
@@ -138,6 +139,7 @@ class Unary {
   Unary(A&& a, Op op = Op{})
       : _a{std::forward<A>(a)}, _op{std::move(op)} {}
 
+  /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _a.Grid(); }
 
   Scalar operator[](Int iTheta, Int iPhi) const {

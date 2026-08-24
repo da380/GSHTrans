@@ -57,7 +57,7 @@ using Int = std::ptrdiff_t;
 // surface gradient, and the upper sign goes with sigma = -1.
 template <auto Indices, typename Result, typename Expansion>
 void FillComponent(Result& result, const Expansion& operand) {
-  using Real = typename Result::Real;
+  using Real = typename Result::Real;  ///< The precision.
 
   constexpr auto Rank = static_cast<Int>(Indices.size()) - 1;
   constexpr auto sigma = Indices[0];

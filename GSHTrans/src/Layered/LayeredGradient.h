@@ -77,7 +77,9 @@ class BlockAtRadius {
  public:
   BlockAtRadius(Stack& stack, Int i) : _stack{stack}, _i{i} {}
 
+  /** @brief Every degree stored. */
   auto Degrees() const { return _stack.Degrees(); }
+  /** @brief Every order stored at degree @p l. */
   auto Orders(Int l) const { return _stack.Orders(l); }
   auto& operator[](Int l, Int m) { return _stack[_i, l, m]; }
 
@@ -89,8 +91,8 @@ class BlockAtRadius {
 template <typename Layered>
 class ResultAtRadius {
  public:
-  using Real = typename Layered::Real;
-  using Complex = typename Layered::Complex;
+  using Real = typename Layered::Real;  ///< The precision.
+  using Complex = typename Layered::Complex;  ///< `std::complex` over the precision.
   static constexpr auto& Orbits = Layered::Orbits;
 
   ResultAtRadius(Layered& layered, Int i) : _layered{layered}, _i{i} {}
@@ -121,7 +123,7 @@ void ApplyOne(const Stacks& in, Stacks& out, const Op& op, Execution policy,
 // stored costs nothing extra here.
 template <auto Indices, typename Result, typename Derivative>
 void FillRadialComponent(Result& result, const Derivative& derivative, Int i) {
-  using Complex = typename Result::Complex;
+  using Complex = typename Result::Complex;  ///< `std::complex` over the precision.
 
   constexpr auto Rank = static_cast<Int>(Indices.size()) - 1;
   constexpr auto source = ContravariantDetails::DropFirst<Rank>(Indices);
@@ -176,7 +178,7 @@ auto SurfaceGradient(
     const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid>& operand) {
   using Result =
       LayeredTensorExpansion<Rank + 1, NoSymmetry<Rank + 1>, Reality, Grid>;
-  using Real = typename Result::Real;
+  using Real = typename Result::Real;  ///< The precision.
   using Flat = typename Result::Flat;
 
   const auto& radial = operand.Radial();

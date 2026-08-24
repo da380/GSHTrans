@@ -52,17 +52,17 @@ template <std::ptrdiff_t _N, AngularGrid _Grid,
           typename _Element = std::complex<typename _Grid::Real>>
 class SpinExpansionBase {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
 
   static constexpr Int UpperIndex = _N;
-  using Value = _Value;
-  using GridType = _Grid;
-  using Real = typename _Grid::Real;
-  using Complex = std::complex<Real>;
+  using Value = _Value;  ///< Whether the samples are real-valued or complex.
+  using GridType = _Grid;  ///< The angular grid this is defined on.
+  using Real = typename _Grid::Real;  ///< The precision.
+  using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
 
   // Coefficients are complex whatever the field is; what a real field changes
   // is how many of them there are.
-  using Scalar = Complex;
+  using Scalar = Complex;  ///< The value type: Real when real-valued, Complex otherwise.
   using MRange =
       std::conditional_t<std::same_as<Value, RealValued>, NonNegative, All>;
 
@@ -90,13 +90,20 @@ class SpinExpansionBase {
     }
   }
 
+  /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _grid; }
 
+  /** @brief The largest degree stored. */
   auto MaxDegree() const { return _indices.MaxDegree(); }
+  /** @brief The smallest degree stored. */
   auto MinDegree() const { return _indices.MinDegree(); }
+  /** @brief Every degree stored. */
   auto Degrees() const { return _indices.Degrees(); }
+  /** @brief Every order stored at degree @p l. */
   auto Orders(Int l) const { return GSHSubIndices<MRange>(l, MaxDegree()).Orders(); }
+  /** @brief How many elements are stored. */
   auto Size() const { return static_cast<Int>(_data.size()); }
+  /** @brief The underlying buffer. */
   auto Data() const { return _data; }
 
   Complex operator[](Int l, Int m) const { return _data[Index(l, m)]; }
@@ -134,15 +141,15 @@ template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value = ComplexValued>
 class SpinExpansion {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
 
   static constexpr Int UpperIndex = _N;
-  using Value = _Value;
-  using GridType = _Grid;
-  using Real = typename _Grid::Real;
-  using Complex = std::complex<Real>;
-  using ViewType = SpinExpansionView<_N, _Grid, _Value>;
-  using ConstViewType = ConstSpinExpansionView<_N, _Grid, _Value>;
+  using Value = _Value;  ///< Whether the samples are real-valued or complex.
+  using GridType = _Grid;  ///< The angular grid this is defined on.
+  using Real = typename _Grid::Real;  ///< The precision.
+  using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
+  using ViewType = SpinExpansionView<_N, _Grid, _Value>;  ///< A writable view over this object.
+  using ConstViewType = ConstSpinExpansionView<_N, _Grid, _Value>;  ///< A read-only view over this object.
   using MRange =
       std::conditional_t<std::same_as<_Value, RealValued>, NonNegative, All>;
 
@@ -155,15 +162,23 @@ class SpinExpansion {
         _indices{Checked(lMax), lMax, UpperIndex},
         _data(static_cast<std::size_t>(_indices.Size())) {}
 
+  /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _grid; }
+  /** @brief The largest degree stored. */
   auto MaxDegree() const { return _indices.MaxDegree(); }
+  /** @brief The smallest degree stored. */
   auto MinDegree() const { return _indices.MinDegree(); }
+  /** @brief Every degree stored. */
   auto Degrees() const { return _indices.Degrees(); }
+  /** @brief Every order stored at degree @p l. */
   auto Orders(Int l) const {
     return GSHSubIndices<MRange>(l, MaxDegree()).Orders();
   }
+  /** @brief How many elements are stored. */
   auto Size() const { return static_cast<Int>(_data.size()); }
+  /** @brief The underlying buffer. */
   auto Data() { return std::span<Complex>(_data); }
+  /** @brief The underlying buffer. */
   auto Data() const { return std::span<const Complex>(_data); }
 
   auto View() { return ViewType(_grid, MaxDegree(), Data()); }

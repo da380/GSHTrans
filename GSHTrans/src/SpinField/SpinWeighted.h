@@ -22,10 +22,10 @@ namespace GSHTrans {
 // node -- models SpinWeighted, and nothing dispatches through anything else:
 // there are no virtual functions and no required base class.
 //
-// The unit is deliberately a single component, not a tensor. Theory note
+// The unit is deliberately a single component, not a tensor. The theory note
 // section 2 is explicit that for rank >= 2 a collection labelled only by an
 // upper index does not determine a tensor, so tensors are built from these at
-// phase 2 rather than being what this layer is about.
+// the tensor layer rather than being what this layer is about.
 
 // The scalar a node evaluates to: Real when the node is real-valued, Complex
 // otherwise.

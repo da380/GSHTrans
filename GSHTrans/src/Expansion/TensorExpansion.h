@@ -27,7 +27,7 @@ namespace GSHTrans {
 //
 // The mirror of TensorField, and deliberately so -- same component addressing,
 // same stored set, same grouping by upper index. What it does *not* mirror is
-// phase 4's second buffer. A pinned component is a real field, but its
+// the reality reduction's second buffer. A pinned component is a real field, but its
 // coefficients are complex numbers in the reduced m >= 0 storage, so the
 // spectral side is one complex buffer throughout. What varies is the block
 // length: a component's block is sized by its own upper index, and a pinned
@@ -42,20 +42,20 @@ template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
           SlotAlphabet _Slots = AllSlots>
 class TensorExpansion {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
 
   static constexpr Int Rank = _Rank;
-  using Symmetry = _Symmetry;
-  using Reality = _Reality;
-  using GridType = _Grid;
-  using Real = typename _Grid::Real;
-  using Complex = std::complex<Real>;
+  using Symmetry = _Symmetry;  ///< The permutation symmetry of the slots.
+  using Reality = _Reality;  ///< Whether the tensor is real or complex.
+  using GridType = _Grid;  ///< The angular grid this is defined on.
+  using Real = typename _Grid::Real;  ///< The precision.
+  using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
 
   // The alphabet the slots are drawn from, appended last and defaulted as it
   // is on the field. The mirror holds here too: which components exist is the
   // field's question, and this side takes the answer rather than deciding it
   // again.
-  using SlotSet = _Slots;
+  using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
 
   using FieldType =
       TensorField<Rank, Symmetry, Reality, GridType, ComponentMajor, SlotSet>;
@@ -85,10 +85,15 @@ class TensorExpansion {
     }
   }
 
+  /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _grid; }
+  /** @brief The largest degree stored. */
   auto MaxDegree() const { return _lMax; }
+  /** @brief How many elements are stored. */
   auto Size() const { return static_cast<Int>(_data.size()); }
+  /** @brief The underlying buffer. */
   auto Data() { return std::span<Complex>(_data); }
+  /** @brief The underlying buffer. */
   auto Data() const { return std::span<const Complex>(_data); }
 
   // The component with this multi-index, as a spin expansion over the block
@@ -107,7 +112,7 @@ class TensorExpansion {
     constexpr auto slot = FieldType::SlotOfFlat(Orbits.representative[flat]);
     constexpr auto n = ComponentLayout.upperIndexOfSlot[slot];
     constexpr auto real = ComponentLayout.realOfSlot[slot];
-    using Value = std::conditional_t<real, RealValued, ComplexValued>;
+    using Value = std::conditional_t<real, RealValued, ComplexValued>;  ///< Whether the samples are real-valued or complex.
     return SpinExpansionView<n, GridType, Value>(_grid, _lMax,
                                                  BlockOf(slot));
   }
@@ -119,7 +124,7 @@ class TensorExpansion {
     constexpr auto slot = FieldType::SlotOfFlat(Orbits.representative[flat]);
     constexpr auto n = ComponentLayout.upperIndexOfSlot[slot];
     constexpr auto real = ComponentLayout.realOfSlot[slot];
-    using Value = std::conditional_t<real, RealValued, ComplexValued>;
+    using Value = std::conditional_t<real, RealValued, ComplexValued>;  ///< Whether the samples are real-valued or complex.
     return ConstSpinExpansionView<n, GridType, Value>(_grid, _lMax,
                                                       BlockOf(slot));
   }

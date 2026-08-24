@@ -27,10 +27,10 @@ namespace GSHTrans {
 //
 // Two-dimensional is the primitive and three-dimensional is a stack. The
 // angular field is never wrapped and a slice is not a new kind of object: it
-// is a SpinFieldView, an ordinary phase-1 node, so the index algebra, the lazy
+// is a SpinFieldView, an ordinary spin-weighted node, so the index algebra, the
 // evaluation and the aliasing theorem all lift unchanged and there is no
 // second expression system to keep consistent with the first. That is what
-// phase 1 made views admissible for.
+// views are admissible everywhere an owning field is.
 //
 // The layout is radius-major because that is what the applications this exists
 // for already use, and because it makes the radial axis a batch: the stack of
@@ -44,14 +44,14 @@ template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value = ComplexValued>
 class LayeredSpinField {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
 
   static constexpr Int UpperIndex = _N;
-  using Value = _Value;
-  using GridType = _Grid;
-  using Real = typename _Grid::Real;
-  using Complex = std::complex<Real>;
-  using Scalar = ScalarFor<Real, Value>;
+  using Value = _Value;  ///< Whether the samples are real-valued or complex.
+  using GridType = _Grid;  ///< The angular grid this is defined on.
+  using Real = typename _Grid::Real;  ///< The precision.
+  using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
+  using Scalar = ScalarFor<Real, Value>;  ///< The value type: Real when real-valued, Complex otherwise.
   using RadialGridType = RadialGrid<Real>;
   using SliceType = SpinFieldView<_N, _Grid, _Value>;
   using ConstSliceType = ConstSpinFieldView<_N, _Grid, _Value>;
@@ -68,18 +68,25 @@ class LayeredSpinField {
         _data(static_cast<std::size_t>(_radialGrid.NumberOfRadii()) *
               static_cast<std::size_t>(_grid.FieldSize())) {}
 
+  /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _grid; }
+  /** @brief The radial grid this is defined on. */
   const RadialGridType& Radial() const { return _radialGrid; }
 
+  /** @brief How many radii the stack holds. */
   auto NumberOfRadii() const { return _radialGrid.NumberOfRadii(); }
+  /** @brief Indices of the stored radii. */
   auto RadiusIndices() const { return _radialGrid.RadiusIndices(); }
+  /** @brief How many samples one angular field holds. */
   auto FieldSize() const { return static_cast<Int>(_grid.FieldSize()); }
+  /** @brief How many elements are stored. */
   auto Size() const { return static_cast<Int>(_data.size()); }
 
   // The uniform names a radial operator sees. A field's slice is a set of
   // angular points and an expansion's is a set of coefficients, but the radial
   // axis does not care which: it runs over `NumberOfRadii()` values `SliceSize()`
   // apart, and that is all `ApplyRadially` needs to know about either.
+  /** @brief How many elements one radial slice holds. */
   auto SliceSize() const { return FieldSize(); }
   auto SameShape() const { return LayeredSpinField(_radialGrid, _grid); }
 
@@ -90,7 +97,9 @@ class LayeredSpinField {
     return LayeredSpinField(std::move(radialGrid), _grid);
   }
 
+  /** @brief The underlying buffer. */
   auto Data() { return std::span<Scalar>(_data); }
+  /** @brief The underlying buffer. */
   auto Data() const { return std::span<const Scalar>(_data); }
 
   // One angular field, as a view over this stack's storage. Writing through it
@@ -144,13 +153,13 @@ template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value = ComplexValued>
 class LayeredSpinExpansion {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
 
   static constexpr Int UpperIndex = _N;
-  using Value = _Value;
-  using GridType = _Grid;
-  using Real = typename _Grid::Real;
-  using Complex = std::complex<Real>;
+  using Value = _Value;  ///< Whether the samples are real-valued or complex.
+  using GridType = _Grid;  ///< The angular grid this is defined on.
+  using Real = typename _Grid::Real;  ///< The precision.
+  using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   using RadialGridType = RadialGrid<Real>;
   using MRange =
       std::conditional_t<std::same_as<_Value, RealValued>, NonNegative, All>;
@@ -164,20 +173,31 @@ class LayeredSpinExpansion {
         _data(static_cast<std::size_t>(_radialGrid.NumberOfRadii()) *
               static_cast<std::size_t>(_indices.Size())) {}
 
+  /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _grid; }
+  /** @brief The radial grid this is defined on. */
   const RadialGridType& Radial() const { return _radialGrid; }
 
+  /** @brief How many radii the stack holds. */
   auto NumberOfRadii() const { return _radialGrid.NumberOfRadii(); }
+  /** @brief Indices of the stored radii. */
   auto RadiusIndices() const { return _radialGrid.RadiusIndices(); }
+  /** @brief The largest degree stored. */
   auto MaxDegree() const { return _indices.MaxDegree(); }
+  /** @brief The smallest degree stored. */
   auto MinDegree() const { return _indices.MinDegree(); }
+  /** @brief Every degree stored. */
   auto Degrees() const { return _indices.Degrees(); }
+  /** @brief Every order stored at degree @p l. */
   auto Orders(Int l) const {
     return GSHSubIndices<MRange>(l, MaxDegree()).Orders();
   }
+  /** @brief How many coefficients one block holds. */
   auto CoefficientSize() const { return static_cast<Int>(_indices.Size()); }
+  /** @brief How many elements are stored. */
   auto Size() const { return static_cast<Int>(_data.size()); }
 
+  /** @brief How many elements one radial slice holds. */
   auto SliceSize() const { return CoefficientSize(); }
 
   // Where a degree and order sit within one radius's block. The radial-major
@@ -195,7 +215,9 @@ class LayeredSpinExpansion {
     return LayeredSpinExpansion(std::move(radialGrid), _grid, MaxDegree());
   }
 
+  /** @brief The underlying buffer. */
   auto Data() { return std::span<Complex>(_data); }
+  /** @brief The underlying buffer. */
   auto Data() const { return std::span<const Complex>(_data); }
 
   // The coefficient at one radius.

@@ -93,14 +93,14 @@ constexpr bool AreSlotLetters() {
 // the upper index. The upper index is the signed sum of the slots (eq:N), and
 // for rank >= 2 several multi-indices share one: a rank-2 tensor has three
 // components at N = 0, namely (-+), (00) and (+-). A collection labelled only
-// by N therefore does not determine a tensor, which is why phase 1's unit is
+// by N therefore does not determine a tensor, which is why the unit below is
 // called SpinField and why components are addressed by multi-index here.
 template <std::ptrdiff_t _Rank, SlotAlphabet _Slots = AllSlots>
 class MultiIndex {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
   // Named SlotSet rather than Slots, which is taken by the accessor below.
-  using SlotSet = _Slots;
+  using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
 
   static constexpr Int Rank = _Rank;
   static_assert(Rank >= 0, "A tensor rank cannot be negative");
@@ -227,7 +227,7 @@ constexpr auto ComponentsAtUpperIndex(std::ptrdiff_t n) {
 // one.
 template <std::ptrdiff_t Rank>
 struct SlotPermutation {
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
 
   std::array<Int, Rank> image;
   Int sign;

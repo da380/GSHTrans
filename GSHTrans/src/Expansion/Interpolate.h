@@ -62,8 +62,8 @@ namespace InterpolateDetails {
 // the caller passed.
 template <RealFloatingPoint _Real, RealOrComplexFloatingPoint _Scalar>
 struct Padded {
-  using Real = _Real;
-  using Scalar = _Scalar;
+  using Real = _Real;  ///< The precision.
+  using Scalar = _Scalar;  ///< The value type: Real when real-valued, Complex otherwise.
 
   std::vector<Real> theta;     // nTheta + 2, running 0 ... pi
   std::vector<Real> phi;       // nPhi + 1,   running 0 ... 2 pi
@@ -88,7 +88,7 @@ struct Padded {
 template <AngularGrid GridType, RealOrComplexFloatingPoint Scalar>
 auto Pad(const GridType& grid, std::span<const Scalar> samples,
          std::span<const Scalar> north, std::span<const Scalar> south) {
-  using Real = typename GridType::Real;
+  using Real = typename GridType::Real;  ///< The precision.
   constexpr auto pi = std::numbers::pi_v<Real>;
 
   auto padded = Padded<Real, Scalar>{};
@@ -165,8 +165,8 @@ auto Pad(const GridType& grid, std::span<const Scalar> samples,
 template <RealOrComplexFloatingPoint Scalar, typename Expansion,
           AngularGrid GridType>
 auto PolarRows(const Expansion& expansion, const GridType& grid) {
-  using Real = typename GridType::Real;
-  using Complex = std::complex<Real>;
+  using Real = typename GridType::Real;  ///< The precision.
+  using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   constexpr auto N = Expansion::UpperIndex;
   constexpr auto pi = std::numbers::pi_v<Real>;
 
@@ -216,18 +216,18 @@ auto PolarRows(const Expansion& expansion, const GridType& grid) {
 //
 // [I1]: it owns its coefficients. The shared_ptr is what keeps a copy cheap
 // and, more to the point, keeps the state at a stable address so that copying
-// the interpolant is well defined -- which it has to be, because GridBase's
+// the interpolant is well defined -- which it has to be, because the grid's
 // ProjectFunction takes its callable by value ([I8]).
 template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value = ComplexValued>
 class SpectralInterpolant {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
   static constexpr Int UpperIndex = _N;
-  using GridType = _Grid;
-  using Value = _Value;
-  using Real = typename _Grid::Real;
-  using Complex = std::complex<Real>;
+  using GridType = _Grid;  ///< The angular grid this is defined on.
+  using Value = _Value;  ///< Whether the samples are real-valued or complex.
+  using Real = typename _Grid::Real;  ///< The precision.
+  using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   using Scalar =
       std::conditional_t<std::same_as<Value, RealValued>, Real, Complex>;
 
@@ -243,6 +243,7 @@ class SpectralInterpolant {
   SpectralInterpolant(Int lMax, std::span<const Complex> coefficients)
       : _state{std::make_shared<const State>(lMax, coefficients)} {}
 
+  /** @brief The largest degree stored. */
   auto MaxDegree() const { return _state->lMax; }
 
   Scalar operator()(Real theta, Real phi) const {
@@ -404,12 +405,12 @@ template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value, typename _Upstream>
 class LocalInterpolant {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
   static constexpr Int UpperIndex = _N;
-  using GridType = _Grid;
-  using Value = _Value;
-  using Real = typename _Grid::Real;
-  using Complex = std::complex<Real>;
+  using GridType = _Grid;  ///< The angular grid this is defined on.
+  using Value = _Value;  ///< Whether the samples are real-valued or complex.
+  using Real = typename _Grid::Real;  ///< The precision.
+  using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   using Scalar =
       std::conditional_t<std::same_as<Value, RealValued>, Real, Complex>;
 
@@ -476,8 +477,8 @@ concept LocalScheme = std::same_as<Tag, Scheme::BilinearTag> or
 // per evaluation rather than per interpolant.
 template <SpinWeighted F, InterpolateDetails::LocalScheme Tag>
 auto Interpolate(const F& field, Tag, std::ptrdiff_t lMax = -1) {
-  using Real = typename F::Real;
-  using Scalar = typename F::Scalar;
+  using Real = typename F::Real;  ///< The precision.
+  using Scalar = typename F::Scalar;  ///< The value type: Real when real-valued, Complex otherwise.
   using Upstream =
       typename InterpolateDetails::UpstreamFor<Tag, Real, Scalar>::Type;
 

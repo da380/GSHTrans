@@ -21,7 +21,7 @@ namespace GSHTrans {
 // Everything in the field algebra is local in (theta, phi); these are local in
 // (l, m) and not in position, so "the gradient of a product" is necessarily
 // evaluated in both -- the product in one, the gradient in the other. Nothing
-// here can be a phase-1 node.
+// here can be a spin-weighted node.
 //
 // In the spectral domain each is a multiplication of the coefficients by an
 // l-dependent factor with no coupling between different (l, m):
@@ -119,7 +119,7 @@ constexpr Real LoweringFactor(Int l, Int n) {
 template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
 auto Coefficient(const SpinExpansion<N, Grid, Value>& expansion,
                  std::ptrdiff_t l, std::ptrdiff_t m) {
-  using Complex = std::complex<typename Grid::Real>;
+  using Complex = std::complex<typename Grid::Real>;  ///< `std::complex` over the precision.
   if (l < expansion.MinDegree() || l > expansion.MaxDegree()) return Complex{};
   if (m < -l || m > l) return Complex{};
   if constexpr (std::same_as<Value, RealValued>) {
@@ -135,7 +135,7 @@ auto Coefficient(const SpinExpansion<N, Grid, Value>& expansion,
 // same degrees, less the one the raised field cannot carry.
 template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
 auto Raise(const SpinExpansion<N, Grid, Value>& expansion) {
-  using Real = typename Grid::Real;
+  using Real = typename Grid::Real;  ///< The precision.
   auto raised =
       SpinExpansion<N + 1, Grid, ComplexValued>(expansion.Grid(),
                                                 expansion.MaxDegree());
@@ -151,7 +151,7 @@ auto Raise(const SpinExpansion<N, Grid, Value>& expansion) {
 // Lower it by one.
 template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
 auto Lower(const SpinExpansion<N, Grid, Value>& expansion) {
-  using Real = typename Grid::Real;
+  using Real = typename Grid::Real;  ///< The precision.
   auto lowered =
       SpinExpansion<N - 1, Grid, ComplexValued>(expansion.Grid(),
                                                 expansion.MaxDegree());

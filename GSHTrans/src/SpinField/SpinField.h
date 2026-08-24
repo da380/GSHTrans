@@ -31,14 +31,14 @@ template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value = ComplexValued>
 class SpinField {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
 
   static constexpr Int UpperIndex = _N;
-  using Value = _Value;
-  using GridType = _Grid;
-  using Real = typename _Grid::Real;
-  using Complex = std::complex<Real>;
-  using Scalar = ScalarFor<Real, Value>;
+  using Value = _Value;  ///< Whether the samples are real-valued or complex.
+  using GridType = _Grid;  ///< The angular grid this is defined on.
+  using Real = typename _Grid::Real;  ///< The precision.
+  using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
+  using Scalar = ScalarFor<Real, Value>;  ///< The value type: Real when real-valued, Complex otherwise.
 
   // The reality constraint, restated here so that a mistake in a terminal's
   // template arguments reports itself rather than showing up as a failure to
@@ -193,6 +193,7 @@ class SpinField {
   //                            The node interface                          //
   //------------------------------------------------------------------------//
 
+  /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _grid; }
 
   // By value, as on every node: uniform value return is what lets terminals,
@@ -221,8 +222,11 @@ class SpinField {
   //                              Storage access                            //
   //------------------------------------------------------------------------//
 
+  /** @brief How many elements are stored. */
   auto Size() const { return static_cast<Int>(_data.size()); }
+  /** @brief The underlying buffer. */
   auto Data() const { return std::span<const Scalar>(_data); }
+  /** @brief The underlying buffer. */
   auto Data() { return std::span<Scalar>(_data); }
 
   auto begin() { return _data.begin(); }

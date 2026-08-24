@@ -59,12 +59,12 @@ constexpr bool AnyRadial() {
 template <typename Operand>
 class EmbedNode {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
   using OperandType = std::remove_cvref_t<Operand>;
 
   static constexpr Int Rank = OperandType::Rank;
-  using GridType = typename OperandType::GridType;
-  using SlotSet = AllSlots;
+  using GridType = typename OperandType::GridType;  ///< The angular grid this is defined on.
+  using SlotSet = AllSlots;  ///< The alphabet the slots are drawn from.
 
   static_assert(std::same_as<typename OperandType::SlotSet, TangentialSlots>,
                 "Embed widens a tangential tensor; a general one is already "
@@ -73,6 +73,7 @@ class EmbedNode {
   explicit EmbedNode(Operand&& operand)
       : _operand{std::forward<Operand>(operand)} {}
 
+  /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _operand.Grid(); }
 
   template <Int... Alphas>
@@ -122,12 +123,12 @@ auto Embed(T&& tensor) {
 template <typename Operand>
 class TangentialNode {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
   using OperandType = std::remove_cvref_t<Operand>;
 
   static constexpr Int Rank = OperandType::Rank;
-  using GridType = typename OperandType::GridType;
-  using SlotSet = TangentialSlots;
+  using GridType = typename OperandType::GridType;  ///< The angular grid this is defined on.
+  using SlotSet = TangentialSlots;  ///< The alphabet the slots are drawn from.
 
   static_assert(std::same_as<typename OperandType::SlotSet, AllSlots>,
                 "Tangential projects a general tensor; a tangential one is "
@@ -136,6 +137,7 @@ class TangentialNode {
   explicit TangentialNode(Operand&& operand)
       : _operand{std::forward<Operand>(operand)} {}
 
+  /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _operand.Grid(); }
 
   template <Int... Alphas>

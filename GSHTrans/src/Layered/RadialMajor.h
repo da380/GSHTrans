@@ -45,7 +45,7 @@ namespace GSHTrans {
 template <typename Stack>
 class RadialMajor {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
   using Scalar = typename std::remove_cvref_t<
       decltype(std::declval<const Stack&>().Data())>::value_type;
 
@@ -59,6 +59,7 @@ class RadialMajor {
     Transpose(stack.Data().data(), _data.data(), _nR, _lines, policy);
   }
 
+  /** @brief How many radii the stack holds. */
   auto NumberOfRadii() const { return _nR; }
   auto NumberOfLines() const { return _lines; }
 
@@ -67,9 +68,12 @@ class RadialMajor {
   // be overwritten is pure waste, and without this there is no way to avoid
   // it.
   auto SameShape() const { return RadialMajor(_nR, _lines); }
+  /** @brief How many elements are stored. */
   auto Size() const { return static_cast<Int>(_data.size()); }
 
+  /** @brief The underlying buffer. */
   auto Data() { return std::span<Scalar>(_data); }
+  /** @brief The underlying buffer. */
   auto Data() const { return std::span<const Scalar>(_data); }
 
   // One radial line, contiguous. `j` is the position within a slice: for an
@@ -182,8 +186,8 @@ class RadialMajor {
 template <typename Stack, typename Op>
 void ApplyToLines(const RadialMajor<Stack>& in, RadialMajor<Stack>& out,
                   const Op& op, Execution policy = Execution::Sequential()) {
-  using Int = std::ptrdiff_t;
-  using Scalar = typename RadialMajor<Stack>::Scalar;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Scalar = typename RadialMajor<Stack>::Scalar;  ///< The value type: Real when real-valued, Complex otherwise.
 
   if (in.NumberOfRadii() != out.NumberOfRadii() ||
       in.NumberOfLines() != out.NumberOfLines()) {

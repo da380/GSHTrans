@@ -24,7 +24,7 @@ namespace GSHTrans {
 // A tensor expression: a rank, a grid, and a component accessor.
 //
 // The whole of the tensor algebra is that an operation on tensors is an
-// operation on that accessor. Every node below returns a *phase-1* node from
+// operation on that accessor. Every node below returns a *spin-weighted* node from
 // Component<...>(), so the index algebra of upper indices is already enforced
 // and there is no second expression system to keep consistent with the first.
 // What this layer has to get right is only *which* components it asks for.
@@ -197,18 +197,18 @@ constexpr auto GroupElements() {
 // the rest of the layer uses.
 //
 // It permutes *tensor slots* and not grid points, so it does not touch the
-// pointwise-and-index-preserving invariant that phase 1's aliasing theorem
+// pointwise-and-index-preserving invariant that the aliasing theorem
 // rests on. That is worth stating because a re-indexing view is exactly the
 // thing that would break it, and this is the closest the library comes to one.
 template <auto Image, typename Operand>
 class PermuteNode {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
   using OperandType = std::remove_cvref_t<Operand>;
 
   static constexpr Int Rank = OperandType::Rank;
-  using GridType = typename OperandType::GridType;
-  using SlotSet = typename OperandType::SlotSet;
+  using GridType = typename OperandType::GridType;  ///< The angular grid this is defined on.
+  using SlotSet = typename OperandType::SlotSet;  ///< The alphabet the slots are drawn from.
 
   static_assert(Image.size() == static_cast<std::size_t>(Rank),
                 "A slot permutation needs one image per tensor slot");
@@ -216,6 +216,7 @@ class PermuteNode {
   explicit PermuteNode(Operand&& operand)
       : _operand{std::forward<Operand>(operand)} {}
 
+  /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _operand.Grid(); }
 
   // Slot i of this tensor is slot Image[i] of the operand, which is the same
@@ -276,20 +277,20 @@ auto Transpose(T&& tensor) {
 
 // (S tensor T)^{alpha beta} = S^{alpha} T^{beta}, of rank p + q.
 //
-// The component is a phase-1 product, so its upper index is the sum of the
+// The component is a spin-weighted product, so its upper index is the sum of the
 // two operands' -- which is eq:N applied to the concatenated multi-index, and
 // the theory note says so in as many words. Nothing here has to arrange that;
 // it is what "upper indices add under pointwise multiplication" means.
 template <typename LeftOperand, typename RightOperand>
 class TensorProductNode {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
   using Left = std::remove_cvref_t<LeftOperand>;
   using Right = std::remove_cvref_t<RightOperand>;
 
   static constexpr Int Rank = Left::Rank + Right::Rank;
-  using GridType = typename Left::GridType;
-  using SlotSet = typename Left::SlotSet;
+  using GridType = typename Left::GridType;  ///< The angular grid this is defined on.
+  using SlotSet = typename Left::SlotSet;  ///< The alphabet the slots are drawn from.
 
   static_assert(std::same_as<GridType, typename Right::GridType>,
                 "A tensor product needs both operands on the same kind of "
@@ -314,6 +315,7 @@ class TensorProductNode {
     }
   }
 
+  /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _left.Grid(); }
 
   // The multi-index splits: the first p slots name the left operand's
@@ -386,18 +388,18 @@ auto TensorProduct(L&& left, R&& right) {
 //
 // The result lands at the right upper index by construction rather than by
 // arrangement: the contracted pair contributes a + (-a) = 0 whatever a is, so
-// all three terms carry the same upper index and phase 1's Equal rule admits
+// all three terms carry the same upper index and the Equal rule admits
 // their sum. A contraction that paired its slots wrongly would not compile.
 template <std::ptrdiff_t J, std::ptrdiff_t K, typename Operand>
 class ContractionNode {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
   using OperandType = std::remove_cvref_t<Operand>;
 
   static constexpr Int Rank = OperandType::Rank - 2;
-  using GridType = typename OperandType::GridType;
-  using SlotSet = typename OperandType::SlotSet;
-  using Real = typename GridType::Real;
+  using GridType = typename OperandType::GridType;  ///< The angular grid this is defined on.
+  using SlotSet = typename OperandType::SlotSet;  ///< The alphabet the slots are drawn from.
+  using Real = typename GridType::Real;  ///< The precision.
 
   static constexpr auto& Alphabet = SlotSet::Alphabet;
   static constexpr auto Letters = Alphabet.size();
@@ -410,6 +412,7 @@ class ContractionNode {
   explicit ContractionNode(Operand&& operand)
       : _operand{std::forward<Operand>(operand)} {}
 
+  /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _operand.Grid(); }
 
   // The operand's multi-index: the surviving slots in order, with a inserted
@@ -489,13 +492,13 @@ auto Trace(T&& tensor) {
 template <typename Symmetry, typename Operand>
 class SymmetriseNode {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
   using OperandType = std::remove_cvref_t<Operand>;
 
   static constexpr Int Rank = OperandType::Rank;
-  using GridType = typename OperandType::GridType;
-  using SlotSet = typename OperandType::SlotSet;
-  using Real = typename GridType::Real;
+  using GridType = typename OperandType::GridType;  ///< The angular grid this is defined on.
+  using SlotSet = typename OperandType::SlotSet;  ///< The alphabet the slots are drawn from.
+  using Real = typename GridType::Real;  ///< The precision.
 
   static constexpr auto Group = TensorDetails::GroupElements<Rank, Symmetry>();
   static constexpr Int GroupSize = Group.second;
@@ -503,6 +506,7 @@ class SymmetriseNode {
   explicit SymmetriseNode(Operand&& operand)
       : _operand{std::forward<Operand>(operand)} {}
 
+  /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _operand.Grid(); }
 
   template <std::size_t Element, Int... Alphas>
@@ -542,7 +546,7 @@ class SymmetriseNode {
   // A fold over the group. Each term is the operand's component under one
   // element, scaled by that element's sign; the terms need not have the same
   // type, since a component may come back as a view from one element and as an
-  // expression from another, and phase 1's binary node does not care.
+  // expression from another, and the binary node does not care.
   template <Int... Alphas, std::size_t... E>
   auto Sum(std::index_sequence<E...>) const {
     return ((static_cast<Real>(Group.first[E].sign) *

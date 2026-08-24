@@ -38,14 +38,14 @@ namespace GSHTrans {
 // latitudes an equiangular rule would need for the same band.
 template <RealFloatingPoint _Real, OrderIndexRange _MRange, IndexRange _NRange>
 class GaussLegendreGrid : public SphericalGrid<_Real, _MRange, _NRange> {
-  using Base = SphericalGrid<_Real, _MRange, _NRange>;
+  using Base = SphericalGrid<_Real, _MRange, _NRange>;  ///< The base this derives from.
 
  public:
-  using Int = std::ptrdiff_t;
-  using Real = _Real;
-  using Complex = std::complex<Real>;
-  using MRange = _MRange;
-  using NRange = _NRange;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Real = _Real;  ///< The precision.
+  using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
+  using MRange = _MRange;  ///< Whether all orders are stored, or only the non-negative ones.
+  using NRange = _NRange;  ///< Which upper indices are covered.
 
   GaussLegendreGrid() = delete;
 

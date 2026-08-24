@@ -120,9 +120,9 @@ auto ComponentOfArray(Result& result, std::index_sequence<I...>) {
 template <auto Indices, typename Result, typename Expansion>
 void FillComponent(Result& result, const Expansion& operand,
                    typename Result::Real scale = 1) {
-  using Int = std::ptrdiff_t;
-  using Real = typename Result::Real;
-  using Complex = typename Result::Complex;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Real = typename Result::Real;  ///< The precision.
+  using Complex = typename Result::Complex;  ///< `std::complex` over the precision.
 
   constexpr auto Rank = static_cast<Int>(Indices.size()) - 1;
   constexpr auto sigma = Indices[0];

@@ -51,6 +51,7 @@ class Execution {
   auto Threads() const { return _threads; }
   auto IsParallel() const { return _threads != 1; }
 
+  /** @brief Compares componentwise. */
   bool operator==(const Execution&) const = default;
 
  private:
@@ -93,7 +94,7 @@ class Execution {
 // and it is the wrong one.
 class Batch {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
 
   // Fields laid end to end, each one contiguous and `size` elements long.
   static Batch Contiguous(Int count, Int size) {
@@ -145,6 +146,7 @@ class Batch {
     return _dist >= size * _stride || _stride >= _count * _dist;
   }
 
+  /** @brief Compares componentwise. */
   bool operator==(const Batch&) const = default;
 
  private:
@@ -187,7 +189,7 @@ class Batch {
 // stop being taken; and it could not read anything about the machine.
 class Chunking {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
 
   // A modest desktop's last-level cache. At lMax = 256 this gives a chunk of
   // three on one thread, against the eight P2 measured on a 16 MiB laptop --
@@ -258,6 +260,7 @@ class Chunking {
     return count < MaximumCount ? count : MaximumCount;
   }
 
+  /** @brief Compares componentwise. */
   bool operator==(const Chunking&) const = default;
 
  private:
@@ -300,6 +303,7 @@ class WignerValues {
 
   auto AreStored() const { return _stored; }
 
+  /** @brief Compares componentwise. */
   bool operator==(const WignerValues&) const = default;
 
  private:
@@ -358,6 +362,7 @@ class TransformKernel {
 
   auto IsMatrix() const { return _matrix; }
 
+  /** @brief Compares componentwise. */
   bool operator==(const TransformKernel&) const = default;
 
  private:

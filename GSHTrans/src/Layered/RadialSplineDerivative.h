@@ -56,8 +56,8 @@ using Interpolation::BoundaryCondition;
 template <RealFloatingPoint _Real>
 class SplineDerivative {
  public:
-  using Int = std::ptrdiff_t;
-  using Real = _Real;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Real = _Real;  ///< The precision.
   using System = Interpolation::CubicSplineSystem<std::span<const Real>>;
 
   SplineDerivative() = delete;
@@ -105,6 +105,7 @@ class SplineDerivative {
     }
   }
 
+  /** @brief The radial grid this is defined on. */
   const RadialGrid<Real>& Radial() const { return _radial; }
 
   // How many splines a line is carried by: one per element, or one.

@@ -37,35 +37,38 @@
 
 namespace GSHTrans {
 
-// A grid on the sphere, and the transform over it.
-//
-// This holds everything that does not depend on *which* quadrature produced
-// the colatitudes: the Wigner values in whichever layout, both Legendre
-// kernels, the Fourier stages, the batch descriptors, chunking, threading and
-// the plan cache. A derived grid supplies the nodes and weights through the
-// protected constructor below and adds no data of its own.
-//
-// The separation is core-plan.md section 13, and the measurement that
-// justified it is that GaussLegendreGrid was 1722 lines of which about eleven
-// were Gauss-Legendre. Everything else needed only a list of colatitudes, a
-// list of weights, nPhi, and the fact that the longitudes are uniform from
-// zero -- so the file layout was claiming a coupling the code did not have.
-//
-// It replaced GridBase, whose CRTP had exactly one derived class and could
-// not express what this needs anyway: a base cannot call
-// Derived().CoLatitudes() from its own constructor, and building the Wigner
-// table at construction is exactly that call ([C25]). Once the class owns the
-// nodes there is nothing left to defer, so the helpers below are ordinary
-// members.
+/**
+ * @brief A grid on the sphere, and the transform over it.
+ *
+ * @details Holds everything that does not depend on *which* quadrature
+ * produced the colatitudes: the Wigner values in whichever layout, both
+ * Legendre kernels, the Fourier stages, the batch descriptors, chunking,
+ * threading and the plan cache. A derived grid supplies the nodes and the
+ * weights through the protected constructor and adds no data of its own, so
+ * copying one into this base loses only what the derived class added.
+ *
+ * All a transform needs of a quadrature is a list of colatitudes, a list of
+ * weights, a longitude count, and that the longitudes are uniform from zero.
+ *
+ * Not a CRTP base: one cannot call `Derived().CoLatitudes()` from a base's own
+ * constructor, and building the Wigner values at construction is exactly that
+ * call. The nodes are passed in and held here instead, which also leaves the
+ * point-set helpers nothing to defer.
+ *
+ * @tparam _Real The precision.
+ * @tparam _MRange Whether coefficient blocks hold all orders or only the
+ * non-negative ones. A grid over the latter serves real scalars alone.
+ * @tparam _NRange Which upper indices the grid covers.
+ */
 template <RealFloatingPoint _Real, OrderIndexRange _MRange, IndexRange _NRange>
 class SphericalGrid {
  public:
   // Public type aliases.
-  using Int = std::ptrdiff_t;
-  using Real = _Real;
-  using Complex = std::complex<Real>;
-  using MRange = _MRange;
-  using NRange = _NRange;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Real = _Real;  ///< The precision.
+  using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
+  using MRange = _MRange;  ///< Whether all orders are stored, or only the non-negative ones.
+  using NRange = _NRange;  ///< Which upper indices are covered.
 
   // A grid is a value-semantic handle over an immutable, shared
   // implementation: constructing one builds the Wigner values and copying one
@@ -126,6 +129,7 @@ class SphericalGrid {
   // equal parameters hold different quadrature objects and different wisdom,
   // and treating them as interchangeable would make a node's operands
   // silently disagree about the buffers they index.
+  /** @brief Identity, for deciding whether two share an implementation. */
   auto Identity() const { return _impl.get(); }
 
   // The same grid with a different chunking policy, or a different planner
@@ -162,24 +166,30 @@ class SphericalGrid {
   auto PlannerFlag() const { return _flag; }
 
   //------------------------------------------------//
-  //    Methods needed to inherit from GridBase     //
+  //                 The grid itself                 //
   //------------------------------------------------//
+  /** @brief The largest degree stored. */
   auto MaxDegree() const { return _impl->lMax; }
+  /** @brief The largest upper index covered. */
   auto MaxUpperIndex() const { return _impl->nMax; }
 
+  /** @brief The colatitudes, strictly increasing in @f$(0,\pi)@f$. */
   auto CoLatitudes() const {
     return std::ranges::views::all(_impl->coLatitudes);
   }
+  /** @brief The quadrature weights over colatitude. */
   auto CoLatitudeWeights() const {
     return std::ranges::views::all(_impl->coLatitudeWeights);
   }
 
+  /** @brief The longitudes, uniform from zero. */
   auto Longitudes() const {
     const auto nPhi = NPhi();
     const auto dPhi = 2 * std::numbers::pi_v<Real> / static_cast<Real>(nPhi);
     return std::ranges::views::iota(Int{0}, nPhi) |
            std::ranges::views::transform([dPhi](auto i) { return i * dPhi; });
   }
+  /** @brief The quadrature weights over longitude, which are uniform. */
   auto LongitudeWeights() const {
     const auto nPhi = NPhi();
     const auto dPhi = 2 * std::numbers::pi_v<Real> / static_cast<Real>(nPhi);
@@ -189,11 +199,8 @@ class SphericalGrid {
   //------------------------------------------------//
   //          The point set, and its sizes           //
   //------------------------------------------------//
-  //
-  // These were GridBase's, reached through CRTP. They are ordinary members
-  // now, because this class holds the nodes itself and has nothing to defer
-  // to a derived type ([C25]).
 
+  /** @brief The smallest upper index covered. */
   auto MinUpperIndex() const {
     if constexpr (std::same_as<NRange, All>) {
       return -MaxUpperIndex();
@@ -204,31 +211,39 @@ class SphericalGrid {
     }
   }
 
+  /** @brief Every upper index covered. */
   auto UpperIndices() const {
     return std::ranges::views::iota(MinUpperIndex(), MaxUpperIndex() + 1);
   }
 
+  /** @brief How many colatitudes the grid has. */
   auto NumberOfCoLatitudes() const { return CoLatitudes().size(); }
+  /** @brief Indices of the colatitudes. */
   auto CoLatitudeIndices() const {
     return std::ranges::views::iota(Int{0},
                                     static_cast<Int>(NumberOfCoLatitudes()));
   }
 
+  /** @brief How many longitudes the grid has. */
   auto NumberOfLongitudes() const { return Longitudes().size(); }
+  /** @brief Indices of the longitudes. */
   auto LongitudeIndices() const {
     return std::ranges::views::iota(Int{0},
                                     static_cast<Int>(NumberOfLongitudes()));
   }
 
+  /** @brief Every @f$(\theta,\phi)@f$ point, in storage order. */
   auto Points() const {
     return std::ranges::views::cartesian_product(CoLatitudes(), Longitudes());
   }
 
+  /** @brief Every point index pair, in storage order. */
   auto PointIndices() const {
     return std::ranges::views::cartesian_product(CoLatitudeIndices(),
                                                  LongitudeIndices());
   }
 
+  /** @brief The quadrature weight at every point. */
   auto Weights() const {
     return std::ranges::views::cartesian_product(CoLatitudeWeights(),
                                                  LongitudeWeights()) |
@@ -246,6 +261,7 @@ class SphericalGrid {
            });
   }
 
+  /** @brief How many samples one angular field holds. */
   auto FieldSize() const {
     return NumberOfCoLatitudes() * NumberOfLongitudes();
   }
@@ -289,7 +305,7 @@ class SphericalGrid {
                              OutRange& out, Batch outBatch,
                              Execution policy = Execution::Sequential()) const {
     // Get scalar type for field.
-    using Scalar = std::ranges::range_value_t<InRange>;
+    using Scalar = std::ranges::range_value_t<InRange>;  ///< The value type: Real when real-valued, Complex otherwise.
 
     ValidateTransformRequest<Scalar>(lMax, n);
 
@@ -523,7 +539,7 @@ class SphericalGrid {
   }
   void ForwardTransformation(Int lMax, Int n, InRange&& in, OutRange& out,
                              Execution policy = Execution::Sequential()) const {
-    using Scalar = std::ranges::range_value_t<InRange>;
+    using Scalar = std::ranges::range_value_t<InRange>;  ///< The value type: Real when real-valued, Complex otherwise.
     ValidateTransformRequest<Scalar>(lMax, n);
     const auto fieldSize = static_cast<Int>(this->FieldSize());
     const auto coefficientSize =
@@ -550,7 +566,7 @@ class SphericalGrid {
                              OutRange& out, Batch outBatch,
                              Execution policy = Execution::Sequential()) const {
     // Get scalar type for field.
-    using Scalar = std::ranges::range_value_t<OutRange>;
+    using Scalar = std::ranges::range_value_t<OutRange>;  ///< The value type: Real when real-valued, Complex otherwise.
 
     ValidateTransformRequest<Scalar>(lMax, n);
 
@@ -709,7 +725,7 @@ class SphericalGrid {
   }
   void InverseTransformation(Int lMax, Int n, InRange&& in, OutRange& out,
                              Execution policy = Execution::Sequential()) const {
-    using Scalar = std::ranges::range_value_t<OutRange>;
+    using Scalar = std::ranges::range_value_t<OutRange>;  ///< The value type: Real when real-valued, Complex otherwise.
     ValidateTransformRequest<Scalar>(lMax, n);
     const auto fieldSize = static_cast<Int>(this->FieldSize());
     const auto coefficientSize =
@@ -797,7 +813,7 @@ class SphericalGrid {
   void ForwardFourierStage(InRange&& in, Batch inBatch, Int first, Int count,
                            std::span<Complex> out, Int thetaBlock = 0,
                            Execution policy = Execution::Sequential()) const {
-    using Scalar = std::ranges::range_value_t<InRange>;
+    using Scalar = std::ranges::range_value_t<InRange>;  ///< The value type: Real when real-valued, Complex otherwise.
     static_assert(RealOrComplexFloatingPoint<Scalar>);
 
     const auto nPhi = static_cast<Int>(this->NumberOfLongitudes());
@@ -887,7 +903,7 @@ class SphericalGrid {
                            Batch outBatch, Int first, Int count,
                            Int thetaBlock = 0,
                            Execution policy = Execution::Sequential()) const {
-    using Scalar = std::ranges::range_value_t<OutRange>;
+    using Scalar = std::ranges::range_value_t<OutRange>;  ///< The value type: Real when real-valued, Complex otherwise.
     static_assert(RealOrComplexFloatingPoint<Scalar>);
 
     const auto nPhi = static_cast<Int>(this->NumberOfLongitudes());
@@ -1608,8 +1624,11 @@ class SphericalGrid {
 
   // The coefficient count for a field of the given scalar type: reduced
   // m >= 0 storage for a real field, all orders for a complex one.
-  // Named distinctly from GridBase::CoefficientSize, which it would otherwise
-  // hide.
+  //
+  // Named distinctly from CoefficientSize above rather than overloading it,
+  // since the two are selected by different things -- that one by the upper
+  // index, this one by the scalar -- and an overload set spanning both would
+  // be resolved by argument count alone.
   template <RealOrComplexFloatingPoint Scalar>
   auto CoefficientSizeFor(Int lMax, Int n) const {
     if constexpr (RealFloatingPoint<Scalar>) {

@@ -334,7 +334,7 @@ auto Map(A&& a, F&& f) {
 template <SpinFieldExpr A>
 requires(Node<A>::UpperIndex == 0)
 auto Integrate(A&& a) {
-  using Scalar = typename Node<A>::Scalar;
+  using Scalar = typename Node<A>::Scalar;  ///< The value type: Real when real-valued, Complex otherwise.
   const auto& grid = a.Grid();
 
   // Named rather than used as temporaries: the longitude weights are a

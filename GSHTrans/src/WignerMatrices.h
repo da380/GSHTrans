@@ -71,10 +71,10 @@ template <RealFloatingPoint _Real, OrderIndexRange _MRange = All,
           IndexRange _NRange = All>
 class WignerMatrices {
  public:
-  using Int = std::ptrdiff_t;
-  using Real = _Real;
-  using MRange = _MRange;
-  using NRange = _NRange;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Real = _Real;  ///< The precision.
+  using MRange = _MRange;  ///< Whether all orders are stored, or only the non-negative ones.
+  using NRange = _NRange;  ///< Which upper indices are covered.
 
   WignerMatrices() = default;
 
@@ -149,6 +149,7 @@ class WignerMatrices {
 
   // Degrees, orders, upper indices and angles. The upper-index accessors
   // match Wigner's exactly, since a grid hands both the same NRange.
+  /** @brief The largest degree stored. */
   auto MaxDegree() const { return _lMax; }
   auto MaxOrder() const { return _mMax; }
 
@@ -186,6 +187,7 @@ class WignerMatrices {
 
   auto NumberOfOrders() const { return MaxOrder() - MinOrder() + 1; }
 
+  /** @brief The smallest upper index covered. */
   auto MinUpperIndex() const {
     if constexpr (std::same_as<NRange, All>) {
       return -_nMax;
@@ -196,8 +198,10 @@ class WignerMatrices {
     }
   }
 
+  /** @brief The largest upper index covered. */
   auto MaxUpperIndex() const { return _nMax; }
 
+  /** @brief Every upper index covered. */
   auto UpperIndices() const {
     return std::ranges::views::iota(MinUpperIndex(), MaxUpperIndex() + 1);
   }

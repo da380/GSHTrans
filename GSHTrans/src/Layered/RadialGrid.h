@@ -34,8 +34,8 @@ namespace GSHTrans {
 template <RealFloatingPoint _Real>
 class RadialGrid {
  public:
-  using Int = std::ptrdiff_t;
-  using Real = _Real;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Real = _Real;  ///< The precision.
 
   RadialGrid() = delete;
 
@@ -81,12 +81,15 @@ class RadialGrid {
                                                    std::move(elementStarts)));
   }
 
+  /** @brief How many radii the stack holds. */
   auto NumberOfRadii() const { return static_cast<Int>(_impl->radii.size()); }
+  /** @brief Indices of the stored radii. */
   auto RadiusIndices() const {
     return std::ranges::views::iota(Int{0}, NumberOfRadii());
   }
 
   auto Radii() const { return std::span<const Real>(_impl->radii); }
+  /** @brief The quadrature weight at every point. */
   auto Weights() const { return std::span<const Real>(_impl->weights); }
   auto HasWeights() const { return !_impl->weights.empty(); }
 
@@ -139,6 +142,7 @@ class RadialGrid {
 
   // Identity, not structure: two grids with equal radii built separately are
   // different grids, exactly as for the angular grid.
+  /** @brief Identity, for deciding whether two share an implementation. */
   auto Identity() const { return _impl.get(); }
 
  private:

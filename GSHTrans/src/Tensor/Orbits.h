@@ -22,9 +22,9 @@ namespace GSHTrans {
 // Together they generate a group acting on the 3^Rank multi-indices, and the
 // components that must be stored are one representative of each orbit. The
 // permutation half applies to every tensor; the negation half applies only to
-// a real one, and is what phase 4 of the field-algebra plan turns on. The
+// a real one, and is what the reality reduction turns on. The
 // algorithm does not care which generators it is given, which is the point:
-// phase 4 adds negation to the set and nothing else changes.
+// reality adds negation to the set and nothing else changes.
 //
 // The theory note's own tables are the check. Under negation alone a real
 // rank-2 tensor stores 5 of its 9 components and a rank-4 one stores 41 of 81;
@@ -37,7 +37,7 @@ namespace GSHTrans {
 // advance, because they are the check that this is a generalisation and not a
 // special case: with no permutation symmetry, negation has no fixed point --
 // the all-zero index does not exist -- so every orbit has size two and there
-// are *no pinned components at all*, which removes the second buffer phase 4
+// are *no pinned components at all*, which removes the second buffer reality
 // had to introduce. Under a symmetry there can still be one: for a symmetric
 // tangential rank-2 tensor, negation maps (-+) to (+-) and the symmetry maps
 // it back, so that component is pinned real and the tensor is one complex
@@ -55,8 +55,8 @@ enum class ComponentConstraint { None, Zero, Real, Imaginary };
 
 template <std::ptrdiff_t _Rank, SlotAlphabet _Slots = AllSlots>
 struct OrbitTable {
-  using Int = std::ptrdiff_t;
-  using SlotSet = _Slots;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
 
   static constexpr Int Rank = _Rank;
   static constexpr Int Size = MultiIndex<Rank, SlotSet>::Size;
@@ -105,7 +105,7 @@ struct OrbitTable {
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
           bool IncludeNegation, SlotAlphabet Slots = AllSlots>
 constexpr auto MakeOrbitTable() {
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
   using Index = MultiIndex<Rank, Slots>;
   constexpr auto Size = Index::Size;
 
@@ -182,7 +182,7 @@ constexpr auto MakeOrbitTable() {
 // The stored-component table for a tensor: permutation symmetry always, the
 // reality condition only for a real tensor.
 //
-// This is the switch phase 2 left for phase 4, and turning it on was the whole
+// This is the switch the reality reduction turns on, and turning it on was the whole
 // of the change to this file. A real tensor's components are related by
 // T^{-alpha} = (-1)^N conj(T^alpha), so the negation joins the generating set
 // and the orbits get larger and fewer; a complex tensor has no such relation

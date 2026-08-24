@@ -84,7 +84,7 @@ double BestSeconds(Action&& action, int windows = 3) {
 template <typename GridType, typename Complex>
 double TimeRound(const GridType& grid, std::ptrdiff_t lMax, std::ptrdiff_t n,
                  std::ptrdiff_t count, Execution policy, int windows = 3) {
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
   const auto fieldSize = static_cast<Int>(grid.FieldSize());
   const auto coefficientSize = static_cast<Int>(grid.CoefficientSize(lMax, n));
 
@@ -207,8 +207,8 @@ TunedChunking TuneChunking(const GridType& grid, std::ptrdiff_t lMax,
                            std::ptrdiff_t n, std::ptrdiff_t count,
                            Execution policy = Execution::Sequential(),
                            int windows = 3) {
-  using Int = std::ptrdiff_t;
-  using Complex = typename GridType::Complex;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Complex = typename GridType::Complex;  ///< `std::complex` over the precision.
 
   if (count < 1) {
     throw std::invalid_argument("Tuning: the batch count must be positive");
@@ -353,7 +353,7 @@ TunedKernel TuneKernelLoopOnly(TunedKernel result, std::ptrdiff_t lMax,
                                std::ptrdiff_t count, Execution policy,
                                FFTWpp::Flag flag, Chunking chunking,
                                WignerValues values, int rounds) {
-  using Complex = typename GridType::Complex;
+  using Complex = typename GridType::Complex;  ///< `std::complex` over the precision.
   const auto grid = GridType(lMax, nMax, flag, chunking, values,
                              TransformKernel::Loop());
   auto best = std::numeric_limits<double>::max();
@@ -393,9 +393,9 @@ TunedKernel TuneKernel(std::ptrdiff_t lMax, std::ptrdiff_t nMax,
                        Chunking chunking = Chunking::Automatic(),
                        WignerValues values = WignerValues::Stored(),
                        int rounds = 2) {
-  using Int = std::ptrdiff_t;
-  using Real = typename GridType::Real;
-  using Complex = typename GridType::Complex;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Real = typename GridType::Real;  ///< The precision.
+  using Complex = typename GridType::Complex;  ///< `std::complex` over the precision.
 
   if (count < 1) {
     throw std::invalid_argument("Tuning: the batch count must be positive");

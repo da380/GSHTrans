@@ -34,14 +34,14 @@ template <std::ptrdiff_t _N, AngularGrid _Grid,
           typename _Element = ScalarFor<typename _Grid::Real, _Value>>
 class SpinFieldView {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
 
   static constexpr Int UpperIndex = _N;
-  using Value = _Value;
-  using GridType = _Grid;
-  using Real = typename _Grid::Real;
-  using Complex = std::complex<Real>;
-  using Scalar = std::remove_const_t<_Element>;
+  using Value = _Value;  ///< Whether the samples are real-valued or complex.
+  using GridType = _Grid;  ///< The angular grid this is defined on.
+  using Real = typename _Grid::Real;  ///< The precision.
+  using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
+  using Scalar = std::remove_const_t<_Element>;  ///< The value type: Real when real-valued, Complex otherwise.
 
   static_assert(std::same_as<Scalar, ScalarFor<Real, Value>>);
   static_assert(std::same_as<Value, ComplexValued> or UpperIndex == 0,
@@ -82,6 +82,7 @@ class SpinFieldView {
     }
   }
 
+  /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _grid; }
 
   Scalar operator[](Int iTheta, Int iPhi) const {
@@ -115,7 +116,9 @@ class SpinFieldView {
 
   // The number of samples, which is the grid's point count and not the extent
   // of the storage those samples are spread over.
+  /** @brief How many elements are stored. */
   auto Size() const { return static_cast<Int>(_grid.FieldSize()); }
+  /** @brief The underlying buffer. */
   auto Data() const { return _data; }
   auto Stride() const { return _stride; }
 

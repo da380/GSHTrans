@@ -166,8 +166,8 @@ auto DifferentiationMatrix(std::span<const Real> nodes) {
 template <RealFloatingPoint _Real>
 class FiniteDifferenceDerivative {
  public:
-  using Int = std::ptrdiff_t;
-  using Real = _Real;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Real = _Real;  ///< The precision.
 
   FiniteDifferenceDerivative() = delete;
 
@@ -207,6 +207,7 @@ class FiniteDifferenceDerivative {
     }
   }
 
+  /** @brief The radial grid this is defined on. */
   const RadialGrid<Real>& Radial() const { return _radial; }
   Int Order() const { return _width - 1; }
 
@@ -259,8 +260,8 @@ class FiniteDifferenceDerivative {
 template <RealFloatingPoint _Real>
 class LagrangeDerivative {
  public:
-  using Int = std::ptrdiff_t;
-  using Real = _Real;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Real = _Real;  ///< The precision.
 
   LagrangeDerivative() = delete;
 
@@ -276,6 +277,7 @@ class LagrangeDerivative {
     _d = RadialDetails::DifferentiationMatrix<Real>(radii);
   }
 
+  /** @brief The radial grid this is defined on. */
   const RadialGrid<Real>& Radial() const { return _radial; }
 
   // The matrix itself, row-major, for a caller who wants to compose it with
@@ -334,8 +336,8 @@ class LagrangeDerivative {
 template <RealFloatingPoint _Real>
 class ElementDerivative {
  public:
-  using Int = std::ptrdiff_t;
-  using Real = _Real;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Real = _Real;  ///< The precision.
 
   ElementDerivative() = delete;
 
@@ -365,6 +367,7 @@ class ElementDerivative {
     }
   }
 
+  /** @brief The radial grid this is defined on. */
   const RadialGrid<Real>& Radial() const { return _radial; }
 
   // One element's matrix, row-major over its own nodes.

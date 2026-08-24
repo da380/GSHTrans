@@ -545,7 +545,7 @@ void FillCouplingMatrix(int l1, int l2, int l3, Range&& table) {
 template <NumericConcepts::Real T>
 class Wigner3jMatrix {
  public:
-  using value_type = T;
+  using value_type = T;  ///< The stored value type.
 
   /** @brief Default constructor: the trivial table (0 0 0; 0 0 0) = 1. */
   Wigner3jMatrix() : Wigner3jMatrix(0, 0, 0) {}
@@ -671,7 +671,7 @@ class Wigner3jMatrix {
 template <NumericConcepts::Real T>
 class Wigner3jStack {
  public:
-  using value_type = T;
+  using value_type = T;  ///< The stored value type.
 
   /**
    * @brief Computes tables for all l2 in the triangle range

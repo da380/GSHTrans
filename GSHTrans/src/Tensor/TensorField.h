@@ -43,12 +43,12 @@ concept TensorLayout =
     std::same_as<L, ComponentMajor> or std::same_as<L, PointMajor>;
 
 // A tensor field on the sphere: one contiguous buffer, handing out its
-// canonical components as phase-1 nodes.
+// canonical components as spin-weighted nodes.
 //
 // One buffer rather than a tuple of separately allocated fields, because the
 // components are what get transformed and the transform wants to see them as a
 // batch (core-plan.md [C9]). A component is therefore a *view* into the
-// buffer, which is why phase 1 made views admissible wherever an owning field
+// buffer, which is why views are admissible wherever an owning field
 // is, and why operator[] returns by value on every node.
 //
 // What is stored is one component per orbit of the symmetry group, computed by
@@ -57,7 +57,7 @@ concept TensorLayout =
 // antisymmetric permutation is the view negated, and one whose orbit vanishes
 // is not representable at all. So Component<...>() returns different types for
 // different components and traversal over all of them is a compile-time loop.
-// The field-algebra plan records that consequence for phase 4's reality
+// That consequence is more familiar from the reality
 // reduction; it arrives here already, because antisymmetry has it too.
 template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
           TensorReality _Reality, AngularGrid _Grid,
@@ -65,13 +65,13 @@ template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
           SlotAlphabet _Slots = AllSlots>
 class TensorField {
  public:
-  using Int = std::ptrdiff_t;
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
 
   static constexpr Int Rank = _Rank;
-  using Symmetry = _Symmetry;
-  using Reality = _Reality;
-  using GridType = _Grid;
-  using LayoutPolicy = _Layout;
+  using Symmetry = _Symmetry;  ///< The permutation symmetry of the slots.
+  using Reality = _Reality;  ///< Whether the tensor is real or complex.
+  using GridType = _Grid;  ///< The angular grid this is defined on.
+  using LayoutPolicy = _Layout;  ///< How the components are arranged in the buffer.
 
   // Which slots this tensor's indices are drawn from, and the multi-index
   // over them. AllSlots is the ordinary canonical tensor; TangentialSlots is
@@ -83,18 +83,18 @@ class TensorField {
   // Index and against the orbit table built over it, which is the whole of
   // why the generalisation is additive: the storage groups by the slot sum,
   // and the slot sum does not care how many values a slot can take.
-  using SlotSet = _Slots;
+  using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
   using Index = MultiIndex<Rank, SlotSet>;
 
   static constexpr bool IsComponentMajor =
       std::same_as<_Layout, ComponentMajor>;
-  using Real = typename _Grid::Real;
-  using Complex = std::complex<Real>;
+  using Real = typename _Grid::Real;  ///< The precision.
+  using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
 
-  // Every component of a tensor is a complex field in phase 2. Reality makes
-  // the all-zero component real-valued, and that is phase 4's business: see
+  // Every component of a complex tensor is a complex field. Reality makes
+  // the all-zero component real-valued: see
   // Orbits.h, where the switch lives.
-  using Scalar = Complex;
+  using Scalar = Complex;  ///< The value type: Real when real-valued, Complex otherwise.
 
   static constexpr auto& Orbits =
       TensorOrbits<Rank, Symmetry, Reality, SlotSet>;
@@ -128,7 +128,7 @@ class TensorField {
   // They are always at upper index zero: permutation preserves the slot sum
   // and negation reverses it, so a component fixed by the combination
   // satisfies N = -N. That is what makes a real-valued field admissible for
-  // them at all -- phase 1 forbids RealValued anywhere else -- and it means
+  // them at all -- RealValued is forbidden anywhere else -- and it means
   // the real buffer is one transform group rather than several.
   //
   // The arithmetic comes out exactly right: two reals per complex component
@@ -218,7 +218,7 @@ class TensorField {
   // These are the conditions on the accessors below, named so that a
   // compile-time traversal can ask before it asks for the component, and so
   // that the negative cases can be tested. static_assert(!requires { ... })
-  // is the idiom phase 1 established, and it works only when the constraint is
+  // is the idiom the field layer uses, and it works only when the constraint is
   // a requires-clause: an assertion inside the body is a hard error that no
   // requires-expression can see, which makes the negative test vacuous.
   //
@@ -297,26 +297,34 @@ class TensorField {
     }
   }
 
+  /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _grid; }
 
+  /** @brief How many samples one angular field holds. */
   auto FieldSize() const { return static_cast<Int>(_grid.FieldSize()); }
 
   // The complex buffer, in [component][iTheta][iPhi] order, and the real one
   // holding the components the reality condition pins to a single real number.
   // The second is empty unless reality is being reduced on.
+  /** @brief How many elements are stored. */
   auto Size() const { return static_cast<Int>(_data.size()); }
+  /** @brief How many real-valued elements are stored. */
   auto RealSize() const { return static_cast<Int>(_real.size()); }
 
+  /** @brief The underlying buffer. */
   auto Data() { return std::span<Scalar>(_data); }
+  /** @brief The underlying buffer. */
   auto Data() const { return std::span<const Scalar>(_data); }
+  /** @brief The buffer holding the real-valued components. */
   auto RealData() { return std::span<Real>(_real); }
+  /** @brief The buffer holding the real-valued components. */
   auto RealData() const { return std::span<const Real>(_real); }
 
   //------------------------------------------------------------------------//
   //                            Component access                             //
   //------------------------------------------------------------------------//
 
-  // The component with this multi-index, as a phase-1 node.
+  // The component with this multi-index, as a spin-weighted node.
   //
   // Read-only, and available for every component the tensor can represent.
   // What comes back depends on how the component is related to the one stored
@@ -327,10 +335,10 @@ class TensorField {
   //   related by reality    conj of the view, at the reversed upper index
   //   pinned by its orbit   a real-valued view, or i times one
   //
-  // The reality case is the one phase 1 was made to accommodate. The relation
+  // The reality case is the one the field layer was made to accommodate. The relation
   // is T^{-alpha} = (-1)^N conj(T^{alpha}) (eq:reality), and conj reverses the
   // upper index -- which is why getting that wrong was one of the three
-  // structural defects in the layer phase 1 replaced. The (-1)^N is already
+  // reason conj must reverse the upper index. The (-1)^N is already
   // folded into the orbit table's sign.
   //
   // Note what this means for a grid: the derived partner of a stored
@@ -355,7 +363,7 @@ class TensorField {
           _grid, StoredSpan<flat>(), ComponentStride);
 
       // Moved in so that the expression node owns the view rather than
-      // referring to this local one. A phase-1 node holds an lvalue terminal
+      // referring to this local one. A spin-weighted node holds an lvalue terminal
       // by reference, which is right at a call site and wrong here.
       if constexpr (conjugated) {
         return scale * conj(std::move(view));
