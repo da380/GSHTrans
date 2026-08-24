@@ -153,9 +153,9 @@ class LayeredTensorField {
   /** @brief How many samples one angular field holds. */
   auto FieldSize() const { return static_cast<Int>(_grid.FieldSize()); }
 
-  // The whole radial stack of one stored component: a LayeredSpinField, and
-  // therefore something Expand, ApplyRadially and IntegrateRadially already
-  // take. This is the accessor most callers want.
+  /// The whole radial stack of one stored component: a LayeredSpinField, and
+  /// therefore something Expand, ApplyRadially and IntegrateRadially already
+  /// take. This is the accessor most callers want.
   template <Int... Alphas>
   requires Writable<Alphas...>
   auto& ComponentStack() {
@@ -168,16 +168,16 @@ class LayeredTensorField {
     return std::get<static_cast<std::size_t>(SlotOf<Alphas...>())>(_stacks);
   }
 
-  // One angular slice of a stored component, as a writable view.
+  /// One angular slice of a stored component, as a writable view.
   template <Int... Alphas>
   requires Writable<Alphas...>
   auto Component(Int i) {
     return ComponentStack<Alphas...>().Slice(i);
   }
 
-  // One angular slice of *any* representable component. A derived one is its
-  // representative's, with the sign and conjugation the orbit table records --
-  // the same relation the flat type applies, applied to a slice.
+  /// One angular slice of *any* representable component. A derived one is its
+  /// representative's, with the sign and conjugation the orbit table records --
+  /// the same relation the flat type applies, applied to a slice.
   template <Int... Alphas>
   requires Represents<Alphas...>
   auto Component(Int i) const {

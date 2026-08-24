@@ -18,17 +18,17 @@
 
 namespace GSHTrans {
 
-// A non-owning field: someone else's storage, plus a grid handle.
-//
-// This is what makes the tensor layer possible. A TensorField owns one
-// contiguous buffer and hands out components as views at the correct upper
-// index, rather than holding a tuple of separately allocated fields; the
-// radial slices of a layered field are the same idea. Both need a view to be
-// admissible wherever an owning field is, which is why operator[] returns by
-// value on every node and why the grid is a handle rather than a reference.
-//
-// Views are terminals: they name storage, so an expression may hold an lvalue
-// one by reference.
+/// A non-owning field: someone else's storage, plus a grid handle.
+///
+/// This is what makes the tensor layer possible. A TensorField owns one
+/// contiguous buffer and hands out components as views at the correct upper
+/// index, rather than holding a tuple of separately allocated fields; the
+/// radial slices of a layered field are the same idea. Both need a view to be
+/// admissible wherever an owning field is, which is why operator[] returns by
+/// value on every node and why the grid is a handle rather than a reference.
+///
+/// Views are terminals: they name storage, so an expression may hold an lvalue
+/// one by reference.
 template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value = ComplexValued,
           typename _Element = ScalarFor<typename _Grid::Real, _Value>>

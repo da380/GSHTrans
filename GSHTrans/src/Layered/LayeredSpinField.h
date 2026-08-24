@@ -21,25 +21,25 @@
 
 namespace GSHTrans {
 
-// A field on the product of a radial grid with an angular one: nR angular
-// fields laid end to end, radius outermost, each slice contiguous in the
-// canonical angular order.
-//
-// Two-dimensional is the primitive and three-dimensional is a stack. The
-// angular field is never wrapped and a slice is not a new kind of object: it
-// is a SpinFieldView, an ordinary spin-weighted node, so the index algebra, the
-// evaluation and the aliasing theorem all lift unchanged and there is no
-// second expression system to keep consistent with the first. That is what
-// views are admissible everywhere an owning field is.
-//
-// The layout is radius-major because that is what the applications this exists
-// for already use, and because it makes the radial axis a batch: the stack of
-// one field's slices is `nR` blocks of `FieldSize`, which the transform's
-// (count, stride, dist) descriptor reads directly.
-//
-// A one-slice stack is *not* an angular field. The idiom stays available to
-// application code, but the two are distinct types here, so that a function
-// taking one cannot silently be handed the other.
+/// A field on the product of a radial grid with an angular one: nR angular
+/// fields laid end to end, radius outermost, each slice contiguous in the
+/// canonical angular order.
+///
+/// Two-dimensional is the primitive and three-dimensional is a stack. The
+/// angular field is never wrapped and a slice is not a new kind of object: it
+/// is a SpinFieldView, an ordinary spin-weighted node, so the index algebra, the
+/// evaluation and the aliasing theorem all lift unchanged and there is no
+/// second expression system to keep consistent with the first. That is what
+/// views are admissible everywhere an owning field is.
+///
+/// The layout is radius-major because that is what the applications this exists
+/// for already use, and because it makes the radial axis a batch: the stack of
+/// one field's slices is `nR` blocks of `FieldSize`, which the transform's
+/// (count, stride, dist) descriptor reads directly.
+///
+/// A one-slice stack is *not* an angular field. The idiom stays available to
+/// application code, but the two are distinct types here, so that a function
+/// taking one cannot silently be handed the other.
 template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value = ComplexValued>
 class LayeredSpinField {
@@ -142,13 +142,13 @@ class LayeredSpinField {
 //                       Between the two representations                     //
 //--------------------------------------------------------------------------//
 
-// A stack of coefficients: one expansion per radius, radius-major, so that the
-// layout matches the field it came from and the angular transform sees a
-// contiguous batch on both sides.
-//
-// This is the [r][(l,m)] of the two layouts the plan names. The other,
-// [(l,m)][r], is what a radial solve at fixed degree and order wants, and the
-// repack between them is a separate step.
+/// A stack of coefficients: one expansion per radius, radius-major, so that the
+/// layout matches the field it came from and the angular transform sees a
+/// contiguous batch on both sides.
+///
+/// This is the [r][(l,m)] of the two layouts the plan names. The other,
+/// [(l,m)][r], is what a radial solve at fixed degree and order wants, and the
+/// repack between them is a separate step.
 template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value = ComplexValued>
 class LayeredSpinExpansion {

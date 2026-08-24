@@ -21,52 +21,52 @@
 
 namespace GSHTrans {
 
-// The same d-function values as Wigner, laid out transform-major:
-// [n][m][l][theta] rather than [n][theta][(l, m)].
-//
-// This is core-plan.md step M1, the first half of the transform-major
-// restructure of section 11. The matrix kernel writes the Legendre stage as
-// one matrix product per order,
-//
-//     f^n_{lm} = sum_i D^(n,m)_{li} b^(m)_i,     D^(n,m)_{li} = X^n_{lm}(theta_i)
-//
-// and that needs D^(n,m) contiguous in (l, theta) at fixed (n, m). The table
-// Wigner builds is contiguous in (l, m) at fixed (n, theta), which is the
-// transpose of what is wanted. This class holds the other one.
-//
-// The total size is unchanged, which is worth stating because it is not
-// obvious: summing (lMax - max(|n|,|m|) + 1) over m gives exactly the same
-// count as summing (2 min(l, mMax) + 1) over l. The same triangle, read the
-// other way. At lMax = 256 that is 66,045 values per upper index either way.
-//
-// -- Why a separate class, and not a layout flag on Wigner.
-//
-// The two have unrelated interfaces. Wigner hands out a (l, m) block for one
-// (n, theta), through ConstGSHView; this hands out an (l, theta) matrix for
-// one (n, m), as a plain span a BLAS call can take. A single class serving
-// both would carry two interfaces and would have to branch in the accessor
-// the inner loop calls, which is the one place that cannot afford it. The
-// grid already holds its table in an optional -- empty on a generating grid --
-// so a second optional beside it is the shape that was already there.
-//
-// -- Why the values are generated rather than transposed.
-//
-// Building a Wigner table and transposing it would need both live at once:
-// 1.3 GB at lMax = 256, nMax = 2, to end with 648 MB. So the recursion is run
-// directly into per-thread scratch, one (n, theta) block at a time, and
-// scattered into place. The recursion, the seeds, the evaluation order and
-// the orthonormalisation are Wigner's own -- WignerDetails::ComputeBlock is
-// called with the same arguments -- so the values are bit-identical to the
-// stored path by construction rather than by tolerance. M1's test checks
-// exactly that.
-//
-// -- The write pattern, named because it is the one cost here.
-//
-// A block computed for one (n, theta) scatters across every matrix, at stride
-// NumberOfAngles() in the degree. That is one cache line per value written in
-// the worst case. It is paid once, at construction, in parallel, and section
-// 11's M1 records what it measures; blocking over colatitudes would fix it
-// and is not done until something says it needs fixing.
+/// The same d-function values as Wigner, laid out transform-major:
+/// [n][m][l][theta] rather than [n][theta][(l, m)].
+///
+/// This is core-plan.md step M1, the first half of the transform-major
+/// restructure of section 11. The matrix kernel writes the Legendre stage as
+/// one matrix product per order,
+///
+///     f^n_{lm} = sum_i D^(n,m)_{li} b^(m)_i,     D^(n,m)_{li} = X^n_{lm}(theta_i)
+///
+/// and that needs D^(n,m) contiguous in (l, theta) at fixed (n, m). The table
+/// Wigner builds is contiguous in (l, m) at fixed (n, theta), which is the
+/// transpose of what is wanted. This class holds the other one.
+///
+/// The total size is unchanged, which is worth stating because it is not
+/// obvious: summing (lMax - max(|n|,|m|) + 1) over m gives exactly the same
+/// count as summing (2 min(l, mMax) + 1) over l. The same triangle, read the
+/// other way. At lMax = 256 that is 66,045 values per upper index either way.
+///
+/// -- Why a separate class, and not a layout flag on Wigner.
+///
+/// The two have unrelated interfaces. Wigner hands out a (l, m) block for one
+/// (n, theta), through ConstGSHView; this hands out an (l, theta) matrix for
+/// one (n, m), as a plain span a BLAS call can take. A single class serving
+/// both would carry two interfaces and would have to branch in the accessor
+/// the inner loop calls, which is the one place that cannot afford it. The
+/// grid already holds its table in an optional -- empty on a generating grid --
+/// so a second optional beside it is the shape that was already there.
+///
+/// -- Why the values are generated rather than transposed.
+///
+/// Building a Wigner table and transposing it would need both live at once:
+/// 1.3 GB at lMax = 256, nMax = 2, to end with 648 MB. So the recursion is run
+/// directly into per-thread scratch, one (n, theta) block at a time, and
+/// scattered into place. The recursion, the seeds, the evaluation order and
+/// the orthonormalisation are Wigner's own -- WignerDetails::ComputeBlock is
+/// called with the same arguments -- so the values are bit-identical to the
+/// stored path by construction rather than by tolerance. M1's test checks
+/// exactly that.
+///
+/// -- The write pattern, named because it is the one cost here.
+///
+/// A block computed for one (n, theta) scatters across every matrix, at stride
+/// NumberOfAngles() in the degree. That is one cache line per value written in
+/// the worst case. It is paid once, at construction, in parallel, and section
+/// 11's M1 records what it measures; blocking over colatitudes would fix it
+/// and is not done until something says it needs fixing.
 template <RealFloatingPoint _Real, OrderIndexRange _MRange = All,
           IndexRange _NRange = All>
 class WignerMatrices {
@@ -78,15 +78,15 @@ class WignerMatrices {
 
   WignerMatrices() = default;
 
-  // Every order the alphabet has. What M1 built.
+  /// Every order the alphabet has. What M1 built.
   template <std::ranges::range Range>
   requires RealFloatingPoint<std::ranges::range_value_t<Range>>
   static auto Full(Int lMax, Int mMax, Int nMax, Range &&theta) {
     return WignerMatrices(lMax, mMax, nMax, theta, false);
   }
 
-  // Non-negative orders only, the negative ones recovered from the reflection
-  // (step M6). Requires colatitudes symmetric about pi/2, and checks it.
+  /// Non-negative orders only, the negative ones recovered from the reflection
+  /// (step M6). Requires colatitudes symmetric about pi/2, and checks it.
   template <std::ranges::range Range>
   requires RealFloatingPoint<std::ranges::range_value_t<Range>>
   static auto Reflected(Int lMax, Int mMax, Int nMax, Range &&theta) {

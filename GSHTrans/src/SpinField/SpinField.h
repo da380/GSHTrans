@@ -19,14 +19,14 @@
 
 namespace GSHTrans {
 
-// The owning terminal: a spin-weighted field of definite upper index N,
-// holding its own samples on a grid.
-//
-// Named SpinField rather than CanonicalComponentField because "canonical
-// component" belongs to the tensor layer, where a component is identified by a
-// multi-index and not by an upper index -- for rank >= 2 the two are different
-// things, and a collection labelled only by N does not determine a tensor
-// (theory note section 2).
+/// The owning terminal: a spin-weighted field of definite upper index N,
+/// holding its own samples on a grid.
+///
+/// Named SpinField rather than CanonicalComponentField because "canonical
+/// component" belongs to the tensor layer, where a component is identified by a
+/// multi-index and not by an upper index -- for rank >= 2 the two are different
+/// things, and a collection labelled only by N does not determine a tensor
+/// (theory note section 2).
 template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value = ComplexValued>
 class SpinField {
@@ -87,17 +87,17 @@ class SpinField {
   //                    Construction from an expression                     //
   //------------------------------------------------------------------------//
 
-  // What may be evaluated into a field of this type. The condition itself is
-  // SpinWeighted.h's EvaluatesInto, which is a concept rather than a constexpr
-  // bool for a reason recorded there: a chain of `and`s does not stop the
-  // later terms naming members that a non-spin-weighted operand does not
-  // have, and clang rejects what GCC accepted.
+  /// What may be evaluated into a field of this type. The condition itself is
+  /// SpinWeighted.h's EvaluatesInto, which is a concept rather than a constexpr
+  /// bool for a reason recorded there: a chain of `and`s does not stop the
+  /// later terms naming members that a non-spin-weighted operand does not
+  /// have, and clang rejects what GCC accepted.
   template <typename Expr>
   static constexpr bool Compatible =
       EvaluatesInto<Expr, UpperIndex, Real, Scalar>;
 
-  // The grid comes from the expression, so a materialised field is on the
-  // grid its operands were on and nowhere else.
+  /// The grid comes from the expression, so a materialised field is on the
+  /// grid its operands were on and nowhere else.
   template <typename Expr>
   requires Compatible<Expr> and (not std::same_as<Node<Expr>, SpinField>)
   SpinField(const Expr& expr)
@@ -109,18 +109,18 @@ class SpinField {
   //                     Assignment from an expression                      //
   //------------------------------------------------------------------------//
 
-  // Assignment never rebinds the destination grid: a field stays on the grid
-  // it was built on, and an expression from elsewhere is an error rather than
-  // a silent migration.
-  //
-  // Evaluation is in place and needs no temporary. Every node in this layer is
-  // pointwise and index-preserving, so writing element (iTheta, iPhi) of the
-  // destination happens after reading element (iTheta, iPhi) -- and only that
-  // element -- of every operand, including the destination itself. `u = conj(u)
-  // * v + u` is therefore safe as written. If a re-indexing node ever enters
-  // this layer the argument fails, which is why the invariant is stated as
-  // "pointwise *and index-preserving*" and why there is a regression test for
-  // exactly this shape.
+  /// Assignment never rebinds the destination grid: a field stays on the grid
+  /// it was built on, and an expression from elsewhere is an error rather than
+  /// a silent migration.
+  ///
+  /// Evaluation is in place and needs no temporary. Every node in this layer is
+  /// pointwise and index-preserving, so writing element (iTheta, iPhi) of the
+  /// destination happens after reading element (iTheta, iPhi) -- and only that
+  /// element -- of every operand, including the destination itself. `u = conj(u)
+  /// * v + u` is therefore safe as written. If a re-indexing node ever enters
+  /// this layer the argument fails, which is why the invariant is stated as
+  /// "pointwise *and index-preserving*" and why there is a regression test for
+  /// exactly this shape.
   template <typename Expr>
   requires Compatible<Expr> and (not std::same_as<Node<Expr>, SpinField>)
   SpinField& operator=(const Expr& expr) {
@@ -167,8 +167,8 @@ class SpinField {
         requires Compatible<decltype(f / e)>;
       };
 
-  // Expressions and scalars alike: whichever the right-hand side is, the
-  // question is the same one.
+  /// Expressions and scalars alike: whichever the right-hand side is, the
+  /// question is the same one.
   template <typename Expr>
   requires CanAddAssign<Expr>
   SpinField& operator+=(const Expr& expr) {
@@ -211,10 +211,10 @@ class SpinField {
     return _data[FlatIndex(iTheta, iPhi)];
   }
 
-  // Terminals override the generic element loop with a contiguous copy.
-  // Templated on the destination scalar so that a real-valued field can be
-  // written into a complex destination; the constraint makes the reverse a
-  // compile error rather than a silent truncation.
+  /// Terminals override the generic element loop with a contiguous copy.
+  /// Templated on the destination scalar so that a real-valued field can be
+  /// written into a complex destination; the constraint makes the reverse a
+  /// compile error rather than a silent truncation.
   template <typename S>
   requires std::convertible_to<Scalar, S>
   void EvaluateInto(std::span<S> target) const {

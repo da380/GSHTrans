@@ -49,13 +49,13 @@ constexpr bool AnyRadial() {
 //                        Tangential into the general                        //
 //--------------------------------------------------------------------------//
 
-// The inclusion. Rank and grid unchanged; the alphabet widens.
-//
-// A component with a radial slot is not represented rather than zero: the
-// embedded tensor genuinely has no content there, and saying so is both
-// cheaper than storing a zero and more informative to a traversal, which can
-// then skip the component rather than evaluate it. It is the same statement
-// the orbit table makes about a component an antisymmetry annihilates.
+/// The inclusion. Rank and grid unchanged; the alphabet widens.
+///
+/// A component with a radial slot is not represented rather than zero: the
+/// embedded tensor genuinely has no content there, and saying so is both
+/// cheaper than storing a zero and more informative to a traversal, which can
+/// then skip the component rather than evaluate it. It is the same statement
+/// the orbit table makes about a component an antisymmetry annihilates.
 template <typename Operand>
 class EmbedNode {
  public:
@@ -114,12 +114,12 @@ auto Embed(T&& tensor) {
 //                        General onto the tangential                        //
 //--------------------------------------------------------------------------//
 
-// The projection, which is how a caller comes back down: the tangential part
-// of a three-dimensional strain, or the tangential block of a gradient.
-//
-// A pure relabelling like Permute, and for the same reason harmless to phase
-// 1's aliasing theorem: it selects tensor slots and does not touch grid
-// points.
+/// The projection, which is how a caller comes back down: the tangential part
+/// of a three-dimensional strain, or the tangential block of a gradient.
+///
+/// A pure relabelling like Permute, and for the same reason harmless to phase
+/// 1's aliasing theorem: it selects tensor slots and does not touch grid
+/// points.
 template <typename Operand>
 class TangentialNode {
  public:

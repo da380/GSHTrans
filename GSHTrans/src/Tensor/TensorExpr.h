@@ -190,16 +190,16 @@ constexpr auto GroupElements() {
 //                            Permuting the slots                            //
 //--------------------------------------------------------------------------//
 
-// A tensor with its slots relabelled: (Permute T)^{alpha} = T^{pi(alpha)}.
-//
-// No arithmetic at all -- the component accessor forwards to the operand with
-// the indices reordered -- which makes this the step that pins the machinery
-// the rest of the layer uses.
-//
-// It permutes *tensor slots* and not grid points, so it does not touch the
-// pointwise-and-index-preserving invariant that the aliasing theorem
-// rests on. That is worth stating because a re-indexing view is exactly the
-// thing that would break it, and this is the closest the library comes to one.
+/// A tensor with its slots relabelled: (Permute T)^{alpha} = T^{pi(alpha)}.
+///
+/// No arithmetic at all -- the component accessor forwards to the operand with
+/// the indices reordered -- which makes this the step that pins the machinery
+/// the rest of the layer uses.
+///
+/// It permutes *tensor slots* and not grid points, so it does not touch the
+/// pointwise-and-index-preserving invariant that the aliasing theorem
+/// rests on. That is worth stating because a re-indexing view is exactly the
+/// thing that would break it, and this is the closest the library comes to one.
 template <auto Image, typename Operand>
 class PermuteNode {
  public:
@@ -219,18 +219,18 @@ class PermuteNode {
   /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _operand.Grid(); }
 
-  // Slot i of this tensor is slot Image[i] of the operand, which is the same
-  // convention MultiIndex::Permuted uses.
+  /// Slot i of this tensor is slot Image[i] of the operand, which is the same
+  /// convention MultiIndex::Permuted uses.
   template <Int... Alphas>
   static constexpr auto Source =
       MultiIndex<Rank, SlotSet>(std::array<Int, Rank>{Alphas...})
           .Permuted(Image)
           .Slots();
 
-  // The two checks come before the multi-index is formed rather than beside
-  // it, for the reason IsSlotLetter gives: a `and` short-circuits evaluation
-  // but is not a promise about instantiation, and forming Source with a
-  // letter the alphabet does not have is a hard error.
+  /// The two checks come before the multi-index is formed rather than beside
+  /// it, for the reason IsSlotLetter gives: a `and` short-circuits evaluation
+  /// but is not a promise about instantiation, and forming Source with a
+  /// letter the alphabet does not have is a hard error.
   template <Int... Alphas>
   static constexpr bool RepresentsFn() {
     if constexpr (sizeof...(Alphas) != static_cast<std::size_t>(Rank)) {
@@ -275,12 +275,12 @@ auto Transpose(T&& tensor) {
 //                             The tensor product                            //
 //--------------------------------------------------------------------------//
 
-// (S tensor T)^{alpha beta} = S^{alpha} T^{beta}, of rank p + q.
-//
-// The component is a spin-weighted product, so its upper index is the sum of the
-// two operands' -- which is eq:N applied to the concatenated multi-index, and
-// the theory note says so in as many words. Nothing here has to arrange that;
-// it is what "upper indices add under pointwise multiplication" means.
+/// (S tensor T)^{alpha beta} = S^{alpha} T^{beta}, of rank p + q.
+///
+/// The component is a spin-weighted product, so its upper index is the sum of the
+/// two operands' -- which is eq:N applied to the concatenated multi-index, and
+/// the theory note says so in as many words. Nothing here has to arrange that;
+/// it is what "upper indices add under pointwise multiplication" means.
 template <typename LeftOperand, typename RightOperand>
 class TensorProductNode {
  public:
@@ -318,8 +318,8 @@ class TensorProductNode {
   /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _left.Grid(); }
 
-  // The multi-index splits: the first p slots name the left operand's
-  // component and the last q the right's.
+  /// The multi-index splits: the first p slots name the left operand's
+  /// component and the last q the right's.
   template <Int... Alphas>
   static constexpr auto Indices = std::array<Int, Rank>{Alphas...};
 
@@ -371,25 +371,25 @@ auto TensorProduct(L&& left, R&& right) {
 //                                Contraction                                //
 //--------------------------------------------------------------------------//
 
-// Contract slots J and K against the metric of eq:metric,
-//
-//   (tr_{JK} T)^{...} = sum_{ab} g_{ab} T^{... a ... b ...}
-//                     = sum_a (-1)^a T^{... a ... -a ...},
-//
-// which for an ordinary tensor's three values of a is
-// -T^{-+} + T^{00} - T^{+-} in the contracted pair.
-//
-// The sum runs over the *alphabet's* letters, not over a fixed {-1, 0, +1}.
-// For a tangential tensor that leaves -T^{-+} - T^{+-}, which is the metric
-// of the sphere induced on the tangent plane -- the same expression with the
-// radial term absent because there is no radial slot to contribute one. The
-// result stays in the same bundle, at rank p - 2, and nothing here has to
-// arrange that either.
-//
-// The result lands at the right upper index by construction rather than by
-// arrangement: the contracted pair contributes a + (-a) = 0 whatever a is, so
-// all three terms carry the same upper index and the Equal rule admits
-// their sum. A contraction that paired its slots wrongly would not compile.
+/// Contract slots J and K against the metric of eq:metric,
+///
+///   (tr_{JK} T)^{...} = sum_{ab} g_{ab} T^{... a ... b ...}
+///                     = sum_a (-1)^a T^{... a ... -a ...},
+///
+/// which for an ordinary tensor's three values of a is
+/// -T^{-+} + T^{00} - T^{+-} in the contracted pair.
+///
+/// The sum runs over the *alphabet's* letters, not over a fixed {-1, 0, +1}.
+/// For a tangential tensor that leaves -T^{-+} - T^{+-}, which is the metric
+/// of the sphere induced on the tangent plane -- the same expression with the
+/// radial term absent because there is no radial slot to contribute one. The
+/// result stays in the same bundle, at rank p - 2, and nothing here has to
+/// arrange that either.
+///
+/// The result lands at the right upper index by construction rather than by
+/// arrangement: the contracted pair contributes a + (-a) = 0 whatever a is, so
+/// all three terms carry the same upper index and the Equal rule admits
+/// their sum. A contraction that paired its slots wrongly would not compile.
 template <std::ptrdiff_t J, std::ptrdiff_t K, typename Operand>
 class ContractionNode {
  public:
@@ -415,8 +415,8 @@ class ContractionNode {
   /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _operand.Grid(); }
 
-  // The operand's multi-index: the surviving slots in order, with a inserted
-  // at J and -a at K.
+  /// The operand's multi-index: the surviving slots in order, with a inserted
+  /// at J and -a at K.
   template <Int Alpha, Int... Alphas>
   static constexpr auto Source = TensorDetails::Insert<J, K, OperandType::Rank>(
       std::array<Int, Rank>{Alphas...}, Alpha);
@@ -481,14 +481,14 @@ auto Trace(T&& tensor) {
 //                              Symmetrisation                               //
 //--------------------------------------------------------------------------//
 
-// The projection onto a symmetry:
-//
-//   Sym(T)^{alpha} = (1/|G|) sum_{pi in G} sign(pi) T^{pi(alpha)}.
-//
-// Every term carries the same upper index, since a permutation preserves the
-// slot sum, so the sum is admissible and the result is again a tensor. What it
-// is *not* is a tensor whose type records the symmetry: the value has the
-// property, and only Materialise can be asked to store it that way.
+/// The projection onto a symmetry:
+///
+///   Sym(T)^{alpha} = (1/|G|) sum_{pi in G} sign(pi) T^{pi(alpha)}.
+///
+/// Every term carries the same upper index, since a permutation preserves the
+/// slot sum, so the sum is admissible and the result is again a tensor. What it
+/// is *not* is a tensor whose type records the symmetry: the value has the
+/// property, and only Materialise can be asked to store it that way.
 template <typename Symmetry, typename Operand>
 class SymmetriseNode {
  public:

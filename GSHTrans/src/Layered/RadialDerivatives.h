@@ -150,19 +150,19 @@ auto DifferentiationMatrix(std::span<const Real> nodes) {
 //                             Finite differences                            //
 //--------------------------------------------------------------------------//
 
-// d/dr by finite differences of a chosen order of accuracy, on whatever
-// spacing the radial grid has.
-//
-// The stencil is centred where there is room and one-sided at the ends, which
-// is what makes it usable on a grid that has ends -- a centred rule alone
-// would leave the first and last radii undefined, and those are exactly the
-// radii a boundary condition is applied at.
-//
-// The weights are Fornberg's, so unequal spacing costs nothing extra and the
-// rule is exact for polynomials of degree at most `order`. This is the one to
-// reach for by default: it is banded, so a line costs `nR * (order + 1)`
-// multiplications, and it is the only one here whose cost does not grow with
-// the number of radii.
+/// d/dr by finite differences of a chosen order of accuracy, on whatever
+/// spacing the radial grid has.
+///
+/// The stencil is centred where there is room and one-sided at the ends, which
+/// is what makes it usable on a grid that has ends -- a centred rule alone
+/// would leave the first and last radii undefined, and those are exactly the
+/// radii a boundary condition is applied at.
+///
+/// The weights are Fornberg's, so unequal spacing costs nothing extra and the
+/// rule is exact for polynomials of degree at most `order`. This is the one to
+/// reach for by default: it is banded, so a line costs `nR * (order + 1)`
+/// multiplications, and it is the only one here whose cost does not grow with
+/// the number of radii.
 template <RealFloatingPoint _Real>
 class FiniteDifferenceDerivative {
  public:
@@ -245,18 +245,18 @@ class FiniteDifferenceDerivative {
 //                       The global polynomial derivative                    //
 //--------------------------------------------------------------------------//
 
-// d/dr of the polynomial of degree nR - 1 through all the samples: the
-// differentiation matrix of the given nodes.
-//
-// Exact for polynomials of degree at most nR - 1, which is the highest any
-// operator on these nodes can be, and the right thing on a *few* nodes --
-// the Gauss-Lobatto points of one spectral element, say. It is the wrong
-// thing on many: the cost is nR^2 per line where the finite-difference rule
-// is nR * (order + 1), and global polynomial interpolation through equally
-// spaced points diverges as their number grows.
-//
-// Built barycentrically, which is the numerically sound way to form the
-// matrix, and once: the entries depend on the nodes alone.
+/// d/dr of the polynomial of degree nR - 1 through all the samples: the
+/// differentiation matrix of the given nodes.
+///
+/// Exact for polynomials of degree at most nR - 1, which is the highest any
+/// operator on these nodes can be, and the right thing on a *few* nodes --
+/// the Gauss-Lobatto points of one spectral element, say. It is the wrong
+/// thing on many: the cost is nR^2 per line where the finite-difference rule
+/// is nR * (order + 1), and global polynomial interpolation through equally
+/// spaced points diverges as their number grows.
+///
+/// Built barycentrically, which is the numerically sound way to form the
+/// matrix, and once: the entries depend on the nodes alone.
 template <RealFloatingPoint _Real>
 class LagrangeDerivative {
  public:
@@ -311,28 +311,28 @@ class LagrangeDerivative {
 //                          The element derivative                           //
 //--------------------------------------------------------------------------//
 
-// d/dr element by element: block-diagonal, each block the differentiation
-// matrix of its own nodes.
-//
-// This is what a spectral element does. Within an element the field is the
-// polynomial through its nodes -- the Gauss-Lobatto-Legendre points, in
-// practice, though nothing here requires that -- so the derivative there is
-// that polynomial's, which is `LagrangeDerivative` restricted to the element.
-// The blocks do not talk to each other, and that is the point rather than an
-// approximation: the field is not assumed differentiable across an interface,
-// because at a material interface it is not.
-//
-// **What makes this well defined is [E1].** The blocks are disjoint, so two
-// elements meet at a repeated radius and each owns one of the pair. The
-// derivative at an interface is therefore two numbers, one per side, each
-// stored at its own index -- which is what a discontinuity *is*, and is the
-// same pair `Interpolation::Piecewise::Limits` hands back. Had the elements
-// shared a node this operator would have had to choose between them, and that
-// choice belongs to the discretisation rather than here.
-//
-// Needs a grid built by `RadialGrid::WithElements`; a grid that does not know
-// its elements cannot say what the blocks are, and guessing is precisely what
-// the partition exists to stop.
+/// d/dr element by element: block-diagonal, each block the differentiation
+/// matrix of its own nodes.
+///
+/// This is what a spectral element does. Within an element the field is the
+/// polynomial through its nodes -- the Gauss-Lobatto-Legendre points, in
+/// practice, though nothing here requires that -- so the derivative there is
+/// that polynomial's, which is `LagrangeDerivative` restricted to the element.
+/// The blocks do not talk to each other, and that is the point rather than an
+/// approximation: the field is not assumed differentiable across an interface,
+/// because at a material interface it is not.
+///
+/// **What makes this well defined is [E1].** The blocks are disjoint, so two
+/// elements meet at a repeated radius and each owns one of the pair. The
+/// derivative at an interface is therefore two numbers, one per side, each
+/// stored at its own index -- which is what a discontinuity *is*, and is the
+/// same pair `Interpolation::Piecewise::Limits` hands back. Had the elements
+/// shared a node this operator would have had to choose between them, and that
+/// choice belongs to the discretisation rather than here.
+///
+/// Needs a grid built by `RadialGrid::WithElements`; a grid that does not know
+/// its elements cannot say what the blocks are, and guessing is precisely what
+/// the partition exists to stop.
 template <RealFloatingPoint _Real>
 class ElementDerivative {
  public:

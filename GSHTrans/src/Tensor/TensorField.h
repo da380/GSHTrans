@@ -42,23 +42,23 @@ template <typename L>
 concept TensorLayout =
     std::same_as<L, ComponentMajor> or std::same_as<L, PointMajor>;
 
-// A tensor field on the sphere: one contiguous buffer, handing out its
-// canonical components as spin-weighted nodes.
-//
-// One buffer rather than a tuple of separately allocated fields, because the
-// components are what get transformed and the transform wants to see them as a
-// batch (core-plan.md [C9]). A component is therefore a *view* into the
-// buffer, which is why views are admissible wherever an owning field
-// is, and why operator[] returns by value on every node.
-//
-// What is stored is one component per orbit of the symmetry group, computed by
-// Orbits.h. Everything else is derived: a component related to a stored one by
-// a symmetric permutation *is* that same view, one related by an
-// antisymmetric permutation is the view negated, and one whose orbit vanishes
-// is not representable at all. So Component<...>() returns different types for
-// different components and traversal over all of them is a compile-time loop.
-// That consequence is more familiar from the reality
-// reduction; it arrives here already, because antisymmetry has it too.
+/// A tensor field on the sphere: one contiguous buffer, handing out its
+/// canonical components as spin-weighted nodes.
+///
+/// One buffer rather than a tuple of separately allocated fields, because the
+/// components are what get transformed and the transform wants to see them as a
+/// batch (core-plan.md [C9]). A component is therefore a *view* into the
+/// buffer, which is why views are admissible wherever an owning field
+/// is, and why operator[] returns by value on every node.
+///
+/// What is stored is one component per orbit of the symmetry group, computed by
+/// Orbits.h. Everything else is derived: a component related to a stored one by
+/// a symmetric permutation *is* that same view, one related by an
+/// antisymmetric permutation is the view negated, and one whose orbit vanishes
+/// is not representable at all. So Component<...>() returns different types for
+/// different components and traversal over all of them is a compile-time loop.
+/// That consequence is more familiar from the reality
+/// reduction; it arrives here already, because antisymmetry has it too.
 template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
           TensorReality _Reality, AngularGrid _Grid,
           TensorLayout _Layout = ComponentMajor,
@@ -73,16 +73,16 @@ class TensorField {
   using GridType = _Grid;  ///< The angular grid this is defined on.
   using LayoutPolicy = _Layout;  ///< How the components are arranged in the buffer.
 
-  // Which slots this tensor's indices are drawn from, and the multi-index
-  // over them. AllSlots is the ordinary canonical tensor; TangentialSlots is
-  // one with no radial slot, whose components number 2^Rank rather than
-  // 3^Rank (field-algebra-plan.md section 18). The parameter is appended last
-  // and defaulted so that no existing spelling of this template moves.
-  //
-  // Nothing below knows which alphabet it has. Everything is written against
-  // Index and against the orbit table built over it, which is the whole of
-  // why the generalisation is additive: the storage groups by the slot sum,
-  // and the slot sum does not care how many values a slot can take.
+  /// Which slots this tensor's indices are drawn from, and the multi-index
+  /// over them. AllSlots is the ordinary canonical tensor; TangentialSlots is
+  /// one with no radial slot, whose components number 2^Rank rather than
+  /// 3^Rank (field-algebra-plan.md section 18). The parameter is appended last
+  /// and defaulted so that no existing spelling of this template moves.
+  ///
+  /// Nothing below knows which alphabet it has. Everything is written against
+  /// Index and against the orbit table built over it, which is the whole of
+  /// why the generalisation is additive: the storage groups by the slot sum,
+  /// and the slot sum does not care how many values a slot can take.
   using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
   using Index = MultiIndex<Rank, SlotSet>;
 
@@ -200,35 +200,35 @@ class TensorField {
     return -1;
   }
 
-  // The flat component index of a multi-index given as template arguments.
+  /// The flat component index of a multi-index given as template arguments.
   template <Int... Alphas>
   static constexpr Int FlatOf = Index(std::array<Int, Rank>{Alphas...}).Flat();
 
-  // The upper index a component carries, which is the spin weight of its
-  // field and so a compile-time quantity (eq:N).
+  /// The upper index a component carries, which is the spin weight of its
+  /// field and so a compile-time quantity (eq:N).
   template <Int... Alphas>
   static constexpr Int UpperIndexOf =
       Index(std::array<Int, Rank>{Alphas...}).UpperIndex();
 
-  // Whether a component vanishes identically, which happens when a
-  // permutation maps it to itself with a sign of -1. Exposed so that a
-  // compile-time traversal can skip those rather than failing on them.
-  //
-  // Whether a component can be read at all, and whether it can be written.
-  // These are the conditions on the accessors below, named so that a
-  // compile-time traversal can ask before it asks for the component, and so
-  // that the negative cases can be tested. static_assert(!requires { ... })
-  // is the idiom the field layer uses, and it works only when the constraint is
-  // a requires-clause: an assertion inside the body is a hard error that no
-  // requires-expression can see, which makes the negative test vacuous.
-  //
-  // Neither the wrong number of indices nor a letter outside the alphabet may
-  // reach the multi-index, or the failure is a hard error -- inside std::array
-  // for the first and inside the constructor's throw for the second -- rather
-  // than an unsatisfied constraint. Both are therefore checked with
-  // `if constexpr`, whose discarded branch never forms one. See IsSlotLetter
-  // in MultiIndex.h for why the second is not something a requires-expression
-  // could catch on its own.
+  /// Whether a component vanishes identically, which happens when a
+  /// permutation maps it to itself with a sign of -1. Exposed so that a
+  /// compile-time traversal can skip those rather than failing on them.
+  ///
+  /// Whether a component can be read at all, and whether it can be written.
+  /// These are the conditions on the accessors below, named so that a
+  /// compile-time traversal can ask before it asks for the component, and so
+  /// that the negative cases can be tested. static_assert(!requires { ... })
+  /// is the idiom the field layer uses, and it works only when the constraint is
+  /// a requires-clause: an assertion inside the body is a hard error that no
+  /// requires-expression can see, which makes the negative test vacuous.
+  ///
+  /// Neither the wrong number of indices nor a letter outside the alphabet may
+  /// reach the multi-index, or the failure is a hard error -- inside std::array
+  /// for the first and inside the constructor's throw for the second -- rather
+  /// than an unsatisfied constraint. Both are therefore checked with
+  /// `if constexpr`, whose discarded branch never forms one. See IsSlotLetter
+  /// in MultiIndex.h for why the second is not something a requires-expression
+  /// could catch on its own.
   template <Int... Alphas>
   static constexpr bool WellFormedFn() {
     if constexpr (sizeof...(Alphas) != Rank) {
@@ -324,28 +324,28 @@ class TensorField {
   //                            Component access                             //
   //------------------------------------------------------------------------//
 
-  // The component with this multi-index, as a spin-weighted node.
-  //
-  // Read-only, and available for every component the tensor can represent.
-  // What comes back depends on how the component is related to the one stored
-  // for it, and there are now four cases rather than two:
-  //
-  //   stored, sign +1        the view itself
-  //   sign -1               that view negated, an expression
-  //   related by reality    conj of the view, at the reversed upper index
-  //   pinned by its orbit   a real-valued view, or i times one
-  //
-  // The reality case is the one the field layer was made to accommodate. The relation
-  // is T^{-alpha} = (-1)^N conj(T^{alpha}) (eq:reality), and conj reverses the
-  // upper index -- which is why getting that wrong was one of the three
-  // reason conj must reverse the upper index. The (-1)^N is already
-  // folded into the orbit table's sign.
-  //
-  // Note what this means for a grid: the derived partner of a stored
-  // component at N has upper index -N, so on a grid carrying only
-  // non-negative upper indices half of these could not be *terminals*. They
-  // are expressions, and the field-algebra plan's section 3.7 put the grid's
-  // N-support check on terminals and views alone for exactly this case.
+  /// The component with this multi-index, as a spin-weighted node.
+  ///
+  /// Read-only, and available for every component the tensor can represent.
+  /// What comes back depends on how the component is related to the one stored
+  /// for it, and there are now four cases rather than two:
+  ///
+  ///   stored, sign +1        the view itself
+  ///   sign -1               that view negated, an expression
+  ///   related by reality    conj of the view, at the reversed upper index
+  ///   pinned by its orbit   a real-valued view, or i times one
+  ///
+  /// The reality case is the one the field layer was made to accommodate. The relation
+  /// is T^{-alpha} = (-1)^N conj(T^{alpha}) (eq:reality), and conj reverses the
+  /// upper index -- which is why getting that wrong was one of the three
+  /// reason conj must reverse the upper index. The (-1)^N is already
+  /// folded into the orbit table's sign.
+  ///
+  /// Note what this means for a grid: the derived partner of a stored
+  /// component at N has upper index -N, so on a grid carrying only
+  /// non-negative upper indices half of these could not be *terminals*. They
+  /// are expressions, and the field-algebra plan's section 3.7 put the grid's
+  /// N-support check on terminals and views alone for exactly this case.
   template <Int... Alphas>
   requires Represents<Alphas...>
   auto Component() const {
@@ -387,17 +387,17 @@ class TensorField {
     }
   }
 
-  // The component as writable storage.
-  //
-  // Only where the component *is* the stored one: writing through a
-  // sign-reversed or conjugated component would mean negating or conjugating
-  // on the way in, and a view cannot express that -- so rather than returning
-  // a proxy that behaves unlike every other node in the library, this is a
-  // compile error naming the component to write instead.
-  //
-  // A pinned component is writable as the single real number it is. For an
-  // Imaginary one that number is the coefficient of i, which is the only
-  // sensible reading and is why the accessor's value kind says RealValued.
+  /// The component as writable storage.
+  ///
+  /// Only where the component *is* the stored one: writing through a
+  /// sign-reversed or conjugated component would mean negating or conjugating
+  /// on the way in, and a view cannot express that -- so rather than returning
+  /// a proxy that behaves unlike every other node in the library, this is a
+  /// compile error naming the component to write instead.
+  ///
+  /// A pinned component is writable as the single real number it is. For an
+  /// Imaginary one that number is the coefficient of i, which is the only
+  /// sensible reading and is why the accessor's value kind says RealValued.
   template <Int... Alphas>
   requires Writable<Alphas...>
   auto Component() {

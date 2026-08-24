@@ -86,15 +86,15 @@ constexpr bool AreSlotLetters() {
 //                              The multi-index                              //
 //--------------------------------------------------------------------------//
 
-// The label of one canonical component of a rank-p tensor: p slots, each
-// carrying alpha drawn from the alphabet above (theory note section 2).
-//
-// The distinction this type exists to keep is that the multi-index is *not*
-// the upper index. The upper index is the signed sum of the slots (eq:N), and
-// for rank >= 2 several multi-indices share one: a rank-2 tensor has three
-// components at N = 0, namely (-+), (00) and (+-). A collection labelled only
-// by N therefore does not determine a tensor, which is why the unit below is
-// called SpinField and why components are addressed by multi-index here.
+/// The label of one canonical component of a rank-p tensor: p slots, each
+/// carrying alpha drawn from the alphabet above (theory note section 2).
+///
+/// The distinction this type exists to keep is that the multi-index is *not*
+/// the upper index. The upper index is the signed sum of the slots (eq:N), and
+/// for rank >= 2 several multi-indices share one: a rank-2 tensor has three
+/// components at N = 0, namely (-+), (00) and (+-). A collection labelled only
+/// by N therefore does not determine a tensor, which is why the unit below is
+/// called SpinField and why components are addressed by multi-index here.
 template <std::ptrdiff_t _Rank, SlotAlphabet _Slots = AllSlots>
 class MultiIndex {
  public:
@@ -222,9 +222,9 @@ constexpr auto ComponentsAtUpperIndex(std::ptrdiff_t n) {
 //                            Permutation symmetry                           //
 //--------------------------------------------------------------------------//
 
-// A permutation of a tensor's slots, together with the sign the component
-// picks up under it: +1 for a symmetric generator, -1 for an antisymmetric
-// one.
+/// A permutation of a tensor's slots, together with the sign the component
+/// picks up under it: +1 for a symmetric generator, -1 for an antisymmetric
+/// one.
 template <std::ptrdiff_t Rank>
 struct SlotPermutation {
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
@@ -256,7 +256,7 @@ constexpr auto Transposition(Int a, Int b, Int sign) {
 
 }  // namespace SymmetryDetails
 
-// No relation between components: every one of the 3^Rank is independent.
+/// No relation between components: every one of the 3^Rank is independent.
 template <std::ptrdiff_t Rank>
 struct NoSymmetry {
   static constexpr auto Generators() {
@@ -264,9 +264,9 @@ struct NoSymmetry {
   }
 };
 
-// Symmetric or antisymmetric in every pair of slots. The adjacent
-// transpositions generate the whole symmetric group, so two generators
-// suffice at any rank and the orbit search finds the rest.
+/// Symmetric or antisymmetric in every pair of slots. The adjacent
+/// transpositions generate the whole symmetric group, so two generators
+/// suffice at any rank and the orbit search finds the rest.
 template <std::ptrdiff_t Rank, std::ptrdiff_t Sign>
 struct FullPermutationSymmetry {
   static_assert(Sign == 1 || Sign == -1);
@@ -287,9 +287,9 @@ using Symmetric = FullPermutationSymmetry<Rank, 1>;
 template <std::ptrdiff_t Rank>
 using Antisymmetric = FullPermutationSymmetry<Rank, -1>;
 
-// Anything else, given by its generators. The case this exists for is the
-// elastic tensor, c_{ijkl} = c_{jikl} = c_{ijlk} = c_{klij}, which is three
-// generators and is why rank 4 is exposed at all.
+/// Anything else, given by its generators. The case this exists for is the
+/// elastic tensor, c_{ijkl} = c_{jikl} = c_{ijlk} = c_{klij}, which is three
+/// generators and is why rank 4 is exposed at all.
 template <std::ptrdiff_t Rank, SlotPermutation<Rank>... Gs>
 struct GeneratedBy {
   static constexpr auto Generators() {

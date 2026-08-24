@@ -200,24 +200,24 @@ auto PolarRows(const Expansion& expansion, const GridType& grid) {
 //                          The spectral interpolant                         //
 //--------------------------------------------------------------------------//
 
-// The expansion evaluated directly, which is exact for a band-limited field:
-//
-//     f(theta, phi) = sum_l sum_m  f^N_{lm} dbar^l_{Nm}(theta) exp(i m phi),
-//     dbar^l_{Nm}   = sqrt((2l+1)/4pi) d^l_{Nm},
-//
-// which is what WignerDetails::ComputeBlock stores and what the loop kernel's
-// SynthesiseRow sums. Checked against Evaluate at every grid point rather than
-// read off the transform: worst absolute difference 5.0e-15 complex and
-// 8.1e-15 real (section 22.1).
-//
-// [I2]: this is the reference the cheap schemes are measured against, and it
-// is built first for that reason as much as for its own sake. It is exact and
-// pole-safe, and it costs O(lMax^2) a point where they cost O(1).
-//
-// [I1]: it owns its coefficients. The shared_ptr is what keeps a copy cheap
-// and, more to the point, keeps the state at a stable address so that copying
-// the interpolant is well defined -- which it has to be, because the grid's
-// ProjectFunction takes its callable by value ([I8]).
+/// The expansion evaluated directly, which is exact for a band-limited field:
+///
+///     f(theta, phi) = sum_l sum_m  f^N_{lm} dbar^l_{Nm}(theta) exp(i m phi),
+///     dbar^l_{Nm}   = sqrt((2l+1)/4pi) d^l_{Nm},
+///
+/// which is what WignerDetails::ComputeBlock stores and what the loop kernel's
+/// SynthesiseRow sums. Checked against Evaluate at every grid point rather than
+/// read off the transform: worst absolute difference 5.0e-15 complex and
+/// 8.1e-15 real (section 22.1).
+///
+/// [I2]: this is the reference the cheap schemes are measured against, and it
+/// is built first for that reason as much as for its own sake. It is exact and
+/// pole-safe, and it costs O(lMax^2) a point where they cost O(1).
+///
+/// [I1]: it owns its coefficients. The shared_ptr is what keeps a copy cheap
+/// and, more to the point, keeps the state at a stable address so that copying
+/// the interpolant is well defined -- which it has to be, because the grid's
+/// ProjectFunction takes its callable by value ([I8]).
 template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value = ComplexValued>
 class SpectralInterpolant {
@@ -388,19 +388,19 @@ auto Interpolate(const F& field, Scheme::SpectralTag = Scheme::Spectral(),
 //                            The local interpolants                         //
 //--------------------------------------------------------------------------//
 
-// One of Interpolation's rectilinear schemes over the *padded* grid: the
-// field's own samples, plus the wrap column and the two polar rows. After the
-// padding and [I4]'s domain rules, no query reaches upstream's edge-cell
-// continuation at all, which is the property that makes those schemes usable
-// on a sphere.
-//
-// The upstream object is given std::span rather than the deduction guide's
-// views, for two reasons that both matter. A span is a view, so it satisfies
-// upstream's constraints; and it is a type this class can *spell*, which lets
-// the padded arrays and the interpolant over them live in one State and be
-// initialised in order. Handing upstream an owning view instead would make
-// this class move-only, and it has to be copyable -- ProjectFunction takes its
-// callable by value ([I8]).
+/// One of Interpolation's rectilinear schemes over the *padded* grid: the
+/// field's own samples, plus the wrap column and the two polar rows. After the
+/// padding and [I4]'s domain rules, no query reaches upstream's edge-cell
+/// continuation at all, which is the property that makes those schemes usable
+/// on a sphere.
+///
+/// The upstream object is given std::span rather than the deduction guide's
+/// views, for two reasons that both matter. A span is a view, so it satisfies
+/// upstream's constraints; and it is a type this class can *spell*, which lets
+/// the padded arrays and the interpolant over them live in one State and be
+/// initialised in order. Handing upstream an owning view instead would make
+/// this class move-only, and it has to be copyable -- ProjectFunction takes its
+/// callable by value ([I8]).
 template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value, typename _Upstream>
 class LocalInterpolant {

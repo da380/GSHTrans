@@ -43,16 +43,16 @@ namespace GSHTrans {
 // that there is one vocabulary for them and not two.
 using Interpolation::BoundaryCondition;
 
-// The middle ground between the two operators of RadialDerivatives.h: global
-// like the differentiation matrix, but linear in the number of radii rather
-// than quadratic, and unlike a global polynomial it does not fall apart as the
-// nodes multiply.
-//
-// A convenience rather than a workhorse. The discretisations these codes
-// actually run on are finite differences, a finite-element basis, or a radial
-// spectral basis; a spline is what a caller reaches for to process a field
-// rather than to solve on one. Which is why this is written for clarity and
-// correctness and not tuned.
+/// The middle ground between the two operators of RadialDerivatives.h: global
+/// like the differentiation matrix, but linear in the number of radii rather
+/// than quadratic, and unlike a global polynomial it does not fall apart as the
+/// nodes multiply.
+///
+/// A convenience rather than a workhorse. The discretisations these codes
+/// actually run on are finite differences, a finite-element basis, or a radial
+/// spectral basis; a spline is what a caller reaches for to process a field
+/// rather than to solve on one. Which is why this is written for clarity and
+/// correctness and not tuned.
 template <RealFloatingPoint _Real>
 class SplineDerivative {
  public:

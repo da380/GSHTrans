@@ -29,24 +29,24 @@ namespace GSHTrans {
 //                       A spin field in the spectral domain                 //
 //--------------------------------------------------------------------------//
 
-// The coefficients f^N_{lm} of a field of upper index N (theory note
-// eq:expansion), for degrees |N| <= l <= lMax.
-//
-// This is the spectral counterpart of SpinField, and it exists for the same
-// reason: a raw coefficient buffer is untyped, so nothing stops a caller
-// reading the wrong block of one, and there is nowhere for the raising and
-// lowering operators to live. The layout is GSHIndices', which the transform
-// already writes, so this is a type over storage rather than a new storage
-// scheme.
-//
-// Two things it records that a buffer cannot. The upper index is a
-// compile-time property, so the operators that change it change the type. And
-// the reduced m >= 0 storage of a real-valued field is a type distinction
-// rather than a convention: a RealValued expansion holds only the
-// non-negative orders, the rest being fixed by f_{l,-m} = (-1)^m conj(f_{lm}).
-//
-// The degrees start at |N| because d^l_{mN} vanishes identically below it, so
-// there is no coefficient there to hold.
+/// The coefficients f^N_{lm} of a field of upper index N (theory note
+/// eq:expansion), for degrees |N| <= l <= lMax.
+///
+/// This is the spectral counterpart of SpinField, and it exists for the same
+/// reason: a raw coefficient buffer is untyped, so nothing stops a caller
+/// reading the wrong block of one, and there is nowhere for the raising and
+/// lowering operators to live. The layout is GSHIndices', which the transform
+/// already writes, so this is a type over storage rather than a new storage
+/// scheme.
+///
+/// Two things it records that a buffer cannot. The upper index is a
+/// compile-time property, so the operators that change it change the type. And
+/// the reduced m >= 0 storage of a real-valued field is a type distinction
+/// rather than a convention: a RealValued expansion holds only the
+/// non-negative orders, the rest being fixed by f_{l,-m} = (-1)^m conj(f_{lm}).
+///
+/// The degrees start at |N| because d^l_{mN} vanishes identically below it, so
+/// there is no coefficient there to hold.
 template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value = ComplexValued,
           typename _Element = std::complex<typename _Grid::Real>>
@@ -60,8 +60,8 @@ class SpinExpansionBase {
   using Real = typename _Grid::Real;  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
 
-  // Coefficients are complex whatever the field is; what a real field changes
-  // is how many of them there are.
+  /// Coefficients are complex whatever the field is; what a real field changes
+  /// is how many of them there are.
   using Scalar = Complex;  ///< The value type: Real when real-valued, Complex otherwise.
   using MRange =
       std::conditional_t<std::same_as<Value, RealValued>, NonNegative, All>;
@@ -136,7 +136,7 @@ template <std::ptrdiff_t N, AngularGrid Grid,
 using ConstSpinExpansionView =
     SpinExpansionBase<N, Grid, Value, const std::complex<typename Grid::Real>>;
 
-// The owning expansion: the same interface over storage it holds itself.
+/// The owning expansion: the same interface over storage it holds itself.
 template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value = ComplexValued>
 class SpinExpansion {

@@ -15,22 +15,22 @@
 
 namespace GSHTrans {
 
-// The radial half of a three-dimensional field: a set of radii, and weights
-// for integrating over them.
-//
-// Deliberately thin. It carries nodes, weights and identity and nothing else:
-// element connectivity, the spectral-element basis, differentiation matrices
-// and any factorisation belong to the application that built them, and the
-// library only ever needs to know how many radii there are, what they are, and
-// how to integrate over them.
-//
-// What the radii are actually used for is the quadrature over the ball and the
-// r^{-1} in the gradient. What the *count* is used for is the stack, and that
-// is most of it.
-//
-// A value-semantic handle over shared immutable state, for the same reason
-// GaussLegendreGrid is one: two layered fields are on the same radial grid when
-// their handles agree, and copying one is a pointer copy.
+/// The radial half of a three-dimensional field: a set of radii, and weights
+/// for integrating over them.
+///
+/// Deliberately thin. It carries nodes, weights and identity and nothing else:
+/// element connectivity, the spectral-element basis, differentiation matrices
+/// and any factorisation belong to the application that built them, and the
+/// library only ever needs to know how many radii there are, what they are, and
+/// how to integrate over them.
+///
+/// What the radii are actually used for is the quadrature over the ball and the
+/// r^{-1} in the gradient. What the *count* is used for is the stack, and that
+/// is most of it.
+///
+/// A value-semantic handle over shared immutable state, for the same reason
+/// GaussLegendreGrid is one: two layered fields are on the same radial grid when
+/// their handles agree, and copying one is a pointer copy.
 template <RealFloatingPoint _Real>
 class RadialGrid {
  public:

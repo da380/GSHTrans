@@ -22,21 +22,21 @@
 
 namespace GSHTrans {
 
-// A tensor field in the spectral domain: one buffer, handing out its
-// components as spin expansions.
-//
-// The mirror of TensorField, and deliberately so -- same component addressing,
-// same stored set, same grouping by upper index. What it does *not* mirror is
-// the reality reduction's second buffer. A pinned component is a real field, but its
-// coefficients are complex numbers in the reduced m >= 0 storage, so the
-// spectral side is one complex buffer throughout. What varies is the block
-// length: a component's block is sized by its own upper index, and a pinned
-// one by the reduced storage, which is why the total is computed rather than
-// being a product.
-//
-// The saving carries across. A real rank-2 tensor stores five components
-// rather than nine here too, and each pinned one costs about half what a
-// complex one of the same degree would.
+/// A tensor field in the spectral domain: one buffer, handing out its
+/// components as spin expansions.
+///
+/// The mirror of TensorField, and deliberately so -- same component addressing,
+/// same stored set, same grouping by upper index. What it does *not* mirror is
+/// the reality reduction's second buffer. A pinned component is a real field, but its
+/// coefficients are complex numbers in the reduced m >= 0 storage, so the
+/// spectral side is one complex buffer throughout. What varies is the block
+/// length: a component's block is sized by its own upper index, and a pinned
+/// one by the reduced storage, which is why the total is computed rather than
+/// being a product.
+///
+/// The saving carries across. A real rank-2 tensor stores five components
+/// rather than nine here too, and each pinned one costs about half what a
+/// complex one of the same degree would.
 template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
           TensorReality _Reality, AngularGrid _Grid,
           SlotAlphabet _Slots = AllSlots>

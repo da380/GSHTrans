@@ -29,9 +29,9 @@ namespace GSHTrans {
 //                                  Binary                                   //
 //--------------------------------------------------------------------------//
 
-// L and R are the *deduced* operand types and so carry the caller's value
-// category: an lvalue arrives as T&, an rvalue as T. OperandStorage turns that
-// into what is actually held.
+/// L and R are the *deduced* operand types and so carry the caller's value
+/// category: an lvalue arrives as T&, an rvalue as T. OperandStorage turns that
+/// into what is actually held.
 template <typename Op, typename Rule, typename L, typename R>
 class Binary {
   using LNode = Node<L>;
