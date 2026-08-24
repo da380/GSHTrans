@@ -38,7 +38,7 @@ serve as the oracle §4 hoped for (`3j-plan.md` §1).
 | 7 | the `Interpolation` library | **done** -- adopted as an optional dependency, §19.5 [R1]; it answered the hand-over note and §21 records what that changed |
 | 8 | how three-dimensional the 3-D fields are | **done** -- §8A is §19, §8B is §20 |
 | 9 | interpolating a field, as a callable | **done** -- `field-algebra-plan.md` §22, P1 to P5; the radial half was §19's `Resample` |
-| 10 | a wisdom mechanism for the computational options | **planned** -- `core-plan.md` §12, which finds the knob set smaller than this section supposed |
+| 10 | a wisdom mechanism for the computational options | **done, without the store** -- `core-plan.md` §12. Both tuners built and measured; §12.6 says why the persistence layer is not earned and at what size it would be |
 
 **What is left of §3.** `Deviatoric` needs the metric as a tensor *expression*,
 and there is no constant-tensor node -- the metric's components are numbers
@@ -1085,12 +1085,15 @@ and things that are waiting.
   it asked for came out at about fifty points, so the recommendation is the
   composite -- transform onto an oversampled grid, then interpolate there --
   rather than either scheme alone.
-- **The wisdom mechanism** (§10) waits on nothing technically, and its first
-  customer should still be `Chunking::Tuned` alone. *The rest of this entry
-  used to say the wider case was better made after the target-machine run.*
-  It is better made by `core-plan.md` §11 [C12], which gives the mechanism a
-  second customer whose two alternatives both exist and compute the same
-  answer — so timing them is a measurement rather than a heuristic.
+- **The wisdom mechanism** (§10) is **done except for the store**, and the
+  ranking of its two customers came out the other way round from this
+  section's expectation. The chunk, which §10 rests its case on, is worth at
+  most 1.28× and nothing at all in thirteen of eighteen configurations —
+  because the 2.0× it argues from was against the starved rule that §10 item
+  1 has since fixed. The kernel, which arrived late, picks the matrix path in
+  every configuration at 1.9× to 5.8×. And the store is not built: tuning
+  costs about a second, which is cheaper than remembering it. `core-plan.md`
+  §12.6 states the size at which that reverses.
 
 **Independent of all of it:** the **3-j work** (§6), whose priority depends
 entirely on when coupling coefficients are actually wanted. If it is wanted at

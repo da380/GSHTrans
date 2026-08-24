@@ -157,6 +157,70 @@ TEST(Tuning, RefusesAnEmptyBatch) {
   EXPECT_THROW(TuneChunking(grid, 8, 2, 0), std::invalid_argument);
 }
 
+//--------------------------------------------------------------------------//
+//                    W5: choosing between the two kernels                   //
+//--------------------------------------------------------------------------//
+
+// [C19]: every way the matrix kernel can be unavailable is named rather than
+// collapsing silently to "use the loop". Generated values are one of the
+// three, and the only one testable in every build.
+TEST(Tuning, RefusesTheMatrixKernelForGeneratedValues) {
+  const auto tuned = TuneKernel<Grid>(8, 2, 2, 4, Execution::Sequential(),
+                                      FFTWpp::Estimate, Chunking::Automatic(),
+                                      WignerValues::Generated());
+
+  EXPECT_FALSE(tuned.matrixTried);
+  EXPECT_FALSE(tuned.conclusive);
+  EXPECT_FALSE(tuned.skipped.empty()) << "an unavailable kernel must say why";
+  EXPECT_EQ(tuned.kernel, TransformKernel::Loop());
+  EXPECT_GT(tuned.loopSeconds, 0.0) << "the loop is timed even when alone";
+  EXPECT_DOUBLE_EQ(tuned.Speedup(), 1.0);
+}
+
+// BLAS offers no long double, so the matrix kernel cannot exist there
+// whatever else is true. The same refusal the grid makes at construction,
+// reported here rather than thrown.
+TEST(Tuning, RefusesTheMatrixKernelAtAnUnsupportedPrecision) {
+  using WideGrid = GaussLegendreGrid<long double, All, All>;
+  const auto tuned = TuneKernel<WideGrid>(8, 2, 2, 2);
+
+  EXPECT_FALSE(tuned.matrixTried);
+  EXPECT_FALSE(tuned.skipped.empty());
+  EXPECT_EQ(tuned.kernel, TransformKernel::Loop());
+}
+
+TEST(Tuning, KernelTuningRefusesNonsenseArguments) {
+  EXPECT_THROW(TuneKernel<Grid>(8, 2, 2, 0), std::invalid_argument);
+  EXPECT_THROW(TuneKernel<Grid>(8, 2, 2, 4, Execution::Sequential(),
+                                FFTWpp::Estimate, Chunking::Automatic(),
+                                WignerValues::Stored(), 0),
+               std::invalid_argument);
+}
+
+#ifdef GSHTRANS_HAVE_BLAS
+// Where both exist, both are timed and the margin decides. The kernels agree
+// only to a tolerance -- a GEMM sums in whatever order its kernel chooses --
+// so this asserts the choice rather than the numbers, which the cross-kernel
+// tests already cover.
+TEST(Tuning, TimesBothKernelsWhereBothExist) {
+  const auto tuned = TuneKernel<Grid>(8, 2, 2, 4, Execution::Sequential(),
+                                      FFTWpp::Estimate);
+
+  EXPECT_TRUE(tuned.matrixTried);
+  EXPECT_TRUE(tuned.skipped.empty());
+  EXPECT_GT(tuned.loopSeconds, 0.0);
+  EXPECT_GT(tuned.matrixSeconds, 0.0);
+
+  if (tuned.conclusive) {
+    EXPECT_EQ(tuned.kernel, TransformKernel::Matrix());
+    EXPECT_LT(tuned.matrixSeconds, tuned.loopSeconds * (1 - TuningMargin));
+  } else {
+    EXPECT_EQ(tuned.kernel, TransformKernel::Loop())
+        << "the incumbent holds unless the margin is beaten";
+  }
+}
+#endif
+
 // Every candidate is a cache figure rather than a chunk, which is what lets
 // one answer serve every batch size (section 12.4).
 TEST(Tuning, SweepsCacheFiguresAndTheyAreDistinct) {

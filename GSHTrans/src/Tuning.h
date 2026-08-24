@@ -78,6 +78,33 @@ double BestSeconds(Action&& action, int windows = 3) {
   return best;
 }
 
+// One forward and one inverse over the caller's shape, on scratch of the
+// right size. What is being measured is a schedule; a schedule does not
+// depend on the values.
+template <typename GridType, typename Complex>
+double TimeRound(const GridType& grid, std::ptrdiff_t lMax, std::ptrdiff_t n,
+                 std::ptrdiff_t count, Execution policy, int windows = 3) {
+  using Int = std::ptrdiff_t;
+  const auto fieldSize = static_cast<Int>(grid.FieldSize());
+  const auto coefficientSize = static_cast<Int>(grid.CoefficientSize(lMax, n));
+
+  auto fields = FFTWpp::vector<Complex>(
+      static_cast<std::size_t>(count * fieldSize), Complex{1, 0});
+  auto coefficients = FFTWpp::vector<Complex>(
+      static_cast<std::size_t>(count * coefficientSize));
+  const auto fieldBatch = Batch::Contiguous(count, fieldSize);
+  const auto coefficientBatch = Batch::Contiguous(count, coefficientSize);
+
+  return BestSeconds(
+      [&] {
+        grid.ForwardTransformation(lMax, n, fields, fieldBatch, coefficients,
+                                   coefficientBatch, policy);
+        grid.InverseTransformation(lMax, n, coefficients, coefficientBatch,
+                                   fields, fieldBatch, policy);
+      },
+      windows);
+}
+
 }  // namespace TuningDetails
 
 //--------------------------------------------------------------------------//
@@ -106,6 +133,7 @@ struct TunedChunking {
     return seconds > 0 ? defaultSeconds / seconds : 1;
   }
 };
+
 
 //--------------------------------------------------------------------------//
 //                             Tuning the chunk                              //
@@ -282,6 +310,156 @@ TunedChunking TuneChunking(const GridType& grid, std::ptrdiff_t lMax,
   result.candidates = static_cast<int>(candidates.size());
 
   return result;
+}
+
+
+//--------------------------------------------------------------------------//
+//                            Tuning the kernel                              //
+//--------------------------------------------------------------------------//
+
+// Which of the two Legendre kernels a machine should use for a given problem.
+//
+// [C12] keeps both permanently, and this is the customer that decision was
+// taken for: unlike every other knob here, the kernel has **two complete
+// implementations that compute the same answer**, so timing both on the
+// caller's actual problem is a well-posed measurement rather than a
+// heuristic. thoughts.md section 10 calls it the strongest case for the whole
+// mechanism, and the measured differences -- 2x to 6x, against the chunk's
+// 1.1x to 1.2x -- say so.
+//
+// Grid *parameters* rather than a grid, because a grid already has a kernel
+// baked into its table and the point is to build one of each.
+struct TunedKernel {
+  TransformKernel kernel = TransformKernel::Loop();
+  bool conclusive = false;
+  bool matrixTried = false;
+  double loopSeconds = 0;
+  double matrixSeconds = 0;
+
+  // Why the matrix kernel was not measured, empty when it was. [C19]: a tuner
+  // is the machinery most likely to substitute silently, so every reason it
+  // did not do what was asked is a string the caller can print.
+  std::string skipped;
+
+  double Speedup() const {
+    if (!matrixTried || matrixSeconds <= 0) return 1;
+    return loopSeconds / matrixSeconds;
+  }
+};
+
+// The matrix kernel was not available, so only the loop is timed. Its number
+// is still reported, because a caller comparing machines wants it.
+template <typename GridType>
+TunedKernel TuneKernelLoopOnly(TunedKernel result, std::ptrdiff_t lMax,
+                               std::ptrdiff_t nMax, std::ptrdiff_t n,
+                               std::ptrdiff_t count, Execution policy,
+                               FFTWpp::Flag flag, Chunking chunking,
+                               WignerValues values, int rounds) {
+  using Complex = typename GridType::Complex;
+  const auto grid = GridType(lMax, nMax, flag, chunking, values,
+                             TransformKernel::Loop());
+  auto best = std::numeric_limits<double>::max();
+  for (auto round = 0; round < rounds; ++round) {
+    best = std::min(best, TuningDetails::TimeRound<GridType, Complex>(
+                              grid, lMax, n, count, policy));
+  }
+  result.loopSeconds = best;
+  return result;
+}
+
+// Build one grid of each kernel in turn, time the caller's problem on each,
+// and return the winner.
+//
+// **Sequential construction, per [C20], and the reason is memory.** section
+// 11.4's M5 records that comparing kernels means two grids and that at
+// lMax = 256 both live costs 1.3 GB. Each is therefore built, timed and
+// destroyed before the next, so the peak is one table.
+//
+// **But the order alternates between rounds, which [C20] did not ask for and
+// W3's numbers say it needs.** Sequential comparison has an ordering bias:
+// the first pass over a fixed grid measures about nine per cent slow against
+// the sixth on this machine, whichever code it is running, so whatever is
+// measured second wins a little for free. Running the pair twice with the
+// order reversed makes the bias symmetric, at the price of four table builds
+// rather than [C20]'s three -- about 0.9 s at lMax = 256, against a decision
+// worth several times the transform.
+//
+// The bias is well under the differences at stake here, so this is insurance
+// rather than a correction. It matters for a marginal result, and a marginal
+// result is exactly the one [C22]'s margin is there to refuse.
+template <typename GridType>
+TunedKernel TuneKernel(std::ptrdiff_t lMax, std::ptrdiff_t nMax,
+                       std::ptrdiff_t n, std::ptrdiff_t count,
+                       Execution policy = Execution::Sequential(),
+                       FFTWpp::Flag flag = FFTWpp::Measure,
+                       Chunking chunking = Chunking::Automatic(),
+                       WignerValues values = WignerValues::Stored(),
+                       int rounds = 2) {
+  using Int = std::ptrdiff_t;
+  using Real = typename GridType::Real;
+  using Complex = typename GridType::Complex;
+
+  if (count < 1) {
+    throw std::invalid_argument("Tuning: the batch count must be positive");
+  }
+  if (rounds < 1) {
+    throw std::invalid_argument("Tuning: rounds must be at least one");
+  }
+
+  auto result = TunedKernel{};
+
+  // The three ways the matrix kernel can be unavailable, each named rather
+  // than silently collapsing to "use the loop" ([C17], [C19]).
+#ifndef GSHTRANS_HAVE_BLAS
+  result.skipped = "this build has no BLAS, so the matrix kernel does not "
+                   "exist";
+  return TuneKernelLoopOnly<GridType>(std::move(result), lMax, nMax, n, count,
+                                      policy, flag, chunking, values, rounds);
+#else
+  if constexpr (!BlasDetails::BlasReal<Real>) {
+    result.skipped = "BLAS offers single and double precision only, so the "
+                     "matrix kernel is unavailable at this precision";
+    return TuneKernelLoopOnly<GridType>(std::move(result), lMax, nMax, n,
+                                        count, policy, flag, chunking, values,
+                                        rounds);
+  } else {
+    if (!values.AreStored()) {
+      result.skipped =
+          "the matrix kernel needs a stored table, and generated values were "
+          "asked for";
+      return TuneKernelLoopOnly<GridType>(std::move(result), lMax, nMax, n,
+                                          count, policy, flag, chunking,
+                                          values, rounds);
+    }
+
+    result.matrixTried = true;
+    auto loopBest = std::numeric_limits<double>::max();
+    auto matrixBest = std::numeric_limits<double>::max();
+
+    for (auto round = 0; round < rounds; ++round) {
+      const auto loopFirst = (round % 2) == 0;
+      for (auto step = 0; step < 2; ++step) {
+        const auto wantLoop = (step == 0) == loopFirst;
+        const auto kernel = wantLoop ? TransformKernel::Loop()
+                                     : TransformKernel::Matrix();
+        const auto grid =
+            GridType(lMax, nMax, flag, chunking, values, kernel);
+        const auto seconds = TuningDetails::TimeRound<GridType, Complex>(
+            grid, lMax, n, count, policy);
+        auto& best = wantLoop ? loopBest : matrixBest;
+        best = std::min(best, seconds);
+      }
+    }
+
+    result.loopSeconds = loopBest;
+    result.matrixSeconds = matrixBest;
+    if (matrixBest < loopBest * (1 - TuningMargin)) {
+      result.kernel = TransformKernel::Matrix();
+      result.conclusive = true;
+    }
+    return result;
+  }
+#endif
 }
 
 }  // namespace GSHTrans

@@ -3288,6 +3288,22 @@ trusted to the comparison being written correctly.
 **W5 — kernel tuning, opt-in.** [C20]. Sequential construction, three table
 builds, and an argument the caller has to pass.
 
+*Done, with one refinement [C20] did not ask for and W3's numbers say it
+needs.* Sequential comparison has an **ordering bias**: the first pass over a
+fixed grid measures about nine per cent slow against the sixth on this
+machine, whichever code it is running, so whatever is timed second wins a
+little for free. The pair is therefore run twice with the order reversed —
+four table builds rather than three, about 0.9 s at `lMax = 256`, against a
+decision worth several times the transform. The bias is well under the
+differences at stake, so it is insurance rather than a correction; it matters
+for a marginal result, and a marginal result is what [C22]'s margin refuses.
+
+*The three ways the matrix kernel can be unavailable are each named in the
+result rather than collapsing to "use the loop"* — no BLAS in the build, a
+precision BLAS does not offer, and generated values. That is [C19] made
+concrete: a tuner is the machinery most likely to substitute silently, so
+every reason it did not do what was asked is a string the caller can print.
+
 **W6 — does the mechanism pay?** The honest closing step, and the one that
 decides whether W4 stays. Tuned against default, on this machine, over the
 sizes the harness already walks: if a tuned grid is not measurably better than
@@ -3296,7 +3312,74 @@ the persistence layer is machinery without a customer. §10 says as much —
 "if it does not, nothing has been built that has to be maintained" — and W1 to
 W3 are worth having either way.
 
-### 12.6 What this is not
+*Done*, as the harness's `tuning` section, which exists to be **re-run
+elsewhere** rather than to settle anything once — the premise of the whole
+mechanism is that the answer differs by machine.
+
+`nMax = 2`, laptop, eight cores, BLAS pinned to one thread:
+
+| lMax | k | threads | chunk | candidates | kernel |
+|---:|---:|---:|---:|---:|---:|
+| 64 | 1 | 1 / 8 | 1.00× | 1 | 3.45× / 3.08× |
+| 64 | 8 | 1 / 8 | 1.00× | 1 / 4 | 2.72× / 2.43× |
+| 64 | 32 | 1 / 8 | 1.00× | 4 / 7 | 2.17× / 2.66× |
+| 128 | 1 | 1 / 8 | 1.00× | 1 | 5.35× / 5.77× |
+| 128 | 8 | 1 / 8 | 1.00× / **1.23×** | 3 / 6 | 2.56× / 4.85× |
+| 128 | 32 | 1 / 8 | 1.00× / **1.28×** | 5 / 7 | 2.37× / 3.60× |
+| 256 | 1 | 1 / 8 | 1.00× | 1 | 3.75× / 1.92× |
+| 256 | 8 | 1 / 8 | 1.00× / **1.24×** | 4 / 6 | 2.80× / 4.08× |
+| 256 | 32 | 1 / 8 | **1.15×** / **1.19×** | 6 | 2.77× / 4.85× |
+
+**The two customers are not comparable, and that is the answer.** The kernel
+tuner picks the matrix kernel in **all eighteen** configurations, worth
+**1.9× to 5.8×**. The chunk tuner finds nothing in thirteen of eighteen and
+at most 1.28× in the other five. §10 expected the chunk to be the strong
+case and the kernel to be the late arrival; it is the other way round, and
+the reason is that §10's evidence for the chunk — the 2.0× on the batched
+inverse — has already been collected by §10 item 1's own fix.
+
+### 12.6 W4 is not built, and the condition for building it is stated
+
+[C23] and [C21] describe a store, a key and a fingerprint, and none of it
+exists. That is W6's answer applied rather than scope quietly dropped, and
+§10 pre-authorises it: "if it does not [earn its place], nothing has been
+built that has to be maintained."
+
+**The argument is that there is nothing expensive enough to be worth
+remembering.** Persistence exists to avoid re-measuring, so its case is the
+cost of the measurement:
+
+- the chunk sweep is a handful of transforms on a grid that already exists,
+  and it is worth at most 1.28×;
+- the kernel comparison is four table builds and a handful of transforms —
+  about **0.9 s at `lMax = 256`**, against a grid that costs 0.16 s to build
+  and a job that will then run transforms for minutes.
+
+FFTW's wisdom is worth persisting because planning can take minutes. This
+takes about a second, and a second at start-up is not a thing to build a
+keyed, fingerprinted, versioned file format for. **The measurement is cheaper
+than remembering it.**
+
+*The condition under which that reverses is size, and it is worth naming so
+that whoever meets it knows what to build.* Table construction grows roughly
+as `lMax³`: the 156 ms measured at `lMax = 256` (M1) is of order a second at
+512 and tens of seconds at 1024, and W5 pays it four times. So **at
+`lMax ≳ 512` the kernel comparison stops being free**, and that is where a
+store earns its place. Two cheaper things come first: `rounds = 1`, which is
+[C20]'s original three builds and halves the cost, and — for the kernel
+specifically — measuring at a smaller degree, which [C20] rejected on the
+grounds that M4's answer changes sign with size. *The table above weakens that
+objection considerably: the matrix kernel wins at every size and every thread
+count measured, and by a margin no proxy error would overturn.* It is one
+machine, and that is exactly the caveat [C12] exists to let another machine
+answer for itself.
+
+*What is left standing from §12's plan*, and it is most of it: [C18]'s
+separation, which is worth having on its own; the timing discipline; both
+tuners; and [C19]'s rule that they hand back values. What is not built is the
+file.
+
+### 12.7 What this is not
 
 Not an autotuner, per §10, and the distinction is worth keeping in the code as
 well as the prose: FFTW searches a space of plans it generates, this times a

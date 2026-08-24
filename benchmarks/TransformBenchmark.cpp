@@ -527,7 +527,7 @@ int main(int argc, char** argv) {
   // server runs were lost to exactly that: the source reached the machine with
   // an old timestamp, make saw nothing to do, and the log looked plausible
   // while being produced by the previous harness.
-  constexpr auto revision = 8;
+  constexpr auto revision = 9;
 
   if (argc == 2 && std::string(argv[1]) == "--check") {
     std::printf("harness revision %d\n", revision);
@@ -541,7 +541,7 @@ int main(int argc, char** argv) {
   std::printf("double precision, single field per call (k = 1)\n");
   std::printf(
       "sections: stream grid transforms threading batching generated "
-      "kernels kernels-loop kernels-matrix interpolation server huge "
+      "kernels kernels-loop kernels-matrix interpolation tuning server huge "
       "(all, if none named)\n");
 
   // An unoptimised build measures nothing, and the default build directory is
@@ -1376,6 +1376,66 @@ int main(int argc, char** argv) {
         "\nBuilding a local interpolant costs a forward transform, because the\n"
         "polar rows are exact ([I3]). Its cheapness is per evaluation, not\n"
         "per interpolant, and these two columns are what says so.\n");
+  }
+
+
+  //------------------------------------------------------------------------//
+  //                   Tuning (core-plan.md section 12)                      //
+  //------------------------------------------------------------------------//
+  //
+  // W6: does the mechanism pay? Section 12.5 makes the persistence layer
+  // conditional on this answer, so the section reports the two tuners side by
+  // side and lets the numbers decide.
+  //
+  // The answer is machine-dependent by construction -- that is the premise
+  // the whole mechanism rests on -- so this exists to be re-run elsewhere
+  // rather than to settle anything once.
+
+  if (Want("tuning")) {
+    PrintHeader("Tuning: what measuring a policy is worth");
+
+    std::printf("%6s %5s %8s %14s %8s %14s %8s\n", "lMax", "k", "threads",
+                "chunk", "cands", "kernel", "chose");
+
+    for (auto lMax : {Int{64}, Int{128}, Int{256}}) {
+      for (auto count : {Int{1}, Int{8}, Int{32}}) {
+        for (auto threads : {1, 8}) {
+          if (threads > omp_get_max_threads()) continue;
+          const auto policy = threads == 1 ? Execution::Sequential()
+                                           : Execution::Parallel(threads);
+
+          auto grid = GaussLegendreGrid<Real, All, All>(lMax, 2);
+          const auto chunk = TuneChunking(grid, lMax, 2, count, policy);
+          const auto kernel = TuneKernel<GaussLegendreGrid<Real, All, All>>(
+              lMax, 2, 2, count, policy);
+
+          std::printf("%6td %5td %8d %13.2fx %8d %13.2fx %8s\n", lMax, count,
+                      threads, chunk.Speedup(), chunk.candidates,
+                      kernel.Speedup(),
+                      kernel.matrixTried
+                          ? (kernel.conclusive ? "matrix" : "loop")
+                          : "n/a");
+          if (!kernel.skipped.empty()) {
+            std::printf("       kernel not tried: %s\n",
+                        kernel.skipped.c_str());
+          }
+        }
+      }
+    }
+
+    std::printf(
+        "\nChunk column is the tuned policy against Chunking::Automatic();\n"
+        "cands is how many distinct schedules there were to choose between,\n"
+        "and one means the question does not arise -- at k = 1 it never does,\n"
+        "since any chunk takes the whole batch in one go.\n"
+        "\nKernel column is the matrix kernel against the loop, both built\n"
+        "and timed here. Section 12's [C22] margin is ten per cent, so a\n"
+        "column reading 1.00x means the incumbent held rather than that the\n"
+        "two were identical.\n"
+        "\nBoth are the same measurement a caller would make at start-up, on\n"
+        "their own problem shape. The point of the section is that the answer\n"
+        "differs by machine, so it is worth re-running here rather than\n"
+        "reading the figures the plan quotes for a laptop.\n");
   }
 
   if (Want("transforms")) {
