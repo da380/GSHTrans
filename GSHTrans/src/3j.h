@@ -288,16 +288,27 @@ void WoodhouseToPlain(const int l1, const int l3, std::span<T> a) {
 
 /**
  * @brief The tolerance the completeness self-check uses, at this precision.
- * @details Deliberately loose. Its job is to separate a table that is right
- * from one the recursion has destroyed, and those two populations are twenty
- * orders of magnitude apart -- a good table departs from one by 1e-16 to
- * 1e-8, a bad one by 1e-3 to 1e112 -- so the choice is not delicate. It is
- * written against epsilon so that it follows the precision rather than
- * assuming double.
+ * @details Where this sits was decided by measuring the two populations, and
+ * they are **not** as cleanly separated as one might hope. In double, the
+ * departure of the sum from one falls into three groups:
+ *
+ *   good      1e-16 to 1e-8   fat triangles at moderate degree, and anything
+ *                             the closed form answers
+ *   marginal  2e-6 to 1e-4    (60,60,90), (256,256,500), (70,70,105) -- the
+ *                             values carry perhaps 5e-5 relative error and
+ *                             are still worth having
+ *   lost      1.1 to 1e112    everything past the boundary
+ *
+ * So the real gap is between 1e-4 and 1.1, and the tolerance goes there
+ * rather than just above the noise: refusing a table accurate to 5e-5 would
+ * cost a caller more than it saves them, while three orders of margin below
+ * the lost population is ample. Single precision cannot resolve the marginal
+ * band at all, so it takes the epsilon-scaled floor instead.
  */
 template <NumericConcepts::Real T>
 T CompletenessTolerance() {
-  return T{100} * std::sqrt(std::numeric_limits<T>::epsilon());
+  return std::max(T{1} / T{1000},
+                  T{100} * std::sqrt(std::numeric_limits<T>::epsilon()));
 }
 
 /**
@@ -324,6 +335,21 @@ T CompletenessTolerance() {
  * identically zero by design, so the sum is zero and correctly so.
  */
 template <NumericConcepts::Real T>
+T CompletenessDeparture(int l1, int l2, int l3, std::span<const T> table) {
+  if (not SatisfiesTriangle(l1, l2, l3)) return T{0};
+  auto sum = T{0};
+  for (auto value : table) sum += value * value;
+  return std::abs(sum - T{1});
+}
+
+/** @brief Whether a table passes the completeness check. */
+template <NumericConcepts::Real T>
+bool PassesCompleteness(int l1, int l2, int l3, std::span<const T> table) {
+  return CompletenessDeparture<T>(l1, l2, l3, table) <
+         CompletenessTolerance<T>();
+}
+
+template <NumericConcepts::Real T>
 void CheckCompleteness(int l1, int l2, int l3, std::span<const T> table) {
   if (not SatisfiesTriangle(l1, l2, l3)) return;
   auto sum = T{0};
@@ -338,6 +364,72 @@ void CheckCompleteness(int l1, int l2, int l3, std::span<const T> table) {
         " rather than one. The recursion has lost accuracy, which happens "
         "near stretched triangles at high degree; the values are finite but "
         "meaningless. See docs/3j-plan.md.");
+  }
+}
+
+
+/**
+ * @brief Racah's closed form for one symbol, evaluated in log space.
+ * @details A single alternating sum whose length is
+ * min(l1+l2-l3, l1-m1, l2+m2) - max(0, l2-l3-m1, l1-l3+m2) + 1. The factorials
+ * are formed as logarithms and the prefactor is folded into each term, so
+ * nothing overflows however large the degrees; what limits it is cancellation
+ * between the alternating terms, which grows with the sum's length.
+ *
+ * **It is exact where the recursion is worst.** At l3 = l1 + l2 the sum has
+ * exactly one term, so there is no cancellation at all -- and that is the
+ * stretched corner where the recursion is run in its unstable direction.
+ * Going the other way, the fat triangles that give this a long alternating
+ * sum are where the recursion is at the noise floor. The two fail in
+ * complementary regimes, which is why the library carries both.
+ *
+ * The two do **not** cover the whole space between them; see docs/3j-plan.md
+ * T2 for where the gap is. The completeness check is what stands between a
+ * caller and it.
+ */
+template <NumericConcepts::Real T>
+T RacahSymbol(int l1, int l2, int l3, int m1, int m2, int m3) {
+  if (m1 + m2 + m3 != 0) return T{0};
+  if (std::abs(m1) > l1 or std::abs(m2) > l2 or std::abs(m3) > l3) {
+    return T{0};
+  }
+  if (not SatisfiesTriangle(l1, l2, l3)) return T{0};
+
+  const auto logFactorial = [](int n) {
+    return static_cast<T>(std::lgamma(static_cast<double>(n) + 1.0));
+  };
+
+  const auto logDelta =
+      logFactorial(l1 + l2 - l3) + logFactorial(l1 - l2 + l3) +
+      logFactorial(-l1 + l2 + l3) - logFactorial(l1 + l2 + l3 + 1);
+  const auto logNumerator =
+      logFactorial(l1 + m1) + logFactorial(l1 - m1) + logFactorial(l2 + m2) +
+      logFactorial(l2 - m2) + logFactorial(l3 + m3) + logFactorial(l3 - m3);
+  const auto logPrefactor = (logDelta + logNumerator) / 2;
+
+  const auto kMin = std::max({0, l2 - l3 - m1, l1 - l3 + m2});
+  const auto kMax = std::min({l1 + l2 - l3, l1 - m1, l2 + m2});
+
+  auto sum = T{0};
+  for (auto k = kMin; k <= kMax; ++k) {
+    const auto logDenominator =
+        logFactorial(k) + logFactorial(l1 + l2 - l3 - k) +
+        logFactorial(l1 - m1 - k) + logFactorial(l2 + m2 - k) +
+        logFactorial(l3 - l2 + m1 + k) + logFactorial(l3 - l1 - m2 + k);
+    const auto term = std::exp(logPrefactor - logDenominator);
+    sum += (k % 2 == 0) ? term : -term;
+  }
+  return ((l1 - l2 - m3) % 2 == 0) ? sum : -sum;
+}
+
+/** @brief Fills the (m1, m3) plane from Racah's closed form. */
+template <NumericConcepts::Real T>
+void RacahMatrix(int l1, int l2, int l3, std::span<T> table) {
+  auto index = std::size_t{0};
+  for (auto m1 = -l1; m1 <= l1; ++m1) {
+    for (auto m3 = -l3; m3 <= l3; ++m3) {
+      table[index++] = RacahSymbol<T>(l1, l2, l3, m1, -(m1 + m3), m3);
+    }
   }
 }
 
@@ -421,10 +513,23 @@ class Wigner3jMatrix {
         _data(static_cast<std::size_t>(2 * l1 + 1) *
               static_cast<std::size_t>(2 * l3 + 1)) {
     assert(l1 >= 0 and l2 >= 0 and l3 >= 0);
+    // Recurse, check, and fall back to Racah's closed form if the check
+    // fires -- then check again, and refuse if that fails too.
+    //
+    // This is the dispatch of docs/3j-plan.md [J3], and its merit is that it
+    // is a dispatch on *the thing that actually went wrong* rather than on a
+    // boundary formula in (l1, l2, l3) that someone would have to derive,
+    // calibrate, and re-derive for every precision. It adapts without being
+    // told, and it degrades correctly: on a triple neither method handles,
+    // the second check fires and the constructor throws.
     ThreeJDetails::WoodhouseMatrix<T>(_l1, _l2, _l3, _data);
     ThreeJDetails::WoodhouseToPlain<T>(_l1, _l3, _data);
-    ThreeJDetails::CheckCompleteness<T>(_l1, _l2, _l3,
-                                        std::span<const T>(_data));
+    if (not ThreeJDetails::PassesCompleteness<T>(_l1, _l2, _l3,
+                                                 std::span<const T>(_data))) {
+      ThreeJDetails::RacahMatrix<T>(_l1, _l2, _l3, std::span<T>(_data));
+      ThreeJDetails::CheckCompleteness<T>(_l1, _l2, _l3,
+                                          std::span<const T>(_data));
+    }
   }
 
   /** @brief Returns the first degree. */

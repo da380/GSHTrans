@@ -90,27 +90,38 @@ TEST(ThreeJ, CompletenessHoldsAtTheStretchedEdgeForModestDegrees) {
 //                     Where the identity fails, and it must                 //
 //--------------------------------------------------------------------------//
 
-// [J1]: the boundary of section 1 of 3j-plan.md, and it is now a *refusal*
-// rather than a wrong answer. Before the self-check these triples returned
-// finite, plausibly-shaped tables holding numbers of order 1e112.
-//
-// These are the assertions T4 inverts: when Racah's closed form covers the
-// stretched region they become successes, and the commit that changes them is
-// the visible record of what was fixed.
-TEST(ThreeJ, RefusesStretchedTrianglesOfHighDegree) {
-  for (auto l : {35, 40, 50}) {
-    EXPECT_THROW(Wigner3jMatrix<double>(l, l, 2 * l), std::runtime_error)
-        << "(l, l, 2l) at l = " << l
-        << ": the present recursion is badly wrong here and must say so. If "
-           "this now fails, the algorithm has been fixed and the test should "
-           "be inverted (3j-plan.md T4)";
+// T4 inverted this one, which is the visible record of what the fallback
+// bought. These triples used to return finite, plausibly-shaped tables of
+// numbers of order 1e112; then [J1]'s check made them a refusal; now Racah's
+// closed form answers them exactly, because at l3 = l1 + l2 its alternating
+// sum has exactly one term and so cannot cancel at all.
+TEST(ThreeJ, AnswersStretchedTrianglesOfHighDegreeThroughTheFallback) {
+  for (auto l : {35, 40, 50, 64, 100, 128}) {
+    ASSERT_NO_THROW(Wigner3jMatrix<double>(l, l, 2 * l))
+        << "(l, l, 2l) at l = " << l;
+    EXPECT_NEAR(Completeness<double>(l, l, 2 * l), 1.0, 1e-12)
+        << "(l, l, 2l) at l = " << l;
+
+    // And the value at the corner is the closed form, exactly.
+    const auto table = Wigner3jMatrix<double>(l, l, 2 * l);
+    EXPECT_NEAR(table(l, l, -2 * l), 1 / std::sqrt(4.0 * l + 1), 1e-13)
+        << "l = " << l;
   }
 }
 
-TEST(ThreeJ, RefusesNearStretchedTrianglesOfHighDegree) {
-  for (auto l : {100, 128}) {
-    EXPECT_THROW(Wigner3jMatrix<double>(l, l, 3 * l / 2), std::runtime_error)
-        << "(l, l, 3l/2) at l = " << l;
+// The gap, and it is the finding of 3j-plan.md T2: the two methods do **not**
+// cover the space between them. At intermediate shapes the recursion has lost
+// the values and Racah's sum is already too long to be trusted, so neither
+// answers and the constructor refuses. That is the right behaviour and it is
+// asserted rather than left to be discovered.
+TEST(ThreeJ, RefusesTheTriplesNeitherMethodCovers) {
+  for (const auto& t : std::vector<std::array<int, 3>>{
+           {90, 90, 135}, {100, 100, 150}, {128, 128, 192}, {128, 128, 160},
+           {200, 200, 200}}) {
+    EXPECT_THROW(Wigner3jMatrix<double>(t[0], t[1], t[2]), std::runtime_error)
+        << "(" << t[0] << "," << t[1] << "," << t[2]
+        << ") is covered by neither method and must be refused rather than "
+           "answered wrongly";
   }
 }
 
@@ -125,9 +136,28 @@ TEST(ThreeJ, AcceptsEveryTripleItShould) {
     EXPECT_NO_THROW(Wigner3jMatrix<double>(l, l, 2 * l))
         << "(l, l, 2l), l = " << l;
   }
-  for (auto l : {10, 20, 30, 40}) {
+  for (auto l : {10, 20, 30, 40, 60, 70}) {
     EXPECT_NO_THROW(Wigner3jMatrix<double>(l, l, 3 * l / 2))
         << "(l, l, 3l/2), l = " << l;
+  }
+  // Near-stretched at high degree, which only the fallback can answer.
+  for (const auto& t : std::vector<std::array<int, 3>>{
+           {128, 128, 250}, {200, 150, 340}, {256, 256, 500}}) {
+    EXPECT_NO_THROW(Wigner3jMatrix<double>(t[0], t[1], t[2]))
+        << "(" << t[0] << "," << t[1] << "," << t[2] << ")";
+  }
+}
+
+// The marginal band, which is why the tolerance sits where it does. These
+// carry perhaps 5e-5 relative error -- worth having, and refused by a
+// tolerance set just above the noise floor instead of in the real gap.
+TEST(ThreeJ, AcceptsTheMarginalBandRatherThanRefusingUsableValues) {
+  for (const auto& t : std::vector<std::array<int, 3>>{
+           {60, 60, 90}, {70, 70, 105}, {256, 256, 500}}) {
+    EXPECT_NO_THROW(Wigner3jMatrix<double>(t[0], t[1], t[2]))
+        << "(" << t[0] << "," << t[1] << "," << t[2] << ")";
+    EXPECT_NEAR(Completeness<double>(t[0], t[1], t[2]), 1.0, 1e-3)
+        << "(" << t[0] << "," << t[1] << "," << t[2] << ")";
   }
   // A triple that is not a triangle has an identically zero table, so its
   // completeness sum is zero and correctly so: the check must skip it rather

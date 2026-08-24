@@ -116,23 +116,40 @@ int main() {
               << "\n";
   }
 
-  // Near a stretched triangle at high degree the recursion loses the values
-  // altogether. Without the self-check this would hand back a table of
-  // numbers of order 1e112, finite and correctly shaped.
+  // Near a stretched triangle the recursion loses the values altogether --
+  // (40, 40, 80) would hand back numbers of order 1e9 in a correctly shaped
+  // table. The check catches that and the library falls back to Racah's
+  // closed form, whose alternating sum has exactly one term there and so
+  // cannot cancel at all. The caller sees only a correct answer.
+  {
+    const auto stretched = Wigner3jMatrix<double>(40, 40, 80);
+    const auto want = 1 / std::sqrt(2.0 * 80 + 1);
+    std::cout << "\n(40, 40, 80) is answered by the fallback, exactly: "
+              << std::abs(stretched(40, 40, -80) - want) << "\n";
+    if (!(std::abs(stretched(40, 40, -80) - want) < 1e-14)) return 1;
+  }
+
+  // The two methods fail in complementary regimes, but they do not cover
+  // everything between them. At intermediate shapes and high degree the
+  // recursion has lost the values and Racah's sum is already too long to be
+  // trusted, so neither answers -- and the library refuses rather than
+  // returning something plausible and wrong.
   try {
-    const auto doomed = Wigner3jMatrix<double>(40, 40, 80);
-    std::cout << "\n(40, 40, 80) should have been refused\n";
-    (void)doomed;
+    const auto uncovered = Wigner3jMatrix<double>(100, 100, 150);
+    std::cout << "\n(100, 100, 150) should have been refused\n";
+    (void)uncovered;
     return 1;
   } catch (const std::runtime_error& error) {
-    std::cout << "\n(40, 40, 80) is refused, and says why:\n  "
+    std::cout << "\n(100, 100, 150) is covered by neither method, and is "
+                 "refused:\n  "
               << error.what() << "\n";
   }
 
-  std::cout << "\nWhere it is accurate, it is accurate to rounding; where it "
-               "is not,\nit says so. The working range is wide -- (l,l,l) "
-               "holds to l = 64 and\nbeyond -- and it narrows as a triangle "
-               "approaches stretched.\n";
+  std::cout << "\nSo: accurate to rounding where either method holds, and a "
+               "refusal\nwhere neither does. The recursion covers fat "
+               "triangles and the closed\nform covers near-stretched ones; "
+               "what is left is a band at intermediate\nshapes above about "
+               "l = 80. See docs/3j-plan.md.\n";
 
   return 0;
 }

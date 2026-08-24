@@ -162,7 +162,11 @@ the answer rather than the fallback. T2 exists to find out, and it is an
 afternoon.
 
 **[J4] `wigxjpf` is rejected for now, and the condition for revisiting it is
-6-j.** It is C rather than C++, a few thousand lines, and not header-only,
+6-j.** *T2 adds a second condition, and it is now the stronger of the two: the
+gap.* The classical pair does not cover intermediate shapes above `l ≈ 80` or
+fat triangles above `l ≈ 160`, and closing that means either Schulten–Gordon
+or exact integer arithmetic. If the gap ever needs closing, the choice between
+those two should be made together with 6-j rather than separately. It is C rather than C++, a few thousand lines, and not header-only,
 which cuts against the preference `thoughts.md` §5 states and which this
 library has honoured everywhere except BLAS — and BLAS earned its exception by
 being a thing every target machine already has, which `wigxjpf` is not.
@@ -236,6 +240,44 @@ whether they overlap or leave a band uncovered.
 If they overlap, [J3] stands and T3 is small. If they do not, the answer is
 Schulten–Gordon and this plan's §2 is amended rather than followed.
 
+#### T2's answer: they do not overlap, and [J3] is amended
+
+*Done.* Racah first agrees with the recursion where the recursion is good —
+`1.3e-15` at `(2,2,2)`, `2.6e-13` at `(12,12,12)`, `1.6e-11` at `(20,20,20)`,
+degrading with the alternating sum's length exactly as expected — so the two
+are implementations of the same thing and the comparison below is a
+comparison of accuracy rather than of convention.
+
+Then the question. Completeness departure from one, by each method, with the
+longest alternating sum Racah forms for that triple:
+
+| triple | recursion | Racah | sum length | covered by |
+|---|---:|---:|---:|---|
+| (35,35,70) | 2.6e4 | **1.000000** | 1 | Racah |
+| (64,64,128) | 8.0e35 | **1.000000** | 1 | Racah |
+| (128,128,250) | 2.1e102 | **1.000000** | 7 | Racah |
+| (256,256,500) | 1.1e241 | **1.000009** | 13 | Racah |
+| (60,60,90) | 1.000312 | **1.000002** | 31 | both, marginally |
+| (70,70,105) | 8.4e2 | **1.000103** | 36 | Racah, marginally |
+| (80,80,120) | 1.7e7 | 1.146 | 41 | **neither** |
+| (90,90,135) | 5.9e9 | 3.8e2 | 46 | **neither** |
+| (100,100,150) | 4.5e18 | 1.6e6 | 51 | **neither** |
+| (128,128,192) | 2.1e34 | 2.1e16 | 65 | **neither** |
+| (128,128,128) | **1.000000** | 5.8e18 | 129 | recursion |
+| (160,160,160) | 1.056 | 7.5e30 | 161 | **neither** |
+| (200,200,200) | 1.4e10 | 1.3e46 | 201 | **neither** |
+
+**There is a gap, and it is not small.** Two regions fall outside both
+methods: **intermediate shapes** — around `l₃ ≈ 1.5 l₁` — from about
+`l = 80`, and **fat triangles** from about `l = 160`. The second is news
+beyond §6, which had `(l,l,l)` holding to 128: it does, and 160 is already
+5.6% wrong.
+
+*So [J3]'s hope is refuted and its own contingency applies* — "if they do
+not, the answer is Schulten–Gordon and this plan's §2 is amended rather than
+followed". §2 is amended below rather than abandoned, because the measurement
+also shows the hybrid is worth building anyway.
+
 **T3 — [J1]'s self-check.** *Done.* The identity in `Wigner3jMatrix`'s
 constructor, with the tolerance and the throw. It lands before T4
 deliberately: a caller who picks the library up between the two gets a refusal
@@ -263,14 +305,46 @@ it.
 **throws**, which is the same fact one layer up, and they carry a note saying
 that T4 should invert them.
 
-**T4 — Racah, and the dispatch.** The closed form for one symbol and for a
-table, log-space factorials, and the fallback [J3] describes. The self-check
-runs on the second table too, so a triple neither method handles still throws.
+**T4 — Racah, and the dispatch.** *Done, and built despite T2*, because what
+T2 refutes is [J3]'s claim that the hybrid *covers the space*, not its claim
+that the hybrid is worth having. The union is a large gain over the recursion
+alone: everything near-stretched — which §6 rightly says "is not an exotic
+corner but the top of every coupling sum" — becomes exact where it used to be
+`10¹⁰²` wrong. What T2 changes is the honest description of the result, from
+"covered" to "covered except a named band", and the check is what stands
+between a caller and that band.
 
-*The test that earns it* is the one T1 wrote as a negative: the stretched
-triples that failed the identity now pass it, and their values agree with the
-`l₃ = l₁ + l₂` closed form where that applies. The negative assertions of T1
-are inverted in the same commit, which is the visible record of what changed.
+The dispatch is [J3]'s and it works as designed: recurse, check, fall back to
+Racah, check again, refuse. No boundary formula, no tuning constants, adapts
+to precision without being told.
+
+*The test that earns it* is the one T1 wrote as a negative, inverted: the
+stretched triples that used to be refused now construct, satisfy the identity
+to `1e-12`, and reproduce `1/sqrt(2l₃+1)` at the corner to `1e-13`. A second
+test asserts the gap — that `(90,90,135)`, `(100,100,150)`, `(128,128,192)`,
+`(128,128,160)` and `(200,200,200)` are **refused**, since being answered
+wrongly there is the thing this whole plan exists to prevent.
+
+#### [J1]'s tolerance was wrong, and the measurement is why
+
+That decision says the two populations are "twenty orders of magnitude apart,
+so the choice is not delicate". **They are not cleanly separated.** In double
+the departures fall into three groups, not two:
+
+```
+good      1e-16 to 1e-8   fat triangles at moderate degree, and anything the
+                          closed form answers
+marginal  2e-6 to 1e-4    (60,60,90), (256,256,500), (70,70,105)
+lost      1.1  to 1e112   everything past the boundary
+```
+
+A tolerance set just above the noise — the first attempt used
+`100·sqrt(ε)`, about `1.5e-6` — **refuses the marginal band**, whose values
+carry perhaps `5e-5` relative error and are worth having. The real gap is
+between `1e-4` and `1.1`, so the tolerance goes there instead: `1e-3`, with
+the epsilon-scaled floor kept for single precision, which cannot resolve the
+marginal band at all. Three orders of margin below the lost population is
+ample.
 
 **T5 — [J2]'s deletion.** *Done*, and there were **three** copies of the
 Woodhouse routine in this repository rather than the two §4 counted:
