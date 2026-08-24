@@ -42,6 +42,10 @@ add_executable(TestInterpolate
                TestInterpolate.cpp)
 target_link_libraries(TestInterpolate PRIVATE GSHTrans gtest_main)
 
+add_executable(TestTuning
+               TestTuning.cpp)
+target_link_libraries(TestTuning PRIVATE GSHTrans gtest_main)
+
 add_executable(TestConventions
                TestConventions.cpp)
 target_link_libraries(TestConventions PRIVATE GSHTrans gtest_main)
@@ -79,6 +83,7 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/GridBase.h
   GSHTrans/src/Indexing.h
   GSHTrans/src/Policies.h
+  GSHTrans/src/Tuning.h
   GSHTrans/src/Utility.h
   GSHTrans/src/Version.h
   GSHTrans/src/Views.h
@@ -137,6 +142,7 @@ gtest_discover_tests(TestTensorAlgebra)
 gtest_discover_tests(TestTensorReality)
 gtest_discover_tests(TestExpansion)
 gtest_discover_tests(TestInterpolate)
+gtest_discover_tests(TestTuning)
 gtest_discover_tests(TestConventions)
 gtest_discover_tests(TestLayered)
 gtest_discover_tests(TestWigner)

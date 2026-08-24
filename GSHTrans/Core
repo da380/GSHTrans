@@ -11,6 +11,7 @@
 #include "src/GridBase.h"
 #include "src/Indexing.h"
 #include "src/Policies.h"
+#include "src/Tuning.h"
 #include "src/Utility.h"
 #include "src/Views.h"
 #include "src/Wigner.h"

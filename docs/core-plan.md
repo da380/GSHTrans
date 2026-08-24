@@ -3218,8 +3218,67 @@ between runs — *but that it never returns something worse than the default by
 more than the margin*, checked over several sizes. That is the property a
 caller actually needs, and it is testable where "finds the best" is not.
 
+*Done, and the first version's method was wrong in two ways that the numbers
+caught rather than the reading.*
+
+**It was not interleaved.** It timed the incumbent to completion and then each
+candidate to completion, which is precisely what §8 forbids: "comparing two
+versions requires running them alternately in one session". Measured on a
+fixed grid, the first pass runs about **nine per cent slow** against the
+sixth — just under the margin, and systematically against whichever candidate
+goes first, which is the incumbent. Every candidate is now warmed up before
+any is timed, and the windows go round-robin.
+
+**It timed identical experiments.** Two cache figures yielding the same chunk
+are the same experiment, and timing both only gives noise two chances to beat
+the margin. The clearest case is `count == 1`, where every chunk of one or
+more takes the whole batch in one go, so **there is nothing to tune at all** —
+and the first version duly reported a **2.03× "win"** there, which is
+definitionally impossible and is what said the method rather than the result
+was wrong. Candidates are now collapsed on the schedule they would actually
+run, and `count == 1` reports one candidate and no choice.
+
+*What it is worth, with both defects fixed*, `nMax = 2`, laptop:
+
+| lMax | k | threads | speedup | candidates |
+|---:|---:|---:|---:|---:|
+| 64 | 1 | 1 or 8 | 1.00× | 1 |
+| 64 | 8 | 8 | 1.00× | 4 |
+| 128 | 8 | 8 | **1.13×** | 6 |
+| 128 | 32 | 8 | **1.15×** | 7 |
+| 256 | 1 | 1 or 8 | 1.00× | 1 |
+| 256 | 8 | 8 | 1.00× | 6 |
+| 256 | 32 | 1 | **1.12×** | 6 |
+| 256 | 32 | 8 | **1.18×** | 6 |
+
+**Four of eighteen configurations find anything, and the most is 1.18×.** All
+four are large-batch, and three of the four are threaded, which is where the
+chunk arithmetic says the question arises at all.
+
+*That is a much smaller number than §10's, and the reason is that §10's has
+already been collected.* `thoughts.md` §10 rests the case on "getting it wrong
+cost 2.0× on the batched inverse" — but that 2.0× was against the *starved*
+rule, which divided the cache by the thread count in both directions, and §10
+item 1 fixed it. The default is now good, and what is left is the 1.1× to
+1.2× above. **This is the first half of W6's answer**, and it arrives before
+W4 rather than after it, which is why the two are reordered below.
+
 **W4 — `Wisdom`: the key, the fingerprint, load and save.** [C21] and [C23].
-Still no kernel tuning; the store's first content is W3's answers.
+
+***Reordered after W5, and the reason is W3's numbers.*** This step is the
+persistence layer, and §12.5's W6 makes its justification conditional: "if a
+tuned grid is not measurably better than `Chunking::Automatic()`, then the
+conservative default is doing its job and the persistence layer is machinery
+without a customer". W3 has now measured its customer at **1.1× to 1.2× in
+four configurations of eighteen**, which is not nothing and is not much. The
+other customer — the kernel, [C12] — is measured at **2× to 6×** and has two
+complete implementations to compare, which §10 calls "the strongest case yet".
+So W5 goes first, and W4 is decided with both customers measured rather than
+with one. The precedent is §9's reordering of E → F → G → H on the strength of
+the first benchmark run.
+
+Still no kernel tuning at this point; the store's first content is W3's and
+W5's answers.
 
 *A test worth writing before the code:* a wisdom file written on one
 fingerprint and loaded under another yields no entry, silently. That is the
