@@ -3517,12 +3517,28 @@ attributable to the move alone. `RefusesNodesThatAreNotAQuadrature` exercises
 [C27]'s contract, including the interior-to-`(0, π)` condition that a grid
 containing the pole would fail.
 
-**G2 — the concept says what it now knows.** *Not done, and deferred rather
-than dropped.* `InterpolateDetails::SeparableAngularGrid` exists because
-`AngularGrid` does not promise the two axes separately, and the new base does
-promise them — so the local concept may be removable. It is left alone here
-because G1's whole claim is that nothing outside the two grid headers moved,
-and this would move something. Worth a few minutes on its own.
+**G2 — the concept says what it now knows.** *Done*, on the author's
+judgement that separability is a safe assumption for grids on this library's
+terms.
+
+`AngularGrid` gains the two axes and `InterpolateDetails::SeparableAngularGrid`
+goes. That local refinement existed because the expression layer only ever
+walks `Points()`, so the base concept never asked for the axes — but a
+rectilinear interpolant needs one abscissa range per axis, and the polar
+padding has to build each of them. With `SphericalGrid` holding both and
+forming `Points()` from them, the refinement was describing every grid there
+is.
+
+*Asserted both ways, because a requirement nothing can fail is decoration.* A
+type carrying exactly what `AngularGrid` asked for before the change is now
+rejected, and adding the two axes is the only thing that fixes it.
+
+*And the lesson from writing the local concept is carried over rather than
+left behind:* the requirement is written against `range_value_t` rather than
+`*begin(...)`, since an axis accessor returns a view by value and `views::all`
+of a prvalue container is an `owning_view`, which is not borrowed — so
+`ranges::begin` on the returned prvalue is ill-formed for a grid that plainly
+has the axis.
 
 **G3 — a second grid is *not* built.** Not now, and the plan does not assume
 one. The test that the separation is real is G1's suite, not a second

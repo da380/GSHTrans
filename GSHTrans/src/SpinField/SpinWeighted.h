@@ -90,10 +90,9 @@ using Node = std::remove_cvref_t<T>;
 //                          What this layer needs of a grid                  //
 //--------------------------------------------------------------------------//
 
-// Deliberately much less than GaussLegendreGrid offers. Stating it as a
-// concept documents the coupling, gives a readable error when a grid is
-// missing something, and is what the layered and tensor layers will check
-// against too.
+// Deliberately much less than a grid offers. Stating it as a concept
+// documents the coupling, gives a readable error when a grid is missing
+// something, and is what the layered and tensor layers check against too.
 template <typename G>
 concept AngularGrid = requires(const G& grid) {
   typename G::Real;
@@ -115,6 +114,31 @@ concept AngularGrid = requires(const G& grid) {
   grid.Points();
   grid.CoLatitudeIndices();
   grid.LongitudeIndices();
+
+  // The two axes separately, which is more than an evaluation loop needs and
+  // is required anyway.
+  //
+  // The expression layer only ever walks Points(), so this used to be left
+  // out and Interpolate carried its own refinement asking for it -- a
+  // rectilinear interpolant takes one abscissa range per axis, and the polar
+  // padding has to build each of them. Grids on this library's terms are
+  // separable, since SphericalGrid holds the two axes and forms Points() from
+  // them, so the refinement was describing every grid there is. Asking here
+  // instead means one concept rather than two, and Points() becomes a
+  // convenience the grid already provides rather than a separate demand.
+  //
+  // Written against range_value_t rather than *begin(...): an axis accessor
+  // returns a view by value, and views::all of a prvalue container is an
+  // owning_view, which is not a borrowed range -- so ranges::begin on the
+  // returned prvalue is ill-formed for such a grid even though it plainly has
+  // the axis. That cost a debugging session when Interpolate's local concept
+  // was first written.
+  requires std::convertible_to<
+      std::ranges::range_value_t<decltype(grid.CoLatitudes())>,
+      typename G::Real>;
+  requires std::convertible_to<
+      std::ranges::range_value_t<decltype(grid.Longitudes())>,
+      typename G::Real>;
 
   // Quadrature weights, kept as two factors rather than one product: the
   // longitude weights are uniform, so the sphere integral factorises.

@@ -279,3 +279,52 @@ TEST(Chunking, RejectsPoliciesThatDescribeNothing) {
   EXPECT_THROW(Chunking::Fixed(0), std::invalid_argument);
   EXPECT_THROW(Chunking::Fixed(-2), std::invalid_argument);
 }
+
+//--------------------------------------------------------------------------//
+//                              AngularGrid                                  //
+//--------------------------------------------------------------------------//
+//
+// The concept gained the two axes when SphericalGrid took over the transform:
+// grids on this library's terms are separable, so Interpolate's local
+// refinement asking for them separately was describing every grid there is
+// and went away (core-plan.md section 13, G2).
+//
+// Asserted both ways, because a requirement nothing can fail is decoration. A
+// type carrying everything the concept asked for *before* that change must now
+// be rejected, and the real grid must still be accepted.
+
+namespace {
+
+using ProbeReal = double;
+
+// Everything AngularGrid required before the axes were added.
+struct WithoutAxes {
+  using Real = ProbeReal;
+  using NRange = GSHTrans::All;
+  const void* Identity() const { return this; }
+  std::ptrdiff_t FieldSize() const { return 0; }
+  std::ptrdiff_t MaxUpperIndex() const { return 0; }
+  std::vector<std::ptrdiff_t> UpperIndices() const { return {}; }
+  std::vector<std::pair<Real, Real>> Points() const { return {}; }
+  std::vector<std::ptrdiff_t> CoLatitudeIndices() const { return {}; }
+  std::vector<std::ptrdiff_t> LongitudeIndices() const { return {}; }
+  std::vector<Real> CoLatitudeWeights() const { return {}; }
+  std::vector<Real> LongitudeWeights() const { return {}; }
+};
+
+// The same, plus the axes.
+struct WithAxes : WithoutAxes {
+  std::vector<Real> CoLatitudes() const { return {}; }
+  std::vector<Real> Longitudes() const { return {}; }
+};
+
+static_assert(!GSHTrans::AngularGrid<WithoutAxes>,
+              "a grid that cannot hand over its two axes separately is no "
+              "longer an AngularGrid");
+static_assert(GSHTrans::AngularGrid<WithAxes>,
+              "and adding them is the only thing that was missing");
+static_assert(
+    GSHTrans::AngularGrid<GSHTrans::GaussLegendreGrid<double, GSHTrans::All,
+                                                      GSHTrans::All>>);
+
+}  // namespace

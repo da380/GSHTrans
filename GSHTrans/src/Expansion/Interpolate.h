@@ -47,35 +47,6 @@ namespace GSHTrans {
 namespace InterpolateDetails {
 
 //--------------------------------------------------------------------------//
-//                      What interpolation needs of a grid                   //
-//--------------------------------------------------------------------------//
-
-// AngularGrid asks only for Points(), because the expression layer evaluates
-// point by point and never needs to know that the point set is a product. An
-// interpolant does: a rectilinear scheme takes one abscissa range per axis,
-// and the padding has to build each of them separately. Stating the extra
-// requirement as a concept documents the coupling, in the same way
-// SpinWeighted.h states the base one.
-//
-// Written against range_value_t rather than against *begin(...) deliberately:
-// an axis accessor returns a view by value, and views::all of a prvalue
-// container is an owning_view, which is not a borrowed range -- so
-// ranges::begin on the returned prvalue is ill-formed and the concept would be
-// unsatisfiable for a grid that in fact has both axes. Found by the concept
-// rejecting GaussLegendreGrid.
-template <typename G>
-concept SeparableAngularGrid = AngularGrid<G> && requires(const G& grid) {
-  { grid.CoLatitudes() } -> std::ranges::range;
-  { grid.Longitudes() } -> std::ranges::range;
-  requires std::convertible_to<
-      std::ranges::range_value_t<decltype(grid.CoLatitudes())>,
-      typename G::Real>;
-  requires std::convertible_to<
-      std::ranges::range_value_t<decltype(grid.Longitudes())>,
-      typename G::Real>;
-};
-
-//--------------------------------------------------------------------------//
 //                              The padded grid                              //
 //--------------------------------------------------------------------------//
 
@@ -113,7 +84,7 @@ struct Padded {
 // longitudes; the wrap column is added to them exactly as it is to every
 // interior row, which is right because exp(i N 2pi) = exp(i N 0) for integer
 // N and so the polar row closes on itself like any other.
-template <SeparableAngularGrid GridType, RealOrComplexFloatingPoint Scalar>
+template <AngularGrid GridType, RealOrComplexFloatingPoint Scalar>
 auto Pad(const GridType& grid, std::span<const Scalar> samples,
          std::span<const Scalar> north, std::span<const Scalar> south) {
   using Real = typename GridType::Real;
@@ -191,7 +162,7 @@ auto Pad(const GridType& grid, std::span<const Scalar> samples,
 // frame e_pm depends on the azimuth of approach. So a polar row is a row, and
 // a constant one would be wrong at every N != 0.
 template <RealOrComplexFloatingPoint Scalar, typename Expansion,
-          SeparableAngularGrid GridType>
+          AngularGrid GridType>
 auto PolarRows(const Expansion& expansion, const GridType& grid) {
   using Real = typename GridType::Real;
   using Complex = std::complex<Real>;
@@ -246,7 +217,7 @@ auto PolarRows(const Expansion& expansion, const GridType& grid) {
 // and, more to the point, keeps the state at a stable address so that copying
 // the interpolant is well defined -- which it has to be, because GridBase's
 // ProjectFunction takes its callable by value ([I8]).
-template <std::ptrdiff_t _N, InterpolateDetails::SeparableAngularGrid _Grid,
+template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value = ComplexValued>
 class SpectralInterpolant {
  public:
@@ -428,7 +399,7 @@ auto Interpolate(const F& field, Scheme::SpectralTag = Scheme::Spectral(),
 // initialised in order. Handing upstream an owning view instead would make
 // this class move-only, and it has to be copyable -- ProjectFunction takes its
 // callable by value ([I8]).
-template <std::ptrdiff_t _N, InterpolateDetails::SeparableAngularGrid _Grid,
+template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value, typename _Upstream>
 class LocalInterpolant {
  public:
