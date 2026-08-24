@@ -3244,6 +3244,83 @@ is still not a periodic spline, and that whether it matters is a measurement
 rather than an argument. With `NotAKnot` as upstream's default the question is
 sharper, not softer, and P5 is where it gets a number.
 
+#### What P5 measured
+
+*Done*, as the `interpolation` section of the harness. **The first version of
+the accuracy table asked the wrong question and had to be rewritten**: it put
+the field at each grid's own band limit, so every row measured the worst case
+and nothing could improve with degree. The question a caller has is not "how
+good is bicubic at the band limit" — it is always bad there, since the samples
+barely resolve the field — but *how fine a grid a cheap scheme needs. So the
+band is held fixed and the grid is oversampled.
+
+A band-16 field, error relative to the largest sampled value, laptop:
+
+| grid | over | scheme | interior | polar cells | last φ cell |
+|---:|---:|---|---:|---:|---:|
+| 16 | 1× | bilinear | 3.41e-1 | 7.64e-2 | 1.80e-1 |
+| 16 | 1× | bicubic | 1.28e-1 | 8.75e-2 | 1.25e-1 |
+| 32 | 2× | bilinear | 9.86e-2 | 1.99e-2 | 5.27e-2 |
+| 32 | 2× | bicubic | 6.77e-3 | 5.87e-3 | 1.10e-2 |
+| 64 | 4× | bilinear | 2.68e-2 | 5.20e-3 | 1.44e-2 |
+| 64 | 4× | bicubic | 7.12e-4 | 4.10e-4 | 4.19e-4 |
+| 128 | 8× | bilinear | 6.95e-3 | 1.39e-3 | 3.68e-3 |
+| 128 | 8× | bicubic | 3.98e-5 | 2.85e-5 | 3.09e-5 |
+
+**Three things, and the second is what this step existed to establish.**
+
+*The schemes converge at the orders they should* — bilinear by about 3.7× per
+doubling and bicubic by about 15×, which is second and fourth order. That is
+the check that the padding has not quietly broken the interpolation it was
+added to enable, and it is the sort of thing that would be easy to assume.
+
+***The padding works, and the evidence is that the two regions it was built
+for are the best columns rather than the worst.*** The polar cells and the
+last longitude cell are consistently *better* than the interior at every
+resolution — by two to five times. That is the opposite of the failure mode
+[I3] and the wrap column were guarding against, and it is a number where §9
+had only an argument. **The bicubic across the wrap not being a periodic
+spline does not show at any resolution measured**, which answers the question
+§9 flagged as needing a measurement rather than an argument.
+
+*And the band limit is not usable for a local scheme, which is worth saying
+plainly.* At 1× oversampling bicubic carries 13% error. A caller who wants a
+cheap interpolant wants an oversampled grid, and `ForBand` is how they ask for
+one — the same headroom argument §3.9 and `core-plan.md` step D already make
+for products and for `Integrate(abs2(f))`, arriving a third time from a
+different direction.
+
+#### What it costs, and when to transform instead
+
+| lMax | build spectral | build bicubic | spectral / pt | bicubic / pt | break-even |
+|---:|---:|---:|---:|---:|---:|
+| 16 | 0.01 ms | 0.02 ms | 1.40 µs | 0.012 µs | 5 |
+| 32 | 0.03 ms | 0.08 ms | 4.52 µs | 0.013 µs | 10 |
+| 64 | 0.18 ms | 0.38 ms | 16.28 µs | 0.013 µs | 19 |
+| 128 | 1.79 ms | 2.70 ms | 61.17 µs | 0.014 µs | 54 |
+
+**The local schemes are worth having, by about four thousand.** A bicubic
+evaluation costs 14 ns and does not grow with the degree; a spectral one costs
+61 µs at `lMax = 128` and grows as `lMax²`. That is the whole case for them
+and it is now a ratio rather than an expectation. Against it, building one
+costs 1.5× building the spectral interpolant, because it pays the same forward
+transform ([I3]) and then a spline solve on top — so the cheapness is per
+evaluation, exactly as [I3] said, and an interpolant used a handful of times
+is not worth building at all.
+
+**The crossover §9 asked for, and it is much lower than expected.** One
+whole-grid remesh costs what **54 spectral point evaluations** cost at
+`lMax = 128` — on a grid holding 33,540 points. So past a few dozen scattered
+evaluations, transforming onto a second grid and interpolating there beats
+evaluating the sum point by point, by orders of magnitude and increasingly so.
+
+*Which makes the recommendation the composite rather than either scheme.* For
+more than a few dozen points: transform onto a grid oversampled 4× to 8× and
+interpolate on it bicubically, for about `1e-4` to `1e-5` relative and 14 ns a
+point. `Spectral` is for a handful of points, for a reference, and for the
+polar rows. Neither of those was obvious before the numbers, and the second
+table is what says so.
+
 ### 22.4 What this does not touch
 
 The transform, the grid, the Wigner recursion, and the field algebra. An

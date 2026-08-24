@@ -17,6 +17,7 @@
 #include <omp.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <complex>
@@ -27,7 +28,9 @@
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <numbers>
 #include <optional>
+#include <random>
 #include <set>
 #include <string>
 #include <thread>
@@ -227,6 +230,20 @@ std::vector<int> ThreadLadder() {
   if (cores > 1 && cores <= threads) ladder.insert(cores);
   ladder.insert(threads);
   return std::vector<int>(ladder.begin(), ladder.end());
+}
+
+// Keep a computed value from being optimised away. One definition rather
+// than a volatile sink per section, and it measures nothing itself -- an
+// accumulate-into-volatile would add its own arithmetic to the per-point
+// columns, which are small enough for that to matter.
+template <typename T>
+void DoNotOptimise(const T& value) {
+#if defined(__GNUC__) || defined(__clang__)
+  asm volatile("" : : "m"(value) : "memory");
+#else
+  static volatile char sink;
+  sink = *reinterpret_cast<const volatile char*>(&value);
+#endif
 }
 
 // Run `action` enough times to measure it, and return seconds per call.
@@ -510,7 +527,7 @@ int main(int argc, char** argv) {
   // server runs were lost to exactly that: the source reached the machine with
   // an old timestamp, make saw nothing to do, and the log looked plausible
   // while being produced by the previous harness.
-  constexpr auto revision = 7;
+  constexpr auto revision = 8;
 
   if (argc == 2 && std::string(argv[1]) == "--check") {
     std::printf("harness revision %d\n", revision);
@@ -524,7 +541,7 @@ int main(int argc, char** argv) {
   std::printf("double precision, single field per call (k = 1)\n");
   std::printf(
       "sections: stream grid transforms threading batching generated "
-      "kernels kernels-loop kernels-matrix server huge "
+      "kernels kernels-loop kernels-matrix interpolation server huge "
       "(all, if none named)\n");
 
   // An unoptimised build measures nothing, and the default build directory is
@@ -1160,6 +1177,205 @@ int main(int argc, char** argv) {
   if (WantNamed("huge")) {
     PrintHeader("Thread scaling at lMax = 2048");
     if (AffordableAt(2048, 2)) RunScaling(2048, 2, Windows(2048));
+  }
+
+
+  //------------------------------------------------------------------------//
+  //                    Interpolation (field-algebra-plan.md 22)             //
+  //------------------------------------------------------------------------//
+  //
+  // P5 of section 22, and the step that says whether the local schemes are
+  // worth having. Spectral is exact for a band-limited field, so it is the
+  // reference the other two are measured against -- which is the whole reason
+  // [I2] built it first, and it is what makes the accuracy of a cheap scheme
+  // measurable on any field rather than only on one with a closed form.
+  //
+  // Three columns of error rather than one, because the padding exists for
+  // two specific regions and a single number would hide whether it worked:
+  // the interior, the two polar cells, and the last longitude cell where the
+  // wrap column was added.
+
+  if (Want("interpolation")) {
+    PrintHeader("Interpolation: error against the spectral reference");
+
+    // Points off the grid, drawn once and reused at every degree so that the
+    // rows are comparable. theta is drawn over the whole of [0, pi], so the
+    // polar cells get their share.
+    constexpr auto samplePoints = 4000;
+    auto engine = std::mt19937_64(20260824);
+    auto uniform = std::uniform_real_distribution<Real>(0, 1);
+    auto points = std::vector<std::pair<Real, Real>>();
+    points.reserve(samplePoints);
+    for (auto i = 0; i < samplePoints; ++i) {
+      points.emplace_back(
+          uniform(engine) * std::numbers::pi_v<Real>,
+          uniform(engine) * 2 * std::numbers::pi_v<Real>);
+    }
+
+    // The question a caller actually has is not "how good is bicubic at the
+    // grid's band limit" -- it is always bad there, since the samples barely
+    // resolve the field -- but "how fine a grid do I need". So the band is
+    // held fixed and the grid is oversampled, which is the axis that answers
+    // it. The first row, oversampling 1, is the band-limit case.
+    constexpr Int band = 16;
+    constexpr Int N = 2;
+
+    // One set of coefficients, reused at every resolution, so that every row
+    // interpolates the *same continuous field* and the rows are comparable.
+    // The spectrum falls like 1/(l+1): flat coefficients would put most of
+    // the field in its highest degree, which is the least representative case
+    // there is.
+    auto coefficients = std::vector<Complex>();
+    {
+      auto normal = std::normal_distribution<Real>(0, 1);
+      auto source = std::mt19937_64(11);
+      for (auto l = N; l <= band; ++l) {
+        const auto scale = 1 / static_cast<Real>(l + 1);
+        for (auto m = -l; m <= l; ++m) {
+          coefficients.push_back(Complex(normal(source), normal(source)) *
+                                 scale);
+        }
+      }
+    }
+
+    std::printf("%6s %7s %10s %14s %14s %14s\n", "grid", "over", "scheme",
+                "interior", "polar cells", "last phi cell");
+
+    for (auto factor : {Int{1}, Int{2}, Int{4}, Int{8}}) {
+      const auto lMax = band * factor;
+      auto grid = GaussLegendreGrid<Real, All, All>(lMax, 2);
+      auto expansion = SpinExpansion<N, GaussLegendreGrid<Real, All, All>>(
+          grid, band);
+      {
+        auto next = coefficients.begin();
+        for (auto l : expansion.Degrees())
+          for (auto m : expansion.Orders(l)) expansion[l, m] = *next++;
+      }
+      const auto field = Evaluate(expansion);
+
+      // The cell boundaries the padding created.
+      auto colatitudes = std::vector<Real>();
+      for (auto t : grid.CoLatitudes()) colatitudes.push_back(t);
+      auto longitudes = std::vector<Real>();
+      for (auto p : grid.Longitudes()) longitudes.push_back(p);
+      const auto polar = [&](Real theta) {
+        return theta < colatitudes.front() || theta > colatitudes.back();
+      };
+      const auto lastPhi = [&](Real phi) { return phi > longitudes.back(); };
+
+      // Truncated at the band: above it the coefficients are zero, so this
+      // is the same function and a cheaper sum.
+      const auto reference = Interpolate(field, Scheme::Spectral(), band);
+
+      // A scale to divide by, so the columns are relative rather than
+      // absolute and comparable across degrees.
+      auto scale = Real{0};
+      for (const auto& [theta, phi] : points) {
+        scale = std::max(scale, std::abs(reference(theta, phi)));
+      }
+
+      const auto Report = [&](const char* name, auto&& at) {
+        auto worst = std::array<Real, 3>{0, 0, 0};
+        for (const auto& [theta, phi] : points) {
+          const auto error =
+              std::abs(at(theta, phi) - reference(theta, phi)) / scale;
+          const auto where = polar(theta) ? 1 : (lastPhi(phi) ? 2 : 0);
+          worst[static_cast<std::size_t>(where)] =
+              std::max(worst[static_cast<std::size_t>(where)], error);
+        }
+        std::printf("%6td %6tdx %10s %14.2e %14.2e %14.2e\n", lMax, factor,
+                    name, worst[0], worst[1], worst[2]);
+      };
+
+#ifdef GSHTRANS_HAVE_INTERPOLATION
+      Report("bilinear", Interpolate(field, Scheme::Bilinear()));
+      Report("bicubic", Interpolate(field, Scheme::Bicubic()));
+#else
+      std::printf("%6td %6tdx %10s %14s %14s %14s\n", lMax, factor, "(none)",
+                  "-", "-", "-");
+#endif
+    }
+
+    std::printf(
+        "\nA band-16 field on grids of 1x to 8x its band, error relative to\n"
+        "the largest sampled value. The oversampling column is the answer to\n"
+        "\"how fine a grid does a cheap scheme need\"; the first row is the\n"
+        "band limit, where the samples barely resolve the field at all.\n"
+        "\nThe polar column is what the two extra rows were added for and the\n"
+        "last-phi column is what the wrap column was added for; either being\n"
+        "far worse than the interior would mean the padding is not doing its\n"
+        "job. A bicubic across the wrap is still not a *periodic* spline,\n"
+        "which is the one thing the last column can show and an argument\n"
+        "cannot.\n");
+
+    //----------------------------------------------------------------------//
+
+    PrintHeader("Interpolation: what it costs, and when to transform instead");
+
+    std::printf("%6s %12s %12s %12s %12s %12s\n", "lMax", "build spec",
+                "build bicu", "spectral/pt", "bicubic/pt", "break-even");
+
+    for (auto lMax : {Int{16}, Int{32}, Int{64}, Int{128}}) {
+      auto grid = GaussLegendreGrid<Real, All, All>(lMax, 2);
+      auto expansion = SpinExpansion<N, GaussLegendreGrid<Real, All, All>>(
+          grid, lMax);
+      for (auto l : expansion.Degrees())
+        for (auto m : expansion.Orders(l)) expansion[l, m] = Complex(1, 0);
+      const auto field = Evaluate(expansion);
+
+      const auto buildSpectral =
+          TimePerCall([&] {
+            auto at = Interpolate(field, Scheme::Spectral());
+            DoNotOptimise(at(1.0, 1.0));
+          });
+
+      const auto reference = Interpolate(field, Scheme::Spectral());
+      auto index = std::size_t{0};
+      const auto perPointSpectral = TimePerCall([&] {
+        index = (index + 1) & 1023;
+        DoNotOptimise(reference(1.0 + 0.0005 * static_cast<Real>(index),
+                                0.7));
+      });
+
+      // One remesh: expand the field and evaluate it on the same grid, which
+      // is what a caller with a whole grid of target points would do instead
+      // of asking for a point at a time.
+      const auto remesh = TimePerCall([&] {
+        auto e = Expand(field, lMax);
+        auto f = Evaluate(e);
+        DoNotOptimise(f.Data()[0]);
+      });
+
+      auto buildBicubic = Real{0};
+      auto perPointBicubic = Real{0};
+#ifdef GSHTRANS_HAVE_INTERPOLATION
+      buildBicubic = TimePerCall([&] {
+        auto at = Interpolate(field, Scheme::Bicubic());
+        DoNotOptimise(at(1.0, 1.0));
+      });
+      const auto bicubic = Interpolate(field, Scheme::Bicubic());
+      auto j = std::size_t{0};
+      perPointBicubic = TimePerCall([&] {
+        j = (j + 1) & 1023;
+        DoNotOptimise(bicubic(1.0 + 0.0005 * static_cast<Real>(j), 0.7));
+      });
+#endif
+
+      std::printf("%6td %10.2f ms %10.2f ms %9.2f us %9.3f us %12.0f\n", lMax,
+                  buildSpectral * 1e3, buildBicubic * 1e3,
+                  perPointSpectral * 1e6, perPointBicubic * 1e6,
+                  remesh / perPointSpectral);
+    }
+
+    std::printf(
+        "\nBreak-even is how many scattered points the spectral interpolant\n"
+        "answers in the time one whole-grid remesh takes. Compare it against\n"
+        "the grid's own point count: fewer than that and evaluating point by\n"
+        "point is the cheaper route, more and it is worth transforming onto a\n"
+        "second grid and interpolating there instead.\n"
+        "\nBuilding a local interpolant costs a forward transform, because the\n"
+        "polar rows are exact ([I3]). Its cheapness is per evaluation, not\n"
+        "per interpolant, and these two columns are what says so.\n");
   }
 
   if (Want("transforms")) {
