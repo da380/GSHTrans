@@ -116,6 +116,34 @@ jobs:
       - name: Run the sanitized test suite
         run: ./scripts/test_sanitized.sh ${{ matrix.sanitizer }}
 
+  # The documentation is written rather than inferred: EXTRACT_ALL is off and
+  # WARN_IF_UNDOCUMENTED is on, so an undocumented public entity is a doxygen
+  # warning and WARN_AS_ERROR makes it fail here. The library is fully
+  # covered, so what this leg catches is a regression rather than a backlog.
+  docs:
+    name: documentation
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfftw3-dev ninja-build doxygen
+
+      - name: Configure and build the documentation
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DGSHTRANS_BUILD_TESTS=OFF \
+            -DGSHTRANS_BUILD_EXAMPLES=OFF \
+            -DGSHTRANS_BUILD_BENCHMARKS=OFF
+          cmake --build build --target docs
+
+      - name: Show the warnings
+        if: always()
+        run: cat build/docs/doxygen-warnings.log
+
   package:
     name: install and find_package
     runs-on: ubuntu-24.04

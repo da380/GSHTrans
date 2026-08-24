@@ -54,10 +54,18 @@ class SplineDerivative {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
   using Real = _Real;  ///< The precision.
-  using System = Interpolation::CubicSplineSystem<std::span<const Real>>;
+  using System = Interpolation::CubicSplineSystem<
+      std::span<const Real>>;  ///< The factorised spline system.
 
   SplineDerivative() = delete;
 
+  /**
+   * @brief Factorises one spline system per element.
+   * @param radial The radii; if they know their elements there is one system
+   * per element, otherwise one for the whole grid.
+   * @param left The condition at the first node.
+   * @param right The condition at the last.
+   */
   explicit SplineDerivative(
       RadialGrid<Real> radial,
       BoundaryCondition left = BoundaryCondition::Natural,
@@ -114,6 +122,12 @@ class SplineDerivative {
     return _systems[static_cast<std::size_t>(piece)];
   }
 
+  /**
+   * @brief Differentiates one radial line.
+   * @param in One value per radius.
+   * @param out Where the derivative goes, of the same length.
+   * @throws std::invalid_argument if either is not one value per radius.
+   */
   template <typename Scalar>
   void operator()(std::span<const Scalar> in, std::span<Scalar> out) const {
     const auto n = static_cast<std::size_t>(_radial.NumberOfRadii());

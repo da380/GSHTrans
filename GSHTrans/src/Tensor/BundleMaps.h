@@ -73,6 +73,7 @@ class EmbedNode {
                 "Embed widens a tangential tensor; a general one is already "
                 "where it is going");
 
+  /** @brief Wraps a tangential operand to be seen in the general bundle. */
   explicit EmbedNode(Operand&& operand)
       : _operand{std::forward<Operand>(operand)} {}
 
@@ -97,6 +98,8 @@ class EmbedNode {
   template <Int... Alphas>
   static constexpr bool Represents = RepresentsFn<Alphas...>();
 
+  /** @brief The component at those slot letters, as a spin-weighted node. */
+  /** @brief The component at those slot letters, as a spin-weighted node. */
   template <Int... Alphas>
   requires Represents<Alphas...>
   auto Component() const {
@@ -141,6 +144,7 @@ class TangentialNode {
                 "Tangential projects a general tensor; a tangential one is "
                 "already where it is going");
 
+  /** @brief Wraps a general operand, dropping its radial components. */
   explicit TangentialNode(Operand&& operand)
       : _operand{std::forward<Operand>(operand)} {}
 
@@ -163,6 +167,7 @@ class TangentialNode {
   template <Int... Alphas>
   static constexpr bool Represents = RepresentsFn<Alphas...>();
 
+  /** @brief The component at those slot letters, as a spin-weighted node. */
   template <Int... Alphas>
   requires Represents<Alphas...>
   auto Component() const {

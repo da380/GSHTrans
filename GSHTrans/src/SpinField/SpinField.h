@@ -122,8 +122,8 @@ class SpinField {
   /// Evaluation is in place and needs no temporary. Every node in this layer is
   /// pointwise and index-preserving, so writing element (iTheta, iPhi) of the
   /// destination happens after reading element (iTheta, iPhi) -- and only that
-  /// element -- of every operand, including the destination itself. `u = conj(u)
-  /// * v + u` is therefore safe as written. If a re-indexing node ever enters
+  /// element -- of every operand, including the destination itself. So
+  /// `u = conj(u) * v + u` is safe as written. If a re-indexing node ever enters
   /// this layer the argument fails, which is why the invariant is stated as
   /// "pointwise *and index-preserving*" and why there is a regression test for
   /// exactly this shape.

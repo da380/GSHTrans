@@ -232,7 +232,8 @@ class SpectralInterpolant {
   using Real = typename _Grid::Real;  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   using Scalar =
-      std::conditional_t<std::same_as<Value, RealValued>, Real, Complex>;
+      std::conditional_t<std::same_as<Value, RealValued>, Real,
+                         Complex>;  ///< What evaluation returns.
 
   /// A real field stores only m >= 0, the rest being fixed by
   /// f_{l,-m} = (-1)^m conj(f_{lm}). That is the expansion's own convention,
@@ -243,12 +244,22 @@ class SpectralInterpolant {
   static_assert(std::same_as<Value, ComplexValued> or UpperIndex == 0,
                 "A real-valued field exists only at upper index zero");
 
+  /**
+   * @brief Takes a copy of an expansion's coefficients.
+   * @param lMax The largest degree present.
+   * @param coefficients The coefficients, laid out as GSHIndices describes.
+   */
   SpectralInterpolant(Int lMax, std::span<const Complex> coefficients)
       : _state{std::make_shared<const State>(lMax, coefficients)} {}
 
   /** @brief The largest degree stored. */
   auto MaxDegree() const { return _state->lMax; }
 
+  /**
+   * @brief The field at @p theta, @p phi, summed from the expansion.
+   * @throws std::invalid_argument if @p theta is outside @f$[0, \pi]@f$; a
+   * longitude outside @f$[0, 2\pi)@f$ is reduced instead, which is exact.
+   */
   Scalar operator()(Real theta, Real phi) const {
     const auto lMax = _state->lMax;
     constexpr auto pi = std::numbers::pi_v<Real>;
@@ -362,10 +373,10 @@ class SpectralInterpolant {
 //                                Interpolate                                //
 //--------------------------------------------------------------------------//
 
-// An expansion interpolates spectrally and in no other way: there are no
-// samples to interpolate, only coefficients to sum. The scheme argument is
-// accepted so that the spelling matches the field's, and refused if it names
-// anything else.
+/// An expansion interpolates spectrally and in no other way: there are no
+/// samples to interpolate, only coefficients to sum. The scheme argument is
+/// accepted so that the spelling matches the field's, and refused if it names
+/// anything else.
 template <std::ptrdiff_t N, typename GridType, typename Value>
 auto Interpolate(const SpinExpansion<N, GridType, Value>& expansion,
                  Scheme::SpectralTag = Scheme::Spectral()) {
@@ -373,9 +384,9 @@ auto Interpolate(const SpinExpansion<N, GridType, Value>& expansion,
                                                  expansion.Data());
 }
 
-// A field, spectrally: expand and sum. The degree is the truncation at which
-// the expansion is taken, defaulting to the grid's own -- which is what an
-// oversampled ForBand grid wants to be able to say.
+/// A field, spectrally: expand and sum. The degree is the truncation at which
+/// the expansion is taken, defaulting to the grid's own -- which is what an
+/// oversampled ForBand grid wants to be able to say.
 template <SpinWeighted F>
 auto Interpolate(const F& field, Scheme::SpectralTag = Scheme::Spectral(),
                  std::ptrdiff_t lMax = -1) {
@@ -416,11 +427,19 @@ class LocalInterpolant {
   using Real = typename _Grid::Real;  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   using Scalar =
-      std::conditional_t<std::same_as<Value, RealValued>, Real, Complex>;
+      std::conditional_t<std::same_as<Value, RealValued>, Real,
+                         Complex>;  ///< What evaluation returns.
 
+  /** @brief Takes ownership of a padded grid and builds the upstream scheme
+   * over it. */
   explicit LocalInterpolant(InterpolateDetails::Padded<Real, Scalar> padded)
       : _state{std::make_shared<const State>(std::move(padded))} {}
 
+  /**
+   * @brief The field at @p theta, @p phi, from the padded samples.
+   * @throws std::invalid_argument if @p theta is outside @f$[0, \pi]@f$; a
+   * longitude outside @f$[0, 2\pi)@f$ is reduced instead, which is exact.
+   */
   Scalar operator()(Real theta, Real phi) const {
     constexpr auto pi = std::numbers::pi_v<Real>;
     if (!(theta >= 0) || !(theta <= pi)) {

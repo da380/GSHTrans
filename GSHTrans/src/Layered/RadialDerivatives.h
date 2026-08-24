@@ -171,6 +171,12 @@ class FiniteDifferenceDerivative {
 
   FiniteDifferenceDerivative() = delete;
 
+  /**
+   * @brief Builds the stencils for a grid.
+   * @param radial The radii, which need not be uniformly spaced.
+   * @param order The order of accuracy, giving a stencil of `order + 1`
+   * points.
+   */
   explicit FiniteDifferenceDerivative(RadialGrid<Real> radial, Int order = 2)
       : _radial{std::move(radial)}, _width{order + 1} {
     const auto nR = _radial.NumberOfRadii();
@@ -209,8 +215,15 @@ class FiniteDifferenceDerivative {
 
   /** @brief The radial grid this is defined on. */
   const RadialGrid<Real>& Radial() const { return _radial; }
+  /** @brief The order of accuracy. */
   Int Order() const { return _width - 1; }
 
+  /**
+   * @brief Differentiates one radial line.
+   * @param in One value per radius.
+   * @param out Where the derivative goes, of the same length.
+   * @throws std::invalid_argument if either is not one value per radius.
+   */
   template <typename Scalar>
   void operator()(std::span<const Scalar> in, std::span<Scalar> out) const {
     const auto nR = _radial.NumberOfRadii();
@@ -265,6 +278,10 @@ class LagrangeDerivative {
 
   LagrangeDerivative() = delete;
 
+  /**
+   * @brief Builds the differentiation matrix for a grid.
+   * @param radial The radii, of which there must be at least two.
+   */
   explicit LagrangeDerivative(RadialGrid<Real> radial)
       : _radial{std::move(radial)} {
     const auto nR = _radial.NumberOfRadii();
@@ -284,6 +301,12 @@ class LagrangeDerivative {
   /// something rather than apply it.
   std::span<const Real> Matrix() const { return std::span<const Real>(_d); }
 
+  /**
+   * @brief Differentiates one radial line.
+   * @param in One value per radius.
+   * @param out Where the derivative goes, of the same length.
+   * @throws std::invalid_argument if either is not one value per radius.
+   */
   template <typename Scalar>
   void operator()(std::span<const Scalar> in, std::span<Scalar> out) const {
     const auto nR = _radial.NumberOfRadii();
@@ -342,6 +365,11 @@ class ElementDerivative {
 
   ElementDerivative() = delete;
 
+  /**
+   * @brief Builds one differentiation matrix per element.
+   * @param radial The radii, which must know their elements.
+   * @throws std::invalid_argument if the grid has no elements.
+   */
   explicit ElementDerivative(RadialGrid<Real> radial)
       : _radial{std::move(radial)} {
     if (!_radial.HasElements()) {
@@ -378,6 +406,12 @@ class ElementDerivative {
     return std::span<const Real>(_d).subspan(first, last - first);
   }
 
+  /**
+   * @brief Differentiates one radial line.
+   * @param in One value per radius.
+   * @param out Where the derivative goes, of the same length.
+   * @throws std::invalid_argument if either is not one value per radius.
+   */
   template <typename Scalar>
   void operator()(std::span<const Scalar> in, std::span<Scalar> out) const {
     const auto nR = _radial.NumberOfRadii();

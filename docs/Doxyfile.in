@@ -31,14 +31,16 @@ HIDE_UNDOC_MEMBERS     = NO
 HIDE_UNDOC_CLASSES     = NO
 
 # Undocumented public entities and malformed blocks are the two things worth
-# being told about. WARN_AS_ERROR is left off until the library is fully
-# covered; turning it on is what makes the CI leg meaningful.
+# being told about, and both are errors: the library is fully covered, so a
+# new undocumented entity is a regression rather than a backlog item.
+# FAIL_ON_WARNINGS rather than YES so that every warning is printed before the
+# build fails, which is what makes one run enough to fix them all.
 QUIET                  = YES
 WARNINGS               = YES
 WARN_IF_UNDOCUMENTED   = YES
 WARN_IF_DOC_ERROR      = YES
 WARN_NO_PARAMDOC       = NO
-WARN_AS_ERROR          = NO
+WARN_AS_ERROR          = FAIL_ON_WARNINGS
 WARN_LOGFILE           = @DOXYGEN_OUTPUT_DIR@/doxygen-warnings.log
 
 # The library is header-only and heavily templated: without these the
