@@ -74,9 +74,13 @@ class SpinField {
     }
   }
 
+  /** @brief Copy constructor. */
   SpinField(const SpinField&) = default;
+  /** @brief Move constructor. */
   SpinField(SpinField&&) = default;
+  /** @brief Copy assignment. */
   SpinField& operator=(const SpinField&) = default;
+  /** @brief Move assignment. */
   SpinField& operator=(SpinField&&) = default;
 
   //------------------------------------------------------------------------//
@@ -196,13 +200,13 @@ class SpinField {
   /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _grid; }
 
-  // By value, as on every node: uniform value return is what lets terminals,
-  // views and expressions be used interchangeably.
+  /// By value, as on every node: uniform value return is what lets terminals,
+  /// views and expressions be used interchangeably.
   Scalar operator[](Int iTheta, Int iPhi) const {
     return _data[FlatIndex(iTheta, iPhi)];
   }
 
-  // Mutable access is a terminal's own, outside the concept.
+  /// Mutable access is a terminal's own, outside the concept.
   Scalar& operator[](Int iTheta, Int iPhi) {
     return _data[FlatIndex(iTheta, iPhi)];
   }

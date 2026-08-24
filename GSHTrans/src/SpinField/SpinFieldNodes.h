@@ -43,9 +43,9 @@ class Binary {
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   using GridType = typename LNode::GridType;  ///< The angular grid this is defined on.
 
-  // The scalar is whatever the operation returns, and the value kind follows
-  // from it. Deriving it rather than declaring it is what makes the reality
-  // constraint hold by construction instead of by argument.
+  /// The scalar is whatever the operation returns, and the value kind follows
+  /// from it. Deriving it rather than declaring it is what makes the reality
+  /// constraint hold by construction instead of by argument.
   using Scalar =
       std::invoke_result_t<Op, typename LNode::Scalar, typename RNode::Scalar>;
   using Value =

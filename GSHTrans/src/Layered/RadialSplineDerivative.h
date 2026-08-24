@@ -108,12 +108,12 @@ class SplineDerivative {
   /** @brief The radial grid this is defined on. */
   const RadialGrid<Real>& Radial() const { return _radial; }
 
-  // How many splines a line is carried by: one per element, or one.
+  /// How many splines a line is carried by: one per element, or one.
   Int PieceCount() const { return static_cast<Int>(_systems.size()); }
 
-  // The factorised system of one piece, for a caller who wants the curvatures
-  // themselves rather than the slopes -- which is the point of the upstream
-  // type being public, so it would be odd to hide it again here.
+  /// The factorised system of one piece, for a caller who wants the curvatures
+  /// themselves rather than the slopes -- which is the point of the upstream
+  /// type being public, so it would be odd to hide it again here.
   const System& SplineSystem(Int piece = 0) const {
     return _systems[static_cast<std::size_t>(piece)];
   }

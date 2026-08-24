@@ -1,6 +1,11 @@
 #ifndef GSH_TRANS_GAUSS_LEGENDRE_GRID_GUARD_H
 #define GSH_TRANS_GAUSS_LEGENDRE_GRID_GUARD_H
 
+/**
+ * @file GaussLegendreGrid.h
+ * @brief A Gauss-Legendre grid: the quadrature, and nothing else.
+ */
+
 #include <FFTWpp/Core>
 #include <GaussQuad/All>
 
@@ -17,25 +22,33 @@
 
 namespace GSHTrans {
 
-// A Gauss-Legendre grid: the quadrature, and nothing else.
-//
-// Everything a transform needs lives in SphericalGrid, which holds the Wigner
-// values, both Legendre kernels, the Fourier stages, batching, chunking,
-// threading and the plan cache. This class supplies the nodes and the weights
-// and adds no data of its own -- so a copy of one into its base loses ForBand
-// and nothing more ([C26]).
-//
-// The nodes are the Gauss-Legendre points of degree lMax + 1 mapped by
-// theta = acos(-x), which puts nTheta = lMax + 1 colatitudes strictly inside
-// (0, pi), symmetric about the equator. Both facts are load-bearing: the
-// interior condition is what the transform's contract asks for and what
-// Interpolate's polar padding rests on, and the symmetry is what lets the
-// matrix kernel store half the Wigner values.
-//
-// Exactness is the reason to prefer it. Gauss-Legendre integrates a
-// degree-(2n-1) polynomial exactly with n nodes, so lMax + 1 colatitudes
-// resolve a band-lMax field with no quadrature error at all, on half the
-// latitudes an equiangular rule would need for the same band.
+/**
+ * @brief A Gauss-Legendre grid: the quadrature, and nothing else.
+ *
+ * @details Everything a transform needs lives in SphericalGrid, which holds
+ * the Wigner values, both Legendre kernels, the Fourier stages, batching,
+ * chunking, threading and the plan cache. This class supplies the nodes and
+ * the weights and adds no data of its own, so slicing a grid to its base
+ * loses ForBand() and nothing more.
+ *
+ * The nodes are the Gauss-Legendre points of degree @f$l_{\max} + 1@f$ mapped
+ * by @f$\theta = \arccos(-x)@f$, which puts @f$l_{\max} + 1@f$ colatitudes
+ * strictly inside @f$(0, \pi)@f$, symmetric about the equator. Both facts are
+ * load-bearing: the interior condition is what the transform's contract asks
+ * for and what the interpolant's polar padding rests on, and the symmetry is
+ * what lets the matrix kernel store half the Wigner values.
+ *
+ * Exactness is the reason to prefer it. Gauss-Legendre integrates a degree
+ * @f$2n-1@f$ polynomial exactly with @f$n@f$ nodes, so @f$l_{\max} + 1@f$
+ * colatitudes resolve a band-@f$l_{\max}@f$ field with no quadrature error at
+ * all, on half the latitudes an equiangular rule would need for the same
+ * band.
+ *
+ * @tparam _Real The precision.
+ * @tparam _MRange Whether all orders are stored, or only the non-negative
+ * ones.
+ * @tparam _NRange Which upper indices the grid covers.
+ */
 template <RealFloatingPoint _Real, OrderIndexRange _MRange, IndexRange _NRange>
 class GaussLegendreGrid : public SphericalGrid<_Real, _MRange, _NRange> {
   using Base = SphericalGrid<_Real, _MRange, _NRange>;  ///< The base this derives from.
@@ -49,11 +62,21 @@ class GaussLegendreGrid : public SphericalGrid<_Real, _MRange, _NRange> {
 
   GaussLegendreGrid() = delete;
 
-  // The chunking policy is a property of the machine rather than of the call,
-  // which is why it is set here alongside the planner flag and not on every
-  // transform. `Automatic` assumes a modest cache; a caller who knows their
-  // machine passes `Chunking::ForCache(bytes)`, and one who has measured
-  // their own optimum passes `Chunking::Fixed(count)`.
+  /**
+   * @brief A grid resolving degrees up to @p lMax.
+   *
+   * @details The chunking policy is a property of the machine rather than of
+   * the call, which is why it is set here alongside the planner flag and not
+   * on every transform.
+   *
+   * @param lMax The largest degree the grid resolves, giving
+   * @f$l_{\max} + 1@f$ colatitudes.
+   * @param nMax The largest upper index the grid covers.
+   * @param flag How hard FFTW should work at planning.
+   * @param chunking How many fields of a batch the inner loop takes at once.
+   * @param values Whether the Wigner table is stored or generated.
+   * @param kernel Which Legendre kernel the transforms use.
+   */
   GaussLegendreGrid(Int lMax, Int nMax, FFTWpp::Flag flag = FFTWpp::Measure,
                     Chunking chunking = Chunking::Automatic(),
                     WignerValues values = WignerValues::Stored(),
@@ -61,19 +84,27 @@ class GaussLegendreGrid : public SphericalGrid<_Real, _MRange, _NRange> {
       : GaussLegendreGrid{Nodes(lMax), lMax,   nMax,  flag,
                           chunking,    values, kernel} {}
 
-  // A grid for working with fields of maximum degree lBand, with quadrature
-  // headroom for degree oversampling * lBand.
-  //
-  // The distinction this expresses is between the *band* of the fields being
-  // worked with and the *resolution* of the grid, which the library could not
-  // previously say: the transforms already take lMax per call, so an
-  // oversampled grid with truncated transforms works, but there was no way to
-  // ask for one. Headroom is wanted whenever a quantity of higher degree than
-  // the fields themselves is formed on the grid -- a product of two band-L
-  // fields has band 2L, and integrating |f|^2 for band-L f integrates a
-  // degree-2L quantity. The 3/2 rule is oversampling = 1.5; oversampling = 2
-  // is exact for a single product. A local interpolation scheme wants rather
-  // more, four to eight (field-algebra-plan.md section 22).
+  /**
+   * @brief A grid for fields of band @p lBand, with quadrature headroom.
+   *
+   * @details The distinction this expresses is between the *band* of the
+   * fields being worked with and the *resolution* of the grid. Headroom is
+   * wanted whenever a quantity of higher degree than the fields themselves is
+   * formed on the grid: a product of two band-@f$L@f$ fields has band
+   * @f$2L@f$, and integrating @f$|f|^2@f$ for band-@f$L@f$ @f$f@f$ integrates
+   * a degree-@f$2L@f$ quantity. The 3/2 rule is `oversampling = 1.5`;
+   * `oversampling = 2` is exact for a single product; a local interpolation
+   * scheme wants rather more, four to eight.
+   *
+   * @param lBand The band of the fields to be worked with.
+   * @param nMax The largest upper index the grid covers.
+   * @param oversampling The headroom factor, at least one; the grid resolves
+   * degrees up to @f$\lceil \mathrm{oversampling} \times l_{band} \rceil@f$.
+   * @param flag How hard FFTW should work at planning.
+   * @param chunking How many fields of a batch the inner loop takes at once.
+   * @param values Whether the Wigner table is stored or generated.
+   * @param kernel Which Legendre kernel the transforms use.
+   */
   static auto ForBand(Int lBand, Int nMax, Real oversampling = 1,
                       FFTWpp::Flag flag = FFTWpp::Measure,
                       Chunking chunking = Chunking::Automatic(),
@@ -90,19 +121,33 @@ class GaussLegendreGrid : public SphericalGrid<_Real, _MRange, _NRange> {
     return GaussLegendreGrid(lGrid, nMax, flag, chunking, values, kernel);
   }
 
+  /** @brief Copy constructor. */
   GaussLegendreGrid(const GaussLegendreGrid&) = default;
+  /** @brief Move constructor. */
   GaussLegendreGrid(GaussLegendreGrid&&) = default;
+  /** @brief Copy assignment. */
   GaussLegendreGrid& operator=(const GaussLegendreGrid&) = default;
+  /** @brief Move assignment. */
   GaussLegendreGrid& operator=(GaussLegendreGrid&&) = default;
 
-  // The base's With() returns a base, which would lose ForBand. These keep the
-  // derived type, and cost nothing since the derived class adds no data.
+  /**
+   * @brief The same grid, sharing one table, under a different chunking
+   * policy.
+   * @details The base's `With()` returns a base, which would lose ForBand().
+   * This keeps the derived type, and costs nothing since the derived class
+   * adds no data.
+   * @param chunking The policy to use instead.
+   */
   auto With(Chunking chunking) const {
     auto grid = *this;
     static_cast<Base&>(grid) = Base::With(chunking);
     return grid;
   }
 
+  /**
+   * @brief The same grid, sharing one table, under a different planner flag.
+   * @param flag The flag to plan with instead.
+   */
   auto With(FFTWpp::Flag flag) const {
     auto grid = *this;
     static_cast<Base&>(grid) = Base::With(flag);

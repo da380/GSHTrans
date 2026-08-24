@@ -231,9 +231,9 @@ class SpectralInterpolant {
   using Scalar =
       std::conditional_t<std::same_as<Value, RealValued>, Real, Complex>;
 
-  // A real field stores only m >= 0, the rest being fixed by
-  // f_{l,-m} = (-1)^m conj(f_{lm}). That is the expansion's own convention,
-  // and it is read here rather than restated.
+  /// A real field stores only m >= 0, the rest being fixed by
+  /// f_{l,-m} = (-1)^m conj(f_{lm}). That is the expansion's own convention,
+  /// and it is read here rather than restated.
   using MRange =
       std::conditional_t<std::same_as<Value, RealValued>, NonNegative, All>;
 

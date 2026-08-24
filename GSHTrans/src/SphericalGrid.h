@@ -85,20 +85,20 @@ class SphericalGrid {
   SphericalGrid() = delete;
 
  protected:
-  // The contract a derived grid meets, and it is short ([C27]).
-  //
-  // `coLatitudes` must be strictly increasing and lie strictly inside
-  // (0, pi); `weights` must be the quadrature weights for those nodes and the
-  // same length. Both are checked, because a grid that gets them wrong fails
-  // in the Wigner recursion rather than here.
-  //
-  // The interior condition is load-bearing beyond this class: Interpolate's
-  // polar padding rests on it (field-algebra-plan.md section 22.1), and it is
-  // where a scheme whose grid contains the pole would need thinking.
-  //
-  // `nPhi` defaults rather than being demanded, since it is about resolving
-  // orders |m| <= lMax and not about the quadrature; a scheme that needs a
-  // particular longitude count passes one.
+  /// The contract a derived grid meets, and it is short ([C27]).
+  ///
+  /// `coLatitudes` must be strictly increasing and lie strictly inside
+  /// (0, pi); `weights` must be the quadrature weights for those nodes and the
+  /// same length. Both are checked, because a grid that gets them wrong fails
+  /// in the Wigner recursion rather than here.
+  ///
+  /// The interior condition is load-bearing beyond this class: Interpolate's
+  /// polar padding rests on it (field-algebra-plan.md section 22.1), and it is
+  /// where a scheme whose grid contains the pole would need thinking.
+  ///
+  /// `nPhi` defaults rather than being demanded, since it is about resolving
+  /// orders |m| <= lMax and not about the quadrature; a scheme that needs a
+  /// particular longitude count passes one.
   SphericalGrid(Int lMax, Int nMax, std::vector<Real> coLatitudes,
                 std::vector<Real> coLatitudeWeights,
                 FFTWpp::Flag flag = FFTWpp::Measure,
@@ -115,12 +115,16 @@ class SphericalGrid {
   }
 
  public:
+  /** @brief Copy constructor. */
   SphericalGrid(const SphericalGrid&) = default;
 
+  /** @brief Move constructor. */
   SphericalGrid(SphericalGrid&&) = default;
 
+  /** @brief Copy assignment. */
   SphericalGrid& operator=(const SphericalGrid&) = default;
 
+  /** @brief Move assignment. */
   SphericalGrid& operator=(SphericalGrid&&) = default;
 
   // Two grids are the same grid when they share an implementation. This is
@@ -132,23 +136,23 @@ class SphericalGrid {
   /** @brief Identity, for deciding whether two share an implementation. */
   auto Identity() const { return _impl.get(); }
 
-  // The same grid with a different chunking policy, or a different planner
-  // flag: a pointer copy and a scalar, sharing one table ([C18]).
-  //
-  // Offered for these two and for nothing else. WignerValues and
-  // TransformKernel each decide what the table *is*, so changing one means a
-  // different table -- which is a different grid, and the constructor is
-  // where you say so.
-  //
-  // **The result shares Identity() with its parent, and that is correct
-  // rather than a leak.** Identity is the field layer's test that two
-  // operands index the same buffers, and they do: same points, same degrees,
-  // same table, fields interchangeable. A chunk is how the inner loop
-  // schedules itself and is not observable in any result -- the batched tests
-  // demand exact equality against unbatched calls, which is the standing
-  // check that it is not. Sharing identity is also what makes this useful,
-  // since a tuned grid has to stay compatible with fields already built on
-  // the untuned one.
+  /// The same grid with a different chunking policy, or a different planner
+  /// flag: a pointer copy and a scalar, sharing one table ([C18]).
+  ///
+  /// Offered for these two and for nothing else. WignerValues and
+  /// TransformKernel each decide what the table *is*, so changing one means a
+  /// different table -- which is a different grid, and the constructor is
+  /// where you say so.
+  ///
+  /// **The result shares Identity() with its parent, and that is correct
+  /// rather than a leak.** Identity is the field layer's test that two
+  /// operands index the same buffers, and they do: same points, same degrees,
+  /// same table, fields interchangeable. A chunk is how the inner loop
+  /// schedules itself and is not observable in any result -- the batched tests
+  /// demand exact equality against unbatched calls, which is the standing
+  /// check that it is not. Sharing identity is also what makes this useful,
+  /// since a tuned grid has to stay compatible with fields already built on
+  /// the untuned one.
   auto With(Chunking chunking) const {
     auto grid = *this;
     grid._chunking = chunking;
@@ -266,8 +270,8 @@ class SphericalGrid {
     return NumberOfCoLatitudes() * NumberOfLongitudes();
   }
 
-  // Number of coefficients of a complex-valued field of degree lMax at upper
-  // index n. This is the full (all orders) storage.
+  /// Number of coefficients of a complex-valued field of degree lMax at upper
+  /// index n. This is the full (all orders) storage.
   auto CoefficientSize(Int lMax, Int n) const {
     return GSHIndices<All>(lMax, lMax, n).Size();
   }
@@ -276,10 +280,10 @@ class SphericalGrid {
     return CoefficientSize(MaxDegree(), n);
   }
 
-  // Number of stored coefficients of a real-valued field of degree lMax,
-  // which uses the reduced m >= 0 storage. There is no upper-index argument
-  // because real-valued fields exist only at upper index zero (core-plan.md
-  // step A); the reduced storage is a statement about n = 0 alone.
+  /// Number of stored coefficients of a real-valued field of degree lMax,
+  /// which uses the reduced m >= 0 storage. There is no upper-index argument
+  /// because real-valued fields exist only at upper index zero (core-plan.md
+  /// step A); the reduced storage is a statement about n = 0 alone.
   auto RealCoefficientSize(Int lMax) const {
     return GSHIndices<NonNegative>(lMax, lMax, 0).Size();
   }

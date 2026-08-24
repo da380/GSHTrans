@@ -219,7 +219,7 @@ class TensorExpansion {
     }
   }
 
-  // The block a stored component occupies, by slot.
+  /// The block a stored component occupies, by slot.
   std::span<Complex> BlockOf(Int slot) {
     const auto [offset, size] = Block(_grid, _lMax, slot);
     return Data().subspan(offset, size);

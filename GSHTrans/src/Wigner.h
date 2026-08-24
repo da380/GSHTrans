@@ -541,9 +541,13 @@ class Wigner {
   requires std::same_as<AngleRange, Single>
       : Wigner(lMax, mMax, nMax, std::vector{theta}) {}
 
+  /** @brief Copy constructor. */
   Wigner(const Wigner &) = default;
+  /** @brief Move constructor. */
   Wigner(Wigner &&) = default;
+  /** @brief Copy assignment. */
   Wigner &operator=(const Wigner &) = default;
+  /** @brief Move assignment. */
   Wigner &operator=(Wigner &&) = default;
 
   /**

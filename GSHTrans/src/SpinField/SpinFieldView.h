@@ -53,15 +53,15 @@ class SpinFieldView {
 
   SpinFieldView() = delete;
 
-  // The stride is how far apart successive samples are, and it defaults to
-  // one because most views are over contiguous storage.
-  //
-  // It is not one when a tensor field is laid out point by point: there each
-  // component's samples are separated by the number of components, and a view
-  // is the only way to hand that component to the field algebra. The
-  // transform needs no repack either, since a batch is described by (count,
-  // stride, dist) (core-plan.md [C9]) -- so the layout stays a choice rather
-  // than becoming a precondition.
+  /// The stride is how far apart successive samples are, and it defaults to
+  /// one because most views are over contiguous storage.
+  ///
+  /// It is not one when a tensor field is laid out point by point: there each
+  /// component's samples are separated by the number of components, and a view
+  /// is the only way to hand that component to the field algebra. The
+  /// transform needs no repack either, since a batch is described by (count,
+  /// stride, dist) (core-plan.md [C9]) -- so the layout stays a choice rather
+  /// than becoming a precondition.
   SpinFieldView(GridType grid, std::span<_Element> data, Int stride = 1)
       : _grid{std::move(grid)}, _data{data}, _stride{stride} {
     if (!std::ranges::contains(_grid.UpperIndices(), UpperIndex)) {
@@ -89,7 +89,7 @@ class SpinFieldView {
     return _data[FlatIndex(iTheta, iPhi)];
   }
 
-  // Present only on a view over mutable storage.
+  /// Present only on a view over mutable storage.
   _Element& operator[](Int iTheta, Int iPhi)
   requires(not std::is_const_v<_Element>)
   {

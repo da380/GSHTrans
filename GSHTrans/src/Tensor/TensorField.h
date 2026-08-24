@@ -101,41 +101,41 @@ class TensorField {
   static constexpr Int Components = Index::Size;
   static constexpr Int StoredComponents = Orbits.storedCount;
 
-  // The buffer's component order, which is **by upper index** and not by flat
-  // multi-index.
-  //
-  // This is a storage decision and it is forced by the transform. A batch
-  // shares grid, degree and upper index, and is described by (count, stride,
-  // dist) -- a uniform spacing (core-plan.md [C9]). In flat order the stored
-  // components carrying one upper index are scattered at no fixed spacing
-  // once there is any symmetry, so no single descriptor covers them and the
-  // batching that step F exists for would be unreachable. Ordered by upper
-  // index they are contiguous, and one batch per upper index describes the
-  // whole tensor.
-  //
-  // Orbits.h stays in flat order, which is pure combinatorics. The layout
-  // belongs here.
-  // Reality splits the storage in two, and that is the other thing the layout
-  // has to carry.
-  //
-  // Once the reality condition is one of the generators, an orbit that
-  // contains its own negation pins its component to a single real number --
-  // real, or purely imaginary if a permutation sign gets in the way. Storing
-  // those as complex fields would waste half of each and, worse, would let a
-  // caller write an imaginary part into a component that cannot have one. So
-  // they live in a buffer of their own.
-  //
-  // They are always at upper index zero: permutation preserves the slot sum
-  // and negation reverses it, so a component fixed by the combination
-  // satisfies N = -N. That is what makes a real-valued field admissible for
-  // them at all -- RealValued is forbidden anywhere else -- and it means
-  // the real buffer is one transform group rather than several.
-  //
-  // The arithmetic comes out exactly right: two reals per complex component
-  // and one per constrained one is Base^p, the real degrees of freedom of a
-  // real rank-p tensor. Nine for rank 2, six symmetric, three antisymmetric,
-  // ten for symmetric rank 3 -- and four for a tangential rank 2, which has
-  // no constrained component at all to contribute the odd one.
+  /// The buffer's component order, which is **by upper index** and not by flat
+  /// multi-index.
+  ///
+  /// This is a storage decision and it is forced by the transform. A batch
+  /// shares grid, degree and upper index, and is described by (count, stride,
+  /// dist) -- a uniform spacing (core-plan.md [C9]). In flat order the stored
+  /// components carrying one upper index are scattered at no fixed spacing
+  /// once there is any symmetry, so no single descriptor covers them and the
+  /// batching that step F exists for would be unreachable. Ordered by upper
+  /// index they are contiguous, and one batch per upper index describes the
+  /// whole tensor.
+  ///
+  /// Orbits.h stays in flat order, which is pure combinatorics. The layout
+  /// belongs here.
+  /// Reality splits the storage in two, and that is the other thing the layout
+  /// has to carry.
+  ///
+  /// Once the reality condition is one of the generators, an orbit that
+  /// contains its own negation pins its component to a single real number --
+  /// real, or purely imaginary if a permutation sign gets in the way. Storing
+  /// those as complex fields would waste half of each and, worse, would let a
+  /// caller write an imaginary part into a component that cannot have one. So
+  /// they live in a buffer of their own.
+  ///
+  /// They are always at upper index zero: permutation preserves the slot sum
+  /// and negation reverses it, so a component fixed by the combination
+  /// satisfies N = -N. That is what makes a real-valued field admissible for
+  /// them at all -- RealValued is forbidden anywhere else -- and it means
+  /// the real buffer is one transform group rather than several.
+  ///
+  /// The arithmetic comes out exactly right: two reals per complex component
+  /// and one per constrained one is Base^p, the real degrees of freedom of a
+  /// real rank-p tensor. Nine for rank 2, six symmetric, three antisymmetric,
+  /// ten for symmetric rank 3 -- and four for a tangential rank 2, which has
+  /// no constrained component at all to contribute the odd one.
   struct Layout {
     std::array<Int, StoredComponents> flatOfSlot{};
     std::array<Int, StoredComponents> upperIndexOfSlot{};
@@ -185,14 +185,14 @@ class TensorField {
   static constexpr Int ComplexComponents = ComponentLayout.complexCount;
   static constexpr Int RealComponents = ComponentLayout.realCount;
 
-  // The real numbers one grid point of this tensor costs.
+  /// The real numbers one grid point of this tensor costs.
   static constexpr Int RealsPerPoint = 2 * ComplexComponents + RealComponents;
 
   static constexpr Int UpperIndexOfFlat(Int flat) {
     return Index::FromFlat(flat).UpperIndex();
   }
 
-  // Where a stored component sits in the buffer, by flat multi-index.
+  /// Where a stored component sits in the buffer, by flat multi-index.
   static constexpr Int SlotOfFlat(Int flat) {
     for (auto slot = Int{0}; slot < StoredComponents; slot++) {
       if (ComponentLayout.flatOfSlot[slot] == flat) return slot;
@@ -417,8 +417,8 @@ class TensorField {
   //                    What the transform layer will need                   //
   //------------------------------------------------------------------------//
 
-  // Which stored components carry a given upper index: a contiguous run of
-  // slots, which is what makes them a batch. Returns (first slot, count).
+  /// Which stored components carry a given upper index: a contiguous run of
+  /// slots, which is what makes them a batch. Returns (first slot, count).
   static constexpr auto StoredAtUpperIndex(Int n) {
     if (n < -Rank || n > Rank) return std::pair(Int{0}, Int{0});
     return std::pair(ComponentLayout.firstSlotAt[n + Rank],
@@ -429,13 +429,13 @@ class TensorField {
   //                             The transform                               //
   //------------------------------------------------------------------------//
 
-  // How many coefficients a transform at this degree produces: one block per
-  // stored component, each sized by that component's upper index, in the same
-  // order as the components themselves.
-  //
-  // The blocks are not all the same length, since the coefficient count
-  // depends on the upper index. That is why this is computed rather than
-  // being StoredComponents times something.
+  /// How many coefficients a transform at this degree produces: one block per
+  /// stored component, each sized by that component's upper index, in the same
+  /// order as the components themselves.
+  ///
+  /// The blocks are not all the same length, since the coefficient count
+  /// depends on the upper index. That is why this is computed rather than
+  /// being StoredComponents times something.
   Int CoefficientSize(Int lMax) const {
     auto total = Int{0};
     for (auto slot = Int{0}; slot < ComplexComponents; slot++) {
@@ -449,19 +449,19 @@ class TensorField {
     return total;
   }
 
-  // Transform every stored component, batching those that share an upper
-  // index.
-  //
-  // This is the first consumer of the batched primitive step F was built for,
-  // and the reason the buffer is ordered by upper index: each group is a
-  // contiguous run on both sides, so one Batch::Contiguous describes it and
-  // the Wigner block for that upper index is streamed once for the whole
-  // group rather than once per component. A rank-2 tensor has three
-  // components at N = 0, so that is three fields for the price of one pass.
-  //
-  // Derived components are not transformed. They are determined by the stored
-  // ones, and transforming them would be doing the same work twice and
-  // storing the answer twice.
+  /// Transform every stored component, batching those that share an upper
+  /// index.
+  ///
+  /// This is the first consumer of the batched primitive step F was built for,
+  /// and the reason the buffer is ordered by upper index: each group is a
+  /// contiguous run on both sides, so one Batch::Contiguous describes it and
+  /// the Wigner block for that upper index is streamed once for the whole
+  /// group rather than once per component. A rank-2 tensor has three
+  /// components at N = 0, so that is three fields for the price of one pass.
+  ///
+  /// Derived components are not transformed. They are determined by the stored
+  /// ones, and transforming them would be doing the same work twice and
+  /// storing the answer twice.
   void ForwardTransformation(Int lMax, std::span<Complex> out,
                              Execution policy = Execution::Sequential()) const {
     CheckCoefficients(out.size(), lMax);

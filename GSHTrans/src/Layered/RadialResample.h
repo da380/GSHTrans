@@ -40,18 +40,18 @@
 
 namespace GSHTrans {
 
-// Which interpolant carries a radial line onto the new radii.
-//
-// A policy value with named constructors, as `Execution`, `Batch`, `Chunking`
-// and `WignerValues` are, and for the reason Policies.h gives: what it
-// describes is a property of the problem rather than of the mathematics, so
-// putting it in a type would make the mathematics carry it.
-//
-// Linear is the safe one -- it cannot overshoot, so a monotone profile stays
-// monotone, which for a density or a modulus is often what matters more than
-// smoothness. CubicSpline is smooth and can overshoot near a sharp change.
-// Akima is the compromise: local, so a bad patch stays local, and much less
-// prone to overshoot than a global spline.
+/// Which interpolant carries a radial line onto the new radii.
+///
+/// A policy value with named constructors, as `Execution`, `Batch`, `Chunking`
+/// and `WignerValues` are, and for the reason Policies.h gives: what it
+/// describes is a property of the problem rather than of the mathematics, so
+/// putting it in a type would make the mathematics carry it.
+///
+/// Linear is the safe one -- it cannot overshoot, so a monotone profile stays
+/// monotone, which for a density or a modulus is often what matters more than
+/// smoothness. CubicSpline is smooth and can overshoot near a sharp change.
+/// Akima is the compromise: local, so a bad patch stays local, and much less
+/// prone to overshoot than a global spline.
 class RadialInterpolation {
  public:
   static RadialInterpolation Linear() { return RadialInterpolation(Kind::Line); }

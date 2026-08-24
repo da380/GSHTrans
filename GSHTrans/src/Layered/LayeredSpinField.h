@@ -90,9 +90,9 @@ class LayeredSpinField {
   auto SliceSize() const { return FieldSize(); }
   auto SameShape() const { return LayeredSpinField(_radialGrid, _grid); }
 
-  // The same field on a different set of radii, which is what resampling
-  // needs and what SameShape cannot give: a radial operator maps a stack to
-  // one of the same shape, and changing nR is precisely not that.
+  /// The same field on a different set of radii, which is what resampling
+  /// needs and what SameShape cannot give: a radial operator maps a stack to
+  /// one of the same shape, and changing nR is precisely not that.
   auto SameShapeOn(RadialGridType radialGrid) const {
     return LayeredSpinField(std::move(radialGrid), _grid);
   }
@@ -102,8 +102,8 @@ class LayeredSpinField {
   /** @brief The underlying buffer. */
   auto Data() const { return std::span<const Scalar>(_data); }
 
-  // One angular field, as a view over this stack's storage. Writing through it
-  // writes the stack.
+  /// One angular field, as a view over this stack's storage. Writing through it
+  /// writes the stack.
   auto Slice(Int i) {
     return SliceType(_grid, Data().subspan(Offset(i), SliceExtent()));
   }
@@ -112,9 +112,9 @@ class LayeredSpinField {
     return ConstSliceType(_grid, Data().subspan(Offset(i), SliceExtent()));
   }
 
-  // The whole stack as the transform's batch: nR fields, each contiguous,
-  // FieldSize apart. This is the descriptor core-plan.md step F exists for,
-  // and the radial axis is what it was waiting for.
+  /// The whole stack as the transform's batch: nR fields, each contiguous,
+  /// FieldSize apart. This is the descriptor core-plan.md step F exists for,
+  /// and the radial axis is what it was waiting for.
   auto Batch() const {
     return GSHTrans::Batch::Contiguous(NumberOfRadii(), FieldSize());
   }
@@ -200,9 +200,9 @@ class LayeredSpinExpansion {
   /** @brief How many elements one radial slice holds. */
   auto SliceSize() const { return CoefficientSize(); }
 
-  // Where a degree and order sit within one radius's block. The radial-major
-  // repack needs this: once the layout is [(l, m)][r] a line is addressed by
-  // its position in the block and no longer by (l, m) directly.
+  /// Where a degree and order sit within one radius's block. The radial-major
+  /// repack needs this: once the layout is [(l, m)][r] a line is addressed by
+  /// its position in the block and no longer by (l, m) directly.
   auto CoefficientIndex(Int l, Int m) const {
     return static_cast<Int>(_indices.Index(l, m));
   }
@@ -220,7 +220,7 @@ class LayeredSpinExpansion {
   /** @brief The underlying buffer. */
   auto Data() const { return std::span<const Complex>(_data); }
 
-  // The coefficient at one radius.
+  /// The coefficient at one radius.
   Complex operator[](Int i, Int l, Int m) const {
     return _data[Offset(i) + static_cast<std::size_t>(_indices.Index(l, m))];
   }

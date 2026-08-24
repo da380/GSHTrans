@@ -280,8 +280,8 @@ class LagrangeDerivative {
   /** @brief The radial grid this is defined on. */
   const RadialGrid<Real>& Radial() const { return _radial; }
 
-  // The matrix itself, row-major, for a caller who wants to compose it with
-  // something rather than apply it.
+  /// The matrix itself, row-major, for a caller who wants to compose it with
+  /// something rather than apply it.
   std::span<const Real> Matrix() const { return std::span<const Real>(_d); }
 
   template <typename Scalar>
@@ -370,7 +370,7 @@ class ElementDerivative {
   /** @brief The radial grid this is defined on. */
   const RadialGrid<Real>& Radial() const { return _radial; }
 
-  // One element's matrix, row-major over its own nodes.
+  /// One element's matrix, row-major over its own nodes.
   std::span<const Real> Matrix(Int k) const {
     const auto first = static_cast<std::size_t>(_offset[static_cast<std::size_t>(k)]);
     const auto last = static_cast<std::size_t>(_offset[static_cast<std::size_t>(k + 1)]);

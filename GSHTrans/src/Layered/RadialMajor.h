@@ -63,10 +63,10 @@ class RadialMajor {
   auto NumberOfRadii() const { return _nR; }
   auto NumberOfLines() const { return _lines; }
 
-  // A buffer of the same shape, not transposed from anything. Scratch for an
-  // operator to write into: transposing a buffer whose contents are about to
-  // be overwritten is pure waste, and without this there is no way to avoid
-  // it.
+  /// A buffer of the same shape, not transposed from anything. Scratch for an
+  /// operator to write into: transposing a buffer whose contents are about to
+  /// be overwritten is pure waste, and without this there is no way to avoid
+  /// it.
   auto SameShape() const { return RadialMajor(_nR, _lines); }
   /** @brief How many elements are stored. */
   auto Size() const { return static_cast<Int>(_data.size()); }
@@ -76,8 +76,8 @@ class RadialMajor {
   /** @brief The underlying buffer. */
   auto Data() const { return std::span<const Scalar>(_data); }
 
-  // One radial line, contiguous. `j` is the position within a slice: for an
-  // expansion, what `CoefficientIndex(l, m)` returns.
+  /// One radial line, contiguous. `j` is the position within a slice: for an
+  /// expansion, what `CoefficientIndex(l, m)` returns.
   auto Line(Int j) {
     return Data().subspan(Offset(j), static_cast<std::size_t>(_nR));
   }
@@ -90,12 +90,12 @@ class RadialMajor {
     return std::ranges::views::iota(Int{0}, _lines);
   }
 
-  // Refill from a stack of the shape this already has, without allocating.
-  //
-  // The loop this exists for repacks on every operator application, and
-  // allocating a buffer the size of the whole field each time -- with the page
-  // faults that first touching it brings -- would cost more than the transpose
-  // it is there to serve.
+  /// Refill from a stack of the shape this already has, without allocating.
+  ///
+  /// The loop this exists for repacks on every operator application, and
+  /// allocating a buffer the size of the whole field each time -- with the page
+  /// faults that first touching it brings -- would cost more than the transpose
+  /// it is there to serve.
   void CopyFrom(const Stack& stack,
                 Execution policy = Execution::Sequential()) {
     if (stack.NumberOfRadii() != _nR || stack.SliceSize() != _lines) {
@@ -106,7 +106,7 @@ class RadialMajor {
     Transpose(stack.Data().data(), _data.data(), _nR, _lines, policy);
   }
 
-  // Back to radius-major, into a stack of the right shape.
+  /// Back to radius-major, into a stack of the right shape.
   void CopyInto(Stack& stack,
                 Execution policy = Execution::Sequential()) const {
     if (stack.NumberOfRadii() != _nR || stack.SliceSize() != _lines) {

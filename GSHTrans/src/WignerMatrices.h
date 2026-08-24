@@ -153,8 +153,8 @@ class WignerMatrices {
   auto MaxDegree() const { return _lMax; }
   auto MaxOrder() const { return _mMax; }
 
-  // Zero when reflected, whatever the alphabet: the negative orders are not
-  // stored and are reached through Sign() instead.
+  /// Zero when reflected, whatever the alphabet: the negative orders are not
+  /// stored and are reached through Sign() instead.
   auto MinOrder() const {
     if (_reflected) return Int{0};
     if constexpr (std::same_as<MRange, All>) {
@@ -166,19 +166,19 @@ class WignerMatrices {
 
   auto IsReflected() const { return _reflected; }
 
-  // The reflection itself, as one function so that no caller writes the sign
-  // out by hand:
-  //
-  //     d^l_{nm}(pi - theta) = (-1)^{l+n} d^l_{n,-m}(theta)
-  //
-  // verified against this library's own values to 3.8e-15 on values of order
-  // one. Equivalently, the matrix at -m is the matrix at +m with its columns
-  // reversed and this sign applied to row l.
+  /// The reflection itself, as one function so that no caller writes the sign
+  /// out by hand:
+  ///
+  ///     d^l_{nm}(pi - theta) = (-1)^{l+n} d^l_{n,-m}(theta)
+  ///
+  /// verified against this library's own values to 3.8e-15 on values of order
+  /// one. Equivalently, the matrix at -m is the matrix at +m with its columns
+  /// reversed and this sign applied to row l.
   static constexpr Real Sign(Int l, Int n) {
     return ((l + n) % 2 == 0) ? Real{1} : Real{-1};
   }
 
-  // Where the mirror of colatitude i lives.
+  /// Where the mirror of colatitude i lives.
   auto MirrorAngle(Int iTheta) const { return _nTheta - 1 - iTheta; }
 
   auto Orders() const {
@@ -212,12 +212,12 @@ class WignerMatrices {
 
   auto NumberOfAngles() const { return _nTheta; }
 
-  // The lowest degree present at (n, m), and how many there are.
-  //
-  // A d-function vanishes identically unless l >= |n| and l >= |m|, so the
-  // matrix at (n, m) starts at max(|n|, |m|) and its height falls linearly in
-  // |m|. That is the source of the load imbalance step M4 has to divide work
-  // for rather than count orders.
+  /// The lowest degree present at (n, m), and how many there are.
+  ///
+  /// A d-function vanishes identically unless l >= |n| and l >= |m|, so the
+  /// matrix at (n, m) starts at max(|n|, |m|) and its height falls linearly in
+  /// |m|. That is the source of the load imbalance step M4 has to divide work
+  /// for rather than count orders.
   auto MinDegree(Int n, Int m) const {
     assert(std::abs(n) <= _nMax);
     assert(m >= MinOrder() && m <= MaxOrder());
@@ -232,17 +232,17 @@ class WignerMatrices {
     return std::ranges::views::iota(MinDegree(n, m), _lMax + 1);
   }
 
-  // The matrix D^(n,m): NumberOfDegrees(n, m) rows by NumberOfAngles()
-  // columns, row-major, so the value at (l, iTheta) is at
-  //
-  //     (l - MinDegree(n, m)) * NumberOfAngles() + iTheta
-  //
-  // and the leading dimension a BLAS call wants is NumberOfAngles().
-  //
-  // The index is left to the caller rather than wrapped in an accessor,
-  // deliberately: the layout is the whole content of this class, and a test
-  // that computes the index itself is testing the layout rather than trusting
-  // a member that could be wrong in the same way twice.
+  /// The matrix D^(n,m): NumberOfDegrees(n, m) rows by NumberOfAngles()
+  /// columns, row-major, so the value at (l, iTheta) is at
+  ///
+  ///     (l - MinDegree(n, m)) * NumberOfAngles() + iTheta
+  ///
+  /// and the leading dimension a BLAS call wants is NumberOfAngles().
+  ///
+  /// The index is left to the caller rather than wrapped in an accessor,
+  /// deliberately: the layout is the whole content of this class, and a test
+  /// that computes the index itself is testing the layout rather than trusting
+  /// a member that could be wrong in the same way twice.
   auto operator[](Int n, Int m) const {
     return std::span<const Real>(
         _data.data() + _offset[OffsetIndex(n, m)],

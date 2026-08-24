@@ -108,13 +108,13 @@ class LayeredTensorField {
   using RadialGridType = RadialGrid<Real>;
   using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
 
-  // The flat tensor of the same shape, which owns the combinatorics: the
-  // orbits, the slot layout and the conditions on the accessors. This type
-  // adds a radial axis and nothing else, so it defines none of that itself --
-  // including which multi-indices exist, which is why the alphabet is passed
-  // through rather than consulted here. The accessors inherit the letter
-  // check with everything else, since they are conditioned on Flat's
-  // Represents and Writable.
+  /// The flat tensor of the same shape, which owns the combinatorics: the
+  /// orbits, the slot layout and the conditions on the accessors. This type
+  /// adds a radial axis and nothing else, so it defines none of that itself --
+  /// including which multi-indices exist, which is why the alphabet is passed
+  /// through rather than consulted here. The accessors inherit the letter
+  /// check with everything else, since they are conditioned on Flat's
+  /// Represents and Writable.
   using Flat =
       TensorField<Rank, Symmetry, Reality, GridType, ComponentMajor, SlotSet>;
 

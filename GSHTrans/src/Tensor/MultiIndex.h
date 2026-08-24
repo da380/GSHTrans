@@ -17,30 +17,30 @@ namespace GSHTrans {
 //                              Which slots exist                            //
 //--------------------------------------------------------------------------//
 
-// The alphabet a tensor's slots are drawn from.
-//
-// An ordinary canonical tensor has slots in {-1, 0, +1}. A *tangential* one --
-// surface strain and stress, the metric of the sphere, the spin-2 fields of
-// CMB and geodesy -- has no radial slot at all, so its slots run over
-// {-1, +1}. That is the T^{Omega Omega} piece of the decomposition Dahlen &
-// Tromp open Appendix C with, and it is what most geophysical surface objects
-// are.
-//
-// A policy rather than a second class, for the reason every other such choice
-// here is one: it keeps a single MultiIndex, so that every algorithm written
-// against it stays written once. Orbits.h walks the group it is given over the
-// components it is told about, the symmetry policies permute slots by position
-// and never look at their contents, and storage groups by the slot sum -- none
-// of which knows or needs to know how many values a slot can take.
-//
-// The alphabet is deliberately uniform across slots rather than per slot. A
-// mixed object such as D&T's T^{r Omega} would break an invariant the symmetry
-// machinery relies on -- a permutation may only exchange slots drawn from the
-// same alphabet -- and widening to a per-slot list later costs only this
-// header. See field-algebra-plan.md section 18.2 [D2].
-//
-// Both alphabets are closed under negation, which is what the reality
-// condition needs: it maps -1 to +1 and 0 to itself.
+/// The alphabet a tensor's slots are drawn from.
+///
+/// An ordinary canonical tensor has slots in {-1, 0, +1}. A *tangential* one --
+/// surface strain and stress, the metric of the sphere, the spin-2 fields of
+/// CMB and geodesy -- has no radial slot at all, so its slots run over
+/// {-1, +1}. That is the T^{Omega Omega} piece of the decomposition Dahlen &
+/// Tromp open Appendix C with, and it is what most geophysical surface objects
+/// are.
+///
+/// A policy rather than a second class, for the reason every other such choice
+/// here is one: it keeps a single MultiIndex, so that every algorithm written
+/// against it stays written once. Orbits.h walks the group it is given over the
+/// components it is told about, the symmetry policies permute slots by position
+/// and never look at their contents, and storage groups by the slot sum -- none
+/// of which knows or needs to know how many values a slot can take.
+///
+/// The alphabet is deliberately uniform across slots rather than per slot. A
+/// mixed object such as D&T's T^{r Omega} would break an invariant the symmetry
+/// machinery relies on -- a permutation may only exchange slots drawn from the
+/// same alphabet -- and widening to a per-slot list later costs only this
+/// header. See field-algebra-plan.md section 18.2 [D2].
+///
+/// Both alphabets are closed under negation, which is what the reality
+/// condition needs: it maps -1 to +1 and 0 to itself.
 struct AllSlots {
   static constexpr std::array<std::ptrdiff_t, 3> Alphabet{-1, 0, 1};
 };
@@ -105,12 +105,12 @@ class MultiIndex {
   static constexpr Int Rank = _Rank;
   static_assert(Rank >= 0, "A tensor rank cannot be negative");
 
-  // How many values one slot can take: the radix everything below counts in.
+  /// How many values one slot can take: the radix everything below counts in.
   static constexpr Int Base = static_cast<Int>(SlotSet::Alphabet.size());
 
-  // Base^Rank, the number of components -- 3^Rank for an ordinary tensor and
-  // 2^Rank for a tangential one. Formed by repeated multiplication rather than
-  // by pow, which is neither constexpr nor exact.
+  /// Base^Rank, the number of components -- 3^Rank for an ordinary tensor and
+  /// 2^Rank for a tangential one. Formed by repeated multiplication rather than
+  /// by pow, which is neither constexpr nor exact.
   static constexpr Int Size = [] {
     auto size = Int{1};
     for (auto i = Int{0}; i < Rank; i++) size *= Base;
@@ -133,11 +133,11 @@ class MultiIndex {
     }
   }
 
-  // Slot 0 is the most significant digit, so that flat indices run in
-  // lexicographic order of (alpha_1 ... alpha_p) starting from the alphabet's
-  // first letter. The choice is arbitrary but has to be pinned: it is the
-  // order components are laid out in and the order any table below is
-  // generated in.
+  /// Slot 0 is the most significant digit, so that flat indices run in
+  /// lexicographic order of (alpha_1 ... alpha_p) starting from the alphabet's
+  /// first letter. The choice is arbitrary but has to be pinned: it is the
+  /// order components are laid out in and the order any table below is
+  /// generated in.
   static constexpr MultiIndex FromFlat(Int flat) {
     if (flat < 0 || flat >= Size) {
       throw std::invalid_argument("Flat component index out of range");
@@ -156,8 +156,8 @@ class MultiIndex {
     return flat;
   }
 
-  // The upper index, eq:N. This is the spin weight of the component's field
-  // and therefore a compile-time quantity wherever it is used.
+  /// The upper index, eq:N. This is the spin weight of the component's field
+  /// and therefore a compile-time quantity wherever it is used.
   constexpr Int UpperIndex() const {
     auto n = Int{0};
     for (auto alpha : _slots) n += alpha;
@@ -167,19 +167,19 @@ class MultiIndex {
   constexpr Int operator[](Int slot) const { return _slots[slot]; }
   constexpr const std::array<Int, Rank>& Slots() const { return _slots; }
 
-  // The involution of the reality condition (eq:reality). Its only fixed point
-  // is the all-zero index -- which for a tangential tensor of rank >= 1 does
-  // not exist, so negation is then free of fixed points and every orbit has
-  // size two. That is what removes the pinned components, and with them the
-  // second buffer, from a tangential real tensor with no permutation symmetry
-  // (field-algebra-plan.md section 18.2 [D6]).
+  /// The involution of the reality condition (eq:reality). Its only fixed point
+  /// is the all-zero index -- which for a tangential tensor of rank >= 1 does
+  /// not exist, so negation is then free of fixed points and every orbit has
+  /// size two. That is what removes the pinned components, and with them the
+  /// second buffer, from a tangential real tensor with no permutation symmetry
+  /// (field-algebra-plan.md section 18.2 [D6]).
   constexpr MultiIndex Negated() const {
     auto slots = _slots;
     for (auto& alpha : slots) alpha = -alpha;
     return MultiIndex(slots);
   }
 
-  // Slot i of the result is slot image[i] of this one.
+  /// Slot i of the result is slot image[i] of this one.
   constexpr MultiIndex Permuted(const std::array<Int, Rank>& image) const {
     auto slots = std::array<Int, Rank>{};
     for (auto i = Int{0}; i < Rank; i++) slots[i] = _slots[image[i]];
@@ -297,8 +297,8 @@ struct GeneratedBy {
   }
 };
 
-// The symmetry of an elastic tensor: symmetric within each pair of slots, and
-// under exchange of the pairs.
+/// The symmetry of an elastic tensor: symmetric within each pair of slots, and
+/// under exchange of the pairs.
 struct ElasticSymmetry {
   static constexpr std::ptrdiff_t Rank = 4;
 

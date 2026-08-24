@@ -39,40 +39,40 @@ class RadialGrid {
 
   RadialGrid() = delete;
 
-  // Nodes in increasing order, with the weights of whatever rule the caller
-  // means to integrate with. The weights may be empty, in which case the grid
-  // carries points alone and Integrate is unavailable.
+  /// Nodes in increasing order, with the weights of whatever rule the caller
+  /// means to integrate with. The weights may be empty, in which case the grid
+  /// carries points alone and Integrate is unavailable.
   RadialGrid(std::vector<Real> radii, std::vector<Real> weights = {})
       : _impl{std::make_shared<const Impl>(std::move(radii),
                                            std::move(weights),
                                            std::vector<Int>{})} {}
 
-  // The same, knowing which radii belong to which element.
-  //
-  // This is the one piece of *structure* the grid carries, and it is here
-  // because it is the fact more than one thing needs and nothing can infer:
-  // a block-diagonal derivative needs the blocks, and an interpolant must not
-  // cross a material interface. Without it a repeated radius is
-  // indistinguishable from a caller's mistake -- the grid has always accepted
-  // one, and has never been able to say what it meant.
-  //
-  // The blocks are disjoint and given by their `nElements + 1` starts, so
-  // every node belongs to exactly one element and two elements meet at a
-  // *repeated radius* (field-algebra-plan.md section 20.5 [E1]). That is what
-  // makes a derivative well defined at an interface without anyone having to
-  // choose between averaging the two sides and picking one: both exist, and
-  // they are the pair `Interpolation::Piecewise::Limits` returns on the other
-  // side of the join.
-  //
-  // The price, and it is the caller's: a continuous mesh duplicates its
-  // interior element boundaries and keeps the duplicates equal. That is the
-  // same contract `Piecewise` sets when it declines to check continuity, and
-  // for the same reason -- enforcing it would only start an argument about
-  // tolerance.
-  //
-  // A named constructor rather than a third defaulted parameter, so that a
-  // caller with elements and no weights does not have to pass an empty vector
-  // to reach it.
+  /// The same, knowing which radii belong to which element.
+  ///
+  /// This is the one piece of *structure* the grid carries, and it is here
+  /// because it is the fact more than one thing needs and nothing can infer:
+  /// a block-diagonal derivative needs the blocks, and an interpolant must not
+  /// cross a material interface. Without it a repeated radius is
+  /// indistinguishable from a caller's mistake -- the grid has always accepted
+  /// one, and has never been able to say what it meant.
+  ///
+  /// The blocks are disjoint and given by their `nElements + 1` starts, so
+  /// every node belongs to exactly one element and two elements meet at a
+  /// *repeated radius* (field-algebra-plan.md section 20.5 [E1]). That is what
+  /// makes a derivative well defined at an interface without anyone having to
+  /// choose between averaging the two sides and picking one: both exist, and
+  /// they are the pair `Interpolation::Piecewise::Limits` returns on the other
+  /// side of the join.
+  ///
+  /// The price, and it is the caller's: a continuous mesh duplicates its
+  /// interior element boundaries and keeps the duplicates equal. That is the
+  /// same contract `Piecewise` sets when it declines to check continuity, and
+  /// for the same reason -- enforcing it would only start an argument about
+  /// tolerance.
+  ///
+  /// A named constructor rather than a third defaulted parameter, so that a
+  /// caller with elements and no weights does not have to pass an empty vector
+  /// to reach it.
   static RadialGrid WithElements(std::vector<Real> radii,
                                  std::vector<Int> elementStarts,
                                  std::vector<Real> weights = {}) {
@@ -100,9 +100,9 @@ class RadialGrid {
   //                             The elements                                //
   //------------------------------------------------------------------------//
 
-  // Whether this grid knows its elements at all. A grid built without them is
-  // exactly what it was before, and everything that reads them says what it
-  // does when there are none.
+  /// Whether this grid knows its elements at all. A grid built without them is
+  /// exactly what it was before, and everything that reads them says what it
+  /// does when there are none.
   auto HasElements() const { return !_impl->starts.empty(); }
 
   auto ElementCount() const {
@@ -113,8 +113,8 @@ class RadialGrid {
     return std::ranges::views::iota(Int{0}, ElementCount());
   }
 
-  // Element k holds the radii [ElementStart(k), ElementEnd(k)), which is the
-  // half-open form everything else here uses.
+  /// Element k holds the radii [ElementStart(k), ElementEnd(k)), which is the
+  /// half-open form everything else here uses.
   Int ElementStart(Int k) const { return _impl->starts[k]; }
   Int ElementEnd(Int k) const { return _impl->starts[k + 1]; }
   Int ElementSize(Int k) const { return ElementEnd(k) - ElementStart(k); }
@@ -123,8 +123,8 @@ class RadialGrid {
     return std::ranges::views::iota(ElementStart(k), ElementEnd(k));
   }
 
-  // Which element a radius index belongs to. Exactly one does, the blocks
-  // being disjoint, which is the whole point of [E1].
+  /// Which element a radius index belongs to. Exactly one does, the blocks
+  /// being disjoint, which is the whole point of [E1].
   Int ElementOf(Int i) const {
     for (auto k = Int{0}; k < ElementCount(); k++) {
       if (i < ElementEnd(k)) return k;
@@ -132,9 +132,9 @@ class RadialGrid {
     return ElementCount() - 1;
   }
 
-  // The breakpoints, of which there are ElementCount() + 1. Read off the
-  // radii rather than stored beside them, so that there is one source of
-  // truth and no way for the two to disagree ([E3]).
+  /// The breakpoints, of which there are ElementCount() + 1. Read off the
+  /// radii rather than stored beside them, so that there is one source of
+  /// truth and no way for the two to disagree ([E3]).
   Real Breakpoint(Int k) const {
     return k == 0 ? _impl->radii.front()
                   : _impl->radii[static_cast<std::size_t>(ElementEnd(k - 1) - 1)];
