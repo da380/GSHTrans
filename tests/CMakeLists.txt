@@ -38,6 +38,10 @@ add_executable(TestExpansion
                TestExpansion.cpp)
 target_link_libraries(TestExpansion PRIVATE GSHTrans gtest_main)
 
+add_executable(TestInterpolate
+               TestInterpolate.cpp)
+target_link_libraries(TestInterpolate PRIVATE GSHTrans gtest_main)
+
 add_executable(TestConventions
                TestConventions.cpp)
 target_link_libraries(TestConventions PRIVATE GSHTrans gtest_main)
@@ -96,6 +100,7 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/Expansion/ContravariantDerivative.h
   GSHTrans/src/Expansion/IntrinsicDerivative.h
   GSHTrans/src/Expansion/BundleMaps.h
+  GSHTrans/src/Expansion/Interpolate.h
   GSHTrans/src/Layered/RadialGrid.h
   GSHTrans/src/Layered/LayeredSpinField.h
   GSHTrans/src/Layered/RadialDerivatives.h
@@ -131,6 +136,7 @@ gtest_discover_tests(TestTensorField)
 gtest_discover_tests(TestTensorAlgebra)
 gtest_discover_tests(TestTensorReality)
 gtest_discover_tests(TestExpansion)
+gtest_discover_tests(TestInterpolate)
 gtest_discover_tests(TestConventions)
 gtest_discover_tests(TestLayered)
 gtest_discover_tests(TestWigner)

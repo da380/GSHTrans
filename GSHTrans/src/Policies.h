@@ -367,6 +367,47 @@ class TransformKernel {
   bool _matrix;
 };
 
+// Which scheme an interpolant of a field uses.
+//
+// Spectral evaluates the expansion directly, which is exact for a
+// band-limited field and safe at the poles, and costs O(lMax^2) a point.
+// Bilinear and Bicubic are Interpolation's rectilinear schemes over the
+// field's own samples, which cost O(1) a point and are not exact.
+//
+// -- Bilinear and Bicubic are **absent**, not refused, in a build without
+// Interpolation, so asking for one is a compile error at the call site rather
+// than a throw. That is [C17]'s argument for the third time in this library,
+// after TransformKernel::Matrix() and RadialSplineDerivative.h: the tighter
+// option is the reversible one, since offering a factory later with a runtime
+// throw breaks nobody while withdrawing one does.
+//
+// This policy differs from the four above in one respect, and it is worth
+// naming rather than leaving to be discovered. The others are values read at
+// run time by code that is the same either way. These three select between
+// interpolants of *different types* -- one holds an expansion, the others hold
+// upstream objects with their own coefficient arrays -- so Interpolate must
+// dispatch at compile time and return a scheme-dependent type. The named
+// constructors below therefore return distinct tag types rather than a common
+// value type, which keeps the caller's spelling identical to the other
+// policies while making the dispatch overload resolution.
+//
+// What that costs: a scheme cannot be chosen from a configuration file
+// without a switch in the caller's own code. It is the same limitation
+// [C17] records for TransformKernel and it is accepted for the same reason.
+class Scheme {
+ public:
+  struct SpectralTag {};
+  struct BilinearTag {};
+  struct BicubicTag {};
+
+  static constexpr SpectralTag Spectral() { return {}; }
+
+#ifdef GSHTRANS_HAVE_INTERPOLATION
+  static constexpr BilinearTag Bilinear() { return {}; }
+  static constexpr BicubicTag Bicubic() { return {}; }
+#endif
+};
+
 }  // namespace GSHTrans
 
 #endif  //  GSH_TRANS_POLICIES_GUARD_H

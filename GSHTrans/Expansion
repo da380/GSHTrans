@@ -9,5 +9,6 @@
 #include "src/Expansion/ContravariantDerivative.h"
 #include "src/Expansion/IntrinsicDerivative.h"
 #include "src/Expansion/BundleMaps.h"
+#include "src/Expansion/Interpolate.h"
 
 #endif
