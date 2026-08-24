@@ -94,9 +94,6 @@ inside the header.
 
 Deliberately unresolved, each wanting a decision rather than an edit:
 
-- **The version number.** `Version.h` still says `1.0.0`, unchanged while
-  everything since landed. CMake refuses to configure if the two disagree, so
-  the mechanism works and only the value is stale.
 - **`Scheme`** is shaped unlike the other policy values — a class with no
   instances whose named constructors return nested tag types, because the
   three schemes have different interpolant types and the dispatch has to be

@@ -28,7 +28,7 @@
 /** @brief Major version. */
 #define GSHTRANS_VERSION_MAJOR 1
 /** @brief Minor version. */
-#define GSHTRANS_VERSION_MINOR 0
+#define GSHTRANS_VERSION_MINOR 1
 /** @brief Patch version. */
 #define GSHTRANS_VERSION_PATCH 0
 
@@ -48,7 +48,7 @@
                           GSHTRANS_VERSION_PATCH)
 
 /** @brief This library's version as "major.minor.patch". */
-#define GSHTRANS_VERSION_STRING "1.0.0"
+#define GSHTRANS_VERSION_STRING "1.1.0"
 
 namespace GSHTrans {
 

@@ -6,7 +6,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(GSHTrans
-        VERSION 1.0.0
+        VERSION 1.1.0
         DESCRIPTION "Generalized spherical harmonic transforms and a tensor field algebra on the sphere"
         LANGUAGES CXX)
 
