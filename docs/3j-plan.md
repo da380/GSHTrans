@@ -427,14 +427,41 @@ to refuse.
 
 ### 5.3 Decisions
 
-**[J5] Schulten–Gordon replaces both predecessors, and they are deleted.**
-Not kept as oracles. The [C12] precedent — two kernels, each the other's
+**[J5] Schulten–Gordon replaces both predecessors. Woodhouse's recursion is
+deleted; Racah returns as a test oracle.** *Amended by the author after T6
+landed: Racah goes back, in the test tree.* The reasoning is [C12]'s and it
+is stronger here than it looked, because of what [J6] establishes — the
+checks this algorithm can make about *itself* are unusually weak. Completeness
+holds by construction and the recurrence residual is homogeneous, so between
+them they are blind to an overall scale or sign on a row, which is precisely
+the class the one real bug fell into. A second formula is not blind to it.
+
+Racah is not a second *production* path: it was measured and loses over most
+of the triangle space. It is trustworthy exactly where its alternating sum is
+short, so the test restricts itself to that, and `RacahSumLength` is provided
+so it can. What that buys is an independent check in the near-stretched
+region, which is where the scheme S–G replaced was worst.
+
+*The oracle is blunter than the structural checks and the test says so:*
+Racah exponentiates a logarithm of size `O(l)`, so it drifts with degree —
+1.8e-11 at `(128,128,192)` and 6.6e-11 at `(200,200,200)`, against **1e-16**
+for cyclic-permutation agreement on the same triples. The tolerance scales
+with the degree sum and is documented as a bound on the oracle rather than on
+the library. A second test pins the oracle itself against the two closed
+forms where it is used.
+
+Woodhouse's recursion is not kept. The [C12] precedent — two kernels, each the other's
 check — was considered and rejected here by the author: the structural tests
 below are strong enough, and carrying two superseded implementations of a
 thing that is now correct everywhere measured is maintenance without a
-customer. `Wigner3jMatrix::Woodhouse` and `FillWoodhouseMatrix` **stay**:
-Woodhouse's array is a phase and a relabelling of the plain table, wanted by
-normal-mode codes, and it is a convention rather than an algorithm.
+customer. Its *array layout* stays, since that is a
+convention rather than an algorithm — a phase and a relabelling of the plain
+table, wanted by normal-mode codes — but **renamed for what it is**:
+`Wigner3jMatrix::CouplingElement`, `FillCouplingMatrix`, and
+`SwapCouplingConvention`. The layout is how the symbols enter a normal-mode
+coupling matrix; naming it after the routine that happened to tabulate it
+told a reader nothing about what it was for. `wig2.f` stays named in the
+documentation as provenance.
 
 **[J6] The runtime self-check becomes the recurrence residual, because
 completeness no longer tests anything.** [J1] made the completeness relation a
@@ -507,9 +534,10 @@ one direction only.
 
 and a whole table costs 0.039 ms at `l = 32`, 0.61 ms at 128, 2.4 ms at 256.
 
-**The suite is 378, up from 376.** Seventeen 3-j tests where there were
-fourteen, and the two that went were the ones asserting a refusal that no
-longer happens.
+**The suite is 380, up from 376.** Nineteen 3-j tests where there were
+fourteen; the two that went were the ones asserting a refusal that no longer
+happens, and the new ones are the structural checks of [J7] plus the two that
+came back with the Racah oracle.
 
 *One test earns its place more than the others.* `TheRecurrenceCheckIsNotVacuous`
 perturbs a single interior value of a row and requires the residual check to

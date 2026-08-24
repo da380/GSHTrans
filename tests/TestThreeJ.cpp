@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <vector>
 
+#include "RacahReference.h"
+
 // T1 of docs/3j-plan.md: the test family, before any algorithm changes.
 //
 // `3j.h` had no coverage at all although it is public API, and the reason
@@ -360,32 +362,97 @@ TEST(ThreeJ, TheRecurrenceCheckIsNotVacuous) {
       l1, l2, l3, m1, std::span<const double>(broken.data(), n), n));
 }
 
-// Woodhouse's array survives as a convention: a mirror in m1 and a phase.
-// Applying the swap twice must give the table back, which is what says the
-// two conventions cannot drift apart.
-TEST(ThreeJ, WoodhouseIsAConventionAndIsItsOwnInverse) {
+// An independent formula, which is the one check the algorithm cannot make
+// about itself. Completeness holds by construction here -- Schulten-Gordon
+// normalises each row by it -- and the recurrence residual is homogeneous, so
+// it is blind to an overall scale or sign. Racah sees all of that.
+//
+// Restricted to entries whose Racah sum is short, because that is where the
+// oracle is trustworthy: at l3 = l1 + l2 the sum has one term and cannot
+// cancel at all, and it degrades as the sum lengthens. Comparing against a
+// long Racah sum would measure Racah rather than the library.
+TEST(ThreeJ, AgreesWithRacahWhereRacahIsExact) {
+  for (const auto& t : std::vector<std::array<int, 3>>{
+           {3, 4, 5}, {12, 12, 12}, {40, 40, 80}, {64, 64, 128},
+           {80, 80, 120}, {100, 100, 150}, {128, 128, 192}, {128, 128, 250},
+           {160, 160, 160}, {200, 200, 200}}) {
+    const auto table = Wigner3jMatrix<double>(t[0], t[1], t[2]);
+    auto worst = 0.0;
+    auto checked = 0;
+    for (auto m1 : table.M1Axis()) {
+      for (auto m3 : table.M3Axis()) {
+        const auto m2 = -(m1 + m3);
+        if (std::abs(m2) > t[1]) continue;
+        if (RacahSumLength(t[0], t[1], t[2], m1, m2) > 6) continue;
+        worst = std::max(
+            worst, std::abs(table(m1, m3) -
+                            RacahSymbol<double>(t[0], t[1], t[2], m1, m2, m3)));
+        ++checked;
+      }
+    }
+    EXPECT_GT(checked, 0) << "(" << t[0] << "," << t[1] << "," << t[2]
+                          << ") gave the oracle nothing to check";
+
+    // The tolerance is a bound on *Racah's* accuracy, not the library's.
+    // Racah exponentiates a logarithm of size O(l), so it loses bits in
+    // proportion to the degree -- measured, 1.8e-11 at (128,128,192) and
+    // 6.6e-11 at (200,200,200), against 1e-16 for the library's own
+    // cyclic-permutation check on the same triples. So this test is much
+    // blunter than the structural ones and is written to say so.
+    const auto tolerance = 1e-12 * (t[0] + t[1] + t[2]);
+    EXPECT_LT(worst, tolerance)
+        << "(" << t[0] << "," << t[1] << "," << t[2] << ") worst " << worst;
+  }
+}
+
+// And the oracle is worth having only if it is right where it is used, so its
+// short-sum values are themselves pinned against the two closed forms.
+TEST(ThreeJ, TheRacahOracleIsExactWhereItIsTrusted) {
+  for (auto l1 : {1, 5, 16, 64, 128}) {
+    for (auto l2 : {1, 7, 32}) {
+      const auto l3 = l1 + l2;
+      ASSERT_EQ(RacahSumLength(l1, l2, l3, l1, l2), 1);
+      EXPECT_NEAR(RacahSymbol<double>(l1, l2, l3, l1, l2, -l3),
+                  1 / std::sqrt(2.0 * l3 + 1), 1e-13)
+          << "l1 = " << l1 << ", l2 = " << l2;
+    }
+  }
+  for (auto j : {1, 5, 30}) {
+    for (auto m = -j; m <= j; ++m) {
+      EXPECT_NEAR(RacahSymbol<double>(j, j, 0, m, -m, 0),
+                  ((j - m) % 2 == 0 ? 1.0 : -1.0) / std::sqrt(2.0 * j + 1),
+                  1e-13)
+          << "j = " << j << ", m = " << m;
+    }
+  }
+}
+
+// The coupling layout is a convention: a mirror in m1 and a phase. Applying
+// the swap twice must give the table back, which is what says the two
+// conventions cannot drift apart.
+TEST(ThreeJ, TheCouplingLayoutIsAConventionAndIsItsOwnInverse) {
   constexpr auto l1 = 4, l2 = 5, l3 = 6;
   const auto plain = Wigner3jMatrix<double>(l1, l2, l3);
 
-  auto wood = std::vector<double>(static_cast<std::size_t>(2 * l1 + 1) *
-                                  (2 * l3 + 1));
-  FillWoodhouseMatrix(l1, l2, l3, wood);
+  auto coupling = std::vector<double>(static_cast<std::size_t>(2 * l1 + 1) *
+                                      (2 * l3 + 1));
+  FillCouplingMatrix(l1, l2, l3, coupling);
 
-  // wood(m, mp) = (-1)^m (l1 l2 l3; -m, m-mp, mp)
+  // c(m, mp) = (-1)^m (l1 l2 l3; -m, m-mp, mp)
   const auto columns = 2 * l3 + 1;
   for (auto m = -l1; m <= l1; ++m) {
     for (auto mp = -l3; mp <= l3; ++mp) {
       const auto phase = (m % 2 == 0) ? 1.0 : -1.0;
       const auto want = phase * plain(-m, mp);
       const auto got =
-          wood[static_cast<std::size_t>(m + l1) * columns + (mp + l3)];
+          coupling[static_cast<std::size_t>(m + l1) * columns + (mp + l3)];
       EXPECT_NEAR(got, want, 1e-15) << "m = " << m << ", mp = " << mp;
-      EXPECT_NEAR(plain.Woodhouse(m, mp), want, 1e-15);
+      EXPECT_NEAR(plain.CouplingElement(m, mp), want, 1e-15);
     }
   }
 
-  auto twice = wood;
-  ThreeJDetails::SwapWoodhouseConvention<double>(
+  auto twice = coupling;
+  ThreeJDetails::SwapCouplingConvention<double>(
       l1, l3, std::span<double>(twice));
   for (std::size_t i = 0; i < twice.size(); ++i) {
     EXPECT_NEAR(twice[i], plain.Data()[i], 1e-15) << "entry " << i;

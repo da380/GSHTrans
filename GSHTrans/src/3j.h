@@ -52,9 +52,12 @@ namespace GSHTrans {
  * intermediate shapes above l = 80 that neither reached. Schulten-Gordon
  * covers all of it, at 1.1x to 1.3x the cost of the scheme it replaces.
  *
- * Woodhouse's own array layout survives as a convention -- see Woodhouse()
- * and FillWoodhouseMatrix -- because normal-mode coupling codes want it. It
- * is a phase and a relabelling of the table below, not a separate algorithm.
+ * A second layout is offered beside the plain table -- see CouplingElement()
+ * and FillCouplingMatrix -- in which the first order is negated and carries an
+ * alternating phase. That is the arrangement in which the symbols appear in
+ * normal-mode coupling matrices, and it is what Woodhouse's wig2.f tabulated,
+ * so codes written against that routine want it. It is a phase and a
+ * relabelling of the table below, not a separate algorithm.
  *
  * All degrees and orders are integers (no half-integer support).
  */
@@ -414,21 +417,21 @@ bool RowSatisfiesRecurrence(int l1, int l2, int l3, int m1,
 }
 
 /**
- * @brief Converts between the plain (m1, m3) table and Woodhouse's array.
- * @details Woodhouse's wig2.f tabulates
+ * @brief Converts between the plain (m1, m3) table and the coupling layout.
+ * @details The coupling layout is
  *
- *     wood(m, mp) = (-1)^m ( l1     l2      l3 )
- *                          ( -m   m - mp    mp ),
+ *     c(m, mp) = (-1)^m ( l1     l2      l3 )
+ *                       ( -m   m - mp    mp ),
  *
- * so plain(m1, m3) = (-1)^m1 wood(-m1, m3): the rows are mirrored in m1 and
- * carry an alternating phase.
+ * so plain(m1, m3) = (-1)^m1 c(-m1, m3): the rows are mirrored in m1 and
+ * carry an alternating phase. It is the array Woodhouse's wig2.f returned.
  *
  * **It is its own inverse**, since mirroring twice is the identity and the
  * phase squares to one, so one routine serves both directions and there is no
  * second convention to keep in step.
  */
 template <NumericConcepts::Real T>
-void SwapWoodhouseConvention(const int l1, const int l3, std::span<T> a) {
+void SwapCouplingConvention(const int l1, const int l3, std::span<T> a) {
   const auto columns = static_cast<std::size_t>(2 * l3 + 1);
   for (auto r = 0; r < l1; ++r) {
     const auto phase = ((r + l1) % 2 == 0) ? T{1} : T{-1};
@@ -503,11 +506,12 @@ void FillWigner3jMatrix(int l1, int l2, int l3, Range&& table) {
 }
 
 /**
- * @brief Fills user-provided storage with Woodhouse's matrix
+ * @brief Fills user-provided storage with the coupling layout
  * (-1)^m (l1 l2 l3; -m, m-mp, mp) in row-major order, m being the row axis
- * and mp the column axis. This is exactly the array a(m+l1+1, mp+l3+1)
- * returned by the original Fortran routine wig2(l1, l2, l3, a, id1).
- * Allocation-free.
+ * and mp the column axis: the first order negated, with an alternating phase.
+ * This is the arrangement the symbols appear in within normal-mode coupling
+ * matrices, and it is exactly the array a(m+l1+1, mp+l3+1) returned by the
+ * Fortran routine wig2(l1, l2, l3, a, id1). Allocation-free.
  * @tparam Range A contiguous, sized, readable and writable range of reals.
  * @param l1 The first degree.
  * @param l2 The second degree.
@@ -515,11 +519,11 @@ void FillWigner3jMatrix(int l1, int l2, int l3, Range&& table) {
  * @param table Storage of size (2 l1 + 1) x (2 l3 + 1).
  */
 template <RealContiguousWritableRange Range>
-void FillWoodhouseMatrix(int l1, int l2, int l3, Range&& table) {
+void FillCouplingMatrix(int l1, int l2, int l3, Range&& table) {
   using T = std::ranges::range_value_t<Range>;
   auto span = std::span<T>(std::ranges::data(table), std::ranges::size(table));
   ThreeJDetails::Wigner3jPlane<T>(l1, l2, l3, span);
-  ThreeJDetails::SwapWoodhouseConvention<T>(l1, l3, span);
+  ThreeJDetails::SwapCouplingConvention<T>(l1, l3, span);
 }
 
 /*------------------------------------------------------------------------*/
@@ -606,13 +610,17 @@ class Wigner3jMatrix {
   }
 
   /**
-   * @brief Returns Woodhouse's matrix element
-   * (-1)^m (l1 l2 l3; -m, m-mp, mp), the quantity tabulated by the
-   * original routine wig2.f and common in normal-mode coupling theory.
+   * @brief Returns the symbol in the coupling layout,
+   * (-1)^m (l1 l2 l3; -m, m-mp, mp): the first order negated, with an
+   * alternating phase.
+   * @details This is how the symbols enter a normal-mode coupling matrix, and
+   * it is the quantity the Fortran routine wig2.f tabulated, so it is offered
+   * for codes written against that convention. It is a relabelling of the
+   * plain table rather than a different calculation.
    * @param m The row order, m in [-l1, l1].
    * @param mp The column order, mp in [-l3, l3].
    */
-  auto Woodhouse(int m, int mp) const {
+  auto CouplingElement(int m, int mp) const {
     const auto phase = (m % 2 == 0) ? T{1} : T{-1};
     return phase * (*this)(-m, mp);
   }
@@ -742,15 +750,15 @@ class Wigner3jStack {
   }
 
   /**
-   * @brief Returns Woodhouse's matrix element
+   * @brief Returns the symbol in the coupling layout
    * (-1)^m (l1 l2 l3; -m, m-mp, mp) for a given middle degree.
    * @param l2 The middle degree.
    * @param m The row order.
    * @param mp The column order.
    */
-  auto Woodhouse(int l2, int m, int mp) const {
+  auto CouplingElement(int l2, int m, int mp) const {
     if (not _l2Axis.Contains(l2)) return T{0};
-    return Matrix(l2).Woodhouse(m, mp);
+    return Matrix(l2).CouplingElement(m, mp);
   }
 
   /** @brief Iterator to the first stored matrix (smallest l2). */
