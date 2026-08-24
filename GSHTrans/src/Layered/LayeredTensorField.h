@@ -98,6 +98,7 @@ class LayeredTensorField {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
 
+  /** @brief The tensor rank. */
   static constexpr Int Rank = _Rank;
   using Symmetry = _Symmetry;  ///< The permutation symmetry of the slots.
   using Reality = _Reality;  ///< Whether the tensor is real or complex.
@@ -122,12 +123,15 @@ class LayeredTensorField {
   static constexpr Int Components = Flat::Components;
   static constexpr Int StoredComponents = Flat::StoredComponents;
 
+  /** @brief Whether this holds a component at those slot letters. */
   template <Int... Alphas>
   static constexpr bool Represents = Flat::template Represents<Alphas...>;
 
+  /** @brief Whether that component may be written through. */
   template <Int... Alphas>
   static constexpr bool Writable = Flat::template Writable<Alphas...>;
 
+  /** @brief Whether that component is identically zero. */
   template <Int... Alphas>
   static constexpr bool Vanishes = Flat::template Vanishes<Alphas...>;
 
@@ -246,6 +250,7 @@ class LayeredTensorExpansion {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
 
+  /** @brief The tensor rank. */
   static constexpr Int Rank = _Rank;
   using Symmetry = _Symmetry;  ///< The permutation symmetry of the slots.
   using Reality = _Reality;  ///< Whether the tensor is real or complex.
@@ -264,9 +269,11 @@ class LayeredTensorExpansion {
   static constexpr auto& ComponentLayout = Flat::ComponentLayout;
   static constexpr Int StoredComponents = Flat::StoredComponents;
 
+  /** @brief Whether this holds a component at those slot letters. */
   template <Int... Alphas>
   static constexpr bool Represents = Flat::template Represents<Alphas...>;
 
+  /** @brief Whether that component may be written through. */
   template <Int... Alphas>
   static constexpr bool Writable = Flat::template Writable<Alphas...>;
 

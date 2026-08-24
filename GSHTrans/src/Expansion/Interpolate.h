@@ -225,6 +225,7 @@ template <std::ptrdiff_t _N, AngularGrid _Grid,
 class SpectralInterpolant {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = _N;
   using GridType = _Grid;  ///< The angular grid this is defined on.
   using Value = _Value;  ///< Whether the samples are real-valued or complex.
@@ -408,6 +409,7 @@ template <std::ptrdiff_t _N, AngularGrid _Grid,
 class LocalInterpolant {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = _N;
   using GridType = _Grid;  ///< The angular grid this is defined on.
   using Value = _Value;  ///< Whether the samples are real-valued or complex.

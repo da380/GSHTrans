@@ -51,6 +51,7 @@ class Binary {
   using Value =
       std::conditional_t<RealFloatingPoint<Scalar>, RealValued, ComplexValued>;
 
+  /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex =
       Rule::template Apply<LNode::UpperIndex, RNode::UpperIndex>;
 
@@ -123,6 +124,7 @@ class Unary {
   using Value =
       std::conditional_t<RealFloatingPoint<Scalar>, RealValued, ComplexValued>;
 
+  /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = Rule::template Apply<ANode::UpperIndex>;
 
   static_assert(SpinWeighted<ANode>);

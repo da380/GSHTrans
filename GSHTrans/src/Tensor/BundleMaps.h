@@ -61,8 +61,10 @@ template <typename Operand>
 class EmbedNode {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  /** @brief The operand, with references and cv-qualifiers stripped. */
   using OperandType = std::remove_cvref_t<Operand>;
 
+  /** @brief The tensor rank. */
   static constexpr Int Rank = OperandType::Rank;
   using GridType = typename OperandType::GridType;  ///< The angular grid this is defined on.
   using SlotSet = AllSlots;  ///< The alphabet the slots are drawn from.
@@ -77,6 +79,7 @@ class EmbedNode {
   /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _operand.Grid(); }
 
+  /** @brief Backs Represents; see there. */
   template <Int... Alphas>
   static constexpr bool RepresentsFn() {
     if constexpr (sizeof...(Alphas) != static_cast<std::size_t>(Rank)) {
@@ -90,6 +93,7 @@ class EmbedNode {
     }
   }
 
+  /** @brief Whether this holds a component at those slot letters. */
   template <Int... Alphas>
   static constexpr bool Represents = RepresentsFn<Alphas...>();
 
@@ -125,8 +129,10 @@ template <typename Operand>
 class TangentialNode {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  /** @brief The operand, with references and cv-qualifiers stripped. */
   using OperandType = std::remove_cvref_t<Operand>;
 
+  /** @brief The tensor rank. */
   static constexpr Int Rank = OperandType::Rank;
   using GridType = typename OperandType::GridType;  ///< The angular grid this is defined on.
   using SlotSet = TangentialSlots;  ///< The alphabet the slots are drawn from.
@@ -141,6 +147,7 @@ class TangentialNode {
   /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _operand.Grid(); }
 
+  /** @brief Backs Represents; see there. */
   template <Int... Alphas>
   static constexpr bool RepresentsFn() {
     if constexpr (sizeof...(Alphas) != static_cast<std::size_t>(Rank)) {
@@ -152,6 +159,7 @@ class TangentialNode {
     }
   }
 
+  /** @brief Whether this holds a component at those slot letters. */
   template <Int... Alphas>
   static constexpr bool Represents = RepresentsFn<Alphas...>();
 

@@ -33,6 +33,7 @@ class SpinField {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
 
+  /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = _N;
   using Value = _Value;  ///< Whether the samples are real-valued or complex.
   using GridType = _Grid;  ///< The angular grid this is defined on.

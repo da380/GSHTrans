@@ -42,10 +42,15 @@ namespace GSHTrans {
 /// Both alphabets are closed under negation, which is what the reality
 /// condition needs: it maps -1 to +1 and 0 to itself.
 struct AllSlots {
+  /** @brief The three canonical letters. */
   static constexpr std::array<std::ptrdiff_t, 3> Alphabet{-1, 0, 1};
 };
 
+/// The slots of a tangential tensor, which has no radial one: its components
+/// number 2^Rank rather than 3^Rank, and the derivative closed on it is the
+/// intrinsic one.
 struct TangentialSlots {
+  /** @brief The two canonical letters, the radial one being absent. */
   static constexpr std::array<std::ptrdiff_t, 2> Alphabet{-1, 1};
 };
 
@@ -101,6 +106,7 @@ class MultiIndex {
   // Named SlotSet rather than Slots, which is taken by the accessor below.
   using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
 
+  /** @brief The tensor rank. */
   static constexpr Int Rank = _Rank;
   static_assert(Rank >= 0, "A tensor rank cannot be negative");
 
@@ -123,6 +129,11 @@ class MultiIndex {
     for (auto& alpha : _slots) alpha = SlotSet::Alphabet[0];
   }
 
+  /**
+   * @brief The index with those slot letters.
+   * @param slots One letter per slot, each drawn from the alphabet.
+   * @throws std::invalid_argument if a letter is not in the alphabet.
+   */
   constexpr explicit MultiIndex(std::array<Int, Rank> slots) : _slots{slots} {
     for (auto alpha : _slots) {
       if (DigitOf(alpha) < 0) {
@@ -149,6 +160,7 @@ class MultiIndex {
     return MultiIndex(slots);
   }
 
+  /// The flat component index, in the lexicographic order FromFlat describes.
   constexpr Int Flat() const {
     auto flat = Int{0};
     for (auto alpha : _slots) flat = Base * flat + DigitOf(alpha);
@@ -163,7 +175,9 @@ class MultiIndex {
     return n;
   }
 
+  /** @brief The letter at slot @p slot. */
   constexpr Int operator[](Int slot) const { return _slots[slot]; }
+  /** @brief Every letter, one per slot. */
   constexpr const std::array<Int, Rank>& Slots() const { return _slots; }
 
   /// The involution of the reality condition (eq:reality). Its only fixed point
@@ -185,6 +199,7 @@ class MultiIndex {
     return MultiIndex(slots);
   }
 
+  /** @brief Compares slot by slot. */
   constexpr bool operator==(const MultiIndex&) const = default;
 
  private:
@@ -228,9 +243,10 @@ template <std::ptrdiff_t Rank>
 struct SlotPermutation {
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
 
-  std::array<Int, Rank> image;
-  Int sign;
+  std::array<Int, Rank> image;  ///< Slot i of the result is slot image[i].
+  Int sign;  ///< The sign the component picks up, +1 or -1.
 
+  /** @brief Compares componentwise. */
   constexpr bool operator==(const SlotPermutation&) const = default;
 };
 
@@ -258,6 +274,7 @@ constexpr auto Transposition(Int a, Int b, Int sign) {
 /// No relation between components: every one of the 3^Rank is independent.
 template <std::ptrdiff_t Rank>
 struct NoSymmetry {
+  /** @brief Generators of the symmetry group. */
   static constexpr auto Generators() {
     return std::array<SlotPermutation<Rank>, 0>{};
   }
@@ -270,6 +287,7 @@ template <std::ptrdiff_t Rank, std::ptrdiff_t Sign>
 struct FullPermutationSymmetry {
   static_assert(Sign == 1 || Sign == -1);
 
+  /** @brief Generators of the symmetry group. */
   static constexpr auto Generators() {
     constexpr auto count = Rank > 1 ? Rank - 1 : 0;
     auto generators = std::array<SlotPermutation<Rank>, count>{};
@@ -291,6 +309,7 @@ using Antisymmetric = FullPermutationSymmetry<Rank, -1>;
 /// generators and is why rank 4 is exposed at all.
 template <std::ptrdiff_t Rank, SlotPermutation<Rank>... Gs>
 struct GeneratedBy {
+  /** @brief Generators of the symmetry group. */
   static constexpr auto Generators() {
     return std::array<SlotPermutation<Rank>, sizeof...(Gs)>{Gs...};
   }
@@ -299,8 +318,10 @@ struct GeneratedBy {
 /// The symmetry of an elastic tensor: symmetric within each pair of slots, and
 /// under exchange of the pairs.
 struct ElasticSymmetry {
+  /** @brief The tensor rank this symmetry is defined for. */
   static constexpr std::ptrdiff_t Rank = 4;
 
+  /** @brief Generators of the symmetry group. */
   static constexpr auto Generators() {
     return std::array<SlotPermutation<4>, 3>{
         SymmetryDetails::Transposition<4>(0, 1, 1),

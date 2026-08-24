@@ -44,6 +44,7 @@ class TensorExpansion {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
 
+  /** @brief The tensor rank. */
   static constexpr Int Rank = _Rank;
   using Symmetry = _Symmetry;  ///< The permutation symmetry of the slots.
   using Reality = _Reality;  ///< Whether the tensor is real or complex.
@@ -67,9 +68,11 @@ class TensorExpansion {
   static constexpr Int ComplexComponents = FieldType::ComplexComponents;
   static constexpr Int RealComponents = FieldType::RealComponents;
 
+  /** @brief Whether this holds a component at those slot letters. */
   template <Int... Alphas>
   static constexpr bool Represents = FieldType::template Represents<Alphas...>;
 
+  /** @brief Whether that component may be written through. */
   template <Int... Alphas>
   static constexpr bool Writable = FieldType::template Writable<Alphas...>;
 

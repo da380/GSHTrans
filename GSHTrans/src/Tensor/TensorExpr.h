@@ -204,8 +204,10 @@ template <auto Image, typename Operand>
 class PermuteNode {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  /** @brief The operand, with references and cv-qualifiers stripped. */
   using OperandType = std::remove_cvref_t<Operand>;
 
+  /** @brief The tensor rank. */
   static constexpr Int Rank = OperandType::Rank;
   using GridType = typename OperandType::GridType;  ///< The angular grid this is defined on.
   using SlotSet = typename OperandType::SlotSet;  ///< The alphabet the slots are drawn from.
@@ -213,6 +215,7 @@ class PermuteNode {
   static_assert(Image.size() == static_cast<std::size_t>(Rank),
                 "A slot permutation needs one image per tensor slot");
 
+  /** @brief Wraps an operand whose slots are to be relabelled. */
   explicit PermuteNode(Operand&& operand)
       : _operand{std::forward<Operand>(operand)} {}
 
@@ -231,6 +234,7 @@ class PermuteNode {
   /// it, for the reason IsSlotLetter gives: a `and` short-circuits evaluation
   /// but is not a promise about instantiation, and forming Source with a
   /// letter the alphabet does not have is a hard error.
+  /** @brief Backs Represents; see there. */
   template <Int... Alphas>
   static constexpr bool RepresentsFn() {
     if constexpr (sizeof...(Alphas) != static_cast<std::size_t>(Rank)) {
@@ -242,9 +246,11 @@ class PermuteNode {
     }
   }
 
+  /** @brief Whether this holds a component at those slot letters. */
   template <Int... Alphas>
   static constexpr bool Represents = RepresentsFn<Alphas...>();
 
+  /** @brief The component at those slot letters, as a spin-weighted node. */
   template <Int... Alphas>
   requires Represents<Alphas...>
   auto Component() const {
@@ -285,9 +291,10 @@ template <typename LeftOperand, typename RightOperand>
 class TensorProductNode {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
-  using Left = std::remove_cvref_t<LeftOperand>;
-  using Right = std::remove_cvref_t<RightOperand>;
+  using Left = std::remove_cvref_t<LeftOperand>;  ///< The left operand, bare.
+  using Right = std::remove_cvref_t<RightOperand>;  ///< The right operand, bare.
 
+  /** @brief The tensor rank. */
   static constexpr Int Rank = Left::Rank + Right::Rank;
   using GridType = typename Left::GridType;  ///< The angular grid this is defined on.
   using SlotSet = typename Left::SlotSet;  ///< The alphabet the slots are drawn from.
@@ -306,6 +313,10 @@ class TensorProductNode {
                 "A tensor product needs both operands drawn from the same "
                 "slot alphabet; embed one of them first");
 
+  /**
+   * @brief Wraps the two operands of a tensor product.
+   * @throws std::invalid_argument if they are not on the same grid.
+   */
   TensorProductNode(LeftOperand&& left, RightOperand&& right)
       : _left{std::forward<LeftOperand>(left)},
         _right{std::forward<RightOperand>(right)} {
@@ -323,14 +334,17 @@ class TensorProductNode {
   template <Int... Alphas>
   static constexpr auto Indices = std::array<Int, Rank>{Alphas...};
 
+  /** @brief The first p slots, naming the left operand's component. */
   template <Int... Alphas>
   static constexpr auto LeftIndices = TensorDetails::Head<Left::Rank>(
       Indices<Alphas...>);
 
+  /** @brief The last q slots, naming the right operand's component. */
   template <Int... Alphas>
   static constexpr auto RightIndices = TensorDetails::Tail<Right::Rank>(
       Indices<Alphas...>);
 
+  /** @brief Backs Represents; see there. */
   template <Int... Alphas>
   static constexpr bool RepresentsFn() {
     if constexpr (sizeof...(Alphas) != static_cast<std::size_t>(Rank)) {
@@ -343,9 +357,11 @@ class TensorProductNode {
     }
   }
 
+  /** @brief Whether this holds a component at those slot letters. */
   template <Int... Alphas>
   static constexpr bool Represents = RepresentsFn<Alphas...>();
 
+  /** @brief The component at those slot letters, as a spin-weighted node. */
   template <Int... Alphas>
   requires Represents<Alphas...>
   auto Component() const {
@@ -394,14 +410,18 @@ template <std::ptrdiff_t J, std::ptrdiff_t K, typename Operand>
 class ContractionNode {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  /** @brief The operand, with references and cv-qualifiers stripped. */
   using OperandType = std::remove_cvref_t<Operand>;
 
+  /** @brief The tensor rank. */
   static constexpr Int Rank = OperandType::Rank - 2;
   using GridType = typename OperandType::GridType;  ///< The angular grid this is defined on.
   using SlotSet = typename OperandType::SlotSet;  ///< The alphabet the slots are drawn from.
   using Real = typename GridType::Real;  ///< The precision.
 
+  /** @brief The letters the contracted slots run over. */
   static constexpr auto& Alphabet = SlotSet::Alphabet;
+  /** @brief The slot letters contracted over. */
   static constexpr auto Letters = Alphabet.size();
 
   static_assert(J != K, "A contraction needs two different slots");
@@ -409,6 +429,7 @@ class ContractionNode {
                     K < OperandType::Rank,
                 "A contracted slot must be one the tensor has");
 
+  /** @brief Wraps an operand, two of whose slots are to be contracted. */
   explicit ContractionNode(Operand&& operand)
       : _operand{std::forward<Operand>(operand)} {}
 
@@ -421,6 +442,7 @@ class ContractionNode {
   static constexpr auto Source = TensorDetails::Insert<J, K, OperandType::Rank>(
       std::array<Int, Rank>{Alphas...}, Alpha);
 
+  /** @brief Backs Represents; see there. */
   template <Int... Alphas>
   static constexpr bool RepresentsFn() {
     if constexpr (sizeof...(Alphas) != static_cast<std::size_t>(Rank)) {
@@ -439,9 +461,11 @@ class ContractionNode {
     }
   }
 
+  /** @brief Whether this holds a component at those slot letters. */
   template <Int... Alphas>
   static constexpr bool Represents = RepresentsFn<Alphas...>();
 
+  /** @brief The component at those slot letters, as a spin-weighted node. */
   template <Int... Alphas>
   requires Represents<Alphas...>
   auto Component() const {
@@ -493,28 +517,35 @@ template <typename Symmetry, typename Operand>
 class SymmetriseNode {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  /** @brief The operand, with references and cv-qualifiers stripped. */
   using OperandType = std::remove_cvref_t<Operand>;
 
+  /** @brief The tensor rank. */
   static constexpr Int Rank = OperandType::Rank;
   using GridType = typename OperandType::GridType;  ///< The angular grid this is defined on.
   using SlotSet = typename OperandType::SlotSet;  ///< The alphabet the slots are drawn from.
   using Real = typename GridType::Real;  ///< The precision.
 
+  /** @brief The elements of the symmetry group, and how many there are. */
   static constexpr auto Group = TensorDetails::GroupElements<Rank, Symmetry>();
+  /** @brief The order of the symmetry group, which is what the sum divides by. */
   static constexpr Int GroupSize = Group.second;
 
+  /** @brief Wraps an operand to be averaged over the symmetry group. */
   explicit SymmetriseNode(Operand&& operand)
       : _operand{std::forward<Operand>(operand)} {}
 
   /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return _operand.Grid(); }
 
+  /** @brief The operand's slot letters under group element @p Element. */
   template <std::size_t Element, Int... Alphas>
   static constexpr auto Source =
       MultiIndex<Rank, SlotSet>(std::array<Int, Rank>{Alphas...})
           .Permuted(Group.first[Element].image)
           .Slots();
 
+  /** @brief Backs Represents; see there. */
   template <Int... Alphas>
   static constexpr bool RepresentsFn() {
     if constexpr (sizeof...(Alphas) != static_cast<std::size_t>(Rank)) {
@@ -530,9 +561,11 @@ class SymmetriseNode {
     }
   }
 
+  /** @brief Whether this holds a component at those slot letters. */
   template <Int... Alphas>
   static constexpr bool Represents = RepresentsFn<Alphas...>();
 
+  /** @brief The component at those slot letters, as a spin-weighted node. */
   template <Int... Alphas>
   requires Represents<Alphas...>
   auto Component() const {

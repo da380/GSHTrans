@@ -58,6 +58,7 @@ struct OrbitTable {
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
   using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
 
+  /** @brief The tensor rank. */
   static constexpr Int Rank = _Rank;
   static constexpr Int Size = MultiIndex<Rank, SlotSet>::Size;
 

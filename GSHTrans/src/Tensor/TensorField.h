@@ -66,6 +66,7 @@ class TensorField {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
 
+  /** @brief The tensor rank. */
   static constexpr Int Rank = _Rank;
   using Symmetry = _Symmetry;  ///< The permutation symmetry of the slots.
   using Reality = _Reality;  ///< Whether the tensor is real or complex.
@@ -237,6 +238,7 @@ class TensorField {
     }
   }
 
+  /** @brief Backs Vanishes; see there. */
   template <Int... Alphas>
   static constexpr bool VanishesFn() {
     if constexpr (!WellFormedFn<Alphas...>()) {
@@ -246,6 +248,7 @@ class TensorField {
     }
   }
 
+  /** @brief Backs Represents; see there. */
   template <Int... Alphas>
   static constexpr bool RepresentsFn() {
     if constexpr (!WellFormedFn<Alphas...>()) {
@@ -255,6 +258,7 @@ class TensorField {
     }
   }
 
+  /** @brief Backs Writable; see there. */
   template <Int... Alphas>
   static constexpr bool WritableFn() {
     if constexpr (!WellFormedFn<Alphas...>()) {
@@ -266,12 +270,15 @@ class TensorField {
     }
   }
 
+  /** @brief Whether that component is identically zero. */
   template <Int... Alphas>
   static constexpr bool Vanishes = VanishesFn<Alphas...>();
 
+  /** @brief Whether this holds a component at those slot letters. */
   template <Int... Alphas>
   static constexpr bool Represents = RepresentsFn<Alphas...>();
 
+  /** @brief Whether that component may be written through. */
   template <Int... Alphas>
   static constexpr bool Writable = WritableFn<Alphas...>();
 
