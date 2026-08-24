@@ -7,7 +7,6 @@
 #include <cstddef>
 #include <span>
 #include <stdexcept>
-#include <string>
 #include <vector>
 
 #include "../Concepts.h"

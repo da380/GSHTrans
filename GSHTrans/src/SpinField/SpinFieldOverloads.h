@@ -5,7 +5,6 @@
 #include <complex>
 #include <concepts>
 #include <cstddef>
-#include <functional>
 #include <ranges>
 #include <type_traits>
 #include <utility>

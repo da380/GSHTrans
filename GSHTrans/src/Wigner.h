@@ -458,8 +458,7 @@ constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
 
 template <RealFloatingPoint _Real, OrderIndexRange _MRange = All,
           IndexRange _NRange = Single,
-          AngleIndexRange _AngleRange = Single,
-          WignerStorage _Storage = ColumnMajor>
+          AngleIndexRange _AngleRange = Single>
 class Wigner {
  public:
   using Int = std::ptrdiff_t;
@@ -467,7 +466,6 @@ class Wigner {
   using MRange = _MRange;
   using NRange = _NRange;
   using AngleRange = _AngleRange;
-  using Storage = _Storage;
 
   // Default constructor.
   Wigner() = default;
@@ -583,17 +581,11 @@ class Wigner {
     return std::ranges::views::iota(Int{0}, _nTheta);
   }
 
-  // Return (n,iTheta) values in order.
+  // Return (n, iTheta) values in order: upper index outermost, colatitude
+  // fastest, which is the order the table is laid out in.
   auto Indices() const {
-    if constexpr (std::same_as<Storage, ColumnMajor>) {
-      return std::ranges::views::cartesian_product(UpperIndices(),
-                                                   AngleIndices());
-    } else {
-      return std::ranges::views::cartesian_product(AngleIndices(),
-                                                   UpperIndices()) |
-             std::ranges::views::transform(
-                 [](auto p) { return std::pair(p.second, p.first); });
-    }
+    return std::ranges::views::cartesian_product(UpperIndices(),
+                                                 AngleIndices());
   }
 
   // Return view to data for (n,iTheta).
@@ -635,13 +627,9 @@ class Wigner {
   // Vector storing data offsets.
   std::vector<std::size_t> _offset;
 
-  // Offset for values for (n,iTheta).
+  // Offset for values for (n, iTheta).
   auto Offset(Int n, Int iTheta) const {
-    if constexpr (std::same_as<Storage, ColumnMajor>) {
-      return _offset[NumberOfAngles() * (n - MinUpperIndex()) + iTheta];
-    } else {
-      return _offset[NumberOfUpperIndices() * iTheta + (n - MinUpperIndex())];
-    }
+    return _offset[NumberOfAngles() * (n - MinUpperIndex()) + iTheta];
   }
 
   template <std::ranges::range Range>
@@ -681,7 +669,6 @@ class Wigner {
         GSHView<Real, MRange>(_lMax, _mMax, n, &_data[Offset(n, iTheta)]), n,
         theta, sqrtInt, sqrtIntInv);
   }
-
 
 };
 }  // namespace GSHTrans

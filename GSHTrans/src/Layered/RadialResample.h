@@ -22,11 +22,11 @@
 #ifdef GSHTRANS_HAVE_INTERPOLATION
 
 #include <omp.h>
+#include <utility>
 
 #include <cstddef>
 #include <span>
 #include <stdexcept>
-#include <string>
 #include <vector>
 
 #include <Interpolation/AkimaSpline.hpp>

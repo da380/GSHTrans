@@ -2,11 +2,12 @@
 #define GSH_TRANS_TENSOR_EXPR_GUARD_H
 
 #include <array>
-#include <concepts>
-#include <cstddef>
-#include <type_traits>
 #include <cmath>
 #include <complex>
+#include <concepts>
+#include <cstddef>
+#include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 #include "../Concepts.h"
@@ -269,7 +270,6 @@ auto Transpose(T&& tensor) {
   return Permute<std::array<std::ptrdiff_t, 2>{1, 0}>(std::forward<T>(tensor));
 }
 
-
 //--------------------------------------------------------------------------//
 //                             The tensor product                            //
 //--------------------------------------------------------------------------//
@@ -473,7 +473,6 @@ requires TensorExpr<std::remove_cvref_t<T>> &&
 auto Trace(T&& tensor) {
   return Contract<0, 1>(std::forward<T>(tensor)).template Component<>();
 }
-
 
 //--------------------------------------------------------------------------//
 //                              Symmetrisation                               //

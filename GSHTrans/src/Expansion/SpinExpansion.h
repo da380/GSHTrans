@@ -4,6 +4,7 @@
 #include <FFTWpp/Core>
 
 #include <cassert>
+#include <cmath>
 #include <complex>
 #include <concepts>
 #include <cstddef>

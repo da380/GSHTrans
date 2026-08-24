@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <complex>
 #include <concepts>
 #include <cstddef>
 #include <ranges>
@@ -10,6 +11,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <utility>
 
 #include "../Concepts.h"
 #include "SpinWeighted.h"

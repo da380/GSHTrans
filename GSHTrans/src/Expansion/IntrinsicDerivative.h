@@ -1,7 +1,6 @@
 #ifndef GSH_TRANS_INTRINSIC_DERIVATIVE_GUARD_H
 #define GSH_TRANS_INTRINSIC_DERIVATIVE_GUARD_H
 
-#include <array>
 #include <cstddef>
 #include <utility>
 

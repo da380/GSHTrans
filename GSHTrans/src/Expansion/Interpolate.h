@@ -27,6 +27,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #ifdef GSHTRANS_HAVE_INTERPOLATION

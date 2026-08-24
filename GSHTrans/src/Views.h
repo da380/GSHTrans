@@ -1,6 +1,9 @@
 #ifndef GSH_TRANS_VIEWS_GUARD_H
 #define GSH_TRANS_VIEWS_GUARD_H
 
+#include <cstddef>
+#include <iterator>
+
 #include "Concepts.h"
 #include "Indexing.h"
 namespace GSHTrans {

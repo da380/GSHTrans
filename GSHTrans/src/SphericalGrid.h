@@ -1,25 +1,27 @@
 #ifndef GSH_TRANS_SPHERICAL_GRID_GUARD_H
 #define GSH_TRANS_SPHERICAL_GRID_GUARD_H
 
+#include <complex>
+#include <cstddef>
+#include <iterator>
 #include <omp.h>
 
 #include <FFTWpp/Core>
 #include <FFTWpp/Ranges>
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <concepts>
+#include <map>
 #include <memory>
 #include <numbers>
 #include <optional>
-#include <span>
-#include <numeric>
-#include <array>
-#include <map>
-#include <tuple>
 #include <ranges>
+#include <span>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -1788,7 +1790,7 @@ class SphericalGrid {
         wignerMatrices = WignerMatrices<Real, _MRange, _NRange>::Reflected(
             lMax, lMax, nMax, coLatitudes);
       } else {
-        wigner = Wigner<Real, _MRange, _NRange, Multiple, ColumnMajor>(
+        wigner = Wigner<Real, _MRange, _NRange, Multiple>(
             lMax, lMax, nMax, coLatitudes);
       }
 
@@ -1810,7 +1812,7 @@ class SphericalGrid {
 
     // Empty on a generating grid, which is the whole of what that grid saves,
     // and on a matrix grid, which holds the other layout instead.
-    std::optional<Wigner<Real, _MRange, _NRange, Multiple, ColumnMajor>> wigner;
+    std::optional<Wigner<Real, _MRange, _NRange, Multiple>> wigner;
 
     // Empty unless this is a matrix grid. Exactly one of these two is ever
     // occupied, and on a generating grid neither is.

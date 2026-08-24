@@ -1,0 +1,86 @@
+# Doxygen configuration for GSHTrans.
+#
+# Configured by CMake into the build tree, so that @PROJECT_VERSION@ and the
+# paths follow the build rather than being repeated here. Run with
+#
+#   cmake --build build --target docs
+#
+# A sparse file: everything not named here takes doxygen's default.
+
+PROJECT_NAME           = "GSHTrans"
+PROJECT_NUMBER         = @PROJECT_VERSION@
+PROJECT_BRIEF          = "Generalised spherical harmonic transforms, and a \
+lazy index-checked algebra over spin-weighted fields"
+
+OUTPUT_DIRECTORY       = @DOXYGEN_OUTPUT_DIR@
+INPUT                  = @DOXYGEN_INPUT_DIR@
+RECURSIVE              = YES
+
+# The umbrella headers have no extension, so they need naming explicitly;
+# without this doxygen ignores them and the module groups have no home.
+FILE_PATTERNS          = *.h All Core Field Tensor Expansion Layered
+EXTENSION_MAPPING      = no_extension=C++
+
+# Documentation is written, not inferred. EXTRACT_ALL would paper over an
+# undocumented entity by listing it with an empty body, which is the opposite
+# of what the warnings below are for.
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+
+# Undocumented public entities and malformed blocks are the two things worth
+# being told about. WARN_AS_ERROR is left off until the library is fully
+# covered; turning it on is what makes the CI leg meaningful.
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = NO
+WARN_AS_ERROR          = NO
+WARN_LOGFILE           = @DOXYGEN_OUTPUT_DIR@/doxygen-warnings.log
+
+# The library is header-only and heavily templated: without these the
+# generated pages show constraints as noise and hide the relationships that
+# matter.
+JAVADOC_AUTOBRIEF      = YES
+AUTOLINK_SUPPORT       = YES
+BUILTIN_STL_SUPPORT    = YES
+TEMPLATE_RELATIONS     = YES
+INHERIT_DOCS           = YES
+SORT_MEMBER_DOCS       = NO
+SORT_BRIEF_DOCS        = NO
+
+# Concepts carry much of this library's meaning, so they are documented
+# entities rather than implementation detail.
+DISTRIBUTE_GROUP_DOC   = NO
+GROUP_NESTED_COMPOUNDS = NO
+
+# The private helpers are where a good deal of the substance lives, but they
+# are not API. They are documented in the source and excluded from the output;
+# a reader who needs them is reading the header.
+INTERNAL_DOCS          = NO
+
+HAVE_DOT               = NO
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+GENERATE_TREEVIEW      = YES
+DISABLE_INDEX          = NO
+FULL_SIDEBAR           = NO
+HTML_COLORSTYLE        = TOGGLE
+
+# Macros that would otherwise hide whole sections of the library from the
+# generated documentation: both optional dependencies are absent rather than
+# disabled, so without these the BLAS kernel and the interpolation schemes
+# would simply not appear.
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = NO
+PREDEFINED             = GSHTRANS_HAVE_BLAS \
+                         GSHTRANS_HAVE_INTERPOLATION
+
+# Not documentation. The plans and the theory note are prose for a reader of
+# the project rather than of the API, and the reference note is a LaTeX
+# document in its own right.
+EXCLUDE_PATTERNS       = */build/* */build-*/*

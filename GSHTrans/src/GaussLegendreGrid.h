@@ -5,6 +5,7 @@
 #include <GaussQuad/All>
 
 #include <cmath>
+#include <complex>
 #include <cstddef>
 #include <stdexcept>
 #include <utility>

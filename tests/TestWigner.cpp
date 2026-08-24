@@ -132,7 +132,7 @@ void CheckTransformMajorAgreesWithWigner(std::ptrdiff_t lMax,
   }
 
   const auto table =
-      Wigner<Real, MRange, NRange, Multiple, ColumnMajor>(lMax, mMax, nMax,
+      Wigner<Real, MRange, NRange, Multiple>(lMax, mMax, nMax,
                                                           angles);
   const auto matrices = WignerMatrices<Real, MRange, NRange>(lMax, mMax, nMax,
                                                              angles);

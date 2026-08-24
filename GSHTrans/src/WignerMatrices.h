@@ -1,6 +1,8 @@
 #ifndef GSH_TRANS_WIGNER_MATRICES_GUARD_H
 #define GSH_TRANS_WIGNER_MATRICES_GUARD_H
 
+#include <algorithm>
+#include <cmath>
 #include <omp.h>
 
 #include <cassert>
@@ -46,9 +48,6 @@ namespace GSHTrans {
 // the inner loop calls, which is the one place that cannot afford it. The
 // grid already holds its table in an optional -- empty on a generating grid --
 // so a second optional beside it is the shape that was already there.
-//
-// The Storage tag on Wigner (ColumnMajor / RowMajor) orders the (n, theta)
-// axes only. This is a finer and different axis order and does not replace it.
 //
 // -- Why the values are generated rather than transposed.
 //

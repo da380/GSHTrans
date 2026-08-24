@@ -3,7 +3,6 @@
 
 #include <concepts>
 #include <cstddef>
-#include <stdexcept>
 
 #include <NumericConcepts/Numeric.hpp>
 
@@ -13,22 +12,11 @@ namespace GSHTrans {
 //                                 Tag classes                              //
 //--------------------------------------------------------------------------//
 
-// Matrix storage options for Wigner class.
-struct ColumnMajor {};
-struct RowMajor {};
-
-template <typename T>
-concept WignerStorage =
-    std::same_as<T, ColumnMajor> or std::same_as<T, RowMajor>;
-
 // Index storage options.
 struct All {};
 struct NonNegative {};
 struct Single {};
 struct Multiple {};
-
-struct UpperIndexFirst {};
-struct AngleFirst {};
 
 template <typename Indices>
 concept IndexRange =
@@ -84,14 +72,6 @@ concept ScalarFunctionS2 = requires(Function f, Real theta, Real phi) {
   requires RealFloatingPoint<Real>;
   requires RealOrComplexFloatingPoint<Scalar>;
   { f(theta, phi) } -> std::convertible_to<Scalar>;
-};
-
-// Concept for scalar-valued function of spherical harmonic indices.
-template <typename Function, typename Int, typename Scalar>
-concept ScalarFunctionS2Expansion = requires(Function f, Int l, Int m) {
-  requires std::integral<Int>;
-  requires RealOrComplexFloatingPoint<Scalar>;
-  { f(l, m) } -> std::convertible_to<Scalar>;
 };
 
 }  // namespace GSHTrans

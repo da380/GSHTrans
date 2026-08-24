@@ -20,8 +20,6 @@
 #include <cstddef>
 #include <stdexcept>
 
-#include <omp.h>
-
 namespace GSHTrans {
 
 //-------------------------------------------------------------------------//

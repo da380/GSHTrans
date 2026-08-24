@@ -315,4 +315,21 @@ if(PROJECT_IS_TOP_LEVEL)
   if(GSHTRANS_BUILD_TESTS)
     add_subdirectory(tests)
   endif()
+
+  # The API documentation, built on request rather than by default: doxygen is
+  # not needed to build or use the library, and a missing one should not fail
+  # a configure. `cmake --build build --target docs`.
+  find_package(Doxygen QUIET)
+  if(Doxygen_FOUND)
+    set(DOXYGEN_INPUT_DIR  "${PROJECT_SOURCE_DIR}/GSHTrans")
+    set(DOXYGEN_OUTPUT_DIR "${PROJECT_BINARY_DIR}/docs")
+    configure_file("${PROJECT_SOURCE_DIR}/docs/Doxyfile.in"
+                   "${PROJECT_BINARY_DIR}/Doxyfile" @ONLY)
+    add_custom_target(docs
+      COMMAND ${CMAKE_COMMAND} -E make_directory "${DOXYGEN_OUTPUT_DIR}"
+      COMMAND ${DOXYGEN_EXECUTABLE} "${PROJECT_BINARY_DIR}/Doxyfile"
+      WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+      COMMENT "Building the API documentation with Doxygen"
+      VERBATIM)
+  endif()
 endif()
