@@ -34,7 +34,7 @@ serve as the oracle §4 hoped for (`3j-plan.md` §1).
 | 3 | specialisations for common objects | **done** as names, §18's T5. The rank-specific *operations* are open; see below |
 | 4 | project structure | **done**, except the `src/` rename, declined |
 | 5 | dependencies | **done** upstream; GaussQuad, FFTWpp and Interpolation all refactored |
-| 6 | Wigner 3-j symbols | **planned** -- `3j-plan.md`, its own document since it is independent of everything else |
+| 6 | Wigner 3-j symbols | **done** -- `3j-plan.md`, T1 to T5. Covered, self-checking, and with Racah as a fallback; T2 found a band neither method reaches, and it is refused rather than answered |
 | 7 | the `Interpolation` library | **done** -- adopted as an optional dependency, §19.5 [R1]; it answered the hand-over note and §21 records what that changed |
 | 8 | how three-dimensional the 3-D fields are | **done** -- §8A is §19, §8B is §20 |
 | 9 | interpolating a field, as a callable | **done** -- `field-algebra-plan.md` §22, P1 to P5; the radial half was §19's `Resample` |
@@ -1095,12 +1095,17 @@ and things that are waiting.
   costs about a second, which is cheaper than remembering it. `core-plan.md`
   §12.6 states the size at which that reverses.
 
-**Independent of all of it:** the **3-j work** (§6), whose priority depends
-entirely on when coupling coefficients are actually wanted. If it is wanted at
-all, the orthogonality test goes in first: it is a few lines, it needs no
-reference implementation, and it turns an unknown boundary into a known one.
-There are still two Wigner 3-j codes in this repository and neither is
-exercised by the suite.
+**Independent of all of it:** the **3-j work** (§6) is **done**. The
+orthogonality test did go in first, as this entry says it should, and it
+turned out to be worth more than a test: it is cheap enough to run at
+construction, so a table that the recursion has lost is now refused rather
+than returned. Racah's closed form covers the near-stretched region the
+recursion is worst at. What is left is a band at intermediate shapes above
+about `l = 80` and fat triangles above about `l = 160` that neither classical
+method reaches; closing it means Schulten-Gordon or exact integer arithmetic,
+and `3j-plan.md` [J4] says that choice should be made together with 6-j.
+There was one 3-j code in this repository written out three times; there is
+now one, and it is exercised.
 
 **No longer on the list, because it is finished:** `core-plan.md`'s efficiency
 work. *This paragraph twice said otherwise and is now retired.* The

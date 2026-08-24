@@ -386,6 +386,14 @@ void CheckCompleteness(int l1, int l2, int l3, std::span<const T> table) {
  * The two do **not** cover the whole space between them; see docs/3j-plan.md
  * T2 for where the gap is. The completeness check is what stands between a
  * caller and it.
+ *
+ * @note This uses std::lgamma, and glibc's writes the global signgam. Nothing
+ * here reads it and no result is wrong, but building tables from several
+ * threads at once is concurrent-undefined by the letter of the standard --
+ * the same hazard core-plan.md step F' removed from the Wigner recursion, and
+ * it is recorded rather than removed because 3j.h has no threading of its own
+ * and the fallback runs only where the recursion has already failed. A caller
+ * who does build tables concurrently should serialise construction.
  */
 template <NumericConcepts::Real T>
 T RacahSymbol(int l1, int l2, int l3, int m1, int m2, int m3) {
