@@ -78,14 +78,14 @@ class SphericalGrid {
   // upper indices is about 648 MB, against 2.1 MB for a complex field on the
   // same grid, and the members used to be held by value with defaulted copy:
   // copying a grid by accident was not a performance wart but an
-  // out-of-memory event (core-plan.md F9).
+  // out-of-memory event.
   //
   // There is no default constructor: a grid without nodes is not a grid, and
   // reading MaxDegree() on a default-constructed one was undefined (F4).
   SphericalGrid() = delete;
 
  protected:
-  /// The contract a derived grid meets, and it is short ([C27]).
+  /// The contract a derived grid meets, and it is short.
   ///
   /// `coLatitudes` must be strictly increasing and lie strictly inside
   /// (0, pi); `weights` must be the quadrature weights for those nodes and the
@@ -93,7 +93,7 @@ class SphericalGrid {
   /// in the Wigner recursion rather than here.
   ///
   /// The interior condition is load-bearing beyond this class: Interpolate's
-  /// polar padding rests on it (field-algebra-plan.md section 22.1), and it is
+  /// polar padding rests on it, and it is
   /// where a scheme whose grid contains the pole would need thinking.
   ///
   /// `nPhi` defaults rather than being demanded, since it is about resolving
@@ -137,7 +137,7 @@ class SphericalGrid {
   auto Identity() const { return _impl.get(); }
 
   /// The same grid with a different chunking policy, or a different planner
-  /// flag: a pointer copy and a scalar, sharing one table ([C18]).
+  /// flag: a pointer copy and a scalar, sharing one table.
   ///
   /// Offered for these two and for nothing else. WignerValues and
   /// TransformKernel each decide what the table *is*, so changing one means a
@@ -159,6 +159,7 @@ class SphericalGrid {
     return grid;
   }
 
+  /// The same grid under a different planner flag, sharing one table.
   auto With(FFTWpp::Flag flag) const {
     assert(flag != FFTWpp::WisdomOnly);
     auto grid = *this;
@@ -166,7 +167,9 @@ class SphericalGrid {
     return grid;
   }
 
+  /** @brief How many fields of a batch the inner loop takes at once. */
   auto ChunkingPolicy() const { return _chunking; }
+  /** @brief How hard FFTW is asked to work at planning. */
   auto PlannerFlag() const { return _flag; }
 
   //------------------------------------------------//
@@ -255,8 +258,15 @@ class SphericalGrid {
                [](auto pair) { return std::get<0>(pair) * std::get<1>(pair); });
   }
 
-  // Const: a value-semantic grid should be as usable through a const handle
-  // as through a mutable one, and this reads nothing but the point set.
+  /**
+   * @brief A callable sampled at every point of the grid, in storage order.
+   *
+   * @details Const because a value-semantic grid should be as usable through
+   * a const handle as through a mutable one, and this reads nothing but the
+   * point set.
+   *
+   * @param f The callable, invoked as `f(theta, phi)`.
+   */
   template <typename Function>
   auto ProjectFunction(Function f) const {
     return Points() | std::ranges::views::transform([f](auto pair) {
@@ -276,18 +286,20 @@ class SphericalGrid {
     return GSHIndices<All>(lMax, lMax, n).Size();
   }
 
+  /// The same at the grid's own maximum degree.
   auto CoefficientSize(Int n) const {
     return CoefficientSize(MaxDegree(), n);
   }
 
   /// Number of stored coefficients of a real-valued field of degree lMax,
   /// which uses the reduced m >= 0 storage. There is no upper-index argument
-  /// because real-valued fields exist only at upper index zero (core-plan.md
-  /// step A); the reduced storage is a statement about n = 0 alone.
+  /// because real-valued fields exist only at upper index zero; the reduced
+  /// storage is a statement about n = 0 alone.
   auto RealCoefficientSize(Int lMax) const {
     return GSHIndices<NonNegative>(lMax, lMax, 0).Size();
   }
 
+  /// The same at the grid's own maximum degree.
   auto RealCoefficientSize() const {
     return RealCoefficientSize(MaxDegree());
   }
@@ -353,7 +365,7 @@ class SphericalGrid {
 #ifdef GSHTRANS_HAVE_BLAS
     // The matrix kernel is a different arrangement of the same sum, not a
     // different sum: all the FFTs first, then one matrix product per order.
-    // It is reached only when the grid was built for it ([C12]), and the loop
+    // It is reached only when the grid was built for it, and the loop
     // below is untouched by its existence.
     //
     // The `if constexpr` is what keeps a long double grid compiling: BLAS has
@@ -396,13 +408,13 @@ class SphericalGrid {
       // values one degree at a time.
       //
       // The row pointer comes from d[l] rather than from a single iterator
-      // walked across the whole block. That is the supplier seam of
-      // core-plan.md [C10]: the only thing this loop needs is a contiguous
-      // run of values in (l, m) order, one run per degree, and asking for it
-      // per degree is what lets step F' substitute a supplier that generates
-      // the row into per-thread scratch for one that points into the stored
-      // table. OffsetForDegree is closed-form, so the seam costs a few
-      // integer operations per degree against a loop of length (2l+1) * c.
+      // walked across the whole block. That is the supplier seam: the only
+      // thing this loop needs is a contiguous run of values in (l, m) order,
+      // one run per degree, and asking for it per degree is what lets a
+      // generating grid substitute a supplier that builds the row into
+      // per-thread scratch for one that points into the stored table.
+      // OffsetForDegree is closed-form, so the seam costs a few integer
+      // operations per degree against a loop of length (2l+1) * c.
       //
       // The two constraints it carries, both already satisfied here: degrees
       // are visited in ascending contiguous order from |n|, and each
@@ -451,7 +463,7 @@ class SphericalGrid {
     // keeps it. Assignment rather than accumulation, which is what makes the
     // routine own its output: transforming twice into the same buffer used to
     // double the answer, because the colatitude loop accumulates and nothing
-    // initialised the destination (core-plan.md F1). Zeroing the range first
+    // initialised the destination. Zeroing the range first
     // would be both redundant and wrong here, since a range holding an
     // interleaved batch also holds components this call must not touch.
     auto Scatter = [&](const Complex* scratch, Int first, Int c, Int fromJ,
@@ -490,11 +502,11 @@ class SphericalGrid {
       // thread waits on another. It used to be a critical section in which
       // each thread added a whole coefficient array in turn, which costs one
       // serialised pass per thread: invisible against the colatitude loop at
-      // eight threads, and 128 MB of serialised adds per transform at 128
-      // (core-plan.md P8, and step H's own suggested fix). The decomposition
-      // itself is unchanged -- thread-private accumulators over colatitudes
-      // are the wrong shape well before 128 threads, but choosing what
-      // replaces them needs a machine this was not measured on ([C11]).
+      // eight threads, and 128 MB of serialised adds per transform at 128.
+      // The decomposition itself is unchanged -- thread-private
+      // accumulators over colatitudes are the wrong shape well before 128
+      // threads, but choosing what replaces them needs a machine this was
+      // not measured on.
       const auto threadCount = ThreadCount(policy);
 
       // The reduction reads every thread's accumulator, so the thread-local
@@ -528,7 +540,7 @@ class SphericalGrid {
     }
   }
 
-  // The single field, which is the batched primitive at count = 1 ([C3]).
+  // The single field, which is the batched primitive at count = 1.
   //
   // The size checks here are equalities rather than spans, because this
   // entry's contract is that the range *is* the field: a caller who hands
@@ -627,9 +639,9 @@ class SphericalGrid {
 
       // Loop over the coefficients, one degree at a time. As in the forward
       // direction, the row pointer comes from d[l]: this is the same supplier
-      // seam, and step F' substitutes at the same point. The inner loop is
-      // again an axpy of length c, over a batch index that runs fastest on
-      // both sides.
+      // seam, and a generating grid substitutes at the same point. The
+      // inner loop is again an axpy of length c, over a batch index that
+      // runs fastest on both sides.
       const auto* source = scratch;
       auto degrees = d.Degrees() | std::ranges::views::filter(
                                        [lMax](auto l) { return l <= lMax; });
@@ -685,7 +697,7 @@ class SphericalGrid {
       // once, rather than reaching through the caller's stride on every
       // colatitude. The Legendre stage works on our own buffers, whose layout
       // we choose, and the choice is the one the batched loop above wants
-      // ([C9]). It costs one pass over the coefficients against a colatitude
+      // above. It costs one pass over the coefficients against a colatitude
       // loop that reads the whole Wigner block, which T4 measured to be
       // invisible for the same reason in the other direction.
       //
@@ -718,7 +730,7 @@ class SphericalGrid {
     }
   }
 
-  // The single field, which is the batched primitive at count = 1 ([C3]).
+  // The single field, which is the batched primitive at count = 1.
   template <NumericConcepts::ComplexRange InRange,
             NumericConcepts::RealOrComplexWritableRange OutRange>
   requires requires() {
@@ -740,11 +752,11 @@ class SphericalGrid {
                           Batch::One(fieldSize), policy);
   }
 
-  // -- The matrix kernel's Fourier stage (core-plan.md section 11, step M2).
+  // -- The matrix kernel's Fourier stage.
   //
-  // How many longitudinal Fourier coefficients a field of this scalar type
-  // has: nPhi for a complex field, nPhi / 2 + 1 for a real one, whose
-  // negative orders are the conjugates of its positive ones.
+  /// How many longitudinal Fourier coefficients a field of this scalar type
+  /// has: nPhi for a complex field, nPhi / 2 + 1 for a real one, whose
+  /// negative orders are the conjugates of its positive ones.
   template <RealOrComplexFloatingPoint Scalar>
   auto FourierSize() const {
     const auto nPhi = static_cast<Int>(this->NumberOfLongitudes());
@@ -752,7 +764,7 @@ class SphericalGrid {
         FFTWpp::DataSize<Scalar, Complex>(nPhi).second);
   }
 
-  // The size of buffer ForwardFourierStage fills for `count` fields.
+  /// The size of buffer ForwardFourierStage fills for `count` fields.
   template <RealOrComplexFloatingPoint Scalar>
   auto ForwardFourierStageSize(Int count) const {
     return FourierSize<Scalar>() *
@@ -773,9 +785,9 @@ class SphericalGrid {
   // The loop kernel interleaves this stage with the Legendre stage, one
   // colatitude at a time, because that keeps its working set to a single row.
   // A per-order product cannot: it needs every colatitude of one order at
-  // once, so all the FFTs have to run first. That is the trade section 11.3
-  // prices, and it is why this is a separate entry point rather than a change
-  // to the loop kernel, which [C12] keeps exactly as it is.
+  // once, so all the FFTs have to run first. That is the trade being made,
+  // and it is why this is a separate entry point rather than a change to the
+  // loop kernel, which is kept exactly as it is.
   //
   // -- No scaling is applied here. The quadrature weight and the 2 pi / nPhi
   // both belong to the Legendre stage, which is where the loop kernel applies
@@ -783,8 +795,7 @@ class SphericalGrid {
   //
   // -- `thetaBlock` is how many colatitudes are transformed per FFTW call, and
   // zero asks the library to choose. It is a hint in the sense Chunking is:
-  // the library rounds it to something it will not regret, and section 11's
-  // M2 records the measurements behind both the default and the rounding.
+  // the library rounds it to something it will not regret.
   //
   // Section 12 of the reference note says the transpose is free, on the
   // grounds that one plan_many with output stride howMany and output distance
@@ -798,8 +809,8 @@ class SphericalGrid {
   // 2.96 at 64, 0.83 at 66; 0.90 at 254, 7.32 at 256, 0.88 at 258; 1.76 at
   // 2046, 8.53 at 2048, 1.65 at 2050.
   //
-  // This is the hypothesis field-algebra-plan.md section 17.7 raised for
-  // RadialMajor and **rejected**, because its tiling already handled it. Here
+  // This is the hypothesis raised for RadialMajor and **rejected** there,
+  // because its tiling already handled it. Here
   // nothing tiles: FFTW writes straight through, so the same hazard bites.
   // The guard is to shrink the block until the product is not a power of two,
   // which costs nothing and also reduces the workspace.
@@ -975,8 +986,8 @@ class SphericalGrid {
 
   // How many colatitudes ForwardFourierStage transforms per FFTW call.
   //
-  // The default is small, which is the opposite of what section 12 of the
-  // reference note assumes and is what measurement says: at lMax = 256 with
+  // The default is small, which is the opposite of what the reference note
+  // assumes and is what measurement says: at lMax = 256 with
   // eight fields the stage costs 3.1 ms at a block of three against 6.0 ms
   // with every colatitude in one call, and wants 0.4 MB of workspace rather
   // than 33 MB. A strided write over a few hundred bytes stays inside a
@@ -1007,7 +1018,7 @@ class SphericalGrid {
   // A per-thread accumulator for the forward transform's partial sums, kept
   // between calls for the same reason the work buffers are: this is the size
   // of the coefficient array, and allocating it per call would put back the
-  // per-call allocation step E removed. It only ever grows.
+  // an allocation back into every call. It only ever grows.
   static std::vector<Complex>& Accumulator(std::size_t size) {
     thread_local auto buffer = std::vector<Complex>{};
     if (buffer.size() < size) buffer.resize(size);
@@ -1020,7 +1031,7 @@ class SphericalGrid {
   // per-thread whatever else happens; binding the plan to them keeps the two
   // together, lets execution use the plan's own buffers rather than
   // FFTW's new-array form, and leaves Impl immutable, which is what makes a
-  // shared grid safe to use concurrently without a lock (core-plan.md step B).
+  // shared grid safe to use concurrently without a lock.
   // The cost is planning once per thread per shape instead of once per shape,
   // which after the first is a wisdom lookup.
   template <RealOrComplexFloatingPoint Scalar, bool IsForward>
@@ -1127,7 +1138,7 @@ class SphericalGrid {
   // transform. The FFT plans are created on the grid's own fftw_malloc'd
   // buffers and are executed on those buffers alone; FFTW's new-array execute
   // is valid only for storage with the same alignment characteristics as the
-  // planning buffers, and neither FFTW nor FFTWpp checks (core-plan.md F3).
+  // planning buffers, and neither FFTW nor FFTWpp checks.
   // The forward transform used to take that path on any writable input and
   // the inverse took it unconditionally on the caller's output, which made
   // alignment an obligation propagating outward into every stride the field
@@ -1136,12 +1147,9 @@ class SphericalGrid {
   // promise -- that a slice target needs no alignment beyond Scalar's --
   // true rather than aspirational.
   //
-  // They are also the seam step F widens: the (stride, dist) of a batch
-  // ([C9]) enters here and nowhere else.
   // The caller's stride enters at these two points and at no other. A batch
-  // may be interleaved with components this call knows nothing about
-  // ([C9]), and everything downstream of here works on our own contiguous
-  // buffers.
+  // may be interleaved with components this call knows nothing about, and
+  // everything downstream of here works on our own contiguous buffers.
   template <typename Iterator, typename Target>
   static void PackRow(Iterator first, Int nPhi, Int stride, Target target) {
     if (stride == 1) {
@@ -1182,7 +1190,7 @@ class SphericalGrid {
   // Serving both with the thread count is what the policy used to do, and it
   // starved the inverse: at lMax = 256 and k = 8 on eight threads it returned
   // a chunk of one where the whole batch fits, and taking the whole batch
-  // measured 2.2x faster (core-plan.md section 10). The forward's rule is
+  // measured 2.2x faster. The forward's rule is
   // unchanged, and the same measurement is the evidence for that too -- the
   // whole batch there is 2x *slower*, because eight private accumulators of
   // 8.4 MB ask for 68 MB of a 16 MB cache.
@@ -1202,8 +1210,8 @@ class SphericalGrid {
 
 #ifdef GSHTRANS_HAVE_BLAS
   // Scratch for the m-major Fourier intermediate and for one order's product.
-  // Kept per thread and grown, never allocated per call: section 17.7 of the
-  // field-algebra plan measured an allocation inside a loop it was meant to
+  // Kept per thread and grown, never allocated per call: an allocation
+  // inside a loop it was meant to
   // serve costing 3 to 5 times the operation itself.
   static std::vector<Complex>& MatrixScratch(std::size_t size) {
     thread_local auto buffer = std::vector<Complex>{};
@@ -1333,7 +1341,7 @@ class SphericalGrid {
       // shared, read-only intermediate, and write coefficients no other order
       // writes. **No accumulator and no reduction, in either direction** --
       // which is the forward loop kernel's weak point deleted rather than
-      // tuned, and is why this restructure subsumes [C11].
+      // tuned.
       // One order and, where there is one, its negation -- both against the
       // *same* matrix (step M6).
       //
@@ -1348,8 +1356,8 @@ class SphericalGrid {
       // N from 2c to 4c -- N being the skinniest dimension in the problem and
       // the one M5 measured as limiting, at 55 to 95 Gflop/s against peak.
       //
-      // The arithmetic does *not* halve, and section 11's [C15] said it
-      // would; the same products are still done, of the same shapes.
+      // The arithmetic does *not* halve: the same products are still done,
+      // of the same shapes.
       auto DoOrder = [&](Int m, Complex* scratch) {
         const auto lMin = std::max(std::abs(n), std::abs(m));
         const auto rows = lMax - lMin + 1;
@@ -1541,7 +1549,7 @@ class SphericalGrid {
 
   // The Wigner values for one (n, iTheta), over the degrees |n| .. lMax.
   //
-  // This is the seam of core-plan.md [C10], and it returns the same type on
+  // This is the supplier seam, and it returns the same type on
   // both paths: ConstGSHView carries no storage, being (lMax, mMax, n,
   // const Real*) over the index arithmetic it inherits from GSHIndices, so a
   // view of generated scratch and a view into the table are indistinguishable
@@ -1580,7 +1588,7 @@ class SphericalGrid {
   //
   // Per thread and grow-only, like the accumulator and the coefficient
   // scratch, and for the same reason: allocating it per colatitude would put
-  // back the per-call allocation step E removed. It is 528 KB at lMax = 256
+  // an allocation back into every call. It is 528 KB at lMax = 256
   // against a table of 648 MB, and 8.4 MB at lMax = 1024 against 43 GB.
   static std::vector<Real>& WignerScratch(std::size_t size) {
     thread_local auto buffer = std::vector<Real>{};
@@ -1591,8 +1599,8 @@ class SphericalGrid {
   // Scratch for one chunk's coefficients in [coefficient][field] order.
   //
   // Kept per thread and only grown, for the same reason the work buffers and
-  // the accumulator are: allocating it per call would put back the per-call
-  // allocation step E removed. The forward transform accumulates into it and
+  // the accumulator are: allocating it per call would put an allocation back
+  // into every call. The forward transform accumulates into it and
   // the inverse gathers into it.
   static std::vector<Complex>& CoefficientScratch(std::size_t size) {
     thread_local auto buffer = std::vector<Complex>{};
@@ -1643,7 +1651,7 @@ class SphericalGrid {
   }
 
   // Size mismatches were assert-only, so under NDEBUG a short output range was
-  // a silent heap overflow (core-plan.md F5). Checked in all build modes.
+  // a silent heap overflow. Checked in all build modes.
   static void CheckSize(std::size_t given, std::integral auto expected,
                         const char* what) {
     if (given != static_cast<std::size_t>(expected)) {
@@ -1659,8 +1667,8 @@ class SphericalGrid {
   // Resolving orders |m| <= lMax therefore needs nPhi >= 2 * lMax + 1, not
   // 2 * lMax: at 2 * lMax the orders m = +lMax and m = -lMax are the same
   // discrete mode and cannot be separated, which is why the transform used to
-  // zero the (lMax, lMax) coefficient rather than compute it (core-plan.md
-  // F2). The smallest fast FFT length at or above the bound is used, so that
+  // zero the (lMax, lMax) coefficient rather than compute it. The smallest
+  // fast FFT length at or above the bound is used, so that
   // the fix does not land on a length with a large prime factor.
   auto NPhi() const { return _impl->nPhi; }
 
@@ -1683,8 +1691,7 @@ class SphericalGrid {
     // reduced m >= 0 coefficient storage that a real transform uses assumes
     // the self-relation f^N_{l,-m} = (-1)^{m-N} conj(f^N_{lm}), which holds
     // only when f is its own conjugate, i.e. only at N = 0. n is a runtime
-    // argument, so this is a throw rather than a static_assert
-    // (core-plan.md step A, [C2]).
+    // argument, so this is a throw rather than a static_assert.
     if constexpr (RealFloatingPoint<Scalar>) {
       if (n != 0) {
         throw std::invalid_argument(
@@ -1698,8 +1705,8 @@ class SphericalGrid {
   // makes copying cheap and what makes concurrent use safe: an immutable
   // object behind a shared_ptr needs no synchronisation.
   //
-  // The planner flag and the chunking policy are deliberately **not** here,
-  // and that is [C18]. They are read per call and neither decides the table,
+  // The planner flag and the chunking policy are deliberately **not** here.
+  // They are read per call and neither decides the table,
   // so keeping them beside a 648 MB object meant that changing either
   // rebuilt it -- and sweeping four candidate chunks, which is what a tuner
   // and the benchmark harness both do, built four tables to choose an
@@ -1719,9 +1726,10 @@ class SphericalGrid {
       assert(lMax >= 0);
       assert(std::abs(nMax) <= lMax);
 
-      // [C27]'s contract, checked rather than trusted: a grid that gets the
-      // nodes wrong otherwise fails inside the Wigner recursion, where the
-      // message would be about something else entirely.
+      // The derived grid's contract, checked rather than trusted: a grid
+      // that gets the nodes wrong otherwise fails inside the Wigner
+      // recursion, where the message would be about something else
+      // entirely.
       if (coLatitudes.size() != coLatitudeWeights.size()) {
         throw std::invalid_argument(
             "A grid needs one quadrature weight per colatitude");
@@ -1748,8 +1756,8 @@ class SphericalGrid {
       // complex-valued transform at all, and its real-valued transforms exist
       // only at upper index zero. Such a grid with nMax != 0 could serve no
       // transform whatever, so it is a configuration error rather than a
-      // wasteful but usable choice. See core-plan.md step A and [C1]: this is
-      // the "real scalar grid" reading of MRange.
+      // wasteful but usable choice: this is the "real scalar grid" reading
+      // of MRange.
       if constexpr (std::same_as<_MRange, NonNegative>) {
         if (nMax != 0) {
           throw std::invalid_argument(
@@ -1761,8 +1769,8 @@ class SphericalGrid {
 
       // The matrix kernel needs values in an order the recursion cannot
       // produce one order at a time, so the two policies do not compose. See
-      // Policies.h at TransformKernel, and core-plan.md [C17]: this is a fact
-      // about the recursion and not an unimplemented case, which is why it is
+      // Policies.h at TransformKernel: this is a fact about the recursion and
+      // not an unimplemented case, which is why it is
       // refused here rather than worked around.
       // BLAS offers single and double precision and nothing wider, so a
       // long double grid cannot have the matrix kernel whatever else is true.
@@ -1807,7 +1815,7 @@ class SphericalGrid {
         // lMax = 256 with nMax = 2. What makes it available is that the nodes
         // are symmetric about the equator, and WignerMatrices checks that
         // rather than taking it on trust -- so a grid whose nodes are not
-        // symmetric simply does not get the halved table ([C28]). That is a
+        // symmetric simply does not get the halved table. That is a
         // property of the node set and not of Gauss-Legendre, which is why
         // the check lives here.
         wignerMatrices = WignerMatrices<Real, _MRange, _NRange>::Reflected(
@@ -1821,8 +1829,8 @@ class SphericalGrid {
       // pre-generate wisdom for exactly two shapes and then replaced by
       // WisdomOnly, which meant that any shape the constructor had not
       // anticipated -- every batched shape, in particular -- would fail to
-      // plan rather than fall back (core-plan.md P7). Shapes are now planned
-      // on first use and cached, so there is nothing to anticipate.
+      // plan rather than fall back. Shapes are planned on first use and
+      // cached, so there is nothing to anticipate.
     }
 
     Int lMax;
@@ -1848,15 +1856,15 @@ class SphericalGrid {
 
   std::shared_ptr<const Impl> _impl;
 
-  // Read per call and shared with nothing. See [C18] at Impl above for why
-  // they sit here rather than in it.
+  // Read per call and shared with nothing. See Impl above for why they sit
+  // here rather than in it.
   //
   // The flag is what an uncached plan shape is planned with. It was once
   // followed by the constructor generating wisdom and then setting
   // WisdomOnly, which meant that any shape the constructor had not
   // anticipated -- every batched shape, in particular -- would fail to plan
-  // rather than fall back (core-plan.md P7). Shapes are now planned on first
-  // use and cached, so there is nothing to anticipate.
+  // rather than fall back. Shapes are planned on first use and cached, so
+  // there is nothing to anticipate.
   Chunking _chunking;
   FFTWpp::Flag _flag;
 };
