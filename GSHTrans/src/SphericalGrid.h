@@ -64,10 +64,11 @@ template <RealFloatingPoint _Real, OrderIndexRange _MRange, IndexRange _NRange>
 class SphericalGrid {
  public:
   // Public type aliases.
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   using Real = _Real;  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
-  using MRange = _MRange;  ///< Whether all orders are stored, or only the non-negative ones.
+  /// Whether all orders are stored, or only the non-negative ones.
+  using MRange = _MRange;
   using NRange = _NRange;  ///< Which upper indices are covered.
 
   // A grid is a value-semantic handle over an immutable, shared
@@ -307,6 +308,29 @@ class SphericalGrid {
   //-----------------------------------------------------//
   //          Forward transformation for ranges          //
   //-----------------------------------------------------//
+  /**
+   * @brief Analysis: a batch of fields to their coefficients.
+   *
+   * @details The two descriptors are separate because even when the caller's
+   * arrangement is the same kind on both sides its `dist` differs — the fields
+   * are FieldSize apart and the coefficient blocks CoefficientSize apart.
+   * Equal counts is the only thing tying them together, and it is checked.
+   *
+   * The sizes are checked against Batch::Span rather than for equality, since
+   * an interleaved batch is a window onto a larger range whose other elements
+   * are no business of this call.
+   *
+   * The output is assigned rather than accumulated into, so transforming twice
+   * into the same buffer gives the same answer twice.
+   *
+   * @param lMax The largest degree to resolve, at most the grid's own.
+   * @param n The upper index, which every field of the batch shares.
+   * @param in The samples, real or complex.
+   * @param inBatch How the fields are arranged in @p in.
+   * @param out Where the coefficients go.
+   * @param outBatch How the blocks are arranged in @p out.
+   * @param policy Whether the transform may thread.
+   */
   template <NumericConcepts::RealOrComplexRange InRange,
             NumericConcepts::ComplexWritableRange OutRange>
   requires requires() {
@@ -321,7 +345,7 @@ class SphericalGrid {
                              OutRange& out, Batch outBatch,
                              Execution policy = Execution::Sequential()) const {
     // Get scalar type for field.
-    using Scalar = std::ranges::range_value_t<InRange>;  ///< The value type: Real when real-valued, Complex otherwise.
+    using Scalar = std::ranges::range_value_t<InRange>;
 
     ValidateTransformRequest<Scalar>(lMax, n);
 
@@ -391,6 +415,19 @@ class SphericalGrid {
   // entry's contract is that the range *is* the field: a caller who hands
   // over a range of the wrong length has made a mistake, whereas a batched
   // caller may legitimately hand over a window onto a larger one.
+  /**
+   * @brief Analysis: one field to its coefficients.
+   *
+   * @details The single field, which is the batched primitive at
+   * `count = 1`. The size checks here are equalities rather than spans,
+   * because this entry's contract is that the range *is* the field.
+   *
+   * @param lMax The largest degree to resolve, at most the grid's own.
+   * @param n The upper index of the field.
+   * @param in The samples, real or complex.
+   * @param out Where the coefficients go.
+   * @param policy Whether the transform may thread.
+   */
   template <NumericConcepts::RealOrComplexRange InRange,
             NumericConcepts::ComplexWritableRange OutRange>
   requires requires() {
@@ -400,7 +437,7 @@ class SphericalGrid {
   }
   void ForwardTransformation(Int lMax, Int n, InRange&& in, OutRange& out,
                              Execution policy = Execution::Sequential()) const {
-    using Scalar = std::ranges::range_value_t<InRange>;  ///< The value type: Real when real-valued, Complex otherwise.
+    using Scalar = std::ranges::range_value_t<InRange>;
     ValidateTransformRequest<Scalar>(lMax, n);
     const auto fieldSize = static_cast<Int>(this->FieldSize());
     const auto coefficientSize =
@@ -414,6 +451,20 @@ class SphericalGrid {
   //------------------------------------------------//
   //       Inverse  transformation for ranges       //
   //------------------------------------------------//
+  /**
+   * @brief Synthesis: a batch of coefficient blocks to their fields.
+   *
+   * @details The mirror of ForwardTransformation, and the same remarks apply
+   * to the two descriptors and to the size checks.
+   *
+   * @param lMax The largest degree present, at most the grid's own.
+   * @param n The upper index, which every block of the batch shares.
+   * @param in The coefficients.
+   * @param inBatch How the blocks are arranged in @p in.
+   * @param out Where the samples go.
+   * @param outBatch How the fields are arranged in @p out.
+   * @param policy Whether the transform may thread.
+   */
   template <NumericConcepts::ComplexRange InRange,
             NumericConcepts::RealOrComplexWritableRange OutRange>
   requires requires() {
@@ -427,7 +478,7 @@ class SphericalGrid {
                              OutRange& out, Batch outBatch,
                              Execution policy = Execution::Sequential()) const {
     // Get scalar type for field.
-    using Scalar = std::ranges::range_value_t<OutRange>;  ///< The value type: Real when real-valued, Complex otherwise.
+    using Scalar = std::ranges::range_value_t<OutRange>;
 
     ValidateTransformRequest<Scalar>(lMax, n);
 
@@ -476,6 +527,18 @@ class SphericalGrid {
   }
 
   // The single field, which is the batched primitive at count = 1.
+  /**
+   * @brief Synthesis: one coefficient block to its field.
+   *
+   * @details The single field, which is the batched primitive at
+   * `count = 1`; the size checks are equalities rather than spans.
+   *
+   * @param lMax The largest degree present, at most the grid's own.
+   * @param n The upper index of the field.
+   * @param in The coefficients.
+   * @param out Where the samples go.
+   * @param policy Whether the transform may thread.
+   */
   template <NumericConcepts::ComplexRange InRange,
             NumericConcepts::RealOrComplexWritableRange OutRange>
   requires requires() {
@@ -486,7 +549,7 @@ class SphericalGrid {
   }
   void InverseTransformation(Int lMax, Int n, InRange&& in, OutRange& out,
                              Execution policy = Execution::Sequential()) const {
-    using Scalar = std::ranges::range_value_t<OutRange>;  ///< The value type: Real when real-valued, Complex otherwise.
+    using Scalar = std::ranges::range_value_t<OutRange>;
     ValidateTransformRequest<Scalar>(lMax, n);
     const auto fieldSize = static_cast<Int>(this->FieldSize());
     const auto coefficientSize =
@@ -516,64 +579,64 @@ class SphericalGrid {
            static_cast<Int>(this->NumberOfCoLatitudes()) * count;
   }
 
-  // The longitudinal DFT of `count` fields of a batch, starting at field
-  // `first`, written m-major:
-  //
-  //     out[m * (nTheta * count) + iTheta * count + k]
-  //
-  // so that for one order m the (theta, k) block is contiguous with k
-  // fastest. That block is what the per-order matrix product
-  // multiplies: a complex (nTheta x count) matrix, which -- because
-  // std::complex stores its parts adjacently -- is also a real
-  // (nTheta x 2 count) one, and so can go to dgemm with N = 2 count.
-  //
-  // The loop kernel interleaves this stage with the Legendre stage, one
-  // colatitude at a time, because that keeps its working set to a single row.
-  // A per-order product cannot: it needs every colatitude of one order at
-  // once, so all the FFTs have to run first. That is the trade being made,
-  // and it is why this is a separate entry point rather than a change to the
-  // loop kernel, which is kept exactly as it is.
-  //
-  // -- No scaling is applied here. The quadrature weight and the 2 pi / nPhi
-  // both belong to the Legendre stage, which is where the loop kernel applies
-  // them too, so the two kernels can be compared value by value at this seam.
-  //
-  // -- `thetaBlock` is how many colatitudes are transformed per FFTW call, and
-  // zero asks the library to choose. It is a hint in the sense Chunking is:
-  // the library rounds it to something it will not regret.
-  //
-  // Section 12 of the reference note says the transpose is free, on the
-  // grounds that one plan_many with output stride howMany and output distance
-  // 1 lands the data in the order above at no cost, exactly as tier-1
-  // batching landed it in [m][k] order (P6). **Measured, that is true only
-  // away from one specific hazard, and false at it.** The output write has
-  // stride `howMany` complex doubles, so when `howMany * 16` is a power of two
-  // the writes for successive orders collide in the same cache sets, and the
-  // FFT costs four to eight times what it costs at howMany plus or minus two.
-  // Measured directly at nPhi = 520, per transform: 0.80 at howMany = 62,
-  // 2.96 at 64, 0.83 at 66; 0.90 at 254, 7.32 at 256, 0.88 at 258; 1.76 at
-  // 2046, 8.53 at 2048, 1.65 at 2050.
-  //
-  // This is the hypothesis raised for RadialMajor and **rejected** there,
-  // because its tiling already handled it. Here
-  // nothing tiles: FFTW writes straight through, so the same hazard bites.
-  // The guard is to shrink the block until the product is not a power of two,
-  // which costs nothing and also reduces the workspace.
-  //
-  // Blocking also bounds the FFT buffers, which `out` does not: at
-  // lMax = 256 with eight fields a full-height call wants two of about 16 MB
-  // each, per thread, while a block of three wants 0.4 MB. Section 11.3
-  // priced the intermediate at 17 MB and missed that there is a second buffer
-  // of the same size on the input side.
-  //
-  // The cost of blocking is one contiguous copy per order per block -- a
-  // memcpy, not a gather, since both sides are contiguous in (theta, k) -- and
-  // it is measured at under a fifth of the stage.
+  /// The longitudinal DFT of `count` fields of a batch, starting at field
+  /// `first`, written m-major:
+  ///
+  ///     out[m * (nTheta * count) + iTheta * count + k]
+  ///
+  /// so that for one order m the (theta, k) block is contiguous with k
+  /// fastest. That block is what the per-order matrix product
+  /// multiplies: a complex (nTheta x count) matrix, which -- because
+  /// std::complex stores its parts adjacently -- is also a real
+  /// (nTheta x 2 count) one, and so can go to dgemm with N = 2 count.
+  ///
+  /// The loop kernel interleaves this stage with the Legendre stage, one
+  /// colatitude at a time, because that keeps its working set to a single row.
+  /// A per-order product cannot: it needs every colatitude of one order at
+  /// once, so all the FFTs have to run first. That is the trade being made,
+  /// and it is why this is a separate entry point rather than a change to the
+  /// loop kernel, which is kept exactly as it is.
+  ///
+  /// -- No scaling is applied here. The quadrature weight and the 2 pi / nPhi
+  /// both belong to the Legendre stage, which is where the loop kernel applies
+  /// them too, so the two kernels can be compared value by value at this seam.
+  ///
+  /// -- `thetaBlock` is how many colatitudes are transformed per FFTW call, and
+  /// zero asks the library to choose. It is a hint in the sense Chunking is:
+  /// the library rounds it to something it will not regret.
+  ///
+  /// Section 12 of the reference note says the transpose is free, on the
+  /// grounds that one plan_many with output stride howMany and output distance
+  /// 1 lands the data in the order above at no cost, exactly as tier-1
+  /// batching landed it in [m][k] order (P6). **Measured, that is true only
+  /// away from one specific hazard, and false at it.** The output write has
+  /// stride `howMany` complex doubles, so when `howMany * 16` is a power of two
+  /// the writes for successive orders collide in the same cache sets, and the
+  /// FFT costs four to eight times what it costs at howMany plus or minus two.
+  /// Measured directly at nPhi = 520, per transform: 0.80 at howMany = 62,
+  /// 2.96 at 64, 0.83 at 66; 0.90 at 254, 7.32 at 256, 0.88 at 258; 1.76 at
+  /// 2046, 8.53 at 2048, 1.65 at 2050.
+  ///
+  /// This is the hypothesis raised for RadialMajor and **rejected** there,
+  /// because its tiling already handled it. Here
+  /// nothing tiles: FFTW writes straight through, so the same hazard bites.
+  /// The guard is to shrink the block until the product is not a power of two,
+  /// which costs nothing and also reduces the workspace.
+  ///
+  /// Blocking also bounds the FFT buffers, which `out` does not: at
+  /// lMax = 256 with eight fields a full-height call wants two of about 16 MB
+  /// each, per thread, while a block of three wants 0.4 MB. Section 11.3
+  /// priced the intermediate at 17 MB and missed that there is a second buffer
+  /// of the same size on the input side.
+  ///
+  /// The cost of blocking is one contiguous copy per order per block -- a
+  /// memcpy, not a gather, since both sides are contiguous in (theta, k) -- and
+  /// it is measured at under a fifth of the stage.
   template <std::ranges::input_range InRange>
   void ForwardFourierStage(InRange&& in, Batch inBatch, Int first, Int count,
                            std::span<Complex> out, Int thetaBlock = 0,
                            Execution policy = Execution::Sequential()) const {
-    using Scalar = std::ranges::range_value_t<InRange>;  ///< The value type: Real when real-valued, Complex otherwise.
+    using Scalar = std::ranges::range_value_t<InRange>;
     static_assert(RealOrComplexFloatingPoint<Scalar>);
 
     const auto nPhi = static_cast<Int>(this->NumberOfLongitudes());
@@ -643,27 +706,27 @@ class SphericalGrid {
     }
   }
 
-  // The inverse of ForwardFourierStage: an m-major intermediate in, `count`
-  // fields of a batch out, starting at field `first`.
-  //
-  //     in[m * (nTheta * count) + iTheta * count + k]
-  //
-  // The caller owns the intermediate and must have set **every** order it
-  // holds, including the ones no coefficient reaches: the transform is over
-  // nPhi orders whatever the degree, and the band between lMax and
-  // nPhi - lMax carries no coefficient but is still read. The matrix kernel
-  // zeroes exactly that band; the loop kernel zeroes its whole row buffer for
-  // the same reason.
-  //
-  // Blocked and guarded exactly as the forward stage is, and for the same
-  // reasons -- see there, including the power-of-two hazard, which is a
-  // property of the strided *read* here rather than the strided write.
+  /// The inverse of ForwardFourierStage: an m-major intermediate in, `count`
+  /// fields of a batch out, starting at field `first`.
+  ///
+  ///     in[m * (nTheta * count) + iTheta * count + k]
+  ///
+  /// The caller owns the intermediate and must have set **every** order it
+  /// holds, including the ones no coefficient reaches: the transform is over
+  /// nPhi orders whatever the degree, and the band between lMax and
+  /// nPhi - lMax carries no coefficient but is still read. The matrix kernel
+  /// zeroes exactly that band; the loop kernel zeroes its whole row buffer for
+  /// the same reason.
+  ///
+  /// Blocked and guarded exactly as the forward stage is, and for the same
+  /// reasons -- see there, including the power-of-two hazard, which is a
+  /// property of the strided *read* here rather than the strided write.
   template <typename OutRange>
   void InverseFourierStage(std::span<const Complex> in, OutRange& out,
                            Batch outBatch, Int first, Int count,
                            Int thetaBlock = 0,
                            Execution policy = Execution::Sequential()) const {
-    using Scalar = std::ranges::range_value_t<OutRange>;  ///< The value type: Real when real-valued, Complex otherwise.
+    using Scalar = std::ranges::range_value_t<OutRange>;
     static_assert(RealOrComplexFloatingPoint<Scalar>);
 
     const auto nPhi = static_cast<Int>(this->NumberOfLongitudes());

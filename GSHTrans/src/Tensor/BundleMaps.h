@@ -48,13 +48,14 @@ namespace GSHTrans {
 template <typename Operand>
 class EmbedNode {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   /** @brief The operand, with references and cv-qualifiers stripped. */
   using OperandType = std::remove_cvref_t<Operand>;
 
   /** @brief The tensor rank. */
   static constexpr Int Rank = OperandType::Rank;
-  using GridType = typename OperandType::GridType;  ///< The angular grid this is defined on.
+  /// The angular grid this is defined on.
+  using GridType = typename OperandType::GridType;
   using SlotSet = AllSlots;  ///< The alphabet the slots are drawn from.
 
   static_assert(std::same_as<typename OperandType::SlotSet, TangentialSlots>,
@@ -119,13 +120,14 @@ auto Embed(T&& tensor) {
 template <typename Operand>
 class TangentialNode {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   /** @brief The operand, with references and cv-qualifiers stripped. */
   using OperandType = std::remove_cvref_t<Operand>;
 
   /** @brief The tensor rank. */
   static constexpr Int Rank = OperandType::Rank;
-  using GridType = typename OperandType::GridType;  ///< The angular grid this is defined on.
+  /// The angular grid this is defined on.
+  using GridType = typename OperandType::GridType;
   using SlotSet = TangentialSlots;  ///< The alphabet the slots are drawn from.
 
   static_assert(std::same_as<typename OperandType::SlotSet, AllSlots>,

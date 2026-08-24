@@ -166,7 +166,7 @@ auto DifferentiationMatrix(std::span<const Real> nodes) {
 template <RealFloatingPoint _Real>
 class FiniteDifferenceDerivative {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   using Real = _Real;  ///< The precision.
 
   FiniteDifferenceDerivative() = delete;
@@ -273,7 +273,7 @@ class FiniteDifferenceDerivative {
 template <RealFloatingPoint _Real>
 class LagrangeDerivative {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   using Real = _Real;  ///< The precision.
 
   LagrangeDerivative() = delete;
@@ -360,7 +360,7 @@ class LagrangeDerivative {
 template <RealFloatingPoint _Real>
 class ElementDerivative {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   using Real = _Real;  ///< The precision.
 
   ElementDerivative() = delete;

@@ -194,7 +194,7 @@ constexpr auto IntegerPower(Real x, std::ptrdiff_t k) {
 template <RealFloatingPoint Real>
 class BoundaryValues {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   constexpr BoundaryValues(Int n, const Arguments<Real> &arg)
       : _n{n},
@@ -246,7 +246,7 @@ class BoundaryValues {
 template <RealFloatingPoint Real>
 auto PreComputeTables(std::ptrdiff_t lMax, std::ptrdiff_t mMax,
                       std::ptrdiff_t nMax) {
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;
   const auto size = lMax + std::max(mMax, nMax) + 1;
   auto sqrtInt = std::vector<Real>();
   auto sqrtIntInv = std::vector<Real>();
@@ -275,7 +275,7 @@ template <RealFloatingPoint Real, OrderIndexRange MRange>
 constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
                             Real theta, std::span<const Real> sqrtInt,
                             std::span<const Real> sqrtIntInv) {
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;
 
   // The extent to fill comes from the view rather than from any table, which
   // is what lets a caller ask for the degrees up to a truncation and pay for
@@ -501,9 +501,10 @@ template <RealFloatingPoint _Real, OrderIndexRange _MRange = All,
           AngleIndexRange _AngleRange = Single>
 class Wigner {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   using Real = _Real;  ///< The precision.
-  using MRange = _MRange;  ///< Whether all orders are stored, or only the non-negative ones.
+  /// Whether all orders are stored, or only the non-negative ones.
+  using MRange = _MRange;
   using NRange = _NRange;  ///< Which upper indices are covered.
   using AngleRange = _AngleRange;  ///< Whether one colatitude is held, or many.
 

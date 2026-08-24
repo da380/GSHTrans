@@ -92,7 +92,8 @@ template <typename Layered>
 class ResultAtRadius {
  public:
   using Real = typename Layered::Real;  ///< The precision.
-  using Complex = typename Layered::Complex;  ///< `std::complex` over the precision.
+  /// `std::complex` over the precision.
+  using Complex = typename Layered::Complex;
   static constexpr auto& Orbits = Layered::Orbits;
 
   ResultAtRadius(Layered& layered, Int i) : _layered{layered}, _i{i} {}
@@ -123,7 +124,7 @@ void ApplyOne(const Stacks& in, Stacks& out, const Op& op, Execution policy,
 // stored costs nothing extra here.
 template <auto Indices, typename Result, typename Derivative>
 void FillRadialComponent(Result& result, const Derivative& derivative, Int i) {
-  using Complex = typename Result::Complex;  ///< `std::complex` over the precision.
+  using Complex = typename Result::Complex;
 
   constexpr auto Rank = static_cast<Int>(Indices.size()) - 1;
   constexpr auto source = ContravariantDetails::DropFirst<Rank>(Indices);
@@ -178,7 +179,7 @@ auto SurfaceGradient(
     const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid>& operand) {
   using Result =
       LayeredTensorExpansion<Rank + 1, NoSymmetry<Rank + 1>, Reality, Grid>;
-  using Real = typename Result::Real;  ///< The precision.
+  using Real = typename Result::Real;
   using Flat = typename Result::Flat;
 
   const auto& radial = operand.Radial();

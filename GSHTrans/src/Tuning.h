@@ -83,7 +83,7 @@ double BestSeconds(Action&& action, int windows = 3) {
 template <typename GridType, typename Complex>
 double TimeRound(const GridType& grid, std::ptrdiff_t lMax, std::ptrdiff_t n,
                  std::ptrdiff_t count, Execution policy, int windows = 3) {
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;
   const auto fieldSize = static_cast<Int>(grid.FieldSize());
   const auto coefficientSize = static_cast<Int>(grid.CoefficientSize(lMax, n));
 
@@ -215,8 +215,8 @@ TunedChunking TuneChunking(const GridType& grid, std::ptrdiff_t lMax,
                            std::ptrdiff_t n, std::ptrdiff_t count,
                            Execution policy = Execution::Sequential(),
                            int windows = 3) {
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
-  using Complex = typename GridType::Complex;  ///< `std::complex` over the precision.
+  using Int = std::ptrdiff_t;
+  using Complex = typename GridType::Complex;
 
   if (count < 1) {
     throw std::invalid_argument("Tuning: the batch count must be positive");
@@ -358,15 +358,15 @@ struct TunedKernel {
   }
 };
 
-// The matrix kernel was not available, so only the loop is timed. Its number
-// is still reported, because a caller comparing machines wants it.
+/// The matrix kernel was not available, so only the loop is timed. Its number
+/// is still reported, because a caller comparing machines wants it.
 template <typename GridType>
 TunedKernel TuneKernelLoopOnly(TunedKernel result, std::ptrdiff_t lMax,
                                std::ptrdiff_t nMax, std::ptrdiff_t n,
                                std::ptrdiff_t count, Execution policy,
                                FFTWpp::Flag flag, Chunking chunking,
                                WignerValues values, int rounds) {
-  using Complex = typename GridType::Complex;  ///< `std::complex` over the precision.
+  using Complex = typename GridType::Complex;
   const auto grid = GridType(lMax, nMax, flag, chunking, values,
                              TransformKernel::Loop());
   auto best = std::numeric_limits<double>::max();
@@ -407,9 +407,9 @@ TunedKernel TuneKernel(std::ptrdiff_t lMax, std::ptrdiff_t nMax,
                        Chunking chunking = Chunking::Automatic(),
                        WignerValues values = WignerValues::Stored(),
                        int rounds = 2) {
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
-  using Real = typename GridType::Real;  ///< The precision.
-  using Complex = typename GridType::Complex;  ///< `std::complex` over the precision.
+  using Int = std::ptrdiff_t;
+  using Real = typename GridType::Real;
+  using Complex = typename GridType::Complex;
 
   if (count < 1) {
     throw std::invalid_argument("Tuning: the batch count must be positive");

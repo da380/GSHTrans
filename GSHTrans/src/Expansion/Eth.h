@@ -134,7 +134,7 @@ Real Omega(Int l, Int s) {
 template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
 auto Coefficient(const SpinExpansion<N, Grid, Value>& expansion,
                  std::ptrdiff_t l, std::ptrdiff_t m) {
-  using Complex = std::complex<typename Grid::Real>;  ///< `std::complex` over the precision.
+  using Complex = std::complex<typename Grid::Real>;
   if (l < expansion.MinDegree() || l > expansion.MaxDegree()) return Complex{};
   if (m < -l || m > l) return Complex{};
   if constexpr (std::same_as<Value, RealValued>) {
@@ -150,7 +150,7 @@ auto Coefficient(const SpinExpansion<N, Grid, Value>& expansion,
 // same degrees, less the one the raised field cannot carry.
 template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
 auto Raise(const SpinExpansion<N, Grid, Value>& expansion) {
-  using Real = typename Grid::Real;  ///< The precision.
+  using Real = typename Grid::Real;
   auto raised =
       SpinExpansion<N + 1, Grid, ComplexValued>(expansion.Grid(),
                                                 expansion.MaxDegree());
@@ -166,7 +166,7 @@ auto Raise(const SpinExpansion<N, Grid, Value>& expansion) {
 // Lower it by one.
 template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
 auto Lower(const SpinExpansion<N, Grid, Value>& expansion) {
-  using Real = typename Grid::Real;  ///< The precision.
+  using Real = typename Grid::Real;
   auto lowered =
       SpinExpansion<N - 1, Grid, ComplexValued>(expansion.Grid(),
                                                 expansion.MaxDegree());

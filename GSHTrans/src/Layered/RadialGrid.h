@@ -34,7 +34,7 @@ namespace GSHTrans {
 template <RealFloatingPoint _Real>
 class RadialGrid {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   using Real = _Real;  ///< The precision.
 
   RadialGrid() = delete;

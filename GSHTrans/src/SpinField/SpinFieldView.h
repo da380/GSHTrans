@@ -34,7 +34,7 @@ template <std::ptrdiff_t _N, AngularGrid _Grid,
           typename _Element = ScalarFor<typename _Grid::Real, _Value>>
 class SpinFieldView {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = _N;
@@ -42,7 +42,8 @@ class SpinFieldView {
   using GridType = _Grid;  ///< The angular grid this is defined on.
   using Real = typename _Grid::Real;  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
-  using Scalar = std::remove_const_t<_Element>;  ///< The value type: Real when real-valued, Complex otherwise.
+  /// The value type: Real when real-valued, Complex otherwise.
+  using Scalar = std::remove_const_t<_Element>;
 
   static_assert(std::same_as<Scalar, ScalarFor<Real, Value>>);
   static_assert(std::same_as<Value, ComplexValued> or UpperIndex == 0,

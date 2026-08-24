@@ -53,7 +53,7 @@ template <std::ptrdiff_t _N, AngularGrid _Grid,
           typename _Element = std::complex<typename _Grid::Real>>
 class SpinExpansionBase {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = _N;
@@ -62,9 +62,9 @@ class SpinExpansionBase {
   using Real = typename _Grid::Real;  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
 
-  /// Coefficients are complex whatever the field is; what a real field changes
-  /// is how many of them there are.
-  using Scalar = Complex;  ///< The value type: Real when real-valued, Complex otherwise.
+  /// Coefficients are complex whatever the field is; what a real field
+  /// changes is how many of them there are.
+  using Scalar = Complex;
   using MRange =
       std::conditional_t<std::same_as<Value, RealValued>, NonNegative,
                          All>;  ///< Which orders are stored.
@@ -154,7 +154,7 @@ template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value = ComplexValued>
 class SpinExpansion {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = _N;
@@ -162,8 +162,10 @@ class SpinExpansion {
   using GridType = _Grid;  ///< The angular grid this is defined on.
   using Real = typename _Grid::Real;  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
-  using ViewType = SpinExpansionView<_N, _Grid, _Value>;  ///< A writable view over this object.
-  using ConstViewType = ConstSpinExpansionView<_N, _Grid, _Value>;  ///< A read-only view over this object.
+  /// A writable view over this object.
+  using ViewType = SpinExpansionView<_N, _Grid, _Value>;
+  /// A read-only view over this object.
+  using ConstViewType = ConstSpinExpansionView<_N, _Grid, _Value>;
   using MRange =
       std::conditional_t<std::same_as<_Value, RealValued>, NonNegative,
                          All>;  ///< Which orders are stored.

@@ -42,7 +42,7 @@ template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
           SlotAlphabet _Slots = AllSlots>
 class TensorExpansion {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /** @brief The tensor rank. */
   static constexpr Int Rank = _Rank;
@@ -121,6 +121,7 @@ class TensorExpansion {
   // rather than the pointwise relation the spatial side uses. That is not a
   // view over anything, so it is not offered here: derive in the spatial
   // domain, or ask the representative and apply the relation.
+  /// A stored component's coefficient block, as a writable spin expansion.
   template <Int... Alphas>
   requires Writable<Alphas...>
   auto Component() {
@@ -128,11 +129,12 @@ class TensorExpansion {
     constexpr auto slot = FieldType::SlotOfFlat(Orbits.representative[flat]);
     constexpr auto n = ComponentLayout.upperIndexOfSlot[slot];
     constexpr auto real = ComponentLayout.realOfSlot[slot];
-    using Value = std::conditional_t<real, RealValued, ComplexValued>;  ///< Whether the samples are real-valued or complex.
+    using Value = std::conditional_t<real, RealValued, ComplexValued>;
     return SpinExpansionView<n, GridType, Value>(_grid, _lMax,
                                                  BlockOf(slot));
   }
 
+  /// The same, read-only.
   template <Int... Alphas>
   requires Writable<Alphas...>
   auto Component() const {
@@ -140,7 +142,7 @@ class TensorExpansion {
     constexpr auto slot = FieldType::SlotOfFlat(Orbits.representative[flat]);
     constexpr auto n = ComponentLayout.upperIndexOfSlot[slot];
     constexpr auto real = ComponentLayout.realOfSlot[slot];
-    using Value = std::conditional_t<real, RealValued, ComplexValued>;  ///< Whether the samples are real-valued or complex.
+    using Value = std::conditional_t<real, RealValued, ComplexValued>;
     return ConstSpinExpansionView<n, GridType, Value>(_grid, _lMax,
                                                       BlockOf(slot));
   }

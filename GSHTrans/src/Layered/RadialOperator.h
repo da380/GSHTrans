@@ -97,7 +97,7 @@ requires RadialOperator<Op, typename std::remove_cvref_t<
                                 element_type>
 void ApplyRadially(const Stack& in, Stack& out, const Op& op,
                    Execution policy = Execution::Sequential()) {
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;
   using Scalar = typename std::remove_cvref_t<
       decltype(std::declval<Stack&>().Data())>::element_type;
 
@@ -178,7 +178,7 @@ auto ApplyRadially(const Stack& in, const Op& op,
 // *is* differs between the two stack types and the sum does not care.
 template <LayeredStack Stack>
 auto IntegrateRadially(const Stack& stack) {
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;
   using Scalar = typename std::remove_cvref_t<
       decltype(std::declval<const Stack&>().Data())>::value_type;
 

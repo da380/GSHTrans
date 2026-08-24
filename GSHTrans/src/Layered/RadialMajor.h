@@ -46,7 +46,7 @@ namespace GSHTrans {
 template <typename Stack>
 class RadialMajor {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   using Scalar = typename std::remove_cvref_t<
       decltype(std::declval<const Stack&>()
                    .Data())>::value_type;  ///< The stack's value type.
@@ -196,8 +196,8 @@ class RadialMajor {
 template <typename Stack, typename Op>
 void ApplyToLines(const RadialMajor<Stack>& in, RadialMajor<Stack>& out,
                   const Op& op, Execution policy = Execution::Sequential()) {
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
-  using Scalar = typename RadialMajor<Stack>::Scalar;  ///< The value type: Real when real-valued, Complex otherwise.
+  using Int = std::ptrdiff_t;
+  using Scalar = typename RadialMajor<Stack>::Scalar;
 
   if (in.NumberOfRadii() != out.NumberOfRadii() ||
       in.NumberOfLines() != out.NumberOfLines()) {

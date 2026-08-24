@@ -51,13 +51,15 @@ namespace GSHTrans {
  */
 template <RealFloatingPoint _Real, OrderIndexRange _MRange, IndexRange _NRange>
 class GaussLegendreGrid : public SphericalGrid<_Real, _MRange, _NRange> {
-  using Base = SphericalGrid<_Real, _MRange, _NRange>;  ///< The base this derives from.
+  /// The base this derives from.
+  using Base = SphericalGrid<_Real, _MRange, _NRange>;
 
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   using Real = _Real;  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
-  using MRange = _MRange;  ///< Whether all orders are stored, or only the non-negative ones.
+  /// Whether all orders are stored, or only the non-negative ones.
+  using MRange = _MRange;
   using NRange = _NRange;  ///< Which upper indices are covered.
 
   GaussLegendreGrid() = delete;

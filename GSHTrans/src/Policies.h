@@ -105,7 +105,7 @@ class Execution {
  */
 class Batch {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /**
    * @brief Fields laid end to end, each contiguous.
@@ -230,7 +230,7 @@ class Batch {
  */
 class Chunking {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /**
    * @brief A modest desktop's last-level cache, in bytes.

@@ -52,7 +52,7 @@ using Interpolation::BoundaryCondition;
 template <RealFloatingPoint _Real>
 class SplineDerivative {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   using Real = _Real;  ///< The precision.
   using System = Interpolation::CubicSplineSystem<
       std::span<const Real>>;  ///< The factorised spline system.

@@ -129,7 +129,7 @@ constexpr bool HasRadialSlotIn() {
 template <std::ptrdiff_t _Rank, SlotAlphabet _Slots = AllSlots>
 class MultiIndex {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   // Named SlotSet rather than Slots, which is taken by the accessor below.
   using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
 
@@ -268,7 +268,7 @@ constexpr auto ComponentsAtUpperIndex(std::ptrdiff_t n) {
 /// one.
 template <std::ptrdiff_t Rank>
 struct SlotPermutation {
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   std::array<Int, Rank> image;  ///< Slot i of the result is slot image[i].
   Int sign;  ///< The sign the component picks up, +1 or -1.

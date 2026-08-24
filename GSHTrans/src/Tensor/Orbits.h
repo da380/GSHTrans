@@ -63,7 +63,7 @@ enum class ComponentConstraint { None, Zero, Real, Imaginary };
  */
 template <std::ptrdiff_t _Rank, SlotAlphabet _Slots = AllSlots>
 struct OrbitTable {
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
 
   /** @brief The tensor rank. */
@@ -116,7 +116,7 @@ struct OrbitTable {
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
           bool IncludeNegation, SlotAlphabet Slots = AllSlots>
 constexpr auto MakeOrbitTable() {
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;
   using Index = MultiIndex<Rank, Slots>;
   constexpr auto Size = Index::Size;
 

@@ -70,9 +70,10 @@ template <RealFloatingPoint _Real, OrderIndexRange _MRange = All,
           IndexRange _NRange = All>
 class WignerMatrices {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   using Real = _Real;  ///< The precision.
-  using MRange = _MRange;  ///< Whether all orders are stored, or only the non-negative ones.
+  /// Whether all orders are stored, or only the non-negative ones.
+  using MRange = _MRange;
   using NRange = _NRange;  ///< Which upper indices are covered.
 
   WignerMatrices() = default;

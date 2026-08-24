@@ -66,7 +66,8 @@ namespace InterpolateDetails {
 template <RealFloatingPoint _Real, RealOrComplexFloatingPoint _Scalar>
 struct Padded {
   using Real = _Real;  ///< The precision.
-  using Scalar = _Scalar;  ///< The value type: Real when real-valued, Complex otherwise.
+  /// The value type: Real when real-valued, Complex otherwise.
+  using Scalar = _Scalar;
 
   std::vector<Real> theta;     // nTheta + 2, running 0 ... pi
   std::vector<Real> phi;       // nPhi + 1,   running 0 ... 2 pi
@@ -91,7 +92,7 @@ struct Padded {
 template <AngularGrid GridType, RealOrComplexFloatingPoint Scalar>
 auto Pad(const GridType& grid, std::span<const Scalar> samples,
          std::span<const Scalar> north, std::span<const Scalar> south) {
-  using Real = typename GridType::Real;  ///< The precision.
+  using Real = typename GridType::Real;
   constexpr auto pi = std::numbers::pi_v<Real>;
 
   auto padded = Padded<Real, Scalar>{};
@@ -168,8 +169,8 @@ auto Pad(const GridType& grid, std::span<const Scalar> samples,
 template <RealOrComplexFloatingPoint Scalar, typename Expansion,
           AngularGrid GridType>
 auto PolarRows(const Expansion& expansion, const GridType& grid) {
-  using Real = typename GridType::Real;  ///< The precision.
-  using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
+  using Real = typename GridType::Real;
+  using Complex = std::complex<Real>;
   constexpr auto N = Expansion::UpperIndex;
   constexpr auto pi = std::numbers::pi_v<Real>;
 
@@ -224,7 +225,7 @@ template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value = ComplexValued>
 class SpectralInterpolant {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = _N;
   using GridType = _Grid;  ///< The angular grid this is defined on.
@@ -419,7 +420,7 @@ template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value, typename _Upstream>
 class LocalInterpolant {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = _N;
   using GridType = _Grid;  ///< The angular grid this is defined on.
@@ -494,14 +495,14 @@ concept LocalScheme = std::same_as<Tag, Scheme::BilinearTag> or
 
 }  // namespace InterpolateDetails
 
-// A field, locally. The forward transform is for the polar rows and nothing
-// else: two columns of coefficients out of a whole expansion, which is
-// the construction cost this scheme carries and the reason its cheapness is
-// per evaluation rather than per interpolant.
+/// A field, locally. The forward transform is for the polar rows and nothing
+/// else: two columns of coefficients out of a whole expansion, which is the
+/// construction cost this scheme carries and the reason its cheapness is per
+/// evaluation rather than per interpolant.
 template <SpinWeighted F, InterpolateDetails::LocalScheme Tag>
 auto Interpolate(const F& field, Tag, std::ptrdiff_t lMax = -1) {
-  using Real = typename F::Real;  ///< The precision.
-  using Scalar = typename F::Scalar;  ///< The value type: Real when real-valued, Complex otherwise.
+  using Real = typename F::Real;
+  using Scalar = typename F::Scalar;
   using Upstream =
       typename InterpolateDetails::UpstreamFor<Tag, Real, Scalar>::Type;
 

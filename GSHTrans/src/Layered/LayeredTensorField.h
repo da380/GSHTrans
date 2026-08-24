@@ -110,7 +110,7 @@ template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
           SlotAlphabet _Slots = AllSlots>
 class LayeredTensorField {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /** @brief The tensor rank. */
   static constexpr Int Rank = _Rank;
@@ -279,7 +279,7 @@ template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
           SlotAlphabet _Slots = AllSlots>
 class LayeredTensorExpansion {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /** @brief The tensor rank. */
   static constexpr Int Rank = _Rank;

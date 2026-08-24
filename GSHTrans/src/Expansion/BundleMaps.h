@@ -53,7 +53,7 @@ namespace SpectralBundleDetails {
 // the value to store, up to the one adjustment a pinned component needs.
 template <auto Indices, typename Result, typename Operand>
 void CopyComponent(Result& result, const Operand& operand) {
-  using Complex = typename Result::Complex;  ///< `std::complex` over the precision.
+  using Complex = typename Result::Complex;
   constexpr auto Rank = static_cast<std::ptrdiff_t>(Indices.size());
   constexpr auto flat =
       MultiIndex<Rank, typename Result::SlotSet>(Indices).Flat();

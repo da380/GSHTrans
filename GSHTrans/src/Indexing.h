@@ -45,7 +45,7 @@ namespace GSHTrans {
  */
 template <OrderIndexRange MRange>
 class GSHSubIndices {
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
  public:
   /**
@@ -117,7 +117,7 @@ class GSHSubIndices {
  */
 template <OrderIndexRange MRange>
 class GSHIndices {
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
  public:
   /** @brief An empty block: degree, order and upper index all zero. */

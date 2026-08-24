@@ -43,7 +43,7 @@ namespace GSHTrans {
 template <RealOrComplexFloatingPoint Scalar, OrderIndexRange MRange>
 class GSHSubView : public GSHSubIndices<MRange> {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /**
    * @brief Views the row for degree @p l.
@@ -74,7 +74,7 @@ class GSHSubView : public GSHSubIndices<MRange> {
 template <RealOrComplexFloatingPoint Scalar, OrderIndexRange MRange>
 class GSHView : public GSHIndices<MRange> {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /**
    * @brief Views a block laid out as GSHIndices describes.
@@ -119,7 +119,7 @@ class GSHView : public GSHIndices<MRange> {
 template <RealOrComplexFloatingPoint Scalar, OrderIndexRange MRange>
 class ConstGSHSubView : public GSHSubIndices<MRange> {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /**
    * @brief Views the row for degree @p l.
@@ -149,7 +149,7 @@ class ConstGSHSubView : public GSHSubIndices<MRange> {
 template <RealOrComplexFloatingPoint Scalar, OrderIndexRange MRange>
 class ConstGSHView : public GSHIndices<MRange> {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /**
    * @brief Views a block laid out as GSHIndices describes.

@@ -203,14 +203,16 @@ constexpr auto GroupElements() {
 template <auto Image, typename Operand>
 class PermuteNode {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   /** @brief The operand, with references and cv-qualifiers stripped. */
   using OperandType = std::remove_cvref_t<Operand>;
 
   /** @brief The tensor rank. */
   static constexpr Int Rank = OperandType::Rank;
-  using GridType = typename OperandType::GridType;  ///< The angular grid this is defined on.
-  using SlotSet = typename OperandType::SlotSet;  ///< The alphabet the slots are drawn from.
+  /// The angular grid this is defined on.
+  using GridType = typename OperandType::GridType;
+  /// The alphabet the slots are drawn from.
+  using SlotSet = typename OperandType::SlotSet;
 
   static_assert(Image.size() == static_cast<std::size_t>(Rank),
                 "A slot permutation needs one image per tensor slot");
@@ -291,14 +293,17 @@ auto Transpose(T&& tensor) {
 template <typename LeftOperand, typename RightOperand>
 class TensorProductNode {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   using Left = std::remove_cvref_t<LeftOperand>;  ///< The left operand, bare.
-  using Right = std::remove_cvref_t<RightOperand>;  ///< The right operand, bare.
+  /// The right operand, bare.
+  using Right = std::remove_cvref_t<RightOperand>;
 
   /** @brief The tensor rank. */
   static constexpr Int Rank = Left::Rank + Right::Rank;
-  using GridType = typename Left::GridType;  ///< The angular grid this is defined on.
-  using SlotSet = typename Left::SlotSet;  ///< The alphabet the slots are drawn from.
+  /// The angular grid this is defined on.
+  using GridType = typename Left::GridType;
+  /// The alphabet the slots are drawn from.
+  using SlotSet = typename Left::SlotSet;
 
   static_assert(std::same_as<GridType, typename Right::GridType>,
                 "A tensor product needs both operands on the same kind of "
@@ -410,14 +415,16 @@ auto TensorProduct(L&& left, R&& right) {
 template <std::ptrdiff_t J, std::ptrdiff_t K, typename Operand>
 class ContractionNode {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   /** @brief The operand, with references and cv-qualifiers stripped. */
   using OperandType = std::remove_cvref_t<Operand>;
 
   /** @brief The tensor rank. */
   static constexpr Int Rank = OperandType::Rank - 2;
-  using GridType = typename OperandType::GridType;  ///< The angular grid this is defined on.
-  using SlotSet = typename OperandType::SlotSet;  ///< The alphabet the slots are drawn from.
+  /// The angular grid this is defined on.
+  using GridType = typename OperandType::GridType;
+  /// The alphabet the slots are drawn from.
+  using SlotSet = typename OperandType::SlotSet;
   using Real = typename GridType::Real;  ///< The precision.
 
   /** @brief The letters the contracted slots run over. */
@@ -517,14 +524,16 @@ auto Trace(T&& tensor) {
 template <typename Symmetry, typename Operand>
 class SymmetriseNode {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   /** @brief The operand, with references and cv-qualifiers stripped. */
   using OperandType = std::remove_cvref_t<Operand>;
 
   /** @brief The tensor rank. */
   static constexpr Int Rank = OperandType::Rank;
-  using GridType = typename OperandType::GridType;  ///< The angular grid this is defined on.
-  using SlotSet = typename OperandType::SlotSet;  ///< The alphabet the slots are drawn from.
+  /// The angular grid this is defined on.
+  using GridType = typename OperandType::GridType;
+  /// The alphabet the slots are drawn from.
+  using SlotSet = typename OperandType::SlotSet;
   using Real = typename GridType::Real;  ///< The precision.
 
   /** @brief The elements of the symmetry group, and how many there are. */

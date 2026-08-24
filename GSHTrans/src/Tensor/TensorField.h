@@ -64,14 +64,15 @@ template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
           SlotAlphabet _Slots = AllSlots>
 class TensorField {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /** @brief The tensor rank. */
   static constexpr Int Rank = _Rank;
   using Symmetry = _Symmetry;  ///< The permutation symmetry of the slots.
   using Reality = _Reality;  ///< Whether the tensor is real or complex.
   using GridType = _Grid;  ///< The angular grid this is defined on.
-  using LayoutPolicy = _Layout;  ///< How the components are arranged in the buffer.
+  /// How the components are arranged in the buffer.
+  using LayoutPolicy = _Layout;
 
   /// Which slots this tensor's indices are drawn from, and the multi-index
   /// over them. AllSlots is the ordinary canonical tensor; TangentialSlots is
@@ -84,7 +85,8 @@ class TensorField {
   /// why the generalisation is additive: the storage groups by the slot sum,
   /// and the slot sum does not care how many values a slot can take.
   using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
-  using Index = MultiIndex<Rank, SlotSet>;  ///< The multi-index over those slots.
+  /// The multi-index over those slots.
+  using Index = MultiIndex<Rank, SlotSet>;
 
   /** @brief Whether the samples of one component are contiguous. */
   static constexpr bool IsComponentMajor =
@@ -92,10 +94,10 @@ class TensorField {
   using Real = typename _Grid::Real;  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
 
-  // Every component of a complex tensor is a complex field. Reality makes
-  // the all-zero component real-valued: see
-  // Orbits.h, where the switch lives.
-  using Scalar = Complex;  ///< The value type: Real when real-valued, Complex otherwise.
+  /// Every component of a complex tensor is a complex field. Reality makes
+  /// the all-zero component real-valued: see Orbits.h, where the switch
+  /// lives.
+  using Scalar = Complex;
 
   /** @brief The orbits of the symmetry group, and what each pins. */
   static constexpr auto& Orbits =
@@ -141,11 +143,16 @@ class TensorField {
   /// ten for symmetric rank 3 -- and four for a tangential rank 2, which has
   /// no constrained component at all to contribute the odd one.
   struct Layout {
-    std::array<Int, StoredComponents> flatOfSlot{};  ///< Flat index of each slot.
-    std::array<Int, StoredComponents> upperIndexOfSlot{};  ///< Upper index of each slot.
-    std::array<bool, StoredComponents> realOfSlot{};  ///< Whether each slot is a pinned real.
-    std::array<Int, 2 * Rank + 1> firstSlotAt{};  ///< First slot of each upper index's group.
-    std::array<Int, 2 * Rank + 1> countAt{};  ///< How many slots that group holds.
+    /// Flat index of each slot.
+    std::array<Int, StoredComponents> flatOfSlot{};
+    /// Upper index of each slot.
+    std::array<Int, StoredComponents> upperIndexOfSlot{};
+    /// Whether each slot is a pinned real.
+    std::array<bool, StoredComponents> realOfSlot{};
+    /// First slot of each upper index's group.
+    std::array<Int, 2 * Rank + 1> firstSlotAt{};
+    /// How many slots that group holds.
+    std::array<Int, 2 * Rank + 1> countAt{};
     Int complexCount{};  ///< How many slots are complex fields.
     Int realCount{};     ///< How many are pinned to a real number.
   };

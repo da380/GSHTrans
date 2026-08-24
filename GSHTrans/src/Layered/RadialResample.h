@@ -106,7 +106,7 @@ void Fit(std::span<const Real> from, std::span<const Scalar> values,
 template <typename Real>
 auto AssignPieces(const RadialGrid<Real>& source,
                   std::span<const Real> onto) {
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;
   const auto pieces = source.ElementCount();
   auto first = std::vector<Int>(static_cast<std::size_t>(pieces + 1), Int{0});
 
@@ -146,7 +146,7 @@ template <LayeredStack Stack, typename Real = typename std::remove_cvref_t<
 auto Resample(const Stack& in, RadialGrid<Real> onto,
               RadialInterpolation scheme = RadialInterpolation::CubicSpline(),
               Execution policy = Execution::Sequential()) {
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;
   using Scalar = typename std::remove_cvref_t<
       decltype(std::declval<const Stack&>().Data())>::value_type;
 

@@ -31,7 +31,7 @@ template <std::ptrdiff_t _N, AngularGrid _Grid,
           RealOrComplexValued _Value = ComplexValued>
 class SpinField {
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /** @brief The upper index N of what this evaluates to. */
   static constexpr Int UpperIndex = _N;
@@ -39,7 +39,8 @@ class SpinField {
   using GridType = _Grid;  ///< The angular grid this is defined on.
   using Real = typename _Grid::Real;  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
-  using Scalar = ScalarFor<Real, Value>;  ///< The value type: Real when real-valued, Complex otherwise.
+  /// The value type: Real when real-valued, Complex otherwise.
+  using Scalar = ScalarFor<Real, Value>;
 
   // The reality constraint, restated here so that a mistake in a terminal's
   // template arguments reports itself rather than showing up as a failure to

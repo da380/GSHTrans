@@ -38,10 +38,11 @@ class Binary {
   using RNode = Node<R>;
 
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   using Real = typename LNode::Real;  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
-  using GridType = typename LNode::GridType;  ///< The angular grid this is defined on.
+  /// The angular grid this is defined on.
+  using GridType = typename LNode::GridType;
 
   /// The scalar is whatever the operation returns, and the value kind follows
   /// from it. Deriving it rather than declaring it is what makes the reality
@@ -127,12 +128,14 @@ class Unary {
   using ANode = Node<A>;
 
  public:
-  using Int = std::ptrdiff_t;  ///< Signed index type used throughout the library.
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   using Real = typename ANode::Real;  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
-  using GridType = typename ANode::GridType;  ///< The angular grid this is defined on.
+  /// The angular grid this is defined on.
+  using GridType = typename ANode::GridType;
 
-  using Scalar = std::invoke_result_t<Op, typename ANode::Scalar>;  ///< The value type: Real when real-valued, Complex otherwise.
+  /// The value type: Real when real-valued, Complex otherwise.
+  using Scalar = std::invoke_result_t<Op, typename ANode::Scalar>;
   using Value =
       std::conditional_t<RealFloatingPoint<Scalar>, RealValued,
                          ComplexValued>;  ///< Whether that scalar is real.
