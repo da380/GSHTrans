@@ -26,6 +26,7 @@ the point rather than only asserting it.
 | `18-radial-operators` | the seam, the operators that come ready made, and how to write your own |
 | `19-layered-models` | elements and interfaces: a two-valued derivative at a discontinuity, and remeshing that does not cross one |
 | `20-transform-kernels` | the two Legendre kernels, why both are kept, what each refuses, and the one thing a threaded BLAS needs told |
+| `21-interpolation` | a field as a callable of the two angles: the exact scheme, the cheap ones, what the poles and the wrap need, and remeshing in one line |
 
 `wig` and `wigner3j_tests` are standalone Wigner 3-j experiments and are not
 part of the series.

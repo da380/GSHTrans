@@ -21,6 +21,7 @@ set(GSHTRANS_EXAMPLES
   18-radial-operators
   19-layered-models
   20-transform-kernels
+  21-interpolation
 )
 
 foreach(example IN LISTS GSHTRANS_EXAMPLES)

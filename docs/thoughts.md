@@ -37,7 +37,7 @@ serve as the oracle §4 hoped for (`3j-plan.md` §1).
 | 6 | Wigner 3-j symbols | **planned** -- `3j-plan.md`, its own document since it is independent of everything else |
 | 7 | the `Interpolation` library | **done** -- adopted as an optional dependency, §19.5 [R1]; it answered the hand-over note and §21 records what that changed |
 | 8 | how three-dimensional the 3-D fields are | **done** -- §8A is §19, §8B is §20 |
-| 9 | interpolating a field, as a callable | **planned** -- `field-algebra-plan.md` §22; the radial half was §19's `Resample` |
+| 9 | interpolating a field, as a callable | **done** -- `field-algebra-plan.md` §22, P1 to P5; the radial half was §19's `Resample` |
 | 10 | a wisdom mechanism for the computational options | **planned** -- `core-plan.md` §12, which finds the knob set smaller than this section supposed |
 
 **What is left of §3.** `Deviatoric` needs the metric as a tensor *expression*,
@@ -1076,11 +1076,15 @@ and things that are waiting.
   listed against it, and its `Bilinear`/`BicubicSpline` take a GSHTrans
   field's buffer directly. No hand-over plan is needed; that assessment was
   written against the superseded `main`.
-- **Field interpolation** (§9) is mostly small once §7 is in, because the
-  layouts already agree. What is ours is the two boundary paddings -- the φ
-  wrap and the exact polar rows -- and `Scheme::Spectral()`, which needs
-  nothing and should be built first as the reference the cheap schemes are
-  measured against.
+- **Field interpolation** (§9) is **done**, and the two guesses in it that
+  the code corrected are recorded in `field-algebra-plan.md` §22.1 and §22.3.
+  The layouts did agree, so the join was as small as this section expected;
+  what was not expected is that the padding forces a copy, that an exact polar
+  row costs a forward transform, and that the polar and wrap cells end up
+  *better* than the interior rather than being the weak points. The crossover
+  it asked for came out at about fifty points, so the recommendation is the
+  composite -- transform onto an oversampled grid, then interpolate there --
+  rather than either scheme alone.
 - **The wisdom mechanism** (§10) waits on nothing technically, and its first
   customer should still be `Chunking::Tuned` alone. *The rest of this entry
   used to say the wider case was better made after the target-machine run.*
