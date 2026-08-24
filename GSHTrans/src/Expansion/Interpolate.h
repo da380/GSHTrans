@@ -30,8 +30,12 @@
 #include <vector>
 
 #include "../Concepts.h"
+#include "../Indexing.h"
 #include "../Policies.h"
 #include "../SpinField/SpinWeighted.h"
+#include "../Views.h"
+#include "../Wigner.h"
+#include "SpinExpansion.h"
 
 namespace GSHTrans {
 
@@ -167,6 +171,179 @@ auto Pad(const GridType& grid, std::span<const Scalar> samples,
 }
 
 }  // namespace InterpolateDetails
+
+//--------------------------------------------------------------------------//
+//                          The spectral interpolant                         //
+//--------------------------------------------------------------------------//
+
+// The expansion evaluated directly, which is exact for a band-limited field:
+//
+//     f(theta, phi) = sum_l sum_m  f^N_{lm} dbar^l_{Nm}(theta) exp(i m phi),
+//     dbar^l_{Nm}   = sqrt((2l+1)/4pi) d^l_{Nm},
+//
+// which is what WignerDetails::ComputeBlock stores and what the loop kernel's
+// SynthesiseRow sums. Checked against Evaluate at every grid point rather than
+// read off the transform: worst absolute difference 5.0e-15 complex and
+// 8.1e-15 real (section 22.1).
+//
+// [I2]: this is the reference the cheap schemes are measured against, and it
+// is built first for that reason as much as for its own sake. It is exact and
+// pole-safe, and it costs O(lMax^2) a point where they cost O(1).
+//
+// [I1]: it owns its coefficients. The shared_ptr is what keeps a copy cheap
+// and, more to the point, keeps the state at a stable address so that copying
+// the interpolant is well defined -- which it has to be, because GridBase's
+// ProjectFunction takes its callable by value ([I8]).
+template <std::ptrdiff_t _N, InterpolateDetails::SeparableAngularGrid _Grid,
+          RealOrComplexValued _Value = ComplexValued>
+class SpectralInterpolant {
+ public:
+  using Int = std::ptrdiff_t;
+  static constexpr Int UpperIndex = _N;
+  using GridType = _Grid;
+  using Value = _Value;
+  using Real = typename _Grid::Real;
+  using Complex = std::complex<Real>;
+  using Scalar =
+      std::conditional_t<std::same_as<Value, RealValued>, Real, Complex>;
+
+  // A real field stores only m >= 0, the rest being fixed by
+  // f_{l,-m} = (-1)^m conj(f_{lm}). That is the expansion's own convention,
+  // and it is read here rather than restated.
+  using MRange =
+      std::conditional_t<std::same_as<Value, RealValued>, NonNegative, All>;
+
+  static_assert(std::same_as<Value, ComplexValued> or UpperIndex == 0,
+                "A real-valued field exists only at upper index zero");
+
+  SpectralInterpolant(Int lMax, std::span<const Complex> coefficients)
+      : _state{std::make_shared<const State>(lMax, coefficients)} {}
+
+  auto MaxDegree() const { return _state->lMax; }
+
+  Scalar operator()(Real theta, Real phi) const {
+    const auto lMax = _state->lMax;
+    constexpr auto pi = std::numbers::pi_v<Real>;
+
+    // [I4]: a colatitude outside [0, pi] is not a point on the sphere, so
+    // there is no number to return; a longitude outside [0, 2pi) is one, and
+    // reducing it is exact rather than an approximation. The two axes are not
+    // alike and this is where that shows.
+    if (!(theta >= 0) || !(theta <= pi)) {
+      throw std::invalid_argument(
+          "Interpolate: the colatitude must lie in [0, pi]");
+    }
+    phi = std::fmod(phi, 2 * pi);
+    if (phi < 0) phi += 2 * pi;
+
+    // Per-call scratch, grown and never shrunk, in thread_local storage --
+    // the rule RadialOperator.h states and for the same reason: an
+    // interpolant is called once per evaluation point, so an allocation here
+    // is a defect rather than a cost.
+    const auto indices = GSHIndices<All>(lMax, lMax, UpperIndex);
+    thread_local auto block = std::vector<Real>{};
+    thread_local auto phase = std::vector<Complex>{};
+    const auto blockSize = static_cast<std::size_t>(indices.Size());
+    const auto phases = static_cast<std::size_t>(2 * lMax + 1);
+    if (block.size() < blockSize) block.resize(blockSize);
+    if (phase.size() < phases) phase.resize(phases);
+
+    // The same recursion WignerValues::Generated() runs, into our own
+    // scratch. Sharing it is what stops a second convention arising: a
+    // disagreement here would be a disagreement with the transform.
+    auto d = GSHView<Real, All>(lMax, lMax, UpperIndex, block.data());
+    WignerDetails::ComputeBlock(d, UpperIndex, theta,
+                                std::span<const Real>(_state->sqrtInt),
+                                std::span<const Real>(_state->sqrtIntInv));
+
+    // exp(i m phi) for every order at once. Built with polar rather than by
+    // repeated multiplication: it is O(lMax) against the sum's O(lMax^2), so
+    // about one per cent of the work, and it does not accumulate the phase
+    // drift that a recurrence would carry to m = lMax.
+    for (auto m = -lMax; m <= lMax; m++) {
+      phase[static_cast<std::size_t>(m + lMax)] =
+          std::polar(Real{1}, static_cast<Real>(m) * phi);
+    }
+
+    const auto coefficients = ConstGSHView<Complex, MRange>(
+        lMax, lMax, UpperIndex, _state->data.data());
+
+    auto sum = Complex{};
+    for (auto l : d.Degrees()) {
+      auto dl = d[l];
+      for (auto m : dl.Orders()) {
+        sum += Coefficient(coefficients, l, m) * dl[m] *
+               phase[static_cast<std::size_t>(m + lMax)];
+      }
+    }
+
+    // [I9]: for a real field the sum is real -- measured at 5.3e-16 in the
+    // imaginary part -- so taking the real part is a projection onto a
+    // quantity known to be real rather than a truncation.
+    if constexpr (std::same_as<Value, RealValued>) {
+      return std::real(sum);
+    } else {
+      return sum;
+    }
+  }
+
+ private:
+  struct State {
+    Int lMax;
+    std::vector<Complex> data;
+    std::vector<Real> sqrtInt;
+    std::vector<Real> sqrtIntInv;
+
+    State(Int lMaxIn, std::span<const Complex> coefficients)
+        : lMax{lMaxIn}, data(coefficients.begin(), coefficients.end()) {
+      if (lMax < std::abs(UpperIndex)) {
+        throw std::invalid_argument(
+            "Interpolate: the degree is below the upper index");
+      }
+      const auto indices = GSHIndices<MRange>(lMax, lMax, UpperIndex);
+      if (data.size() != static_cast<std::size_t>(indices.Size())) {
+        throw std::invalid_argument(
+            "Interpolate: the coefficient range does not hold the " +
+            std::to_string(indices.Size()) + " coefficients of a degree-" +
+            std::to_string(lMax) + " expansion");
+      }
+      auto tables = WignerDetails::PreComputeTables<Real>(lMax, lMax,
+                                                          std::abs(UpperIndex));
+      sqrtInt = std::move(tables.first);
+      sqrtIntInv = std::move(tables.second);
+    }
+  };
+
+  // The coefficient at (l, m), through the reduced storage where there is
+  // one. This is the whole of what the real case costs here.
+  template <typename View>
+  static Complex Coefficient(const View& coefficients, Int l, Int m) {
+    if constexpr (std::same_as<Value, RealValued>) {
+      if (m >= 0) return coefficients[l][m];
+      const auto conjugate = std::conj(coefficients[l][-m]);
+      return (-m) % 2 == 0 ? conjugate : -conjugate;
+    } else {
+      return coefficients[l][m];
+    }
+  }
+
+  std::shared_ptr<const State> _state;
+};
+
+//--------------------------------------------------------------------------//
+//                                Interpolate                                //
+//--------------------------------------------------------------------------//
+
+// An expansion interpolates spectrally and in no other way: there are no
+// samples to interpolate, only coefficients to sum. The scheme argument is
+// accepted so that the spelling matches the field's, and refused if it names
+// anything else.
+template <std::ptrdiff_t N, typename GridType, typename Value>
+auto Interpolate(const SpinExpansion<N, GridType, Value>& expansion,
+                 Scheme::SpectralTag = Scheme::Spectral()) {
+  return SpectralInterpolant<N, GridType, Value>(expansion.MaxDegree(),
+                                                 expansion.Data());
+}
 
 }  // namespace GSHTrans
 

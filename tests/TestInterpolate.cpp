@@ -152,4 +152,169 @@ TEST_F(PaddedGrid, PadsARealFieldWithoutPromoting) {
   EXPECT_DOUBLE_EQ(padded.At(0, 0), 5.0);
 }
 
+//--------------------------------------------------------------------------//
+//              P2: the spectral interpolant, which is the reference          //
+//--------------------------------------------------------------------------//
+
+// Fill an expansion with arbitrary but reproducible coefficients.
+template <typename Expansion>
+void Fill(Expansion& e, int seed) {
+  for (auto l : e.Degrees()) {
+    for (auto m : e.Orders(l)) {
+      seed = seed * 1103515245 + 12345;
+      const auto a = static_cast<Real>((seed >> 8) % 1000) / 1000;
+      seed = seed * 1103515245 + 12345;
+      const auto b = static_cast<Real>((seed >> 8) % 1000) / 1000;
+      // A real field's m = 0 coefficient is real, by its own reality
+      // condition; giving it an imaginary part would make the expansion
+      // describe no field at all.
+      if constexpr (std::same_as<typename Expansion::Value, RealValued>) {
+        e[l, m] = m == 0 ? Complex(a, 0) : Complex(a, b);
+      } else {
+        e[l, m] = Complex(a, b);
+      }
+    }
+  }
+}
+
+// The interpolant must be copyable, because ProjectFunction takes its
+// callable by value and copies it into a lambda -- which is [I8]'s whole
+// point, and the property most easily broken by a change of storage.
+static_assert(std::copy_constructible<SpectralInterpolant<2, Grid>>);
+static_assert(std::copy_constructible<
+              SpectralInterpolant<0, Grid, RealValued>>);
+
+// The decisive agreement: the same numbers as the transform, at every point
+// the transform produces. This is what says the direct sum of section 22.1 is
+// the synthesis rather than something like it.
+TEST(SpectralInterpolant, MatchesEvaluateAtEveryGridPoint) {
+  constexpr Int N = 2;
+  const Int lMax = 8;
+  auto grid = Grid(lMax, 2);
+  auto e = SpinExpansion<N, Grid>(grid, lMax);
+  Fill(e, 101);
+
+  const auto field = Evaluate(e);
+  const auto at = Interpolate(e);
+
+  auto worst = Real{0};
+  auto iTheta = Int{0};
+  for (auto theta : grid.CoLatitudes()) {
+    auto iPhi = Int{0};
+    for (auto phi : grid.Longitudes()) {
+      worst = std::max(worst, std::abs(at(theta, phi) - field[iTheta, iPhi]));
+      iPhi++;
+    }
+    iTheta++;
+  }
+  EXPECT_LT(worst, 1e-13) << "worst difference " << worst;
+}
+
+// The same, through the reduced m >= 0 storage, where the sum has to supply
+// the Hermitian partner f_{l,-m} = (-1)^m conj(f_{lm}) itself.
+TEST(SpectralInterpolant, MatchesEvaluateForARealField) {
+  const Int lMax = 8;
+  auto grid = Grid(lMax, 0);
+  auto e = SpinExpansion<0, Grid, RealValued>(grid, lMax);
+  Fill(e, 202);
+
+  const auto field = Evaluate(e);
+  const auto at = Interpolate(e);
+
+  static_assert(std::same_as<decltype(at(0.0, 0.0)), Real>);
+
+  auto worst = Real{0};
+  auto iTheta = Int{0};
+  for (auto theta : grid.CoLatitudes()) {
+    auto iPhi = Int{0};
+    for (auto phi : grid.Longitudes()) {
+      worst = std::max(worst, std::abs(at(theta, phi) - field[iTheta, iPhi]));
+      iPhi++;
+    }
+    iTheta++;
+  }
+  EXPECT_LT(worst, 1e-13) << "worst difference " << worst;
+}
+
+// Off the grid, where agreement with Evaluate says nothing, the oracle is a
+// closed form. The l = 1 generalised Legendre functions of Dahlen & Tromp
+// (C.115) are the table field-algebra-plan.md section 2 uses to pin the
+// convention, so this is the same oracle at a different point.
+TEST(SpectralInterpolant, IsExactOnALowDegreeHarmonic) {
+  constexpr Int N = 1;
+  auto grid = Grid(1, 1);
+  auto e = SpinExpansion<N, Grid>(grid, 1);
+  const auto c = std::array{Complex(0.3, -0.7), Complex(-1.1, 0.4),
+                            Complex(0.9, 0.2)};
+  e[1, -1] = c[0];
+  e[1, 0] = c[1];
+  e[1, 1] = c[2];
+
+  const auto at = Interpolate(e);
+  const auto norm = std::sqrt(3 / (4 * pi));
+
+  for (auto theta : {0.31, 1.0, 2.4, 3.0}) {
+    for (auto phi : {0.0, 0.9, 4.7}) {
+      // P^{1}_{1,-1} = (1 - cos)/2,  P^{1}_{1,0} = sin/sqrt(2),
+      // P^{1}_{1,+1} = (1 + cos)/2.
+      const auto want =
+          norm * (c[0] * ((1 - std::cos(theta)) / 2) *
+                      std::exp(Complex(0, -phi)) +
+                  c[1] * (std::sin(theta) / std::sqrt(2.0)) +
+                  c[2] * ((1 + std::cos(theta)) / 2) *
+                      std::exp(Complex(0, phi)));
+      EXPECT_NEAR(std::abs(at(theta, phi) - want), 0.0, 1e-14)
+          << "at theta = " << theta << ", phi = " << phi;
+    }
+  }
+}
+
+// The poles are inside the domain and are where the whole padding question
+// comes from, so the reference must answer there. Section 22.1's rule:
+// the order m = +N survives at the north and m = -N at the south, the latter
+// with a sign alternating in the degree.
+TEST(SpectralInterpolant, AnswersAtThePolesByTheStatedRule) {
+  constexpr Int N = 2;
+  const Int lMax = 6;
+  auto grid = Grid(lMax, 2);
+  auto e = SpinExpansion<N, Grid>(grid, lMax);
+  Fill(e, 303);
+
+  const auto at = Interpolate(e);
+
+  auto north = Complex{};
+  auto south = Complex{};
+  for (auto l = N; l <= lMax; l++) {
+    const auto norm = std::sqrt((2 * static_cast<Real>(l) + 1) / (4 * pi));
+    north += e[l, N] * norm;
+    south += e[l, -N] * norm * ((l - N) % 2 == 0 ? 1.0 : -1.0);
+  }
+
+  for (auto phi : {0.0, 1.3, 5.5}) {
+    EXPECT_NEAR(std::abs(at(0.0, phi) - north * std::exp(Complex(0, N * phi))),
+                0.0, 1e-13)
+        << "north pole at phi = " << phi;
+    EXPECT_NEAR(
+        std::abs(at(pi, phi) - south * std::exp(Complex(0, -N * phi))), 0.0,
+        1e-13)
+        << "south pole at phi = " << phi;
+  }
+}
+
+// A pole value depends on phi at N != 0, which is the frame ambiguity rather
+// than a defect, and is the fact section 9 of thoughts.md got wrong. Pinned
+// because a polar row built as a constant would pass every other test here.
+TEST(SpectralInterpolant, PoleValueVariesWithLongitudeAtNonzeroUpperIndex) {
+  constexpr Int N = 2;
+  auto grid = Grid(6, 2);
+  auto e = SpinExpansion<N, Grid>(grid, 6);
+  Fill(e, 404);
+  const auto at = Interpolate(e);
+
+  const auto a = at(0.0, 0.0);
+  const auto b = at(0.0, pi / (2 * N));  // a quarter turn of exp(i N phi)
+  EXPECT_GT(std::abs(a - b), 1e-3) << "the north pole looks constant in phi";
+  EXPECT_NEAR(std::abs(a), std::abs(b), 1e-13) << "only the phase should move";
+}
+
 }  // namespace
