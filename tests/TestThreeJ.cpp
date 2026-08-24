@@ -90,78 +90,46 @@ TEST(ThreeJ, CompletenessHoldsAtTheStretchedEdgeForModestDegrees) {
 //                     Where the identity fails, and it must                 //
 //--------------------------------------------------------------------------//
 
-// T4 inverted this one, which is the visible record of what the fallback
-// bought. These triples used to return finite, plausibly-shaped tables of
-// numbers of order 1e112; then [J1]'s check made them a refusal; now Racah's
-// closed form answers them exactly, because at l3 = l1 + l2 its alternating
-// sum has exactly one term and so cannot cancel at all.
-TEST(ThreeJ, AnswersStretchedTrianglesOfHighDegreeThroughTheFallback) {
+// The old boundary is gone. Schulten-Gordon recurses inward from both
+// forbidden ends and matches in the middle, so the region that destroyed the
+// one-directional scheme -- and the band that neither it nor Racah's closed
+// form could reach -- is answered like anywhere else.
+TEST(ThreeJ, AnswersEverythingTheOldSchemesCouldNot) {
+  // Stretched: fatal to the old recursion past l = 30.
   for (auto l : {35, 40, 50, 64, 100, 128}) {
-    ASSERT_NO_THROW(Wigner3jMatrix<double>(l, l, 2 * l))
-        << "(l, l, 2l) at l = " << l;
-    EXPECT_NEAR(Completeness<double>(l, l, 2 * l), 1.0, 1e-12)
-        << "(l, l, 2l) at l = " << l;
-
-    // And the value at the corner is the closed form, exactly.
-    const auto table = Wigner3jMatrix<double>(l, l, 2 * l);
-    EXPECT_NEAR(table(l, l, -2 * l), 1 / std::sqrt(4.0 * l + 1), 1e-13)
-        << "l = " << l;
+    ASSERT_NO_THROW(Wigner3jMatrix<double>(l, l, 2 * l)) << "l = " << l;
+    EXPECT_NEAR(Completeness<double>(l, l, 2 * l), 1.0, 1e-12) << "l = " << l;
   }
-}
-
-// The gap, and it is the finding of 3j-plan.md T2: the two methods do **not**
-// cover the space between them. At intermediate shapes the recursion has lost
-// the values and Racah's sum is already too long to be trusted, so neither
-// answers and the constructor refuses. That is the right behaviour and it is
-// asserted rather than left to be discovered.
-TEST(ThreeJ, RefusesTheTriplesNeitherMethodCovers) {
+  // The band of 3j-plan.md T2, which neither classical method reached.
   for (const auto& t : std::vector<std::array<int, 3>>{
-           {90, 90, 135}, {100, 100, 150}, {128, 128, 192}, {128, 128, 160},
-           {200, 200, 200}}) {
-    EXPECT_THROW(Wigner3jMatrix<double>(t[0], t[1], t[2]), std::runtime_error)
-        << "(" << t[0] << "," << t[1] << "," << t[2]
-        << ") is covered by neither method and must be refused rather than "
-           "answered wrongly";
+           {80, 80, 120}, {90, 90, 135}, {100, 100, 150}, {128, 128, 192},
+           {128, 128, 160}, {160, 160, 160}, {200, 200, 200}}) {
+    ASSERT_NO_THROW(Wigner3jMatrix<double>(t[0], t[1], t[2]))
+        << "(" << t[0] << "," << t[1] << "," << t[2] << ")";
+    EXPECT_NEAR(Completeness<double>(t[0], t[1], t[2]), 1.0, 1e-12)
+        << "(" << t[0] << "," << t[1] << "," << t[2] << ")";
   }
 }
 
-// And the check does not fire on anything good, which is the half that would
-// otherwise make it a nuisance. Every triple the tests above assert is
-// accurate must construct without complaint.
-TEST(ThreeJ, AcceptsEveryTripleItShould) {
-  for (auto l : {1, 2, 3, 5, 8, 13, 20, 32, 64}) {
+// The runtime check is the recurrence residual, not completeness ([J6]).
+// Completeness cannot fail here -- every row is normalised by that identity --
+// so it is asserted above as a property and relied on nowhere.
+//
+// This asserts the other half: that nothing good is refused, over the whole
+// range the suite exercises and a non-triangle besides.
+TEST(ThreeJ, RefusesNothingItShouldAnswer) {
+  for (auto l : {0, 1, 2, 3, 5, 8, 13, 20, 32, 64, 128}) {
     EXPECT_NO_THROW(Wigner3jMatrix<double>(l, l, l)) << "(l,l,l), l = " << l;
   }
-  for (auto l : {1, 2, 4, 8, 12, 16, 20}) {
-    EXPECT_NO_THROW(Wigner3jMatrix<double>(l, l, 2 * l))
-        << "(l, l, 2l), l = " << l;
+  for (auto l : {1, 2, 4, 8, 16, 32, 64}) {
+    EXPECT_NO_THROW(Wigner3jMatrix<double>(l, l, 2 * l));
+    EXPECT_NO_THROW(Wigner3jMatrix<double>(l, l, 3 * l / 2 + 1));
   }
-  for (auto l : {10, 20, 30, 40, 60, 70}) {
-    EXPECT_NO_THROW(Wigner3jMatrix<double>(l, l, 3 * l / 2))
-        << "(l, l, 3l/2), l = " << l;
-  }
-  // Near-stretched at high degree, which only the fallback can answer.
   for (const auto& t : std::vector<std::array<int, 3>>{
-           {128, 128, 250}, {200, 150, 340}, {256, 256, 500}}) {
-    EXPECT_NO_THROW(Wigner3jMatrix<double>(t[0], t[1], t[2]))
-        << "(" << t[0] << "," << t[1] << "," << t[2] << ")";
+           {128, 128, 250}, {100, 150, 200}, {60, 60, 90}, {70, 70, 105}}) {
+    EXPECT_NO_THROW(Wigner3jMatrix<double>(t[0], t[1], t[2]));
   }
-}
-
-// The marginal band, which is why the tolerance sits where it does. These
-// carry perhaps 5e-5 relative error -- worth having, and refused by a
-// tolerance set just above the noise floor instead of in the real gap.
-TEST(ThreeJ, AcceptsTheMarginalBandRatherThanRefusingUsableValues) {
-  for (const auto& t : std::vector<std::array<int, 3>>{
-           {60, 60, 90}, {70, 70, 105}, {256, 256, 500}}) {
-    EXPECT_NO_THROW(Wigner3jMatrix<double>(t[0], t[1], t[2]))
-        << "(" << t[0] << "," << t[1] << "," << t[2] << ")";
-    EXPECT_NEAR(Completeness<double>(t[0], t[1], t[2]), 1.0, 1e-3)
-        << "(" << t[0] << "," << t[1] << "," << t[2] << ")";
-  }
-  // A triple that is not a triangle has an identically zero table, so its
-  // completeness sum is zero and correctly so: the check must skip it rather
-  // than refuse it.
+  // A non-triangle has an identically zero table, and that is not a failure.
   EXPECT_NO_THROW(Wigner3jMatrix<double>(1, 1, 5));
 }
 
@@ -300,6 +268,127 @@ TEST(ThreeJ, TheSingleSymbolEntryPointAgreesWithTheTable) {
       EXPECT_EQ(Wigner3jSymbol<double>(3, 5, 4, m1, m2, m3), table(m1, m3))
           << "m1 = " << m1 << ", m3 = " << m3;
     }
+  }
+}
+
+//--------------------------------------------------------------------------//
+//        [J7]: the structural checks, which carry the weight now            //
+//--------------------------------------------------------------------------//
+//
+// With one implementation there is no second one to compare against, so the
+// suite rests on properties a single implementation cannot satisfy by
+// accident. The sharpest is column-permutation invariance: the recursion runs
+// over m2 at fixed m1, so permuting the columns makes it run along entirely
+// different lines through different data -- and it is independent of the
+// per-row normalisation, which is what makes it stronger here than
+// completeness.
+//
+// This is what caught the one real bug in the implementation. The phase was
+// recovered from the last stored value, and at near-stretched triples of high
+// degree the row's dynamic range reaches 1e201, so the rescaling flushed that
+// element to zero and the sign with it. Whole rows came out negated with
+// every magnitude correct to 1e-16. Completeness is a sum of squares and saw
+// nothing; the recurrence is homogeneous and saw nothing; only this saw it.
+TEST(ThreeJ, IsInvariantUnderBothCyclicPermutations) {
+  for (const auto& t : std::vector<std::array<int, 3>>{
+           {3, 4, 5}, {12, 12, 12}, {40, 40, 80}, {80, 80, 120},
+           {100, 100, 150}, {128, 128, 192}, {160, 160, 160},
+           {100, 150, 200}, {128, 128, 250}}) {
+    const auto a = Wigner3jMatrix<double>(t[0], t[1], t[2]);
+    const auto b = Wigner3jMatrix<double>(t[1], t[2], t[0]);
+    const auto c = Wigner3jMatrix<double>(t[2], t[0], t[1]);
+
+    auto worst = 0.0;
+    for (auto m1 : a.M1Axis()) {
+      for (auto m3 : a.M3Axis()) {
+        const auto m2 = -(m1 + m3);
+        if (std::abs(m2) > t[1]) continue;
+        const auto value = a(m1, m3);
+        // (l1 l2 l3; m1 m2 m3) = (l2 l3 l1; m2 m3 m1) = (l3 l1 l2; m3 m1 m2)
+        worst = std::max(worst, std::abs(b(m2, m1) - value));
+        worst = std::max(worst, std::abs(c(m3, m2) - value));
+      }
+    }
+    EXPECT_LT(worst, 1e-13)
+        << "(" << t[0] << "," << t[1] << "," << t[2] << ") worst " << worst;
+  }
+}
+
+// Exact rational values at small degree, written out as literals. These pin
+// the convention and the phase rather than the accuracy -- there is no
+// arithmetic here that could be wrong in the same way the code is.
+TEST(ThreeJ, MatchesExactValuesAtSmallDegree) {
+  const auto third = 1.0 / 3;
+  const auto t111 = Wigner3jMatrix<double>(1, 1, 1);
+  // (1 1 1; 1 -1 0) = 1/sqrt(6), (1 1 1; 0 0 0) = 0.
+  EXPECT_NEAR(t111(1, 0), 1 / std::sqrt(6.0), 1e-15);
+  EXPECT_NEAR(t111(0, 0), 0.0, 1e-15);
+
+  const auto t112 = Wigner3jMatrix<double>(1, 1, 2);
+  // (1 1 2; 0 0 0) = sqrt(2/15), (1 1 2; 1 1 -2) = 1/sqrt(5).
+  EXPECT_NEAR(t112(0, 0), std::sqrt(2.0 / 15), 1e-15);
+  EXPECT_NEAR(t112(1, -2), 1 / std::sqrt(5.0), 1e-15);
+
+  const auto t222 = Wigner3jMatrix<double>(2, 2, 2);
+  // (2 2 2; 0 0 0) = -sqrt(2/35).
+  EXPECT_NEAR(t222(0, 0), -std::sqrt(2.0 / 35), 1e-15);
+
+  const auto t110 = Wigner3jMatrix<double>(1, 1, 0);
+  // (1 1 0; m -m 0) = (-1)^(1-m)/sqrt(3).
+  EXPECT_NEAR(t110(1, 0), third * std::sqrt(3.0), 1e-15);
+  EXPECT_NEAR(t110(0, 0), -third * std::sqrt(3.0), 1e-15);
+}
+
+// The recurrence residual is the runtime check, so it must actually fire on a
+// table that does not satisfy the recurrence. Perturbing one interior value
+// is the cheapest way to be sure the check is not vacuous -- done through the
+// detail function, since a Wigner3jMatrix that has been built is by
+// construction one that passed.
+TEST(ThreeJ, TheRecurrenceCheckIsNotVacuous) {
+  constexpr auto l1 = 8, l2 = 8, l3 = 8, m1 = 0;
+  auto row = std::vector<double>(2 * l2 + 2);
+  const auto n = ThreeJDetails::SchultenGordonRow<double>(
+      l1, l2, l3, m1, std::span<double>(row));
+  ASSERT_GT(n, 4);
+
+  EXPECT_TRUE(ThreeJDetails::RowSatisfiesRecurrence<double>(
+      l1, l2, l3, m1, std::span<const double>(row.data(), n), n));
+
+  auto broken = row;
+  broken[static_cast<std::size_t>(n / 2)] *= 1.5;
+  EXPECT_FALSE(ThreeJDetails::RowSatisfiesRecurrence<double>(
+      l1, l2, l3, m1, std::span<const double>(broken.data(), n), n));
+}
+
+// Woodhouse's array survives as a convention: a mirror in m1 and a phase.
+// Applying the swap twice must give the table back, which is what says the
+// two conventions cannot drift apart.
+TEST(ThreeJ, WoodhouseIsAConventionAndIsItsOwnInverse) {
+  constexpr auto l1 = 4, l2 = 5, l3 = 6;
+  const auto plain = Wigner3jMatrix<double>(l1, l2, l3);
+
+  auto wood = std::vector<double>(static_cast<std::size_t>(2 * l1 + 1) *
+                                  (2 * l3 + 1));
+  FillWoodhouseMatrix(l1, l2, l3, wood);
+
+  // wood(m, mp) = (-1)^m (l1 l2 l3; -m, m-mp, mp)
+  const auto columns = 2 * l3 + 1;
+  for (auto m = -l1; m <= l1; ++m) {
+    for (auto mp = -l3; mp <= l3; ++mp) {
+      const auto phase = (m % 2 == 0) ? 1.0 : -1.0;
+      const auto want = phase * plain(-m, mp);
+      const auto got =
+          wood[static_cast<std::size_t>(m + l1) * columns + (mp + l3)];
+      EXPECT_NEAR(got, want, 1e-15) << "m = " << m << ", mp = " << mp;
+      EXPECT_NEAR(plain.Woodhouse(m, mp), want, 1e-15);
+    }
+  }
+
+  auto twice = wood;
+  ThreeJDetails::SwapWoodhouseConvention<double>(
+      l1, l3, std::span<double>(twice));
+  for (std::size_t i = 0; i < twice.size(); ++i) {
+    EXPECT_NEAR(twice[i], plain.Data()[i], 1e-15) << "entry " << i;
   }
 }
 

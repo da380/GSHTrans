@@ -22,29 +22,39 @@ namespace GSHTrans {
  * @file Wigner3j.hpp
  * @brief Wigner 3j symbols by stable recursion over the (m1, m3) plane.
  *
- * @details A C++20 port of the Fortran routine wig2.f by J. H. Woodhouse.
- * For fixed degrees (l1, l2, l3) the full table of symbols
+ * @details For fixed degrees (l1, l2, l3) the full table of symbols
  *
  *           ( l1  l2  l3 )
  *           ( m1  m2  m3 ),   with m2 = -(m1 + m3),
  *
- * is generated over the axes m1 in [-l1, l1] and m3 in [-l3, l3] using
- * Woodhouse's recursion scheme:
+ * is generated over the axes m1 in [-l1, l1] and m3 in [-l3, l3], one row at
+ * a time, by the Schulten-Gordon algorithm.
  *
- *   1. The corner value at (m1, m3) = (l1, -l3) is evaluated in closed form.
- *   2. Two-term recursions propagate the value along the two boundary
- *      edges of the (m1, m3) plane.
- *   3. A three-term recursion sweeps diagonals of constant m2 from the
- *      corner towards the centre of the plane, but only over half of it.
- *   4. The remaining half is filled from the reflection symmetry of the
- *      symbols under (m1, m2, m3) -> (-m1, -m2, -m3).
+ * The order recurrence has a growing and a decaying solution, with a
+ * classically allowed region between two forbidden ones. Recursing inward
+ * from a forbidden end follows the growing solution and is stable; outward
+ * follows the decaying one and loses the answer exponentially. So each row is
+ * built inward from *both* ends, the two halves are matched where they
+ * overlap, and the one remaining constant is fixed from the unitary property
  *
- * The scheme is numerically stable because the three-term recursion is
- * only ever used in the direction in which the symbols grow in magnitude
- * (from the classically forbidden corner region towards the centre); the
- * decaying tail on the far side is obtained by symmetry rather than by
- * continuing the recursion into an unstable regime. No factorials are
- * formed, so the method remains accurate for large degrees.
+ *     (2 l1 + 1) sum_{m2} g(m2)^2 = 1.
+ *
+ * No closed-form seed is needed and no factorial is ever formed, so the
+ * method holds at large degree: measured against an independent route
+ * (column-permutation invariance, which runs the recursion along different
+ * lines) it agrees to 1e-16 at (200,200,200) and 1e-15 at (1000,1000,1999).
+ *
+ * This replaced two earlier schemes, and docs/3j-plan.md records why. A port
+ * of Woodhouse's wig2.f ran the three-term recursion in one direction only,
+ * and failed exponentially near stretched triangles -- unusable past l = 30
+ * there. Racah's closed form was added as a fallback and covers exactly the
+ * region that one cannot, but the two together still left a band at
+ * intermediate shapes above l = 80 that neither reached. Schulten-Gordon
+ * covers all of it, at 1.1x to 1.3x the cost of the scheme it replaces.
+ *
+ * Woodhouse's own array layout survives as a convention -- see Woodhouse()
+ * and FillWoodhouseMatrix -- because normal-mode coupling codes want it. It
+ * is a phase and a relabelling of the table below, not a separate algorithm.
  *
  * All degrees and orders are integers (no half-integer support).
  */
@@ -144,299 +154,327 @@ class Axis {
 namespace ThreeJDetails {
 
 /**
- * @internal
- * @brief Direct port of wig2.f. Fills a row-major (2 l1 + 1) x (2 l3 + 1)
- * buffer with Woodhouse's matrix
+ * @brief The two coefficients of the order recurrence.
+ * @details With g(m2) = (l1 l2 l3; m1 m2 -m1-m2), the symbols satisfy
  *
- *   a[(m + l1) * (2 l3 + 1) + (mp + l3)]
- *       = (-1)^m ( l1   l2    l3 )
- *                ( -m  m-mp   mp ),
+ *     A(m2) g(m2) + B(m2) g(m2-1) + A(m2-1) g(m2-2) = 0
  *
- * for all m in [-l1, l1] and mp in [-l3, l3]. Everything outside the
- * selection rules is set to zero, as is the whole buffer if the triangle
- * inequality fails.
- *
- * To ease comparison with the original, the local variable names follow
- * the Fortran source, in which the degrees (l1, l2, l3) here were called
- * (l1, is, l2), and the orders (m, mp) were called (m1, m2). Unlike the
- * original, integer products are converted to floating point factor by
- * factor, so no intermediate integer overflow can occur at large degrees.
+ * with A and B as below. A(m2min) is identically zero -- that is the lower
+ * endpoint of the run -- which is why the backward pass takes its coefficient
+ * one step up from the index it is filling and never forms it.
  */
 template <NumericConcepts::Real T>
-void WoodhouseMatrix(const int l1, const int is, const int l2, std::span<T> a) {
-  assert(l1 >= 0 and is >= 0 and l2 >= 0);
-  const int nRows = 2 * l1 + 1;
-  const int nCols = 2 * l2 + 1;
-  assert(a.size() ==
-         static_cast<std::size_t>(nRows) * static_cast<std::size_t>(nCols));
-  const auto idx = [nCols](int i, int j) {
-    return static_cast<std::size_t>(i) * static_cast<std::size_t>(nCols) +
-           static_cast<std::size_t>(j);
-  };
+T RecurrenceA(int l1, int l2, int l3, int m1, int m2) {
+  const auto m3 = -m1 - m2;
+  return std::sqrt(static_cast<T>(l2 - m2 + 1) * static_cast<T>(l2 + m2) *
+                   static_cast<T>(l3 + m3 + 1) * static_cast<T>(l3 - m3));
+}
 
-  std::ranges::fill(a, T{0});
-  if (is < std::abs(l1 - l2) or is > l1 + l2) return;
+template <NumericConcepts::Real T>
+T RecurrenceB(int l1, int l2, int l3, int m1, int m2) {
+  const auto m3 = -m1 - m2;
+  return static_cast<T>(l1 + l2 + l3 + 1) * static_cast<T>(l2 + l3 - l1) -
+         static_cast<T>(l2 - m2 + 1) * static_cast<T>(l3 + m3 + 1) -
+         static_cast<T>(l2 + m2 - 1) * static_cast<T>(l3 - m3 - 1);
+}
 
-  // Corner value at (m1, m2) = (-l1, -l2), in closed form.
-  {
-    auto r1 = T{1} / std::sqrt(T(2 * std::max(l1, l2) + 1));
-    const auto ldel = std::abs(l1 - l2);
-    for (int isc = ldel + 1; isc <= is; ++isc) {
-      r1 *= std::sqrt(T(l1 + l2 - isc + 1) / T(l1 + l2 + isc + 1));
-    }
-    a[idx(0, 0)] = r1;
-  }
-
-  // First row: two-term recursion in m2 along the edge m1 = -l1.
-  {
-    const auto num1 = std::min(is - l1 + l2, l2);
-    for (int n = 1; n <= num1; ++n) {
-      const auto m2 = -l2 + n;
-      a[idx(0, n)] =
-          -a[idx(0, n - 1)] * std::sqrt(T(l1 + is + m2) * T(is - l1 - m2 + 1) /
-                                        (T(l2 - m2 + 1) * T(l2 + m2)));
-    }
-  }
-
-  // First column: two-term recursion in m1 along the edge m2 = -l2.
-  {
-    const auto num2 = is - l2 + l1;
-    for (int n = 1; n <= num2; ++n) {
-      const auto m1 = -l1 + n;
-      a[idx(n, 0)] =
-          -a[idx(n - 1, 0)] * std::sqrt(T(l2 + is + m1) * T(is - l2 - m1 + 1) /
-                                        (T(l1 + m1) * T(l1 - m1 + 1)));
-    }
-  }
-
-  // Three-term recursion along south-east diagonals, i.e. in the direction
-  // (m1, m2) -> (m1 + 1, m2 + 1) of constant m1 - m2. Only the half-plane
-  // m2 <= 0 is computed; the recursion therefore always runs towards
-  // growing values and remains stable.
-  const auto iss = static_cast<long long>(is) * (is + 1) -
-                   static_cast<long long>(l1) * (l1 + 1) -
-                   static_cast<long long>(l2) * (l2 + 1);
-  const auto numd = std::min(2 * is + 1, is + l1);
-  for (int nd = 1; nd <= numd; ++nd) {
-    const auto m1b = std::max(-l1, is - l2 - nd + 1);
-    const auto m2b = std::max(-l2, -is - l1 + nd - 1);
-    const auto numit = std::min(-m2b, l1 - m1b);
-    for (int nit = 1; nit <= numit; ++nit) {
-      const auto m1 = m1b + nit;
-      const auto m2 = m2b + nit;
-      const auto i = m1 + l1;
-      const auto j = m2 + l2;
-      const auto previous = (i < 2 or j < 2) ? T{0} : a[idx(i - 2, j - 2)];
-      auto value = -previous * std::sqrt(T(l1 + m1 - 1) * T(l1 - m1 + 2) *
-                                         T(l2 - m2 + 2) * T(l2 + m2 - 1));
-      value += T(iss + 2LL * (m1 - 1) * (m2 - 1)) * a[idx(i - 1, j - 1)];
-      value /=
-          std::sqrt(T(l1 + m1) * T(l1 - m1 + 1) * T(l2 - m2 + 1) * T(l2 + m2));
-      a[idx(i, j)] = value;
-    }
-  }
-
-  // Fill the half-plane m2 > 0 using the reflection symmetry of the
-  // symbols under negation of all orders.
-  {
-    const auto sgn = ((l1 + l2 + is) % 2 == 0) ? T{1} : T{-1};
-    for (int i = 0; i < nRows; ++i) {
-      const auto m1 = i - l1;
-      for (int m2 = 1; m2 <= l2; ++m2) {
-        a[idx(i, l2 + m2)] = sgn * a[idx(l1 - m1, l2 - m2)];
-      }
-    }
-  }
-
-  // Restore the (-1)^m1 style phase by negating alternate rows.
-  for (int i = 0; i < nRows; ++i) {
-    if ((i + l2 + is) % 2 != 0) {
-      for (int j = 0; j < nCols; ++j) {
-        a[idx(i, j)] = -a[idx(i, j)];
-      }
-    }
-  }
+/** @brief The orders m2 for which g(m2) can be non-zero. */
+inline std::pair<int, int> OrderRange(int l2, int l3, int m1) {
+  return {std::max(-l2, -l3 - m1), std::min(l2, l3 - m1)};
 }
 
 /**
- * @internal
- * @brief Transforms, in place, Woodhouse's matrix into the table of plain
- * Wigner 3j symbols
+ * @brief One row of the (m1, m3) plane by the Schulten-Gordon algorithm.
+ * @details Fills g[0 .. n-1] with g(m2) for m2 from m2min to m2max at fixed
+ * m1, where n = m2max - m2min + 1.
  *
- *   plain[(m1 + l1) * (2 l3 + 1) + (m3 + l3)]
- *       = ( l1     l2      l3 )
- *         ( m1  -(m1+m3)   m3 ),
+ * The recurrence has a growing and a decaying solution, and a classically
+ * allowed region between two forbidden ones. Recursing *inward* from a
+ * forbidden end follows the growing solution, so errors decay; outward
+ * follows the decaying one, so they grow exponentially -- which is what
+ * destroyed the one-directional scheme this replaces, and which extra
+ * precision delays rather than cures.
  *
- * using plain(m1, m3) = (-1)^m1 wood(-m1, m3): rows are mirrored in m1 and
- * multiplied by an alternating phase.
+ * So the run comes inward from both ends and the two halves are matched where
+ * they overlap. Each is correct up to its own scale; matching leaves one
+ * unknown constant, and the unitary property
+ *
+ *     (2 l1 + 1) sum_{m2} g(m2)^2 = 1
+ *
+ * fixes it. No closed-form seed is needed and no factorial is ever formed.
+ *
+ * The turning point is found by watching the recurrence coefficient rather
+ * than by locating it analytically: while |c1| is decreasing the run is
+ * heading towards larger values and is stable, and the first increase says to
+ * stop and come from the other end.
+ *
+ * Schulten, K. and Gordon, R. G., J. Math. Phys. 16 (1975) 1961, and the
+ * companion at 1971 for the semiclassical picture behind the turning points.
+ * The control flow was checked against SLATEC's DRC3JM; docs/3j-plan.md T6
+ * records what was changed and why.
  */
 template <NumericConcepts::Real T>
-void WoodhouseToPlain(const int l1, const int l3, std::span<T> a) {
-  const auto nCols = static_cast<std::size_t>(2 * l3 + 1);
-  for (int r = 0; r < l1; ++r) {
+int SchultenGordonRow(int l1, int l2, int l3, int m1, std::span<T> g) {
+  const auto [m2Min, m2Max] = OrderRange(l2, l3, m1);
+  const auto n = m2Max - m2Min + 1;
+  if (n < 1) return 0;
+
+  std::fill_n(g.begin(), n, T{0});
+
+  // One order: the recurrence has nowhere to run, and the value is the
+  // convention's phase over the square root of the perimeter.
+  if (n == 1) {
+    g[0] = (std::abs(l2 - l3 - m1) % 2 == 0 ? T{1} : T{-1}) /
+           std::sqrt(static_cast<T>(l1 + l2 + l3 + 1));
+    return n;
+  }
+
+  const auto big = std::sqrt(std::numeric_limits<T>::max() / 20);
+  const auto rootBig = std::sqrt(big);
+  const auto small = 1 / big;
+  const auto rootSmall = 1 / rootBig;
+
+  const auto A = [&](int m2) { return RecurrenceA<T>(l1, l2, l3, m1, m2); };
+  const auto B = [&](int m2) { return RecurrenceB<T>(l1, l2, l3, m1, m2); };
+
+  // Forward from m2Min, while |c1| decreases.
+  g[0] = rootSmall;
+  auto sumAll = small;
+  auto sumForward = small;
+  auto factor = T{0};
+  auto c1 = T{0};
+  auto previous = std::numeric_limits<T>::max();
+  auto value = T{0};
+  auto last = 0;
+
+  for (auto k = 1; k < n; ++k) {
+    const auto m2 = m2Min + k;
+    const auto older = factor;
+    factor = A(m2);
+    if (k > 1) previous = std::abs(c1);
+    c1 = -B(m2) / factor;
+
+    if (k == 1) {
+      value = rootSmall * c1;  // the third term vanishes at the first step
+    } else {
+      value = c1 * g[k - 1] - (older / factor) * g[k - 2];
+    }
+    g[k] = value;
+    sumForward = sumAll;
+    sumAll += value * value;
+    last = k;
+    if (k == n - 1) break;
+
+    if (std::abs(value) >= rootBig) {
+      for (auto i = 0; i <= k; ++i) {
+        if (std::abs(g[i]) < rootSmall) g[i] = 0;
+        g[i] /= rootBig;
+      }
+      sumAll /= big;
+      sumForward /= big;
+      value /= rootBig;
+    }
+    if (previous <= std::abs(c1)) break;
+  }
+
+  auto sumTotal = sumAll;
+
+  // The sign the tail carries, tracked rather than read back from storage.
+  //
+  // The convention fixes the sign of g(m2Max), and SLATEC recovers it from
+  // the computed array. That is not safe here: a near-stretched row at high
+  // degree spans a dynamic range of 1e201, so the rescaling above flushes the
+  // tail to zero and the sign with it, and whole rows come out negated with
+  // every magnitude correct to rounding. Neither the completeness relation
+  // nor the recurrence residual can see that ([J8]).
+  auto tailSign = (g[n - 1] >= 0) ? T{1} : T{-1};
+
+  if (last < n - 1) {
+    // Backward from m2Max, overlapping the forward run at three points.
+    const auto x1 = g[last];
+    const auto x2 = g[last - 1];
+    const auto x3 = g[last - 2];
+
+    g[n - 1] = rootSmall;
+    auto sumBack = small;
+    auto sumBackward = small;
+    factor = 0;
+    auto y1 = T{0}, y2 = T{0}, y3 = T{0};
+
+    for (auto j = n - 2; j >= last - 2; --j) {
+      const auto older = factor;
+      factor = A(m2Min + j + 1);
+      c1 = -B(m2Min + j + 2) / factor;
+
+      const auto y = (j == n - 2)
+                         ? rootSmall * c1  // the third term vanishes
+                         : c1 * g[j + 1] - (older / factor) * g[j + 2];
+
+      if (j == last - 2) {  // the match point: compare, do not store
+        y3 = y;
+        y2 = g[j + 1];
+        y1 = g[j + 2];
+        break;
+      }
+
+      g[j] = y;
+      sumBackward = sumBack;
+      sumBack += y * y;
+
+      if (std::abs(y) >= rootBig) {
+        for (auto i = j; i < n; ++i) {
+          if (std::abs(g[i]) < rootSmall) g[i] = 0;
+          g[i] /= rootBig;
+        }
+        sumBack /= big;
+        sumBackward /= big;
+      }
+    }
+
+    // Least squares over the three overlapping points, which is steadier than
+    // matching on one of them.
+    auto ratio = (x1 * y1 + x2 * y2 + x3 * y3) /
+                 (x1 * x1 + x2 * x2 + x3 * x3);
+
+    if (std::abs(ratio) >= 1) {
+      for (auto i = 0; i <= last - 2; ++i) g[i] *= ratio;
+      sumTotal = ratio * ratio * sumForward + sumBackward;
+      tailSign = 1;  // the backward seed was positive and is untouched
+    } else {
+      ratio = 1 / ratio;
+      for (auto i = last - 1; i < n; ++i) g[i] *= ratio;
+      sumTotal = sumForward + ratio * ratio * sumBackward;
+      tailSign = (ratio >= 0) ? T{1} : T{-1};
+    }
+  }
+
+  auto norm = 1 / std::sqrt(static_cast<T>(2 * l1 + 1) * sumTotal);
+  const auto wanted = (std::abs(l2 - l3 - m1) % 2 == 0) ? T{1} : T{-1};
+  if (tailSign * wanted < 0) norm = -norm;
+  for (auto i = 0; i < n; ++i) g[i] *= norm;
+  return n;
+}
+
+/**
+ * @brief The tolerance the recurrence residual is judged against.
+ * @details Relative to the row's own largest value, and loose: the residual
+ * of a good row is a few epsilon times the number of steps, while a broken
+ * match shows up at order one.
+ */
+template <NumericConcepts::Real T>
+T ResidualTolerance(int steps) {
+  return static_cast<T>(1000 * (steps + 1)) *
+         std::numeric_limits<T>::epsilon();
+}
+
+/**
+ * @brief Checks a completed row against the recurrence that defines it.
+ * @details This is the runtime self-check, and it replaced the completeness
+ * relation when the algorithm changed ([J6]). Completeness was the right
+ * check for a one-directional recursion seeded from a closed form; it is
+ * nearly worthless against Schulten-Gordon, which normalises every row by
+ * that very identity, so the sum is one by construction whatever the row
+ * holds -- and in particular a mis-scaled join, which is this algorithm's
+ * characteristic failure, passes it.
+ *
+ * The defining recurrence does not pass it. A bad match violates the relation
+ * at the join, a bad rescale violates it locally, and a NaN propagates.
+ *
+ * What it cannot see, since the recurrence is homogeneous: an overall factor
+ * or sign on the row. Scale is fixed by the normalisation and sign by the
+ * convention, and both are properties of the code rather than of the input,
+ * so both are pinned by tests instead.
+ */
+template <NumericConcepts::Real T>
+bool RowSatisfiesRecurrence(int l1, int l2, int l3, int m1,
+                            std::span<const T> g, int n) {
+  if (n < 3) return true;
+  const auto [m2Min, m2Max] = OrderRange(l2, l3, m1);
+  (void)m2Max;
+
+  auto scale = T{0};
+  for (auto k = 0; k < n; ++k) scale = std::max(scale, std::abs(g[k]));
+  if (not(scale > 0)) return false;
+
+  const auto tolerance = ResidualTolerance<T>(n) * scale;
+  for (auto k = 2; k < n; ++k) {
+    const auto m2 = m2Min + k;
+    const auto residual = RecurrenceA<T>(l1, l2, l3, m1, m2) * g[k] +
+                          RecurrenceB<T>(l1, l2, l3, m1, m2) * g[k - 1] +
+                          RecurrenceA<T>(l1, l2, l3, m1, m2 - 1) * g[k - 2];
+    // The coefficients are of order l^2, so the residual is measured against
+    // the scale they multiply rather than against the values alone.
+    const auto local = std::max(
+        {std::abs(RecurrenceA<T>(l1, l2, l3, m1, m2)),
+         std::abs(RecurrenceB<T>(l1, l2, l3, m1, m2)),
+         std::abs(RecurrenceA<T>(l1, l2, l3, m1, m2 - 1))});
+    if (not(std::abs(residual) <= tolerance * local)) return false;
+  }
+  return true;
+}
+
+/**
+ * @brief Converts between the plain (m1, m3) table and Woodhouse's array.
+ * @details Woodhouse's wig2.f tabulates
+ *
+ *     wood(m, mp) = (-1)^m ( l1     l2      l3 )
+ *                          ( -m   m - mp    mp ),
+ *
+ * so plain(m1, m3) = (-1)^m1 wood(-m1, m3): the rows are mirrored in m1 and
+ * carry an alternating phase.
+ *
+ * **It is its own inverse**, since mirroring twice is the identity and the
+ * phase squares to one, so one routine serves both directions and there is no
+ * second convention to keep in step.
+ */
+template <NumericConcepts::Real T>
+void SwapWoodhouseConvention(const int l1, const int l3, std::span<T> a) {
+  const auto columns = static_cast<std::size_t>(2 * l3 + 1);
+  for (auto r = 0; r < l1; ++r) {
     const auto phase = ((r + l1) % 2 == 0) ? T{1} : T{-1};
-    auto* rowLower = a.data() + static_cast<std::size_t>(r) * nCols;
-    auto* rowUpper = a.data() + static_cast<std::size_t>(2 * l1 - r) * nCols;
-    for (std::size_t j = 0; j < nCols; ++j) {
-      const auto tmp = rowLower[j];
-      rowLower[j] = phase * rowUpper[j];
-      rowUpper[j] = phase * tmp;
+    auto* lower = a.data() + static_cast<std::size_t>(r) * columns;
+    auto* upper = a.data() + static_cast<std::size_t>(2 * l1 - r) * columns;
+    for (std::size_t j = 0; j < columns; ++j) {
+      const auto tmp = lower[j];
+      lower[j] = phase * upper[j];
+      upper[j] = phase * tmp;
     }
   }
 }
 
-
 /**
- * @brief The tolerance the completeness self-check uses, at this precision.
- * @details Where this sits was decided by measuring the two populations, and
- * they are **not** as cleanly separated as one might hope. In double, the
- * departure of the sum from one falls into three groups:
- *
- *   good      1e-16 to 1e-8   fat triangles at moderate degree, and anything
- *                             the closed form answers
- *   marginal  2e-6 to 1e-4    (60,60,90), (256,256,500), (70,70,105) -- the
- *                             values carry perhaps 5e-5 relative error and
- *                             are still worth having
- *   lost      1.1 to 1e112    everything past the boundary
- *
- * So the real gap is between 1e-4 and 1.1, and the tolerance goes there
- * rather than just above the noise: refusing a table accurate to 5e-5 would
- * cost a caller more than it saves them, while three orders of margin below
- * the lost population is ample. Single precision cannot resolve the marginal
- * band at all, so it takes the epsilon-scaled floor instead.
+ * @brief Fills the whole (m1, m3) plane, row by row.
+ * @details One Schulten-Gordon row recursion per m1, scattered into the
+ * row-major (m1, m3) table. Each row is normalised independently, which is
+ * stronger than one global normalisation would be: an error in one row cannot
+ * leak into another.
  */
 template <NumericConcepts::Real T>
-T CompletenessTolerance() {
-  return std::max(T{1} / T{1000},
-                  T{100} * std::sqrt(std::numeric_limits<T>::epsilon()));
-}
-
-/**
- * @brief Checks a completed table against the completeness relation, and
- * throws if it fails.
- * @details The relation
- *
- *     sum over the (m1, m3) plane of the squared symbols  =  1
- *
- * holds exactly for any triple satisfying the triangle rule. It costs one
- * pass over a table that has just been built -- the same order as building
- * it, and a small multiple less work -- and it is the only check available
- * here that needs no reference implementation.
- *
- * The reason it is a runtime check and not merely a test is that **the
- * failure mode is silent and catastrophic**. This is a one-directional
- * recursion, and near stretched triangles at high degree it is being run in
- * its unstable direction: the values grow without bound while remaining
- * finite, so a caller gets 1e112 where 0.1 was wanted, in a table of the
- * right shape, with no indication that anything is wrong. Refusing is
- * strictly better than that. See docs/3j-plan.md [J1].
- *
- * Triples outside the triangle rule are skipped: their tables are
- * identically zero by design, so the sum is zero and correctly so.
- */
-template <NumericConcepts::Real T>
-T CompletenessDeparture(int l1, int l2, int l3, std::span<const T> table) {
-  if (not SatisfiesTriangle(l1, l2, l3)) return T{0};
-  auto sum = T{0};
-  for (auto value : table) sum += value * value;
-  return std::abs(sum - T{1});
-}
-
-/** @brief Whether a table passes the completeness check. */
-template <NumericConcepts::Real T>
-bool PassesCompleteness(int l1, int l2, int l3, std::span<const T> table) {
-  return CompletenessDeparture<T>(l1, l2, l3, table) <
-         CompletenessTolerance<T>();
-}
-
-template <NumericConcepts::Real T>
-void CheckCompleteness(int l1, int l2, int l3, std::span<const T> table) {
+void Wigner3jPlane(int l1, int l2, int l3, std::span<T> table) {
+  std::fill(table.begin(), table.end(), T{0});
   if (not SatisfiesTriangle(l1, l2, l3)) return;
-  auto sum = T{0};
-  for (auto value : table) sum += value * value;
-  const auto departure = std::abs(sum - T{1});
-  if (not(departure < CompletenessTolerance<T>())) {
-    throw std::runtime_error(
-        "Wigner3jMatrix: the completeness relation fails for degrees (" +
-        std::to_string(l1) + ", " + std::to_string(l2) + ", " +
-        std::to_string(l3) +
-        "): the squared symbols sum to " + std::to_string(sum) +
-        " rather than one. The recursion has lost accuracy, which happens "
-        "near stretched triangles at high degree; the values are finite but "
-        "meaningless. See docs/3j-plan.md.");
-  }
-}
 
+  const auto columns = 2 * l3 + 1;
+  auto row = std::vector<T>(static_cast<std::size_t>(2 * l2 + 2));
 
-/**
- * @brief Racah's closed form for one symbol, evaluated in log space.
- * @details A single alternating sum whose length is
- * min(l1+l2-l3, l1-m1, l2+m2) - max(0, l2-l3-m1, l1-l3+m2) + 1. The factorials
- * are formed as logarithms and the prefactor is folded into each term, so
- * nothing overflows however large the degrees; what limits it is cancellation
- * between the alternating terms, which grows with the sum's length.
- *
- * **It is exact where the recursion is worst.** At l3 = l1 + l2 the sum has
- * exactly one term, so there is no cancellation at all -- and that is the
- * stretched corner where the recursion is run in its unstable direction.
- * Going the other way, the fat triangles that give this a long alternating
- * sum are where the recursion is at the noise floor. The two fail in
- * complementary regimes, which is why the library carries both.
- *
- * The two do **not** cover the whole space between them; see docs/3j-plan.md
- * T2 for where the gap is. The completeness check is what stands between a
- * caller and it.
- *
- * @note This uses std::lgamma, and glibc's writes the global signgam. Nothing
- * here reads it and no result is wrong, but building tables from several
- * threads at once is concurrent-undefined by the letter of the standard --
- * the same hazard core-plan.md step F' removed from the Wigner recursion, and
- * it is recorded rather than removed because 3j.h has no threading of its own
- * and the fallback runs only where the recursion has already failed. A caller
- * who does build tables concurrently should serialise construction.
- */
-template <NumericConcepts::Real T>
-T RacahSymbol(int l1, int l2, int l3, int m1, int m2, int m3) {
-  if (m1 + m2 + m3 != 0) return T{0};
-  if (std::abs(m1) > l1 or std::abs(m2) > l2 or std::abs(m3) > l3) {
-    return T{0};
-  }
-  if (not SatisfiesTriangle(l1, l2, l3)) return T{0};
-
-  const auto logFactorial = [](int n) {
-    return static_cast<T>(std::lgamma(static_cast<double>(n) + 1.0));
-  };
-
-  const auto logDelta =
-      logFactorial(l1 + l2 - l3) + logFactorial(l1 - l2 + l3) +
-      logFactorial(-l1 + l2 + l3) - logFactorial(l1 + l2 + l3 + 1);
-  const auto logNumerator =
-      logFactorial(l1 + m1) + logFactorial(l1 - m1) + logFactorial(l2 + m2) +
-      logFactorial(l2 - m2) + logFactorial(l3 + m3) + logFactorial(l3 - m3);
-  const auto logPrefactor = (logDelta + logNumerator) / 2;
-
-  const auto kMin = std::max({0, l2 - l3 - m1, l1 - l3 + m2});
-  const auto kMax = std::min({l1 + l2 - l3, l1 - m1, l2 + m2});
-
-  auto sum = T{0};
-  for (auto k = kMin; k <= kMax; ++k) {
-    const auto logDenominator =
-        logFactorial(k) + logFactorial(l1 + l2 - l3 - k) +
-        logFactorial(l1 - m1 - k) + logFactorial(l2 + m2 - k) +
-        logFactorial(l3 - l2 + m1 + k) + logFactorial(l3 - l1 - m2 + k);
-    const auto term = std::exp(logPrefactor - logDenominator);
-    sum += (k % 2 == 0) ? term : -term;
-  }
-  return ((l1 - l2 - m3) % 2 == 0) ? sum : -sum;
-}
-
-/** @brief Fills the (m1, m3) plane from Racah's closed form. */
-template <NumericConcepts::Real T>
-void RacahMatrix(int l1, int l2, int l3, std::span<T> table) {
-  auto index = std::size_t{0};
   for (auto m1 = -l1; m1 <= l1; ++m1) {
-    for (auto m3 = -l3; m3 <= l3; ++m3) {
-      table[index++] = RacahSymbol<T>(l1, l2, l3, m1, -(m1 + m3), m3);
+    const auto [m2Min, m2Max] = OrderRange(l2, l3, m1);
+    if (m2Max < m2Min) continue;
+    const auto n = SchultenGordonRow<T>(l1, l2, l3, m1, std::span<T>(row));
+
+    if (not RowSatisfiesRecurrence<T>(l1, l2, l3, m1,
+                                      std::span<const T>(row.data(), n), n)) {
+      throw std::runtime_error(
+          "Wigner3jMatrix: the recurrence is not satisfied for degrees (" +
+          std::to_string(l1) + ", " + std::to_string(l2) + ", " +
+          std::to_string(l3) + ") at m1 = " + std::to_string(m1) +
+          ". The values are not to be trusted. See docs/3j-plan.md.");
+    }
+
+    for (auto k = 0; k < n; ++k) {
+      const auto m3 = -m1 - (m2Min + k);
+      if (std::abs(m3) > l3) continue;
+      table[static_cast<std::size_t>(m1 + l1) * columns + (m3 + l3)] = row[k];
     }
   }
 }
@@ -461,8 +499,7 @@ template <RealContiguousWritableRange Range>
 void FillWigner3jMatrix(int l1, int l2, int l3, Range&& table) {
   using T = std::ranges::range_value_t<Range>;
   auto span = std::span<T>(std::ranges::data(table), std::ranges::size(table));
-  ThreeJDetails::WoodhouseMatrix<T>(l1, l2, l3, span);
-  ThreeJDetails::WoodhouseToPlain<T>(l1, l3, span);
+  ThreeJDetails::Wigner3jPlane<T>(l1, l2, l3, span);
 }
 
 /**
@@ -481,7 +518,8 @@ template <RealContiguousWritableRange Range>
 void FillWoodhouseMatrix(int l1, int l2, int l3, Range&& table) {
   using T = std::ranges::range_value_t<Range>;
   auto span = std::span<T>(std::ranges::data(table), std::ranges::size(table));
-  ThreeJDetails::WoodhouseMatrix<T>(l1, l2, l3, span);
+  ThreeJDetails::Wigner3jPlane<T>(l1, l2, l3, span);
+  ThreeJDetails::SwapWoodhouseConvention<T>(l1, l3, span);
 }
 
 /*------------------------------------------------------------------------*/
@@ -521,23 +559,7 @@ class Wigner3jMatrix {
         _data(static_cast<std::size_t>(2 * l1 + 1) *
               static_cast<std::size_t>(2 * l3 + 1)) {
     assert(l1 >= 0 and l2 >= 0 and l3 >= 0);
-    // Recurse, check, and fall back to Racah's closed form if the check
-    // fires -- then check again, and refuse if that fails too.
-    //
-    // This is the dispatch of docs/3j-plan.md [J3], and its merit is that it
-    // is a dispatch on *the thing that actually went wrong* rather than on a
-    // boundary formula in (l1, l2, l3) that someone would have to derive,
-    // calibrate, and re-derive for every precision. It adapts without being
-    // told, and it degrades correctly: on a triple neither method handles,
-    // the second check fires and the constructor throws.
-    ThreeJDetails::WoodhouseMatrix<T>(_l1, _l2, _l3, _data);
-    ThreeJDetails::WoodhouseToPlain<T>(_l1, _l3, _data);
-    if (not ThreeJDetails::PassesCompleteness<T>(_l1, _l2, _l3,
-                                                 std::span<const T>(_data))) {
-      ThreeJDetails::RacahMatrix<T>(_l1, _l2, _l3, std::span<T>(_data));
-      ThreeJDetails::CheckCompleteness<T>(_l1, _l2, _l3,
-                                          std::span<const T>(_data));
-    }
+    ThreeJDetails::Wigner3jPlane<T>(_l1, _l2, _l3, std::span<T>(_data));
   }
 
   /** @brief Returns the first degree. */

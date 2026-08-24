@@ -18,4 +18,14 @@ docs/*.fls
 # paper dropped into docs/ later is caught without anyone remembering to.
 docs/*.pdf
 !docs/canonical-components.pdf
+
+# The same, for reference *source*: SLATEC's 3j routines were read while
+# Schulten-Gordon was implemented (docs/3j-plan.md T6). SLATEC itself is
+# public domain, but the F90 port that circulates is not necessarily, and
+# either way it is not ours and the library derives nothing from it beyond
+# the algorithm, which is the paper's. Keep it locally, out of the history.
+docs/*.f
+docs/*.f90
+# wig2.f is Woodhouse's original and predates all of this; it stays.
+!docs/wig2.f
 !docs/gshtrans-reference.pdf

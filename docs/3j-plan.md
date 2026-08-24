@@ -370,3 +370,148 @@ belong wherever the physics does, and building them now would fix an interface
 before there is a caller to fix it for. What T1 to T4 deliver is a 3-j
 implementation that is either right or says it is not, which is the
 precondition for any of it.
+
+
+---
+
+## 5. T6 — Schulten–Gordon, and the retirement of both predecessors
+
+Written 2026-08-24, after T2 established the gap and the method was
+prototyped and measured. `docs/schulten-gordon-1975.pdf` is the paper;
+`docs/slatec_3j.f90` is SLATEC's `DRC3JM`/`DRC3JJ` (public domain, via John
+Burkardt's F90 port of the netlib original), read for its control flow.
+
+### 5.1 What it does
+
+The recurrence has two solutions, one growing and one decaying, and a
+classically allowed region between two forbidden ones. Recursing *inward* from
+a forbidden end follows the growing solution and is stable; outward is not.
+So: run inward from **both** ends, match in the allowed region, and fix the one
+remaining constant from the unitary property. No closed-form seed, no
+factorials, no boundary formula.
+
+Two details make it practical, and neither is obvious from the description.
+The turning point is found by **watching the recurrence coefficient** — while
+`|c₁|` decreases the run is heading towards larger values and is stable, and
+the first increase is the signal to stop and come from the other end. And the
+normalisation is **per row**: at fixed `m₁`,
+`(2l₁+1) Σ_{m₂} (l₁ l₂ l₃; m₁ m₂ −m₁−m₂)² = 1`, which summed over `m₁` is
+exactly the whole-plane identity T1 was built on.
+
+### 5.2 What it measured
+
+**Column-permutation invariance is the check that matters**, because
+`(l₁ l₂ l₃)` and `(l₂ l₃ l₁)` run the recursion along different lines, so
+agreement cannot come from the shared normalisation:
+
+| triple | permutation | previously |
+|---|---:|---|
+| (128,128,192) | 1.1e-16 | both methods failed |
+| (160,160,160) | 5.2e-17 | both failed |
+| (200,200,200) | 8.2e-17 | both failed |
+| (512,512,512) | 2.8e-17 | far past either |
+| (1000,1000,1000) | 3.3e-17 | — |
+| (1000,1000,1999) | 1.1e-15 | — |
+
+Corroborated by agreement with the old recursion where it was good (1e-16 to
+1.8e-14), with Racah where its sum is short (1.6e-12 at `l ≈ 512`, and that
+residual is Racah's `lgamma` drift rather than this), the stretched-corner
+closed form exactly to `l = 512` and 3.5e-12 at `l = 1000`, and
+`(j j 0; m −m 0)` to **zero** at `j = 512`.
+
+**Cost is 1.12× to 1.32× the old recursion** — the same `O(l²)`, since it is
+one `O(l)` row recursion per `m₁`.
+
+**So the gap of T2 is closed**, and there is no longer a band the library has
+to refuse.
+
+### 5.3 Decisions
+
+**[J5] Schulten–Gordon replaces both predecessors, and they are deleted.**
+Not kept as oracles. The [C12] precedent — two kernels, each the other's
+check — was considered and rejected here by the author: the structural tests
+below are strong enough, and carrying two superseded implementations of a
+thing that is now correct everywhere measured is maintenance without a
+customer. `Wigner3jMatrix::Woodhouse` and `FillWoodhouseMatrix` **stay**:
+Woodhouse's array is a phase and a relabelling of the plain table, wanted by
+normal-mode codes, and it is a convention rather than an algorithm.
+
+**[J6] The runtime self-check becomes the recurrence residual, because
+completeness no longer tests anything.** [J1] made the completeness relation a
+runtime check, and it was the right check for a one-directional recursion
+seeded from a closed form. **It is nearly worthless against this algorithm**,
+which normalises each row by that very identity — the sum is one by
+construction whatever the row contains. In particular it cannot see a bad
+match, which is Schulten–Gordon's characteristic failure.
+
+What does see one is the **defining recurrence itself**:
+
+```
+A(m₂) g(m₂) + dv(m₂) g(m₂−1) + A(m₂−1) g(m₂−2) = 0
+```
+
+checked across each row against the row's own scale. A mis-scaled join
+violates it at the join; a bad rescale violates it locally; NaN propagates.
+It costs `O(n)` per row against an `O(n)` recursion, so it is the same trade
+[J1] made and it is a sharper check.
+
+*What it does not catch, stated so the limit is known:* the recurrence is
+homogeneous, so an overall factor or sign per row satisfies it. Scale is
+pinned by the normalisation and sign by the convention, and **both are pinned
+by tests rather than at runtime** — which is right, because those are
+properties of the code and not of the input.
+
+**[J7] The tests carry the weight, and they are structural.** Without a second
+implementation the suite rests on properties no single implementation can
+satisfy by accident: **column-permutation invariance** (both cyclic
+permutations), **order reversal**, the two **closed forms**, **exact rational
+values at small degree** written out as literals, and the completeness
+relation — which is weak as a runtime check but still a real test, since a
+test may compare against the *unnormalised* row.
+
+**[J8] The phase is tracked, not read back.** The convention fixes the sign of
+`g(m₂ₘₐₓ)`, and SLATEC reads it off the computed array. That is fragile and
+the prototype caught it: a near-stretched row at high degree spans a dynamic
+range of `1e201`, the rescaling flushes the tail to zero, and the sign goes
+with it — whole rows came back **negated with every magnitude correct to
+1e-16**. Neither completeness nor the residual can see that, and only the
+permutation check did. The sign is therefore carried explicitly through the
+match instead of recovered from storage.
+
+
+### 5.4 As built
+
+*Done.* `ThreeJDetails::SchultenGordonRow` and `Wigner3jPlane` replace
+`WoodhouseMatrix`, `WoodhouseToPlain`, `RacahSymbol`, `RacahMatrix` and the
+completeness check. The public surface is unchanged: `Wigner3jMatrix`,
+`Wigner3jStack`, `Wigner3jSymbol`, `FillWigner3jMatrix` and
+`FillWoodhouseMatrix` all keep their signatures, and `3j.h` is 798 lines
+against 776 — about the same, with two algorithms replaced by one and a
+stronger check.
+
+**Woodhouse's convention survives as an involution.** `plain(m1, m3) =
+(−1)^{m1} wood(−m1, m3)` is a mirror and a phase, so one routine converts both
+ways and there is no second convention to keep in step. That is a small
+simplification the old code did not have, since it carried the conversion in
+one direction only.
+
+*Measured on the landed code*, cyclic-permutation agreement:
+
+| triple | worst |
+|---|---:|
+| (256,256,256) | 2.0e-16 |
+| (512,512,512) | 2.0e-16 |
+| (512,512,1000) | 1.6e-16 |
+| (1000,1000,1000) | 2.6e-16 |
+| (1000,1000,1999) | 6.7e-12 |
+
+and a whole table costs 0.039 ms at `l = 32`, 0.61 ms at 128, 2.4 ms at 256.
+
+**The suite is 378, up from 376.** Seventeen 3-j tests where there were
+fourteen, and the two that went were the ones asserting a refusal that no
+longer happens.
+
+*One test earns its place more than the others.* `TheRecurrenceCheckIsNotVacuous`
+perturbs a single interior value of a row and requires the residual check to
+notice. Without it the check could be silently inert and every other test
+would still pass, since they all run on rows that were built correctly.
