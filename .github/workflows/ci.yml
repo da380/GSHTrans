@@ -43,6 +43,35 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+  # Both optional dependencies off, which is a supported configuration and
+  # therefore one that has to be run rather than asserted. The library
+  # *withdraws* facilities there rather than disabling them -- no
+  # Scheme::Bicubic(), no TransformKernel::Matrix(), no
+  # RadialSplineDerivative.h -- so a mistake shows up as a build failure in
+  # code that should not have been compiled, which the default build cannot
+  # see. It is also the cheapest job here: nothing is fetched and no BLAS is
+  # linked.
+  minimal:
+    name: no optional dependencies
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfftw3-dev ninja-build g++-14
+
+      - name: Configure, build and test
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DGSHTRANS_WITH_INTERPOLATION=OFF \
+            -DGSHTRANS_WITH_BLAS=OFF
+          cmake --build build --parallel
+          ctest --test-dir build --output-on-failure
+
   # Not verified locally, and allowed to fail for that reason. Clang needs
   # libomp rather than libgomp for OpenMP, and no clang OpenMP runtime is
   # installed on the development machine, so this leg exists to find out

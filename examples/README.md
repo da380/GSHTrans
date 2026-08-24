@@ -27,7 +27,7 @@ the point rather than only asserting it.
 | `19-layered-models` | elements and interfaces: a two-valued derivative at a discontinuity, and remeshing that does not cross one |
 | `20-transform-kernels` | the two Legendre kernels, why both are kept, what each refuses, and the one thing a threaded BLAS needs told |
 | `21-interpolation` | a field as a callable of the two angles: the exact scheme, the cheap ones, what the poles and the wrap need, and remeshing in one line |
-| `22-wigner-3j` | coupling coefficients: the table, the stack, two closed forms, and the completeness check that refuses a table the recursion has lost |
+| `22-wigner-3j` | coupling coefficients: the table, the stack, two closed forms, the stretched triangles a one-directional recursion cannot do, and the independent check that says the values are right |
 
 The mathematics and the numerical methods are documented separately, in
 `docs/`.

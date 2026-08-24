@@ -1205,10 +1205,15 @@ unaffected, because their terms are measured moments apart.
 \section{The GEMM restructure}
 \label{sec:gemm}
 
-This is the one substantial piece of performance work the library has not
-done, and \code{core-plan.md} \S10 names it as the lever aimed at what
-actually binds.  What follows is how it would work and why it should help,
-in enough detail to be argued with.
+This was the one substantial piece of performance work the library had not
+done, and \code{core-plan.md} \S10 named it as the lever aimed at what
+actually binds.  \textbf{It is now built} --- \code{TransformKernel::Matrix()},
+\code{core-plan.md} \S11, steps M1 to M6.
+
+What follows is the argument as it was made, in enough detail to be argued
+with, because the argument is what the measurement was read against; \S12.7
+records what happened, including the two places where the prediction was
+wrong.  The conditional voice below is deliberate and is not an oversight.
 
 \subsection{The Legendre stage is a matrix product}
 
@@ -1411,6 +1416,167 @@ does not offer \code{SplineDerivative}.  It would be this library's first
 non-header-only dependency, which is why it is an option and not a
 requirement.
 
+\subsection{What it measured, and where the argument was wrong}
+\label{sec:gemmdone}
+
+Built as \code{core-plan.md} \S11 describes, in six steps: the transposed
+table, the Fourier stage run first and landed order-major, the forward and
+inverse kernels, threading over orders, the measurement, and the reflection.
+Batched at $l_{\max}=256$ on eight threads it is worth \textbf{5.8 to
+6.0$\times$ forward and 2.9 to 3.2$\times$ inverse}, and it stores half the
+table.
+
+\paragraph{The honest estimate was right, and low.}  \S\ref{sec:gemm} put it
+at a factor of two or three batched.  Sequentially the forward gives
+$3.0\times$, inside that; threaded it gives $4.6\times$, outside it.  The
+excess is not the GEMM doing better but the loop kernel doing worse: at that
+size the loop forward scales only $1.5\times$ from one thread to eight,
+because eight private accumulators of 8.4\,MB compete for a 16\,MB cache.
+The matrix kernel has no accumulator to collapse.  So the threaded comparison
+measures the GEMM \emph{and} the deletion of that problem together.
+
+\paragraph{The prediction that nothing is available unbatched was confirmed,
+and refined.}  At $l_{\max}=256$, $k=1$ on eight threads the answer is
+$1.20\times$ forward and $1.10\times$ inverse, which is nothing, and it is the
+only regime in which that is true.  The refinement is the reason: this
+document said no gain was available because \emph{the loop kernel} is already
+at the roof.  Measured, the loop kernel is at 65\% of it and the matrix kernel
+at 100\%, which is why a small gain survives.  The conclusion stands and is
+now demonstrated rather than predicted.
+
+\paragraph{The reflection halves the table and not the arithmetic.}
+\S\ref{sec:gemm} says it halves both.  Only the table halves: the same
+$2l_{\max}+1$ products are still done, of the same shapes.  Converting the
+symmetry into arithmetic --- pairing $\pm m$ into one product of double the
+width, which is the natural reading --- was built and \emph{measured worse}
+sequentially, so it was taken out and only the halving kept.  What the
+reflection buys is traffic and memory, which is what this document's own DRAM
+argument should have predicted.
+
+\paragraph{And the free transpose is free only away from one hazard.}  The
+output write has stride \code{howMany} complex doubles, so when
+$16\,\code{howMany}$ is a power of two the writes for successive orders
+collide in the same cache sets, and the stage costs four to eight times what
+it costs at \code{howMany} $\pm 2$.  The Fourier stage is therefore blocked
+over a few colatitudes rather than run in one call, which is faster anyway
+and wants eighty times less workspace.
+
+\section{Interpolation}
+\label{sec:interpolation}
+
+\code{Interpolate(field, scheme)} returns a callable of $(\theta,\phi)$
+modelling \code{ScalarFunctionS2}, which is what a field constructor takes,
+so remeshing is one line.  Three schemes: \code{Scheme::Spectral()} sums the
+expansion and is exact for a band-limited field at $O(l_{\max}^2)$ a point;
+\code{Scheme::Bilinear()} and \code{Scheme::Bicubic()} are
+\code{Interpolation}'s rectilinear schemes over the samples, $O(1)$ a point
+and second and fourth order respectively.
+
+Two facts about the sphere make this more than a forwarding call.  The
+longitudes run $0,\dots,2\pi-\Delta\phi$, so the last cell has nothing to
+interpolate against; and neither pole is a grid point, so a local scheme
+extrapolates there --- exactly where $d^l_{Nm}\sim\sin^{|m|}\theta$ is most
+delicate.  Both are fixed by handing the scheme a \emph{padded} grid: a wrap
+column, which is exact since $\phi=2\pi$ is $\phi=0$, and two polar rows.
+
+The polar rows are computed rather than guessed.  At a pole all but one order
+vanishes:
+\begin{equation}
+  f(0,\phi) = e^{+iN\phi}\sum_{l} f^{N}_{l,+N}\sqrt{\tfrac{2l+1}{4\pi}},
+  \qquad
+  f(\pi,\phi) = e^{-iN\phi}\sum_{l} (-1)^{l-N} f^{N}_{l,-N}
+                 \sqrt{\tfrac{2l+1}{4\pi}} .
+  \label{eq:polerows}
+\end{equation}
+The $\phi$ dependence is the point: a spin-weighted field at a coordinate
+pole is not single-valued, because $\ebasis{\pm}$ depends on the azimuth of
+approach, so a polar row is a \emph{row} and a constant one would be wrong at
+every $N\neq 0$.  Computing it needs the expansion, which is why building a
+local interpolant costs a forward transform and why its cheapness is per
+evaluation rather than per interpolant.
+
+Measured, the padding works: the polar cells and the last longitude cell come
+out two to five times \emph{better} than the interior at every resolution, so
+the regions the padding was built for are not the weak ones.  A local scheme
+wants an oversampled grid --- bicubic carries 13\% error at the band limit,
+$7\times10^{-4}$ at four times it and $4\times10^{-5}$ at eight --- and
+\code{ForBand} is how that room is asked for.  One whole-grid remesh costs
+about what fifty spectral point evaluations cost, so past a few dozen
+scattered points the composite of the two beats either alone.
+
+\section{The 3-j symbols}
+\label{sec:threej}
+
+\code{3j.h} tabulates the whole $(m_1,m_3)$ plane at fixed degrees, with
+$m_2=-(m_1+m_3)$ fixed by the selection rule.  The table is the primitive: a
+single symbol costs one.
+
+The values come from the Schulten--Gordon recursion.  The order recurrence
+\begin{equation}
+  A(m_2)\,g(m_2) + B(m_2)\,g(m_2-1) + A(m_2-1)\,g(m_2-2) = 0
+  \label{eq:threejrec}
+\end{equation}
+has a growing and a decaying solution, with a classically allowed region
+between two forbidden ones.  Recursing \emph{inward} from a forbidden end
+follows the growing solution, so rounding error decays; outward follows the
+decaying one, so it grows exponentially.  Each row is therefore built inward
+from both ends, matched where the halves overlap, and normalised from the
+unitary property $(2l_1+1)\sum_{m_2} g(m_2)^2 = 1$.  No closed-form seed is
+needed and no factorial is ever formed.
+
+Two details make it practical.  The turning point is found by watching the
+recurrence coefficient --- while $|c_1|$ decreases the run is heading towards
+larger values and is stable, and the first increase says to come from the
+other end --- rather than by locating it analytically.  And the phase is
+\emph{tracked} through the match rather than read back from
+$g(m_{2\max})$: a near-stretched row at high degree spans a dynamic range of
+$10^{201}$, so the rescaling flushes that element to zero and the sign with
+it.
+
+This replaced two earlier schemes, and \code{docs/3j-plan.md} records the
+measurements.  A one-directional recursion fails exponentially near
+\emph{stretched} triangles --- where one degree approaches the sum of the
+other two, which is the top of every coupling sum rather than an exotic
+corner --- and Racah's closed form covers exactly that region and no more.
+Together they still left a band uncovered; Schulten--Gordon covers all of it,
+at 1.1 to 1.3 times the cost.
+
+\paragraph{What checks it.}  Not the completeness relation, which the
+algorithm normalises by and which therefore holds by construction; and not the
+recurrence residual alone, which is homogeneous and so blind to an overall
+scale or sign.  The check that sees everything is invariance under a cyclic
+permutation of the columns, which runs the recursion along entirely different
+lines: it agrees to $10^{-16}$ at $(200,200,200)$ and $10^{-15}$ at
+$(1000,1000,1999)$.  Racah is kept in the test tree as an independent formula,
+restricted to entries where its alternating sum is short and it is exact.
+\eqref{eq:threejrec} is checked at run time, so a table that has gone wrong is
+refused rather than returned.
+
+\section{Choosing a policy by measurement}
+\label{sec:tuning}
+
+Several of the library's choices are properties of the machine rather than of
+the mathematics, and \code{core-plan.md} \S12 records that they cannot be
+settled by reasoning.  \code{Tuning.h} times the alternatives on the caller's
+own problem and returns \emph{values} --- never a configured grid, so nothing
+is substituted silently, which matters most for the piece of machinery most
+likely to do so.
+
+The chunking policy and the planner flag were moved off the shared
+implementation onto the handle, since neither decides the table; \code{With()}
+changes either for a pointer copy, and the result shares \code{Identity()}
+with its parent, so fields are interchangeable between them.  Without that a
+sweep of four candidate chunks rebuilt the table four times to choose an
+integer.
+
+Measured on one laptop: the kernel choice is worth 1.9 to $5.8\times$ and
+picks the matrix kernel in every configuration tried, while the chunk is worth
+at most $1.28\times$ and nothing at all in thirteen of eighteen.  Both are
+cheap enough to run at start-up, which is why no persistence layer was built:
+the measurement is cheaper than remembering it, and \code{core-plan.md}
+\S12.6 names the size at which that reverses.  A candidate must beat the
+incumbent by ten per cent to displace it, that being the measured noise floor.
+
 \section{What has not been done, and why}
 \label{sec:whatnext}
 
@@ -1428,12 +1594,6 @@ already took that.
 same reason.  It also needs a tighter round-trip oracle than exists before
 the experiment would mean anything.
 
-\paragraph{A transform-major layout with a GEMM} is the one restructure
-aimed at what actually binds --- the per-element load/store count --- and
-it subsumes the question of how the forward transform should decompose
-above about sixteen threads.  It is the natural next piece of performance
-work, and \S\ref{sec:gemm} sets it out in full.
-
 \paragraph{Polar truncation}, skipping the $(m,\theta)$ pairs where
 $d^l_{Nm}$ is negligible --- it falls off like $\sin^{|m|}\theta$ --- is the
 one option that makes the problem smaller rather than making the machine work
@@ -1446,7 +1606,28 @@ slower to a useful tolerance than the argument suggests: at $10^{-15}$,
 $\sin^{256}\theta$ is still above threshold over a third of the range.  It is
 dropped rather than deferred.
 
-\paragraph{The two open conventions} of \S\ref{sec:conventions} want an
-answer from the literature rather than from a test.
+\paragraph{The wisdom store} of \S\ref{sec:tuning} --- a keyed,
+fingerprinted file remembering what was measured --- is not built.  Both
+tuners are cheap enough to run at start-up, so there is nothing expensive
+enough to be worth remembering; FFTW's wisdom is worth persisting because
+planning can take minutes, and this takes about a second.
+
+\paragraph{Generating the $d$-values inside the transform} exists
+(\S\ref{sec:storage}) and its deeper forms do not.  Fusing the recursion with
+the consumer, and blocking it over colatitudes, would halve its arithmetic;
+they are not built because the first rung already measured slower than the
+stored path on every configuration of the development machine, and halving
+the arithmetic cannot close that gap.  What the path is for is memory, and
+that it delivers.
+
+\paragraph{The 6-j symbols} are not implemented.  The path is known and is
+the same one: Schulten and Gordon give the 6-j recursion in the same paper as
+the 3-j one, and \S\ref{sec:threej}'s machinery --- inward from both ends,
+match, normalise from a unitary property --- transfers directly.
+
+\paragraph{The conventions of \S\ref{sec:remains}} were open when this
+document was first written and are now closed, jointly, by reading a gradient
+back into the physical frame.  What is left there is one convention rather
+than two unknowns, and a test observes it.
 
 \end{document}

@@ -12,8 +12,8 @@ when it is run.
 
 ## Status
 
-The rebuild is complete through the layers below, against two planning
-documents in `docs/`. Both record their decisions and the measurements behind
+The rebuild is complete through the layers below, against three planning
+documents in `docs/`. Each records its decisions and the measurements behind
 them, including the ones that turned out to be wrong.
 
 * **`docs/core-plan.md`** — the numerical core: `GaussLegendreGrid`, `Wigner`,
@@ -22,9 +22,10 @@ them, including the ones that turned out to be wrong.
   construction-time policy. §11's transform-major restructure is built through
   M6, all of it: `TransformKernel::Matrix()` is a second construction-time
   kernel beside the loop one, worth 3–6× where it is worth anything and
-  storing half the table, with the loop kernel kept as its oracle. **Nothing
-  in that document is scheduled now**: polar truncation, the last item, was
-  measured at ~1.15× rather than the 1.5–2× assumed and dropped (§11.7).
+  storing half the table, with the loop kernel kept as its oracle. §12 adds
+  the tuning mechanism. **Nothing in that document is scheduled now**: polar
+  truncation was measured at ~1.15× rather than the 1.5–2× assumed and
+  dropped (§11.7), and the wisdom store was measured to be unearned (§12.6).
 * **`docs/field-algebra-plan.md`** — the field layer, and everything built on
   it:
 
@@ -37,9 +38,14 @@ them, including the ones that turned out to be wrong.
   | §19 | ready-made radial derivatives, and resampling |
   | §20 | the element partition on `RadialGrid` |
   | §21 | what the `Interpolation` update changed |
+  | §22 | interpolating a field, as a callable of the two angles |
+
+* **`docs/3j-plan.md`** — the Wigner 3-j symbols, which touch no grid, no
+  transform and no field, and so are their own document. Complete: the
+  Schulten–Gordon recursion, and what it replaced.
 
 `docs/canonical-components.tex` is the authority on the mathematics and the
-conventions; both plans defer to it. `docs/gshtrans-reference.tex` describes
+conventions; the plans defer to it. `docs/gshtrans-reference.tex` describes
 the library that exists.
 
 Read `core-plan.md` §8 before touching core code, and
@@ -180,6 +186,75 @@ A BLAS with a thread pool of its own must be told to use one thread: these
 products are skinny and threading them loses. A BLAS on the same OpenMP
 runtime needs nothing, since every GEMM here is issued from inside a region.
 
+## Interpolating a field
+
+`Interpolate(field, scheme)` turns a field — or an expansion, or any lazy
+expression — into a callable of `(θ, φ)`. It models `ScalarFunctionS2`, which
+is what a field constructor takes, so remeshing onto another grid is one line:
+
+```cpp
+auto at    = Interpolate(field, Scheme::Bicubic());
+auto value = at(theta, phi);
+auto moved = SpinField<N, Grid>(otherGrid, Interpolate(field));
+```
+
+| scheme | exact? | per point |
+| :--- | :--- | :--- |
+| `Scheme::Spectral()` | yes, for a band-limited field | `O(lMax²)` |
+| `Scheme::Bilinear()` | no, second order | `O(1)` |
+| `Scheme::Bicubic()` | no, fourth order | `O(1)` |
+
+The local two come from `Interpolation` and are absent — not refused — in a
+build without it. They are about **4400×** cheaper per point than the spectral
+sum at `lMax = 128`, and they want an oversampled grid: at the band limit
+bicubic carries 13% error, at 4× oversampling `7e-4`, at 8× `4e-5`. `ForBand`
+is how you ask for the room.
+
+Two things about the sphere that a rectilinear scheme does not know are fixed
+by handing it a **padded** grid rather than the field's own. The longitudes
+stop one step short of `2π`, so a wrap column is added — exactly, since
+`φ = 2π` is `φ = 0`. And neither pole is a grid point, so two polar rows are
+added, computed from the expansion rather than guessed; that is why building a
+local interpolant costs a forward transform, and why its cheapness is per
+evaluation rather than per interpolant.
+
+At a pole only one order survives, so the value there is `c·e^{±iNφ}` — a
+*row*, not a constant. That is not a defect: a spin-weighted field at a
+coordinate pole is genuinely not single-valued, because `e_±` depends on the
+azimuth of approach. Measured, the polar and wrap cells come out two to five
+times **better** than the interior, which is the padding doing its job.
+
+A colatitude outside `[0, π]` throws; a longitude is reduced modulo `2π`,
+which is exact. The two axes are not alike and their boundaries fail
+differently.
+
+## Choosing a policy by measuring it
+
+Some of the library's choices cannot be settled by reasoning and vary by
+machine. `Tuning.h` times the alternatives on the caller's own problem and
+hands back **values**, never a configured grid — so nothing is substituted
+behind your back, which matters most for the thing most likely to substitute
+silently.
+
+```cpp
+auto chunk  = TuneChunking(grid, lMax, n, count, policy);
+auto kernel = TuneKernel<Grid>(lMax, nMax, n, count, policy);
+auto tuned  = grid.With(chunk.chunking);   // a pointer copy, one table
+```
+
+`grid.With(...)` changes the chunking policy or the planner flag without
+rebuilding the table — neither decides it — and the result shares `Identity()`
+with its parent, so fields are interchangeable between them.
+
+Measured on the development laptop: the kernel choice is worth **1.9–5.8×**
+and picks the matrix kernel in every configuration tried; the chunk is worth
+at most **1.28×** and nothing at all in thirteen of eighteen, the conservative
+default being good. Both are cheap enough to run at start-up, which is why
+there is no persistence layer — `core-plan.md` §12.6 gives the size at which
+that would change. A candidate must beat the incumbent by 10% to displace it,
+since that is the measured noise floor and picking the winner of a 7%
+difference is picking noise.
+
 ## The Wigner functions
 
 `Wigner`'s stored value at upper index `N`, degree `l`, order `m` is
@@ -196,6 +271,45 @@ Values come from stable recurrence relations, computed in parallel over
 `(n, θ)`. Orthonormalisation is the only normalisation offered: there is no
 `Normalisation` template axis.
 
+## Wigner 3-j symbols
+
+`3j.h` gives the coupling coefficients, which is what Gaunt integrals and
+mode coupling need. The table is the primitive — a single symbol costs a whole
+table, so ask for the table:
+
+```cpp
+auto table  = Wigner3jMatrix<double>(l1, l2, l3);   // the whole (m1, m3) plane
+auto value  = table(m1, m3);                        // m2 = -(m1 + m3)
+auto stack  = Wigner3jStack<double>(l1, l3);        // one table per middle degree
+```
+
+Values come from the **Schulten–Gordon** recursion: each row is built inward
+from both ends of its range — the stable direction, since recursing outward
+follows the decaying solution and loses the answer exponentially — matched
+where the halves overlap, and normalised from the unitary property. No
+closed-form seed, no factorials, and the turning point is found by watching
+the recurrence coefficient rather than locating it analytically.
+
+That matters because a one-directional recursion loses these values near
+*stretched* triangles, where one degree approaches the sum of the other two —
+which is the top of every coupling sum rather than an exotic corner.
+`docs/3j-plan.md` records the two schemes this replaced and why. Measured
+against an independent route (cyclic-permutation invariance, which runs the
+recursion along different lines) it agrees to `1e-16` at `(200,200,200)` and
+`1e-15` at `(1000,1000,1999)`.
+
+Every row is checked against the recurrence that defines it before it is
+handed back, so a table that has gone wrong is refused rather than returned.
+That check replaced the completeness relation, which stopped testing anything
+once the algorithm began normalising by it.
+
+`CouplingElement(m, mp)` and `FillCouplingMatrix` give the same symbols in the
+layout normal-mode codes expect — the first order negated with an alternating
+phase, which is the array `wig2.f` returned. It is a convention, not a second
+calculation, and the conversion is its own inverse.
+
+6-j is not implemented. If it is ever wanted, the same paper covers it.
+
 ## Building
 
 ```
@@ -205,10 +319,10 @@ cd build && ctest
 ```
 
 Requires a C++23 compiler (GCC 13+), CMake 3.20+, and a local FFTW. OpenMP is
-used for the parallel paths. `GaussQuad`, `FFTWpp` and `NumericConcepts` are
-looked for on the system and fetched by `FetchContent` only if they are not
-there. All three are header-only, and none of them brings Eigen: GaussQuad
-used to, and no longer does.
+used for the parallel paths. `GaussQuad`, `FFTWpp`, `NumericConcepts` and
+`Interpolation` are looked for on the system and fetched by `FetchContent`
+only if they are not there. All four are header-only, and none of them brings
+Eigen: GaussQuad used to, and no longer does.
 
 | option | default | effect |
 | :--- | :--- | :--- |
@@ -216,6 +330,15 @@ used to, and no longer does.
 | `GSHTRANS_BUILD_TESTS` | `ON` | build `tests/` |
 | `GSHTRANS_BUILD_BENCHMARKS` | `ON` | build `benchmarks/TransformBenchmark` |
 | `GSHTRANS_INSTALL` | `ON` when top level | generate the install and export rules |
+| `GSHTRANS_WITH_INTERPOLATION` | `ON` | radial resampling, spline derivatives, and the local interpolation schemes |
+| `GSHTRANS_WITH_BLAS` | `AUTO` | the matrix transform kernel. `ON` fails the configure without a BLAS; `OFF` never looks |
+
+**Both optional dependencies are absent rather than disabled.** Without
+`Interpolation` there is no `Scheme::Bicubic()` to call and no
+`RadialSplineDerivative.h` to include; without a BLAS there is no
+`TransformKernel::Matrix()`. Asking for one is a compile error at the call
+site rather than a throw at run time, and CI builds with both off so that the
+claim is run rather than asserted — 344 tests there against 380.
 
 ### Using it from another project
 
@@ -247,23 +370,36 @@ is therefore reported as a race; that is a limitation of the tooling, not a
 finding.
 
 `TransformBenchmark` is not a test and `ctest` does not run it. It takes
-section names (`stream grid transforms threading batching server huge`) so that
-an A/B costs one section rather than the whole run;
-`benchmarks/run-server-benchmark.sh` drives it on a target machine.
+section names so that an A/B costs one section rather than the whole run:
+
+```
+stream grid transforms threading batching generated
+kernels kernels-loop kernels-matrix interpolation tuning server huge
+```
+
+`benchmarks/run-server-benchmark.sh` drives it on a target machine. **Build it
+Release.** `cmake -S . -B build` leaves `CMAKE_BUILD_TYPE` empty, and the
+harness there runs about ten times slow with every figure internally
+consistent — it once reported speedups of forty. It now warns when built
+without `NDEBUG`.
 
 ## Layout
 
 ```
-GSHTrans/Core          umbrella: grid, Wigner, indexing, policies, 3j
+GSHTrans/Core          umbrella: grid, Wigner, indexing, policies, tuning, 3j
 GSHTrans/Field         umbrella: the spin-field algebra
 GSHTrans/Tensor        umbrella: tensor fields and their algebra
 GSHTrans/Expansion     umbrella: the spectral side
 GSHTrans/Layered       umbrella: three-dimensional fields
 GSHTrans/All           all of them
 GSHTrans/src/          the headers themselves
-docs/                  the plans, and the theory note
+docs/                  the plans, the theory note, and the reference
 tests/  examples/  benchmarks/  scripts/
 ```
+
+`examples/` is a numbered series meant to be read in order, each introducing
+one thing and assuming the ones before it; `examples/README.md` lists them.
+They are registered as tests, so they run rather than merely compile.
 
 ## License
 

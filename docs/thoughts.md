@@ -10,11 +10,12 @@ the authorities on the numerical core and the field algebra respectively, and
 `gshtrans-reference.tex` on what exists. Where a direction below contradicts a
 decision already taken, it says so rather than quietly overriding it.
 
-**Status, 2026-08-24.** Sections 1 to 6 were the original set and 7 to 10 were
-raised later. Three were still open, and — as of this date — **all three are
-planned and none is waiting on a machine.** The `earth-tunya` gate was dropped
-when `core-plan.md` §11 was written; §11.1 says why, and §10 below gained an
-argument in the process.
+**Status, 2026-08-24. Every section here is now closed**, and the residue —
+things deliberately not built, each with its reason — is gathered at the end
+under *What is left*. Sections 1 to 6 were the original set and 7 to 10 were
+raised later; the last three closed on this date, each planned first and then
+built. The `earth-tunya` gate was dropped when `core-plan.md` §11 was
+written; §11.1 says why.
 
 Each plan corrected something this document asserts, which is the usual
 result of reading the code rather than the sketch. §9's polar claim is half
@@ -24,8 +25,10 @@ and not a constant (`field-algebra-plan.md` §22.1). §10's list of five
 machine-dependent knobs is really three, since `WignerValues` is a constraint
 the caller states rather than a knob to optimise and the planner flag is
 FFTW's own business (`core-plan.md` §12.1). And §6's second 3-j code is not a
-second algorithm at all but the same Woodhouse routine twice, so it cannot
-serve as the oracle §4 hoped for (`3j-plan.md` §1).
+second algorithm at all but the same Woodhouse routine twice — in fact the
+same routine written out three times — so it could not serve as the oracle §4
+hoped for (`3j-plan.md` §1), and in the end §6 went further still and
+replaced the algorithm outright.
 
 | | subject | status |
 |---|---|---|
@@ -1047,78 +1050,45 @@ stronger half of the case rather than a placeholder for it.*
 
 ---
 
-## Suggested order
+## What is left
 
-Rewritten 2026-08-22. The original list had the dependency work and the
-project structure at the top, and both are done; three-dimensional fields were
-last and are done too. What is left divides cleanly into things that are ready
-and things that are waiting.
+Rewritten 2026-08-24, when the last of the sections above closed. This used to
+be a suggested order; there is no longer an order to suggest, because nothing
+in this document is open. What follows is the residue — things deliberately
+not built, with the reason, so that each absence reads as a decision.
 
-**Ready now, in order:**
+**Named here and not built, each for a stated reason:**
 
-1. **Tangential tensor fields** (§1). Self-contained, the storage argument is
-   strong at rank 4, and the closed intrinsic derivative is the part that
-   makes it more than a saving. The change is one generalisation --
-   `MultiIndex`'s alphabet becoming a per-slot policy -- and everything
-   downstream is already generic over whatever indices exist.
-2. **Specialisations** (§3), immediately after, so that the tangential forms
-   are named in the same pass rather than bolted on.
-3. **Ready-made radial operators** (§8A), which is what makes `Gradient`
-   usable without the caller writing a differentiation matrix first, and is
-   the smallest useful answer to the question §8 asks.
-4. **The element partition on `RadialGrid`** (§8B), which §9 and §8A both
-   need and neither can infer.
+- **6-j symbols.** Not a priority, and the path is known: Schulten and Gordon
+  give the 6-j recursion in the same paper as the 3-j one, and §6's machinery
+  — inward from both ends, match, normalise from a unitary property —
+  transfers directly. `3j-plan.md` [J4]'s advice to decide it alongside
+  `wigxjpf` is spent, since the gap that conditioned it is closed.
+- **The wisdom store** (§10). Both tuners are cheap enough to run at
+  start-up, so there is nothing expensive enough to be worth remembering.
+  `core-plan.md` §12.6 names `lMax ≳ 512` as the condition that reverses it.
+- **`Deviatoric`** (§3) needs the metric as a tensor *expression*, and there
+  is no constant-tensor node — its components are numbers rather than fields.
+  A small piece of work with a design question in it.
+- **`Divergence` and `Curl`** (§3) are contractions of a gradient, and the
+  library has two, so naming them means choosing one or offering both under
+  one name. A decision rather than work; a caller writes the contraction in a
+  line meanwhile.
+- **A radial spectral basis**, Chebyshev being the obvious one, behind §19's
+  seam. Nothing prevents it: a Chebyshev derivative is a transform, a
+  multiply and a transform back, which is a callable like any other.
+- **A tensor view type** (`field-algebra-plan.md` §17.6), so that a layered
+  slice could hand back a whole tensor rather than a component at a time.
+  Still not needed by anything.
+- **The generated Wigner path's deeper rungs** (`core-plan.md` step F′, B and
+  C). Measured to lose on the development machine, and halving the arithmetic
+  cannot close the gap.
 
-**Waiting on something:**
+**Wanted, gating nothing:** the target-machine run (`core-plan.md` §11.6).
+It would settle whether the loop kernel's forward accumulator collapses
+further at 64 cores, whether `Chunking`'s single-shared-cache assumption
+survives eight CCDs, and whether the generated path wins where the aggregate
+cache is sixteen times larger. Since both transform kernels are kept, that
+comparison is now available on any machine rather than only on that one.
 
-- **`Interpolation`** (§7) waits on nothing but a pinned commit on
-  `refactor`. Its rebuild removed all three obstacles this document first
-  listed against it, and its `Bilinear`/`BicubicSpline` take a GSHTrans
-  field's buffer directly. No hand-over plan is needed; that assessment was
-  written against the superseded `main`.
-- **Field interpolation** (§9) is **done**, and the two guesses in it that
-  the code corrected are recorded in `field-algebra-plan.md` §22.1 and §22.3.
-  The layouts did agree, so the join was as small as this section expected;
-  what was not expected is that the padding forces a copy, that an exact polar
-  row costs a forward transform, and that the polar and wrap cells end up
-  *better* than the interior rather than being the weak points. The crossover
-  it asked for came out at about fifty points, so the recommendation is the
-  composite -- transform onto an oversampled grid, then interpolate there --
-  rather than either scheme alone.
-- **The wisdom mechanism** (§10) is **done except for the store**, and the
-  ranking of its two customers came out the other way round from this
-  section's expectation. The chunk, which §10 rests its case on, is worth at
-  most 1.28× and nothing at all in thirteen of eighteen configurations —
-  because the 2.0× it argues from was against the starved rule that §10 item
-  1 has since fixed. The kernel, which arrived late, picks the matrix path in
-  every configuration at 1.9× to 5.8×. And the store is not built: tuning
-  costs about a second, which is cheaper than remembering it. `core-plan.md`
-  §12.6 states the size at which that reverses.
-
-**Independent of all of it:** the **3-j work** (§6) is **done**, and went
-further than this entry expected. The orthogonality test went in first, as it
-says it should, and was worth more than a test — cheap enough to run at
-construction. Then Racah's closed form was added as a fallback, and the
-measurement that justified it also found a band neither method could reach.
-So **Schulten-Gordon was implemented and replaced both**: each row recursed
-inward from both ends, matched in the middle, normalised from the unitary
-property. It is better than either predecessor everywhere measured, at 1.1×
-to 1.3× the cost, and the band is gone — cyclic-permutation agreement is
-1e-16 at (200,200,200) and 1e-15 at (1000,1000,1999).
-
-Two things worth carrying forward. The completeness relation stopped being a
-useful runtime check the moment Schulten-Gordon normalised by it, so the check
-is now the **recurrence residual**; and the suite rests on **cyclic-permutation
-invariance**, which is the only thing that caught the one real bug — a phase
-read back from an array element that the rescaling had flushed to zero.
-There was one 3-j code in this repository written out three times; there is
-now one, and it is exercised. 6-j remains unbuilt, and [J4]'s advice about
-deciding it alongside `wigxjpf` is spent, since the 3-j gap it was conditioned
-on is closed.
-
-**No longer on the list, because it is finished:** `core-plan.md`'s efficiency
-work. *This paragraph twice said otherwise and is now retired.* The
-transform-major GEMM restructure is **built** (§11, M1–M6, 2026-08-23) and
-polar truncation was **measured and dropped** (§11.7) — about 1.15× rather
-than the 1.5–2× that document assumed. So `core-plan.md` has no scheduled work
-left, and everything below is the whole of what is open.
+**And `develop` is not merged to `main`.**
