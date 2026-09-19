@@ -11,7 +11,7 @@
  * @code
  * #include <GSHTrans/Version.hpp>
  *
- * #if GSHTRANS_VERSION >= GSHTRANS_VERSION_NUMBER(1, 1, 0)
+ * #if GSHTRANS_VERSION >= GSHTRANS_VERSION_NUMBER(1, 2, 0)
  * #include <GSHTrans/Layered/LayeredSpinField.hpp>
  * #endif
  * @endcode
@@ -27,7 +27,7 @@
 /** @brief Major version. */
 #define GSHTRANS_VERSION_MAJOR 1
 /** @brief Minor version. */
-#define GSHTRANS_VERSION_MINOR 1
+#define GSHTRANS_VERSION_MINOR 2
 /** @brief Patch version. */
 #define GSHTRANS_VERSION_PATCH 0
 
@@ -47,7 +47,7 @@
                           GSHTRANS_VERSION_PATCH)
 
 /** @brief This library's version as "major.minor.patch". */
-#define GSHTRANS_VERSION_STRING "1.1.0"
+#define GSHTRANS_VERSION_STRING "1.2.0"
 
 namespace GSHTrans {
 
