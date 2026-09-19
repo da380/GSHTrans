@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <cstddef>
@@ -214,7 +214,8 @@ static_assert(R::Negate::Apply<R::Negate::Apply<3>> == 3);
 
 // Every rule preserves "real-valued implies upper index zero", so the concept
 // checks it once and no node has to re-derive it. Each line below is one row
-// of the closure table in plan section 3.4: given operands that satisfy the
+// of the closure table -- the theory note's section on admissible
+// operations -- namely: given operands that satisfy the
 // constraint, the result does too.
 template <typename Value, Int N>
 inline constexpr bool Lawful = std::same_as<Value, ComplexValued> or N == 0;
@@ -306,7 +307,7 @@ TEST(SpinField, StoresSamplesInTheCanonicalOrder) {
   auto u = SpinField<2, Grid>(grid);
 
   ASSERT_EQ(u.Size(), grid.FieldSize());
-  const auto nPhi = static_cast<Int>(grid.NumberOfLongitudes());
+  const auto nPhi = grid.NumberOfLongitudes();
 
   // A freshly built field is zero.
   for (auto value : u) EXPECT_EQ(value, Complex{});
@@ -656,16 +657,16 @@ TEST(SpinField, BinaryNodesRejectOperandsOnDifferentGrids) {
   auto u = MakeField(grid, 1.0);
   auto v = MakeField(other, 1.0);
 
-  EXPECT_THROW(auto node = u + v, std::invalid_argument);
-  EXPECT_THROW(auto node = u * v, std::invalid_argument);
-  EXPECT_THROW(auto node = u - v, std::invalid_argument);
+  EXPECT_THROW((void)(u + v), std::invalid_argument);
+  EXPECT_THROW((void)(u * v), std::invalid_argument);
+  EXPECT_THROW((void)(u - v), std::invalid_argument);
 
   // Equal parameters are not enough; it is handle identity that decides.
   EXPECT_EQ(u.Grid().MaxDegree(), v.Grid().MaxDegree());
   EXPECT_EQ(u.Size(), v.Size());
 
   try {
-    auto node = u + v;
+    (void)(u + v);
     FAIL() << "expected a throw";
   } catch (const std::invalid_argument& error) {
     EXPECT_NE(std::string(error.what()).find("different"), std::string::npos)
@@ -1010,6 +1011,14 @@ static_assert(!Mappable<SpinField<-1, Grid>&, double (*)(Complex)>);
 // A callable that cannot be applied to the field's scalar is not a Map.
 static_assert(!Mappable<F0&, int (*)(const char*)>);
 
+// Nor is one whose result is not a scalar of the field's own precision. This
+// used to pass the constraint and fail a static_assert inside the node, which
+// is a hard error and not an answer -- so it could not be asked about here.
+static_assert(!Mappable<F0&, int (*)(Complex)>);
+static_assert(!Mappable<F0&, float (*)(Complex)>);
+static_assert(!Mappable<F0&, std::complex<float> (*)(Complex)>);
+static_assert(Mappable<F0&, Complex (*)(Complex)>);
+
 // Counts its own copies, so that a test can prove the node owns one rather
 // than referring to the caller's.
 struct CountingCallable {
@@ -1123,13 +1132,18 @@ static_assert(!Integrable<SpinField<-1, Grid>&>);
 static_assert(Integrable<Mul<decltype(conj(std::declval<F2&>())), F2&>>);
 static_assert(Integrable<decltype(abs2(std::declval<F2&>()))>);
 
-// A view is a node, and a terminal.
+// A view is a node, and *not* a terminal: it names storage without owning it,
+// so an expression holds it by value, as it holds another expression, and an
+// expression built from named views may outlive them.
 using View = SpinFieldView<2, Grid>;
 using ConstView = ConstSpinFieldView<2, Grid>;
 static_assert(SpinWeighted<View>);
 static_assert(SpinWeighted<ConstView>);
-static_assert(IsTerminal<View>);
-static_assert(IsTerminal<ConstView>);
+static_assert(!IsTerminal<View>);
+static_assert(!IsTerminal<ConstView>);
+static_assert(std::same_as<OperandStorage<View&>, View>);
+static_assert(std::same_as<OperandStorage<const ConstView&>, ConstView>);
+static_assert(std::same_as<OperandStorage<F2&>, const F2&>);
 static_assert(std::same_as<View::Scalar, Complex>);
 static_assert(std::same_as<ConstView::Scalar, Complex>);
 
@@ -1342,4 +1356,50 @@ TEST(SpinField, CopiesDataButSharesTheGrid) {
   }();
   EXPECT_EQ(escaped.Size(), grid.FieldSize());
   EXPECT_NE(escaped.Grid().Identity(), grid.Identity());
+}
+
+//--------------------------------------------------------------------------//
+//                        Scalars that are just numbers                      //
+//--------------------------------------------------------------------------//
+
+// `2 * f` is what anyone writes first, and it did not compile: a scalar had to
+// be exactly the field's Real or its complex. An integer is now taken as well.
+// It is not a second precision -- it is exact in every one -- so the rule of
+// one precision per tree stands, and a floating-point scalar of another
+// precision is refused as it always was.
+
+namespace {
+
+using FloatGrid = GaussLegendreGrid<float, All, All>;
+using FloatField = SpinField<0, FloatGrid, RealValued>;
+
+static_assert(Multipliable<F2&, int>);
+static_assert(Multipliable<int, F2&>);
+static_assert(Multipliable<F2&, std::ptrdiff_t>);
+static_assert(Divisible<F2&, int>);
+static_assert(Divisible<int, F0&>);
+static_assert(!Divisible<int, F2&>);  // still only at upper index zero
+static_assert(Multipliable<int, FloatField&>);
+static_assert(Multipliable<float, FloatField&>);
+static_assert(!Multipliable<double, FloatField&>);  // would narrow in silence
+static_assert(!Multipliable<F2&, float>);
+static_assert(!Multipliable<F2&, bool>);
+static_assert(!Multipliable<F2&, const char*>);
+
+// An integer is a real scalar: it leaves the value kind alone.
+static_assert(
+    std::same_as<decltype(std::declval<FloatField&>() * 2)::Value, RealValued>);
+static_assert(
+    std::same_as<decltype(std::declval<FloatField&>() * 2)::Scalar, float>);
+
+}  // namespace
+
+TEST(SpinField, AnIntegerScalesAFieldAsItsRealWould) {
+  auto grid = Grid(4, 2, FFTWpp::Estimate);
+  auto f = SpinField<2, Grid>(grid, [](auto theta, auto phi) {
+    return Complex{std::cos(theta), std::sin(phi)};
+  });
+  EXPECT_EQ(((f * 2)[1, 2]), ((f * double{2})[1, 2]));
+  EXPECT_EQ(((3 * f)[1, 2]), ((double{3} * f)[1, 2]));
+  EXPECT_EQ(((f / 4)[1, 2]), ((f / double{4})[1, 2]));
 }

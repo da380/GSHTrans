@@ -5,7 +5,7 @@
 // the type, so the index arithmetic of an expression is checked where it is
 // written.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <iostream>

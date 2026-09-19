@@ -1,15 +1,16 @@
 #include <gtest/gtest.h>
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <complex>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <numbers>
 #include <random>
 #include <span>
 #include <vector>
 
-#include "TestRandom.h"
+#include "TestRandom.hpp"
 
 namespace {
 
@@ -31,14 +32,14 @@ constexpr auto pi = std::numbers::pi_v<Real>;
 // happens to be what the hardware does.
 class Values {
  public:
-  explicit Values(std::uint_fast32_t seed) : _engine{seed} {}
+  explicit Values(std::uint_fast32_t seed) : engine_{seed} {}
 
-  Real operator()() { return _distribution(_engine); }
+  Real operator()() { return distribution_(engine_); }
   Complex Pair() { return Complex((*this)(), (*this)()); }
 
  private:
-  std::mt19937 _engine;
-  std::uniform_real_distribution<Real> _distribution{0, 1};
+  std::mt19937 engine_;
+  std::uniform_real_distribution<Real> distribution_{0, 1};
 };
 
 // A field's worth of them.
@@ -57,8 +58,8 @@ auto Samples(Int n, std::uint_fast32_t seed) {
 class PaddedGrid : public ::testing::Test {
  protected:
   Grid grid{8, 2};
-  Int nTheta = static_cast<Int>(grid.NumberOfCoLatitudes());
-  Int nPhi = static_cast<Int>(grid.NumberOfLongitudes());
+  Int nTheta = grid.NumberOfCoLatitudes();
+  Int nPhi = grid.NumberOfLongitudes();
 
   auto Build() const {
     const auto values = Samples(nTheta * nPhi, 11);
@@ -73,14 +74,21 @@ class PaddedGrid : public ::testing::Test {
 TEST_F(PaddedGrid, CoversTheClosedSphere) {
   const auto [values, north, south, padded] = Build();
 
+  // The field's own longitudes and the wrap, with the same number of periodic
+  // ghost columns beyond each end.
+  const auto ghosts = padded.ghosts;
+  EXPECT_EQ(ghosts, 3u);
   EXPECT_EQ(padded.Rows(), static_cast<std::size_t>(nTheta + 2));
-  EXPECT_EQ(padded.Columns(), static_cast<std::size_t>(nPhi + 1));
+  EXPECT_EQ(padded.Columns(), static_cast<std::size_t>(nPhi + 1) + 2 * ghosts);
   EXPECT_EQ(padded.values.size(), padded.Rows() * padded.Columns());
 
   EXPECT_DOUBLE_EQ(padded.theta.front(), 0.0);
   EXPECT_DOUBLE_EQ(padded.theta.back(), pi);
-  EXPECT_DOUBLE_EQ(padded.phi.front(), 0.0);
-  EXPECT_DOUBLE_EQ(padded.phi.back(), 2 * pi);
+  EXPECT_DOUBLE_EQ(padded.phi[ghosts], 0.0);
+  EXPECT_DOUBLE_EQ(padded.phi[ghosts + static_cast<std::size_t>(nPhi)], 2 * pi);
+  // Everything that is ever evaluated lies strictly inside the axis.
+  EXPECT_LT(padded.phi.front(), 0.0);
+  EXPECT_GT(padded.phi.back(), 2 * pi);
 }
 
 // Upstream refuses an axis that is not strictly increasing, so this is the
@@ -129,9 +137,20 @@ TEST_F(PaddedGrid, CarriesThePolarRowsAsGiven) {
 TEST_F(PaddedGrid, WrapColumnIsColumnZero) {
   const auto [values, north, south, padded] = Build();
 
+  const auto n = static_cast<std::size_t>(nPhi);
+  const auto columns = padded.Columns();
   for (std::size_t i = 0; i < padded.Rows(); i++) {
-    EXPECT_EQ(padded.At(i, padded.Columns() - 1), padded.At(i, 0))
-        << "at colatitude " << i;
+    EXPECT_EQ(padded.At(i, n), padded.At(i, 0)) << "at colatitude " << i;
+
+    // And the ghost columns are the field again, one period along.
+    for (std::size_t g = 1; g <= padded.ghosts; g++) {
+      EXPECT_EQ(padded.values[i * columns + padded.ghosts + n + g],
+                padded.At(i, g))
+          << "beyond 2 pi, at colatitude " << i;
+      EXPECT_EQ(padded.values[i * columns + padded.ghosts - g],
+                padded.At(i, n - g))
+          << "before 0, at colatitude " << i;
+    }
   }
 }
 
@@ -199,7 +218,7 @@ static_assert(
     std::copy_constructible<SpectralInterpolant<0, Grid, RealValued>>);
 
 // The decisive agreement: the same numbers as the transform, at every point
-// the transform produces. This is what says the direct sum of section 22.1 is
+// the transform produces. This is what says the interpolant's direct sum is
 // the synthesis rather than something like it.
 TEST(SpectralInterpolant, MatchesEvaluateAtEveryGridPoint) {
   constexpr Int N = 2;
@@ -283,7 +302,8 @@ TEST(SpectralInterpolant, IsExactOnALowDegreeHarmonic) {
 }
 
 // The poles are inside the domain and are where the whole padding question
-// comes from, so the reference must answer there. Section 22.1's rule:
+// comes from, so the reference must answer there. The rule, from the
+// reference note's section on interpolation:
 // the order m = +N survives at the north and m = -N at the south, the latter
 // with a sign alternating in the degree.
 TEST(SpectralInterpolant, AnswersAtThePolesByTheStatedRule) {
@@ -530,6 +550,68 @@ TEST(FieldInterpolant, SurvivesProjectFunctionWhichCopiesIt) {
   EXPECT_EQ(iPoint, grid.FieldSize());
   EXPECT_LT(worst, 1e-12) << "worst difference " << worst;
 }
+
+#ifdef GSHTRANS_HAVE_INTERPOLATION
+
+// The sphere has no edge in longitude, so the cells either side of phi = 0
+// should be no worse than any other. The spline underneath is not periodic --
+// it ends somewhere, with an end condition -- so the samples are extended a
+// few columns past each end of [0, 2 pi] and the ends are kept away from
+// anything that is evaluated. With a single wrap column the two seam cells
+// sat *at* the spline's ends and were several times worse than the rest.
+TEST(FieldInterpolant, TheLongitudeSeamIsNoWorseThanTheInterior) {
+  const Int lMax = 64;
+  const Int band = 8;
+  auto grid = Grid(lMax, 1);
+  auto e = SpinExpansion<1, Grid>(grid, lMax);
+  auto values = Values(1212);
+  for (auto l : e.Degrees()) {
+    for (auto m : e.Orders(l)) {
+      e[l, m] = l <= band ? values.Pair() : Complex{};
+    }
+  }
+  const auto field = Evaluate(e);
+  const auto exact = Interpolate(e);
+  const auto bicubic = Interpolate(field, Scheme::Bicubic());
+
+  const auto nPhi = grid.NumberOfLongitudes();
+  const auto width = 2 * pi / static_cast<Real>(nPhi);
+  const auto worstInCell = [&](Int cell) {
+    auto worst = Real{0};
+    for (auto theta : {0.4, 1.1, 1.9, 2.7}) {
+      for (auto t : {0.13, 0.5, 0.87}) {
+        const auto phi = (static_cast<Real>(cell) + t) * width;
+        worst =
+            std::max(worst, std::abs(bicubic(theta, phi) - exact(theta, phi)));
+      }
+    }
+    return worst;
+  };
+
+  auto interior = Real{0};
+  for (auto cell = Int{4}; cell < nPhi - 4; cell += 7) {
+    interior = std::max(interior, worstInCell(cell));
+  }
+  const auto seam = std::max(worstInCell(0), worstInCell(nPhi - 1));
+  EXPECT_LT(seam, 1.5 * interior)
+      << "seam " << seam << ", interior " << interior;
+}
+
+TEST(FieldInterpolant, RefusesALongitudeThatIsNotANumber) {
+  auto grid = Grid(8, 0);
+  auto e = SpinExpansion<0, Grid, RealValued>(grid, 8);
+  Fill(e, 1313);
+  const auto field = Evaluate(e);
+  const auto at = Interpolate(field, Scheme::Bicubic());
+  EXPECT_THROW(at(1.0, std::numeric_limits<Real>::quiet_NaN()),
+               std::invalid_argument);
+  EXPECT_THROW(at(1.0, std::numeric_limits<Real>::infinity()),
+               std::invalid_argument);
+  EXPECT_NO_THROW(at(1.0, -7.5));
+  EXPECT_NO_THROW(at(1.0, 100.0));
+}
+
+#endif  // GSHTRANS_HAVE_INTERPOLATION
 
 TEST(FieldInterpolant, RefusesAColatitudeOffTheSphere) {
   auto grid = Grid(4, 0);

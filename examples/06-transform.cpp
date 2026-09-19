@@ -4,7 +4,7 @@
 // understanding before using it: transforming an arbitrary field is a
 // *projection*, not a round trip.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <iostream>

@@ -4,7 +4,7 @@
 // strain, which is a double contraction of a tensor product. Every
 // intermediate's rank and upper index is checked by the compiler.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <iostream>

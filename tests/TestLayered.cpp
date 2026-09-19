@@ -1,9 +1,10 @@
 #include <gtest/gtest.h>
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <cstddef>
+#include <numbers>
 #include <numeric>
 #include <ranges>
 #include <span>
@@ -998,7 +999,7 @@ TEST(RadialDerivatives, ActOnComplexLinesAsReadilyAsRealOnes) {
   }
 }
 
-// The contract of RadialOperator.h: one operator, shared const, called from
+// The contract of RadialOperator.hpp: one operator, shared const, called from
 // every thread, with whatever scratch it needs in thread_local storage. This
 // is the pattern the pre-built operators are written to and that a caller
 // writing their own has to follow, so it is pinned rather than described.
@@ -1721,3 +1722,445 @@ TEST(RadialDerivatives, NotAKnotNeedsEnoughNodesInEveryElement) {
 }
 
 #endif  // GSHTRANS_HAVE_INTERPOLATION
+
+//--------------------------------------------------------------------------//
+//                     Operators on a grid with interfaces                   //
+//--------------------------------------------------------------------------//
+
+// A repeated radius is an interface, and the two sides of it are different
+// functions. None of the ready-made operators may mix them, and none may
+// answer with a NaN: they either respect the partition or refuse the grid.
+// These are conveniences, so that is all that is asked of them -- but a
+// convenience that silently returns a wrong number is worse than none.
+
+namespace {
+
+// 2r below the interface and -3r above it, on the layered mesh: a function
+// whose derivative is 2 on one side and -3 on the other, and whose values at
+// the two copies of the interface radius differ.
+auto KinkedLine() {
+  auto line = std::vector<Real>(LayeredRadii.size());
+  for (std::size_t i = 0; i < line.size(); i++) {
+    line[i] = (i < 3 ? 2.0 : -3.0) * LayeredRadii[i];
+  }
+  return line;
+}
+
+}  // namespace
+
+TEST(FiniteDifferenceDerivative, DoesNotDifferentiateAcrossAnInterface) {
+  const auto mesh = RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts);
+  const auto line = KinkedLine();
+
+  for (auto order : {Int{1}, Int{2}}) {
+    const auto ddr = FiniteDifferenceDerivative<Real>(mesh, order);
+    auto out = std::vector<Real>(line.size());
+    ddr(std::span<const Real>(line), std::span<Real>(out));
+    for (std::size_t i = 0; i < out.size(); i++) {
+      EXPECT_NEAR(out[i], i < 3 ? 2.0 : -3.0, 1.0e-12)
+          << "order " << order << ", radius " << i;
+    }
+  }
+}
+
+TEST(FiniteDifferenceDerivative, IsExactToItsOrderWithinEachElement) {
+  // Five nodes an element, unevenly spaced, and a different cubic on each
+  // side of the interface: an order-3 rule must get both exactly, including
+  // at the two copies of the interface radius.
+  const auto radii =
+      std::vector<Real>{0.3, 0.42, 0.5, 0.61, 0.7, 0.7, 0.78, 0.9, 0.97, 1.1};
+  const auto mesh = RadialGrid<Real>::WithElements(radii, {0, 5, 10});
+  const auto ddr = FiniteDifferenceDerivative<Real>(mesh, 3);
+
+  auto line = std::vector<Real>(radii.size());
+  auto exact = std::vector<Real>(radii.size());
+  for (std::size_t i = 0; i < radii.size(); i++) {
+    const auto r = radii[i];
+    if (i < 5) {
+      line[i] = r * r * r - 2 * r;
+      exact[i] = 3 * r * r - 2;
+    } else {
+      line[i] = 4 - r * r * r + r * r;
+      exact[i] = -3 * r * r + 2 * r;
+    }
+  }
+  auto out = std::vector<Real>(radii.size());
+  ddr(std::span<const Real>(line), std::span<Real>(out));
+  for (std::size_t i = 0; i < out.size(); i++) {
+    EXPECT_NEAR(out[i], exact[i], 1.0e-11) << "radius " << i;
+  }
+}
+
+TEST(FiniteDifferenceDerivative, IsUnchangedOnAGridWithoutElements) {
+  // The partition changes nothing for a grid that has none: one element
+  // covering everything must give the same weights as no elements at all.
+  const auto radii = std::vector<Real>{0.3, 0.42, 0.5, 0.61, 0.7, 0.78, 0.9};
+  const auto plain =
+      FiniteDifferenceDerivative<Real>(RadialGrid<Real>(radii), 2);
+  const auto one = FiniteDifferenceDerivative<Real>(
+      RadialGrid<Real>::WithElements(radii, {0, 7}), 2);
+
+  auto line = std::vector<Real>(radii.size());
+  for (std::size_t i = 0; i < radii.size(); i++)
+    line[i] = std::sin(3 * radii[i]);
+  auto a = std::vector<Real>(radii.size());
+  auto b = std::vector<Real>(radii.size());
+  plain(std::span<const Real>(line), std::span<Real>(a));
+  one(std::span<const Real>(line), std::span<Real>(b));
+  for (std::size_t i = 0; i < a.size(); i++) EXPECT_EQ(a[i], b[i]) << i;
+}
+
+TEST(FiniteDifferenceDerivative, RefusesAnElementNarrowerThanItsStencil) {
+  // Three nodes an element cannot carry a four-point stencil, and borrowing
+  // the fourth from next door is the thing this must never do.
+  const auto mesh = RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts);
+  EXPECT_NO_THROW((FiniteDifferenceDerivative<Real>(mesh, 2)));
+  EXPECT_THROW((FiniteDifferenceDerivative<Real>(mesh, 3)),
+               std::invalid_argument);
+}
+
+TEST(FiniteDifferenceDerivative, RefusesARepeatedRadiusItCannotInterpret) {
+  // Without a partition a repeated radius might be an interface or a mistake,
+  // and the weights divide by the spacing either way.
+  EXPECT_THROW(
+      (FiniteDifferenceDerivative<Real>(RadialGrid<Real>(LayeredRadii), 2)),
+      std::invalid_argument);
+}
+
+TEST(LagrangeDerivative, RefusesAGridWithAnInterface) {
+  // One polynomial through every node has no meaning across a discontinuity,
+  // and with a repeated node it is not even defined. ElementDerivative is the
+  // operator for such a grid.
+  const auto mesh = RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts);
+  EXPECT_THROW((LagrangeDerivative<Real>(mesh)), std::invalid_argument);
+  EXPECT_THROW((LagrangeDerivative<Real>(RadialGrid<Real>(LayeredRadii))),
+               std::invalid_argument);
+  EXPECT_NO_THROW((LagrangeDerivative<Real>(
+      RadialGrid<Real>::WithElements({0.4, 0.6, 0.8}, {0, 3}))));
+}
+
+TEST(LagrangeDerivative, IsAccurateOnPhysicallyScaledRadii) {
+  // Chebyshev-Lobatto nodes on [0, 6371] and on [0, 6.371e6]. The barycentric
+  // weights are products of node differences, and formed on the raw nodes
+  // they overflow long before there are enough nodes to need them.
+  for (auto scale : {Real{1}, Real{6371}, Real{6.371e6}}) {
+    constexpr auto n = Int{101};
+    auto radii = std::vector<Real>(n);
+    for (Int i = 0; i < n; i++) {
+      radii[i] =
+          scale * 0.5 * (1 - std::cos(std::numbers::pi_v<Real> * i / (n - 1)));
+    }
+    const auto ddr = LagrangeDerivative<Real>(RadialGrid<Real>(radii));
+    auto line = std::vector<Real>(n);
+    for (Int i = 0; i < n; i++) {
+      const auto x = radii[i] / scale;
+      line[i] = x * x * x;
+    }
+    auto out = std::vector<Real>(n);
+    ddr(std::span<const Real>(line), std::span<Real>(out));
+    for (Int i = 0; i < n; i++) {
+      const auto x = radii[i] / scale;
+      EXPECT_NEAR(out[i] * scale, 3 * x * x, 1.0e-9)
+          << "scale " << scale << ", node " << i;
+    }
+  }
+}
+
+//--------------------------------------------------------------------------//
+//                                  The seam                                 //
+//--------------------------------------------------------------------------//
+
+TEST(RadialMajor, AppliesInPlace) {
+  // The repeated-application loop this layout exists for is in place, and an
+  // operator is not asked to cope with its output being its input.
+  constexpr auto lMax = Int{6};
+  constexpr auto nR = Int{17};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto radial = Radii(nR);
+  const auto op = FiniteDifferenceDerivative<Real>(radial, 2);
+
+  auto e = LayeredSpinExpansion<0, Grid>(radial, grid, lMax);
+  for (Int j = 0; j < e.Size(); j++) {
+    e.Data()[j] = Complex{std::sin(0.007 * j), 0.4 - 0.011 * j};
+  }
+
+  auto source = RadialMajor(e);
+  auto apart = RadialMajor(e);
+  ApplyToLines(source, apart, op);
+
+  auto inPlace = RadialMajor(e);
+  ApplyToLines(inPlace, inPlace, op, Execution::Parallel(4));
+
+  auto wanted = e.SameShape();
+  auto got = e.SameShape();
+  apart.CopyInto(wanted);
+  inPlace.CopyInto(got);
+  for (Int j = 0; j < e.Size(); j++) {
+    EXPECT_EQ(got.Data()[j], wanted.Data()[j]) << "at " << j;
+  }
+}
+
+TEST(RadialOperator, AnOperatorBuiltOnAnotherGridIsRefused) {
+  // Two grids with the same number of radii are still two grids, and an
+  // operator built on one holds the wrong weights for the other. It says
+  // which grid it was built on, so the seam can look.
+  constexpr auto lMax = Int{4};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto one = Radii(9, 0.5, 1.0);
+  auto other = Radii(9, 0.2, 0.7);
+  auto e = LayeredSpinExpansion<0, Grid>(one, grid, lMax);
+
+  EXPECT_NO_THROW(ApplyRadially(e, FiniteDifferenceDerivative<Real>(one, 2)));
+  EXPECT_THROW(ApplyRadially(e, FiniteDifferenceDerivative<Real>(other, 2)),
+               std::invalid_argument);
+
+  auto major = RadialMajor(e);
+  auto out = RadialMajor(e);
+  EXPECT_THROW(
+      ApplyToLines(major, out, FiniteDifferenceDerivative<Real>(other, 2)),
+      std::invalid_argument);
+
+  // A bare callable says nothing about a grid and is taken at its word.
+  EXPECT_NO_THROW(ApplyRadially(e, CentredDifference<Complex>{0.0625}));
+}
+
+//--------------------------------------------------------------------------//
+//                     An operator that throws, under threads                //
+//--------------------------------------------------------------------------//
+
+// The seam exists for a caller's own operators, and a caller's operator may
+// throw: a band solve that finds a singular line, say. Run sequentially that
+// is an ordinary exception. Run under Execution::Parallel it used to leave an
+// OpenMP region, which terminates the program -- so the same call was
+// catchable or fatal depending on a policy argument.
+
+namespace {
+
+// Refuses any line whose first value is the sentinel, and is otherwise the
+// identity. Stateless, as an operator called from many threads has to be.
+struct RefusesOneLine {
+  static constexpr Real Sentinel = -12345.0;
+
+  void operator()(std::span<const Complex> in, std::span<Complex> out) const {
+    if (in[0].real() == Sentinel) {
+      throw std::runtime_error("this line is singular");
+    }
+    std::ranges::copy(in, out.begin());
+  }
+};
+
+template <typename Call>
+void ExpectTheOperatorsException(Call&& call) {
+  try {
+    call();
+    FAIL() << "nothing was thrown";
+  } catch (const std::runtime_error& e) {
+    EXPECT_STREQ(e.what(), "this line is singular");
+  }
+}
+
+}  // namespace
+
+TEST(RadialOperator, AThrowingOperatorThrowsTheSameUnderThreads) {
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto e = LayeredSpinExpansion<0, Grid>(Radii(9), grid, lMax);
+  for (Int j = 0; j < e.Size(); j++) e.Data()[j] = Complex{0.01 * j, 1.0};
+  e[0, 3, -2] = Complex{RefusesOneLine::Sentinel, 0.0};
+
+  const auto op = RefusesOneLine{};
+  ExpectTheOperatorsException([&] { ApplyRadially(e, op); });
+  ExpectTheOperatorsException(
+      [&] { ApplyRadially(e, op, Execution::Parallel(4)); });
+
+  auto major = RadialMajor(e);
+  auto out = major.SameShape();
+  ExpectTheOperatorsException([&] { ApplyToLines(major, out, op); });
+  ExpectTheOperatorsException(
+      [&] { ApplyToLines(major, out, op, Execution::Parallel(4)); });
+  ExpectTheOperatorsException(
+      [&] { ApplyToLines(major, major, op, Execution::Parallel(4)); });
+}
+
+#ifdef GSHTRANS_HAVE_INTERPOLATION
+
+TEST(RadialResample, OntoTheSameLayeredMeshIsTheIdentity) {
+  // The ordinary remeshing case: a layered model onto a layered mesh sharing
+  // its interface. Both copies of the interface radius are in the target, and
+  // they are different points -- the top of the element below, and the bottom
+  // of the one above.
+  constexpr auto lMax = Int{4};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  const auto mesh = RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts);
+
+  auto f = LayeredSpinField<0, Grid, ComplexValued>(mesh, grid);
+  for (auto i : mesh.RadiusIndices()) {
+    const auto value = i < 3 ? Complex{1.0, 0.0} : Complex{2.0, 0.0};
+    auto slice = f.Slice(i);
+    for (auto iTheta : grid.CoLatitudeIndices()) {
+      for (auto iPhi : grid.LongitudeIndices()) slice[iTheta, iPhi] = value;
+    }
+  }
+
+  for (auto scheme :
+       {RadialInterpolation::Linear(), RadialInterpolation::CubicSpline()}) {
+    const auto same = Resample(f, mesh, scheme);
+    for (auto i : mesh.RadiusIndices()) {
+      EXPECT_NEAR((same.Slice(i)[0, 0]).real(), i < 3 ? 1.0 : 2.0, 1.0e-12)
+          << "radius " << i;
+    }
+  }
+}
+
+TEST(RadialResample, ASchemeThatRefusesALineThrowsTheSameUnderThreads) {
+  // Akima's scheme needs more nodes than a two-node element has, and says so
+  // from inside the loop over lines.
+  constexpr auto lMax = Int{4};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  const auto source = RadialGrid<Real>::WithElements(
+      {0.4, 0.8, 0.8, 1.0, 1.1, 1.2, 1.3, 1.4}, {0, 2, 8});
+  const auto target = RadialGrid<Real>(std::vector<Real>{0.5, 0.9, 1.25});
+  auto f = LayeredSpinField<0, Grid, ComplexValued>(source, grid);
+
+  EXPECT_THROW(Resample(f, target, RadialInterpolation::Akima()),
+               std::exception);
+  EXPECT_THROW(
+      Resample(f, target, RadialInterpolation::Akima(), Execution::Parallel(4)),
+      std::exception);
+}
+
+TEST(RadialResample, ATargetInterfaceInsideASourcePieceStaysContinuous) {
+  // The target has an interface where the source has none. Both copies of
+  // that radius then fall in one source piece and must get the same value:
+  // the rule about sides is about which *piece* answers, and there is one.
+  constexpr auto lMax = Int{4};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  const auto source =
+      RadialGrid<Real>::WithElements({0.4, 0.6, 0.8, 1.0, 1.2}, {0, 5});
+  const auto target =
+      RadialGrid<Real>::WithElements({0.4, 0.7, 0.9, 0.9, 1.0, 1.2}, {0, 3, 6});
+
+  auto f = LayeredSpinField<0, Grid, ComplexValued>(source, grid);
+  for (auto i : source.RadiusIndices()) {
+    auto slice = f.Slice(i);
+    const auto value = Complex{3 * source.Radii()[i] + 1, 0.0};
+    for (auto iTheta : grid.CoLatitudeIndices()) {
+      for (auto iPhi : grid.LongitudeIndices()) slice[iTheta, iPhi] = value;
+    }
+  }
+
+  const auto moved = Resample(f, target, RadialInterpolation::Linear());
+  for (auto i : target.RadiusIndices()) {
+    EXPECT_NEAR((moved.Slice(i)[0, 0]).real(), 3 * target.Radii()[i] + 1,
+                1.0e-12)
+        << "radius " << i;
+  }
+}
+
+#endif  // GSHTRANS_HAVE_INTERPOLATION
+
+//--------------------------------------------------------------------------//
+//                     Transforming straight into radial lines               //
+//--------------------------------------------------------------------------//
+
+// [(l, m)][r] is Batch::Interleaved(nR, nR), so the transform can write radial
+// lines directly and the radius-major expansion need never exist. That is a
+// saving in memory -- one whole copy of the coefficients -- and not reliably in
+// time, and either way it has to be *the same numbers*: not close, the same,
+// since both routes are one transform writing to two places.
+
+namespace {
+
+template <typename Field>
+void ExpectLinesMatchTheTranspose(const Field& field, const Grid& grid,
+                                  Int lMax, Execution policy) {
+  const auto viaTranspose = RadialMajor(Expand(field, lMax, policy));
+  const auto direct = ExpandToLines(field, lMax, policy);
+
+  ASSERT_EQ(direct.NumberOfRadii(), viaTranspose.NumberOfRadii());
+  ASSERT_EQ(direct.NumberOfLines(), viaTranspose.NumberOfLines());
+  EXPECT_EQ(direct.Radial().Identity(), field.Radial().Identity());
+  for (std::size_t i = 0; i < direct.Data().size(); i++) {
+    ASSERT_EQ(direct.Data()[i], viaTranspose.Data()[i]) << "element " << i;
+  }
+
+  // And back: the same field that evaluating the expansion gives.
+  const auto back = EvaluateLines(direct, grid, lMax, policy);
+  const auto wanted = Evaluate(Expand(field, lMax, policy), policy);
+  for (std::size_t i = 0; i < back.Data().size(); i++) {
+    ASSERT_EQ(back.Data()[i], wanted.Data()[i]) << "sample " << i;
+  }
+}
+
+std::vector<Grid> LayeredKernels(Int lMax) {
+  auto grids = std::vector<Grid>{Grid(lMax, 2, FFTWpp::Estimate)};
+#ifdef GSHTRANS_HAVE_BLAS
+  grids.push_back(Grid(lMax, 2, FFTWpp::Estimate, Chunking::Automatic(),
+                       WignerValues::Stored(), TransformKernel::Matrix()));
+#endif
+  return grids;
+}
+
+}  // namespace
+
+TEST(RadialMajor, ExpandingToLinesIsTheTransposeOfExpanding) {
+  constexpr auto lMax = Int{10};
+  for (const auto& grid : LayeredKernels(lMax)) {
+    const auto radial = Radii(9);
+
+    auto complexField = LayeredSpinField<1, Grid>(radial, grid);
+    auto realField = LayeredSpinField<0, Grid, RealValued>(radial, grid);
+    auto j = Int{0};
+    for (auto& x : complexField.Data()) {
+      x = Complex{std::sin(0.013 * static_cast<Real>(j)),
+                  std::cos(0.007 * static_cast<Real>(j))};
+      j++;
+    }
+    for (auto& x : realField.Data())
+      x = std::sin(0.011 * static_cast<Real>(j++));
+
+    for (auto policy : {Execution::Sequential(), Execution::Parallel(4)}) {
+      ExpectLinesMatchTheTranspose(complexField, grid, lMax, policy);
+      ExpectLinesMatchTheTranspose(realField, grid, lMax, policy);
+    }
+  }
+}
+
+TEST(RadialMajor, LinesMadeDirectlyAreLinesLikeAnyOthers) {
+  // They carry the radial grid, so an operator is checked against it, and
+  // they go through ApplyToLines as a transposed buffer does.
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  const auto radial = Radii(17);
+  auto field = LayeredSpinField<0, Grid>(radial, grid);
+  auto j = Int{0};
+  for (auto& x : field.Data()) {
+    x = Complex{std::sin(0.01 * static_cast<Real>(j)), 0.3};
+    j++;
+  }
+
+  auto lines = ExpandToLines(field, lMax);
+  const auto ddr = FiniteDifferenceDerivative<Real>(radial, 2);
+  auto viaLines = lines.SameShape();
+  ApplyToLines(lines, viaLines, ddr);
+
+  const auto viaGather = RadialMajor(ApplyRadially(Expand(field, lMax), ddr));
+  for (std::size_t i = 0; i < viaLines.Data().size(); i++) {
+    ASSERT_EQ(viaLines.Data()[i], viaGather.Data()[i]) << "element " << i;
+  }
+
+  const auto elsewhere =
+      FiniteDifferenceDerivative<Real>(Radii(17, 0.1, 0.6), 2);
+  EXPECT_THROW(ApplyToLines(lines, viaLines, elsewhere), std::invalid_argument);
+}
+
+TEST(RadialMajor, EvaluatingLinesNeedsTheDegreeTheyWereExpandedTo) {
+  // The buffer is a shape and knows neither its grid nor its degree, so both
+  // are given, and a degree that does not fit the shape is refused.
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto field = LayeredSpinField<0, Grid>(Radii(5), grid);
+  const auto lines = ExpandToLines(field, lMax);
+  EXPECT_NO_THROW(EvaluateLines(lines, grid, lMax));
+  EXPECT_THROW(EvaluateLines(lines, grid, lMax - 1), std::invalid_argument);
+}

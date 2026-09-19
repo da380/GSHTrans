@@ -6,18 +6,18 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(GSHTrans
-        VERSION 1.1.0
+        VERSION 1.2.0
         DESCRIPTION "Generalized spherical harmonic transforms and a tensor field algebra on the sphere"
         LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# The version in GSHTrans/src/Version.h is written by hand, so that copying
+# The version in GSHTrans/Version.hpp is written by hand, so that copying
 # the GSHTrans directory into another project is a complete way to vendor the
 # library. Check it against the version declared above, so that the two cannot
 # drift apart.
-file(READ ${CMAKE_CURRENT_SOURCE_DIR}/GSHTrans/src/Version.h _version_header)
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/GSHTrans/Version.hpp _version_header)
 set(_header_version)
 foreach(_part MAJOR MINOR PATCH)
   string(REGEX MATCH "define GSHTRANS_VERSION_${_part} ([0-9]+)"
@@ -28,7 +28,7 @@ list(JOIN _header_version "." _header_version)
 if(NOT _header_version STREQUAL PROJECT_VERSION)
   message(FATAL_ERROR
     "Version mismatch: CMakeLists.txt declares ${PROJECT_VERSION} but "
-    "GSHTrans/src/Version.h declares ${_header_version}. Update both, "
+    "GSHTrans/Version.hpp declares ${_header_version}. Update both, "
     "including GSHTRANS_VERSION_STRING.")
 endif()
 if(NOT _version_header MATCHES "GSHTRANS_VERSION_STRING \"${PROJECT_VERSION}\"")
@@ -79,22 +79,44 @@ endif()
 #
 # All URLs are https. GaussQuad was previously fetched over SSH, which meant
 # the project could not be configured at all without GitHub keys.
+#
+# Which revision of each is fetched is a cache variable, and the default is
+# main. The four are one author's and move together, so on a development
+# branch tracking main is the point. It is wrong for a *release*: a tag that
+# fetches whatever main is that day does not name a state anyone can rebuild,
+# and an upstream change has already broken a tagged tree once. So the commit
+# that tags a release sets these four defaults to the commits it was tested
+# against, and the commit after it sets them back. They are cache variables
+# rather than literals so that the same thing can be done from outside, by
+# anyone who needs a build to stay still:
+#
+#   cmake -DGSHTRANS_FFTWPP_TAG=<commit> ...
+set(GSHTRANS_NUMERICCONCEPTS_TAG main CACHE STRING
+    "The NumericConcepts revision to fetch if none is installed")
+set(GSHTRANS_GAUSSQUAD_TAG main CACHE STRING
+    "The GaussQuad revision to fetch if none is installed")
+set(GSHTRANS_FFTWPP_TAG main CACHE STRING
+    "The FFTWpp revision to fetch if none is installed")
+set(GSHTRANS_INTERPOLATION_TAG main CACHE STRING
+    "The Interpolation revision to fetch if none is installed")
+mark_as_advanced(GSHTRANS_NUMERICCONCEPTS_TAG GSHTRANS_GAUSSQUAD_TAG
+                 GSHTRANS_FFTWPP_TAG GSHTRANS_INTERPOLATION_TAG)
 FetchContent_Declare(
   NumericConcepts
   GIT_REPOSITORY https://github.com/da380/NumericConcepts.git
-  GIT_TAG main
+  GIT_TAG ${GSHTRANS_NUMERICCONCEPTS_TAG}
   FIND_PACKAGE_ARGS)
 
 FetchContent_Declare(
   GaussQuad
   GIT_REPOSITORY https://github.com/da380/GaussQuad.git
-  GIT_TAG main
+  GIT_TAG ${GSHTRANS_GAUSSQUAD_TAG}
   FIND_PACKAGE_ARGS)
 
 FetchContent_Declare(
   FFTWpp
   GIT_REPOSITORY https://github.com/da380/FFTWpp.git
-  GIT_TAG main
+  GIT_TAG ${GSHTRANS_FFTWPP_TAG}
   FIND_PACKAGE_ARGS)
 
 FetchContent_MakeAvailable(NumericConcepts GaussQuad FFTWpp)
@@ -113,9 +135,10 @@ FetchContent_MakeAvailable(NumericConcepts GaussQuad FFTWpp)
 # NumericConcepts -- which is already here -- and is small. Off is a supported
 # configuration and the suite runs in it.
 #
-# Tracking main, like the three above. Interpolation's own README asks
-# consumers to pin a reviewed commit, which is right for a stranger and wrong
-# for four libraries with one author that move together.
+# Tracking main by default, like the three above. Interpolation's own README
+# asks consumers to pin a reviewed commit, which is right for a stranger and
+# wrong for four libraries with one author that move together -- except at a
+# release, which is what GSHTRANS_INTERPOLATION_TAG is for.
 option(GSHTRANS_WITH_INTERPOLATION
        "Radial resampling, built on da380/Interpolation" ON)
 
@@ -123,7 +146,7 @@ if(GSHTRANS_WITH_INTERPOLATION)
   FetchContent_Declare(
     Interpolation
     GIT_REPOSITORY https://github.com/da380/Interpolation.git
-    GIT_TAG main
+    GIT_TAG ${GSHTRANS_INTERPOLATION_TAG}
     FIND_PACKAGE_ARGS)
   FetchContent_MakeAvailable(Interpolation)
 endif()
@@ -147,15 +170,32 @@ endif()
 #
 # A note for whoever links this against a threaded BLAS: the matrix kernel
 # threads over orders itself, so the BLAS must be single-threaded when it
-# does. A BLAS on the same OpenMP runtime gets that for free; one with its own
-# pthread pool needs OPENBLAS_NUM_THREADS=1 or its equivalent.
+# does. A BLAS on the same OpenMP runtime is held to one thread by the library
+# itself; one with its own pthread pool is out of its reach and needs
+# OPENBLAS_NUM_THREADS=1 or its equivalent.
 set(GSHTRANS_WITH_BLAS AUTO CACHE STRING
     "Matrix transform kernel, built on a system BLAS (AUTO, ON, OFF)")
 set_property(CACHE GSHTRANS_WITH_BLAS PROPERTY STRINGS AUTO ON OFF)
 
+# The three states are compared as strings, so the other spellings CMake
+# accepts for a boolean have to be folded onto them first. Unfolded, "0" and
+# "FALSE" were neither "OFF" nor "ON" and so meant AUTO -- BLAS linked for a
+# caller who had asked for none -- and "1" and "TRUE" lost the hard failure
+# that ON exists to give. Anything else is refused rather than guessed at.
+string(TOUPPER "${GSHTRANS_WITH_BLAS}" _with_blas)
+if(_with_blas MATCHES "^(ON|1|TRUE|YES|Y)$")
+  set(_with_blas ON)
+elseif(_with_blas MATCHES "^(OFF|0|FALSE|NO|N)$")
+  set(_with_blas OFF)
+elseif(NOT _with_blas STREQUAL "AUTO")
+  message(FATAL_ERROR
+    "GSHTRANS_WITH_BLAS is \"${GSHTRANS_WITH_BLAS}\", "
+    "which is none of AUTO, ON and OFF.")
+endif()
+
 set(GSHTRANS_BLAS_FOUND OFF)
-if(NOT GSHTRANS_WITH_BLAS STREQUAL "OFF")
-  if(GSHTRANS_WITH_BLAS STREQUAL "ON")
+if(NOT _with_blas STREQUAL "OFF")
+  if(_with_blas STREQUAL "ON")
     find_package(BLAS REQUIRED)
   else()
     find_package(BLAS)
@@ -198,7 +238,23 @@ if(GSHTRANS_INSTALL)
   endforeach()
 endif()
 
-find_package(OpenMP REQUIRED)
+# OpenMP, which the library threads with and does not need.
+#
+# On by default, and then required: a build that asked for threads and did not
+# get them should say so at configure time and not by running on one core.
+# Off, every parallel region is a serial loop and every policy that asks for
+# threads gets one, with the same answers. That is a supported configuration,
+# and CI runs the suite in it: it is what makes a bare copy of the GSHTrans
+# directory usable with nothing but a compiler and FFTW, it builds where
+# OpenMP is awkward to come by, and it is the build to take to a debugger.
+#
+# Nothing is defined for the headers either way. They ask the compiler, through
+# _OPENMP, which is set exactly when the flag that enables OpenMP is given --
+# so there is no macro of ours to get out of step with it.
+option(GSHTRANS_WITH_OPENMP "Thread with OpenMP" ON)
+if(GSHTRANS_WITH_OPENMP)
+  find_package(OpenMP REQUIRED)
+endif()
 
 # The library itself: headers only.
 add_library(GSHTrans INTERFACE)
@@ -213,11 +269,14 @@ add_library(GSHTrans::GSHTrans ALIAS GSHTrans)
 target_link_libraries(GSHTrans INTERFACE
   NumericConcepts::NumericConcepts
   FFTWpp::FFTWpp
-  GaussQuad::GaussQuad
-  OpenMP::OpenMP_CXX)
+  GaussQuad::GaussQuad)
+
+if(GSHTRANS_WITH_OPENMP)
+  target_link_libraries(GSHTrans INTERFACE OpenMP::OpenMP_CXX)
+endif()
 
 # The optional half, and the macro that guards the headers using it. Carried
-# on the target rather than generated into a header, because Version.h is
+# on the target rather than generated into a header, because Version.hpp is
 # written by hand so that copying the GSHTrans directory remains a complete
 # way to vendor the library -- and a build-tree-generated header would break
 # exactly that. An INTERFACE definition is exported with the target, so an
@@ -255,20 +314,16 @@ if(GSHTRANS_INSTALL)
 
   install(TARGETS GSHTrans EXPORT GSHTransTargets)
 
-  # The public headers are included as <GSHTrans/Core>, so the whole GSHTrans
-  # directory goes to the include prefix as it stands. The extensionless
-  # umbrella headers have to be named one by one: FILES_MATCHING takes
-  # patterns, and there is no extension to match on.
+  # The public headers are included as <GSHTrans/GSHTrans.hpp>, so the whole
+  # GSHTrans directory goes to the include prefix as it stands. All and Core
+  # are the two forwarding headers kept for code written against the old
+  # layout; they have no extension, so they are named.
   install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/GSHTrans
           DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
           FILES_MATCHING
-            PATTERN "*.h"
+            PATTERN "*.hpp"
             PATTERN "All"
-            PATTERN "Core"
-            PATTERN "Field"
-            PATTERN "Tensor"
-            PATTERN "Expansion"
-            PATTERN "Layered")
+            PATTERN "Core")
 
   install(EXPORT GSHTransTargets
           FILE GSHTransTargets.cmake
@@ -306,7 +361,9 @@ if(PROJECT_IS_TOP_LEVEL)
   if(GSHTRANS_BUILD_EXAMPLES)
     add_subdirectory(examples)
   endif()
-  if(GSHTRANS_BUILD_BENCHMARKS)
+  # The benchmark measures threading and calls the OpenMP runtime directly, so
+  # without OpenMP there is nothing for it to be.
+  if(GSHTRANS_BUILD_BENCHMARKS AND GSHTRANS_WITH_OPENMP)
     add_subdirectory(benchmarks)
   endif()
   if(GSHTRANS_BUILD_TESTS)

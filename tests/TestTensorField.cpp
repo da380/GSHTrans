@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <array>
 #include <complex>
 #include <cstddef>
@@ -58,7 +58,7 @@ TEST(TensorField, StoresOneComponentPerOrbit) {
   static_assert(Elastic::StoredComponents == 21);
 
   auto grid = TestGrid();
-  const auto fieldSize = static_cast<Int>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
 
   auto t = Sym(grid);
   EXPECT_EQ(t.Size(), Sym::StoredComponents * fieldSize);
@@ -354,8 +354,9 @@ TEST(TensorField, TheAliasesPutTheGridFirst) {
 //--------------------------------------------------------------------------//
 
 // Components sharing an upper index have to be contiguous in the buffer, or
-// no (count, stride, dist) descriptor covers them and the batching step F
-// exists for is unreachable. This is the property the layout is chosen for.
+// no (count, stride, dist) descriptor covers them and the batching the
+// layout exists for is unreachable. This is the property the layout is chosen
+// for.
 TEST(TensorField, ComponentsSharingAnUpperIndexAreContiguous) {
   constexpr auto contiguousByUpperIndex = []<typename T>() {
     auto seen = std::ptrdiff_t{0};
@@ -535,7 +536,8 @@ TEST(TensorField, ComponentViewsAreStridedInPointMajor) {
   EXPECT_EQ(u.Stride(), PointMajorTensor::StoredComponents);
   EXPECT_EQ(u.Size(), t.FieldSize());
 
-  auto v = ComponentMajorTensor(grid).Component<0, 1>();
+  auto major = ComponentMajorTensor(grid);
+  auto v = major.Component<0, 1>();
   EXPECT_EQ(v.Stride(), 1);
 
   // A strided view is a node like any other: it evaluates, and it composes.
@@ -661,7 +663,7 @@ TEST(TensorField, ATangentialTensorHasTwoLettersPerSlot) {
 // tangential tensor for a radial component is a hard error inside the
 // multi-index constructor rather than an unsatisfied constraint -- and every
 // assertion below would be vacuous, because a requires-expression cannot see
-// a throw in a constant expression (see IsSlotLetter in MultiIndex.h).
+// a throw in a constant expression (see IsSlotLetter in MultiIndex.hpp).
 TEST(TensorField, ARadialComponentOfATangentialTensorIsNotAComponent) {
   static_assert(Tangential2::Represents<-1, 1>);
   static_assert(!Tangential2::Represents<0, 1>);

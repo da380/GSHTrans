@@ -23,7 +23,7 @@ the point rather than only asserting it.
 | `15-surface-gradient` | the contravariant derivative of P&B: what it is, and why it is not `ð` |
 | `16-layered-fields` | fields on a ball: slices, the radial axis as the batch axis, the radial seam, and the full gradient |
 | `17-tangential-tensors` | the bundle with no radial slot: what it saves, `Embed` and `Tangential`, and the derivative that is closed on it |
-| `18-radial-operators` | the seam, the operators that come ready made, and how to write your own |
+| `18-radial-operators` | the seam, the operators that come ready made, how to write your own, and working on radial lines without ever making the radius-major copy |
 | `19-layered-models` | elements and interfaces: a two-valued derivative at a discontinuity, and remeshing that does not cross one |
 | `20-transform-kernels` | the two Legendre kernels, why both are kept, what each refuses, and the one thing a threaded BLAS needs told |
 | `21-interpolation` | a field as a callable of the two angles: the exact scheme, the cheap ones, what the poles and the wrap need, and remeshing in one line |

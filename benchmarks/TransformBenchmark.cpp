@@ -16,7 +16,7 @@
 
 #include <omp.h>
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -66,7 +66,7 @@ long ResidentMegabytes() {
 //--------------------------------------------------------------------------//
 //
 // Printed at the top of every run. The numbers below are unreadable without
-// them -- step H already found that cores and hardware threads are different
+// them -- cores and hardware threads have already been found to be different
 // answers, and on a multi-socket machine the node count is a third. All of
 // this is Linux sysfs; elsewhere the fields come back unknown and the
 // benchmark still runs.
@@ -226,7 +226,7 @@ void PrintMachineFacts() {
 }
 
 // Powers of two up to the hardware thread count, with the physical core count
-// inserted -- step H found that the last doubling, from cores to threads, goes
+// inserted -- the last doubling, from cores to threads, was measured to go
 // the wrong way, so the ladder has to contain both to show it.
 std::vector<int> ThreadLadder() {
   const auto threads = HardwareThreads();
@@ -288,8 +288,8 @@ double TimePerCall(Action&& action, double target = 0.15, int windows = 5) {
 // ceiling is not one number on a multi-socket machine.
 //
 // The `touch` argument is the point. Pages are placed on the NUMA node of the
-// thread that first writes them, and `Wigner::_data` is a std::vector<Real>
-// built by its size constructor (Wigner.h:131), so the whole table is
+// thread that first writes them, and `Wigner::data_` is a std::vector<Real>
+// built by its size constructor, so the whole table is
 // zero-filled by the single constructing thread and lives on one node however
 // many nodes the machine has. Touching with one thread reproduces that;
 // touching with the full team is the roof the transform could reach if the
@@ -342,7 +342,7 @@ double ScanBandwidthGBs(double bytes, int threads, int touch, int windows = 5) {
   // thread this measured add latency and not memory at all: 12.7 GB/s against
   // a triad of 36.2 on the same machine, a threefold understatement. It came
   // right at four threads and above, where several chains overlap, which is
-  // why the figures section 10 quotes -- all taken at eight threads -- stand.
+  // why the published figures -- all taken at eight threads -- stand.
   // Any single-thread comparison made against the old column was wrong.
   const auto seconds = TimePerCall(
       [&] {
@@ -425,8 +425,8 @@ double TableMegabytes(Int lMax, Int nMax) {
 
 // The thread-scaling table, with both directions side by side.
 //
-// Side by side is the design, not the presentation. Step H left the lMax = 256
-// shortfall with two unseparated candidates -- thread-private accumulators
+// Side by side is the design, not the presentation. Threading left the lMax =
+// 256 shortfall with two unseparated candidates -- thread-private accumulators
 // competing for last-level cache, and a serialised reduction -- and later work
 // removed the second without being able to measure the first. The inverse
 // transform's colatitudes write disjoint rows of the field and share only
@@ -491,9 +491,11 @@ void RunScaling(Int lMax, Int nMax, int windows) {
 // The degrees the `server` section walks, chosen against the machine rather
 // than hard-coded. 128 to 512 everywhere; 1024 whenever there is room for its
 // 43 GB table, because that is the first point far enough past any last-level
-// cache to speak to step F'. lMax = 2048 is the `huge` section instead, named
-// explicitly: a 344 GB table takes half a minute just to zero, and its
-// single-threaded rows are minutes each.
+// cache to speak to whether generating the values beats storing them.
+// lMax = 1800 is the `huge` section instead, named explicitly: a 233 GB table
+// takes a good while just to zero, and its single-threaded rows are minutes
+// each. It was 2048, which is above MaxSafeDegree -- the table it timed was
+// silently wrong, and is now refused.
 std::vector<Int> ScalingDegrees() {
   auto degrees = std::vector<Int>{128, 256, 512};
   const auto available = MemAvailableMegabytes();
@@ -532,7 +534,7 @@ int main(int argc, char** argv) {
   // server runs were lost to exactly that: the source reached the machine with
   // an old timestamp, make saw nothing to do, and the log looked plausible
   // while being produced by the previous harness.
-  constexpr auto revision = 9;
+  constexpr auto revision = 11;
 
   if (argc == 2 && std::string(argv[1]) == "--check") {
     std::printf("harness revision %d\n", revision);
@@ -747,7 +749,7 @@ int main(int argc, char** argv) {
   //------------------------------------------------------------------------//
 
   if (Want("generated")) {
-    PrintHeader("Generated Wigner values against the stored table (step F')");
+    PrintHeader("Generated Wigner values against the stored table");
     std::printf(
         "The same recursion, the same order, the same values -- run inside "
         "the\n"
@@ -811,7 +813,7 @@ int main(int argc, char** argv) {
           lMax, n, FFTWpp::Measure, Chunking::Automatic(),
           WignerValues::Generated());
 
-      const auto fieldSize = static_cast<Int>(stored.FieldSize());
+      const auto fieldSize = stored.FieldSize();
       const auto coefficientSize =
           static_cast<Int>(stored.CoefficientSize(lMax, n));
 
@@ -878,7 +880,7 @@ int main(int argc, char** argv) {
 
 #ifdef GSHTRANS_HAVE_BLAS
   // Three requirements, each guarding a way this measurement can mislead, and
-  // section 11.4 states them as part of the step rather than as presentation.
+  // they are part of the measurement rather than of its presentation.
   //
   // -- Two tables, batched and unbatched, and not one with k as a row. The
   // restructure is predicted to buy nothing unbatched at high degree on many
@@ -912,7 +914,7 @@ int main(int argc, char** argv) {
                             "nothing at the roof");
       if (!batched) {
         std::printf(
-            "Section 12 predicts no gain here at high degree and many\n"
+            "The reference note predicts no gain here at high degree and many\n"
             "threads, because the loop kernel is already at the memory\n"
             "roof. The GB/s and roof columns are how to check that rather\n"
             "than take it on trust.\n\n");
@@ -938,7 +940,7 @@ int main(int argc, char** argv) {
                          WignerValues::Stored(), TransformKernel::Matrix());
         }
         const auto& any = wantLoop ? *loop : *matrix;
-        const auto fieldSize = static_cast<Int>(any.FieldSize());
+        const auto fieldSize = any.FieldSize();
         const auto coefficientSize =
             static_cast<Int>(any.CoefficientSize(lMax, n));
 
@@ -1086,7 +1088,8 @@ int main(int argc, char** argv) {
   if (Want("server")) {
     PrintHeader("Thread scaling to the full machine");
     std::printf(
-        "Step H's decomposition -- colatitudes, with a private accumulator "
+        "The loop kernel's decomposition -- colatitudes, with a private "
+        "accumulator "
         "per\n"
         "thread for the forward direction -- was measured to eight threads "
         "and\n"
@@ -1119,7 +1122,7 @@ int main(int argc, char** argv) {
     for (auto lMax : {Int{128}, Int{256}}) {
       const auto n = Int{2};
       auto grid = GaussLegendreGrid<Real, All, All>(lMax, n, FFTWpp::Measure);
-      const auto fieldSize = static_cast<Int>(grid.FieldSize());
+      const auto fieldSize = grid.FieldSize();
       const auto coefficientSize =
           static_cast<Int>(grid.CoefficientSize(lMax, n));
       const auto bytesPerField =
@@ -1177,14 +1180,131 @@ int main(int argc, char** argv) {
         "is what fixes it.\n");
   }
 
-  // Named explicitly or not run. A 344 GB table needs a machine that has it
+  //------------------------------------------------------------------------//
+  //              Radial lines: direct, or transform and transpose           //
+  //------------------------------------------------------------------------//
+  //
+  // A layered code wants its coefficients as radial lines, [(l,m)][r], and
+  // there are two ways to get them: transform to radius-major and transpose,
+  // or tell the transform its coefficient side is Batch::Interleaved(nR, nR)
+  // and let it write the lines itself (ExpandToLines, EvaluateLines). The
+  // second never makes the radius-major copy, which is its real merit. On
+  // *time* it was uneven on the development laptop, with a trap: the scatter
+  // has stride nR, and at lMax = 256 with nR = 64 and 128 under threads it
+  // lost by eight to twenty per cent -- a power-of-two stride landing
+  // successive writes in the same cache sets -- while at nR = 100 and 200 it
+  // won by twenty, and at lMax = 128 the matrix kernel won at every nR. With
+  // the loop kernel the routes are close, and the direct one slower at 128. So
+  // the radii here are chosen to show that, two powers of two and two not, and
+  // this section exists so that the answer for a particular machine can be had
+  // by asking.
+  //
+  // Nothing is allocated inside a timed region, in either route.
+  if (WantNamed("lines")) {
+    PrintHeader("Radial lines: direct transform against transform + transpose");
+    std::printf(
+        "B/A below one means the direct route is faster. Its saving in memory\n"
+        "is the radius-major expansion, which it never makes: the last "
+        "column.\n\n");
+    using Grid = GaussLegendreGrid<Real, All, All>;
+    using Field = LayeredSpinField<0, Grid>;
+    using Expansion = LayeredSpinExpansion<0, Grid>;
+    const auto cores = PhysicalCores();
+
+    for (auto lMax : {Int{128}, Int{256}}) {
+      for (auto matrix : {false, true}) {
+        // Without a BLAS the matrix kernel is absent and not merely
+        // disabled, so it cannot even be named.
+#ifdef GSHTRANS_HAVE_BLAS
+        const auto grid =
+            matrix ? Grid(lMax, 0, FFTWpp::Measure, Chunking::Automatic(),
+                          WignerValues::Stored(), TransformKernel::Matrix())
+                   : Grid(lMax, 0, FFTWpp::Measure);
+#else
+        if (matrix) continue;
+        const auto grid = Grid(lMax, 0, FFTWpp::Measure);
+#endif
+        for (auto threads : {1, cores}) {
+          const auto policy = threads > 1 ? Execution::Parallel(threads)
+                                          : Execution::Sequential();
+          std::printf("lMax %3ld, %s kernel, %d thread%s\n",
+                      static_cast<long>(lMax), matrix ? "matrix" : "loop",
+                      threads, threads == 1 ? "" : "s");
+          std::printf(
+              "    nR     forward A     B   B/A     inverse A     B   "
+              "B/A    saved\n");
+          for (auto nR : {Int{64}, Int{100}, Int{128}, Int{200}}) {
+            auto radii = std::vector<Real>{};
+            for (auto i = Int{0}; i < nR; ++i) {
+              radii.push_back(0.5 + 0.5 * static_cast<Real>(i) /
+                                        static_cast<Real>(nR - 1));
+            }
+            const auto radial = RadialGrid<Real>(radii);
+            auto field = Field(radial, grid);
+            auto j = Int{0};
+            for (auto& x : field.Data()) {
+              x = Complex{std::sin(1e-3 * static_cast<Real>(j)),
+                          std::cos(7e-4 * static_cast<Real>(j))};
+              ++j;
+            }
+
+            // Route A, with its buffers made once.
+            auto expansion = Expansion(radial, grid, lMax);
+            auto lines = RadialMajor(expansion, policy);
+            auto scratch = Field(radial, grid);
+            auto coefficients = expansion.Data();
+            auto samples = scratch.Data();
+            const auto forwardA = TimePerCall([&] {
+              grid.ForwardTransformation(lMax, 0, field.Data(), field.Batch(),
+                                         coefficients, expansion.Batch(),
+                                         policy);
+              lines.CopyFrom(expansion, policy);
+            });
+            const auto inverseA = TimePerCall([&] {
+              lines.CopyInto(expansion, policy);
+              grid.InverseTransformation(lMax, 0, expansion.Data(),
+                                         expansion.Batch(), samples,
+                                         scratch.Batch(), policy);
+            });
+
+            // Route B, into the same lines.
+            auto direct = lines.Data();
+            const auto forwardB = TimePerCall([&] {
+              grid.ForwardTransformation(lMax, 0, field.Data(), field.Batch(),
+                                         direct, lines.Batch(), policy);
+            });
+            const auto inverseB = TimePerCall([&] {
+              grid.InverseTransformation(lMax, 0, lines.Data(), lines.Batch(),
+                                         samples, scratch.Batch(), policy);
+            });
+
+            const auto savedMegabytes =
+                static_cast<double>(expansion.Size()) * sizeof(Complex) / 1e6;
+            std::printf(
+                "  %4ld   %9.2f %7.2f  %4.2f   %9.2f %7.2f  %4.2f   "
+                "%5.0f MB\n",
+                static_cast<long>(nR), forwardA * 1e3, forwardB * 1e3,
+                forwardB / forwardA, inverseA * 1e3, inverseB * 1e3,
+                inverseB / inverseA, savedMegabytes);
+          }
+          std::printf("\n");
+        }
+      }
+    }
+  }
+
+  // Named explicitly or not run. A 233 GB table needs a machine that has it
   // spare and nothing else running, and the single-threaded rows are minutes
   // each. Worth one run on a large server: it is far enough past last-level
   // cache that the stored path has no cache left to lose, which is the regime
-  // step F' argues from.
+  // the case for generating the values argues from. Just under MaxSafeDegree,
+  // which is 1827 in double precision.
   if (WantNamed("huge")) {
-    PrintHeader("Thread scaling at lMax = 2048");
-    if (AffordableAt(2048, 2)) RunScaling(2048, 2, Windows(2048));
+    constexpr auto hugeDegree = Int{1800};
+    PrintHeader("Thread scaling at lMax = 1800");
+    if (AffordableAt(hugeDegree, 2)) {
+      RunScaling(hugeDegree, 2, Windows(hugeDegree));
+    }
   }
 
   //------------------------------------------------------------------------//
@@ -1438,7 +1558,7 @@ int main(int argc, char** argv) {
         "\nBoth are the same measurement a caller would make at start-up, on\n"
         "their own problem shape. The point of the section is that the answer\n"
         "differs by machine, so it is worth re-running here rather than\n"
-        "reading the figures the plan quotes for a laptop.\n");
+        "reading the figures the reference note quotes for a laptop.\n");
   }
 
   if (Want("transforms")) {

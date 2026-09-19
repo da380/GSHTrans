@@ -4,7 +4,7 @@
 // algebra is lazy and needs no second expression system: what comes back from
 // a component is a spin field, and its index arithmetic is already checked.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <array>
 #include <cmath>
 #include <complex>

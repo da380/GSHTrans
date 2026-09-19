@@ -6,7 +6,7 @@
 // carries connection terms, because the canonical basis vectors themselves
 // vary over the sphere.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <iomanip>

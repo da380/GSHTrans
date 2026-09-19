@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <cstddef>
@@ -1067,9 +1067,10 @@ TEST(IntrinsicDerivative, IsClosedOnTheTangentialBundle) {
 //                    The bundle maps, in the spectral domain                //
 //--------------------------------------------------------------------------//
 
-// The identity the pair exists for, and the one that closes §1's split: the
-// intrinsic derivative *is* the tangential block of the ambient one. Written
-// as a single line of code, which is what having both maps buys.
+// The identity the pair exists for, and the one that closes the split between
+// the two derivatives: the intrinsic derivative *is* the tangential block of
+// the ambient one. Written as a single line of code, which is what having both
+// maps buys.
 TEST(BundleMaps, TheIntrinsicDerivativeIsTheTangentialAmbientOne) {
   constexpr auto lMax = Int{6};
   auto grid = Grid(lMax, 2, FFTWpp::Estimate);
@@ -1185,4 +1186,59 @@ TEST(BundleMaps, SymmetryAndRealitySurviveTheCrossing) {
           << "at l = " << l << ", m = " << m;
     }
   }
+}
+
+//--------------------------------------------------------------------------//
+//                  A tensor's component is an expansion too                 //
+//--------------------------------------------------------------------------//
+
+// Raise, Lower, Evaluate, Coefficient and the spectral interpolant took the
+// owning SpinExpansion and nothing else, so the coefficients of a tensor's
+// component -- which are a view over the tensor's storage, and the thing one
+// most often wants to raise -- had no overload. They are taken as anything
+// that holds the coefficients of one spin-weighted field.
+TEST(SpinExpansion, TheFreeFunctionsTakeATensorsComponent) {
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  using Vector = TensorExpansion<1, NoSymmetry<1>, ComplexTensor, Grid>;
+  auto v = Vector(grid, lMax);
+  for (Int j = 0; j < v.Size(); j++) {
+    v.Data()[j] = Complex{std::sin(0.3 * j), std::cos(0.17 * j)};
+  }
+
+  const auto& tensor = v;
+  const auto component = tensor.Component<1>();
+
+  // The same coefficients, owned.
+  auto owned = SpinExpansion<1, Grid>(grid, lMax);
+  for (auto l : owned.Degrees()) {
+    for (auto m : owned.Orders(l)) owned[l, m] = component[l, m];
+  }
+
+  const auto raised = Raise(component);
+  const auto wanted = Raise(owned);
+  for (auto l : wanted.Degrees()) {
+    for (auto m : wanted.Orders(l)) EXPECT_EQ((raised[l, m]), (wanted[l, m]));
+  }
+
+  const auto lowered = Lower(component);
+  const auto wantedLower = Lower(owned);
+  for (auto l : wantedLower.Degrees()) {
+    for (auto m : wantedLower.Orders(l)) {
+      EXPECT_EQ((lowered[l, m]), (wantedLower[l, m]));
+    }
+  }
+
+  EXPECT_EQ(Coefficient(component, 0, 0), Complex{});  // below |N|: zero
+  EXPECT_EQ(Coefficient(component, 3, -2), (owned[3, -2]));
+
+  const auto field = Evaluate(component);
+  const auto wantedField = Evaluate(owned);
+  for (auto [iTheta, iPhi] : grid.PointIndices()) {
+    EXPECT_EQ((field[iTheta, iPhi]), (wantedField[iTheta, iPhi]));
+  }
+
+  const auto at = Interpolate(component);
+  const auto wantedAt = Interpolate(owned);
+  EXPECT_EQ(at(1.1, 2.2), wantedAt(1.1, 2.2));
 }

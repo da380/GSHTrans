@@ -87,12 +87,12 @@ The single most useful statement for reading the code:
   $P^N_{lm} = d^l_{Nm}$ --- \emph{upper index first}.
 \end{quote}
 
-This is verified rather than assumed.  \code{tests/CheckWignerConvention.h}
+This is verified rather than assumed.  \code{tests/CheckWignerConvention.hpp}
 compares all nine $l=1$ values against D\&T (C.115); the check
 discriminates, because the four entries with $N-m$ odd distinguish
 $d^l_{Nm}$ from $d^l_{mN}$, which differ by $(-1)^{N-m}$.  Two further
 facts corroborate it: the recursion seed evaluates to D\&T (C.125), and
-\code{tests/CheckLegendre.h} pins the $N=0$ row against
+\code{tests/CheckLegendre.hpp} pins the $N=0$ row against
 \code{std::sph\_legendre}, fixing the orthonormal scaling and the
 Condon--Shortley phase.
 
@@ -319,7 +319,7 @@ D\&T (C.127),
   \label{eq:addition}
 \end{equation}
 This is the strongest available check on a computed table, and
-\code{tests/CheckAdditionTheorem.h} is it.  Because the library stores
+\code{tests/CheckAdditionTheorem.hpp} is it.  Because the library stores
 $X^N_{lm}$ rather than $P^N_{lm}$, the right-hand side there is
 $\delta_{NN'}(2l+1)/4\pi$.
 
@@ -846,6 +846,46 @@ belongs to the \emph{closed form}, which exponentiates a logarithm of size
 $O(l\log 4)$ and loses bits in proportion.  The recursion's values are the
 better ones, and the test's tolerance is written as $20\,l_{\max}
 \varepsilon$ for that reason.
+
+\paragraph{What it cannot do is go on for ever.}  ``Nothing large is ever
+formed'' has a converse: something small is.  The seed of the column at
+order $m$ is about $(\sin\theta)^m$, and the column grows back to order one
+only once $l\sin\theta$ reaches $m$.  A seed that has underflowed is
+harmless if its column never recovers within the table; it is fatal if the
+column does.  Both at once need $m\,|\ln\sin\theta| > |\ln\mathrm{min}|$ with
+$m < l_{\max}\sin\theta$, that is $l_{\max}\,s|\ln s| > |\ln\mathrm{min}|$ for
+some $s=\sin\theta$, and $s|\ln s|$ is greatest at $s=1/e$.  So the recursion
+is sound if and only if
+\begin{equation}
+  l_{\max} \;<\; e\,|\ln \mathrm{min}|,
+  \label{eq:safedegree}
+\end{equation}
+which is 1926 in double precision and 237 in single.  Measured as the defect
+of $\sum_m |d^l_{nm}|^2 = 1$ at $\theta=\arcsin(1/e)$, the table is right to
+$3\times10^{-13}$ at $l_{\max}=1830$, wrong in the ninth place at 1930 and in
+the third at 2000, the same for every $|n|\le4$; in single precision it is
+right at 240 and wrong at 250.  Above the bound whole columns come back zero
+where the truth is of order one, and nothing says so.
+
+The library therefore \emph{refuses} a table above
+$\lfloor e\,(|\ln\mathrm{min}| - |\ln\varepsilon|)\rfloor$ ---
+\code{MaxSafeDegree}, 1827 in double and 30747 in long double --- the
+$|\ln\varepsilon|$ keeping the seed out of the denormal range, where it loses
+bits before it loses everything.  The known cure, an integer exponent carried
+beside each column (Fukushima, \emph{J.\ Geod.}\ 86, 2012), is not built:
+nothing this library is used for comes near the bound.
+
+\paragraph{Single precision is recursed in double.}  Read naively,
+\eqref{eq:safedegree} would stop a single-precision grid at degree 194.  But
+single precision earns its place in the transform, where it halves the
+table's traffic and a field's memory, and earns nothing in a recursion that
+runs once.  So a \code{float} table is the \code{double} one, rounded:
+recursed in double into per-thread scratch and narrowed on store, by all
+three routes --- the stored table, the transform-major matrices, and the
+block a generating grid computes inside a transform --- which is also what
+keeps the stored and generated paths agreeing bit for bit.  The ceiling for
+\code{float} is then double's.  The recursion costs about one and a half
+times what it did, at construction.
 
 \subsection{The poles, and a data race}
 \label{sec:signgam}
@@ -1505,7 +1545,7 @@ scattered points the composite of the two beats either alone.
 \section{The 3-j symbols}
 \label{sec:threej}
 
-\code{3j.h} tabulates the whole $(m_1,m_3)$ plane at fixed degrees, with
+\code{3j.hpp} tabulates the whole $(m_1,m_3)$ plane at fixed degrees, with
 $m_2=-(m_1+m_3)$ fixed by the selection rule.  The table is the primitive: a
 single symbol costs one.
 
@@ -1522,10 +1562,20 @@ from both ends, matched where the halves overlap, and normalised from the
 unitary property $(2l_1+1)\sum_{m_2} g(m_2)^2 = 1$.  No closed-form seed is
 needed and no factorial is ever formed.
 
-Two details make it practical.  The turning point is found by watching the
-recurrence coefficient --- while $|c_1|$ decreases the run is heading towards
-larger values and is stable, and the first increase says to come from the
-other end --- rather than by locating it analytically.  And the phase is
+Three details make it practical.  The forward run stops where the
+\emph{values} first fall, and the backward run comes up to meet it: recursing
+towards larger values is what is stable, so the values are the thing to
+watch, and their first fall is the edge of the allowed region where there is
+one and the top of the hump in a near-stretched row, which has none.  SLATEC's
+\code{DRC3JM} watches the recurrence coefficient $|c_1|$ instead and stops at
+its first rise, and so did this.  That is a proxy --- good where there is an
+allowed region, since $|c_1|$ is least near the middle of one, and wrong in a
+near-stretched row, where its minimum is nowhere near the hump and one half
+is left to run downhill.  Downhill costs digits, $10^{-10}$ where $10^{-14}$
+was to be had; and where the halves ended more than $10^{154}$ apart the join
+overflowed and the table could not be built at all, which was 44 of 77 tables
+$(l,2l,l)$ up to $l=1000$.  The join is formed through \code{hypot}, so that
+the ratio of the halves is never squared.  And the phase is
 \emph{tracked} through the match rather than read back from
 $g(m_{2\max})$: a near-stretched row at high degree spans a dynamic range of
 $10^{201}$, so the rescaling flushes that element to zero and the sign with
@@ -1546,15 +1596,28 @@ scale or sign.  The check that sees everything is invariance under a cyclic
 permutation of the columns, which runs the recursion along entirely different
 lines: it agrees to $10^{-16}$ at $(200,200,200)$ and $10^{-15}$ at
 $(1000,1000,1999)$.  Racah is kept in the test tree as an independent formula,
-restricted to entries where its alternating sum is short and it is exact.
+restricted to entries where its alternating sum is short and it is exact ---
+which \emph{is} the stretched region, reached by whichever cyclic permutation
+puts the stretched degree third; against it the tables agree to the
+$10^{-12}$ that Racah's own logarithms allow.
 \eqref{eq:threejrec} is checked at run time, so a table that has gone wrong is
-refused rather than returned.
+refused rather than returned.  The tolerance of that check is measured and not
+chosen: the worst residual a good row leaves is two or three in units of
+$(n+1)\,\varepsilon$ times the row's scale, and the bound is fifty.  It was a
+thousand, a guess, under which a single-precision table wrong by a third of
+its own scale passed.
+
+Rows are computed in at least double precision whatever they are stored in.
+A three-term recurrence accumulates about $n^2\varepsilon$ along a row of $n$
+values however good the algorithm, which in single precision leaves two
+digits at $l=450$; the row was always a scratch buffer, so this costs the
+difference in its arithmetic and no memory.
 
 \section{Choosing a policy by measurement}
 \label{sec:tuning}
 
 Several of the library's choices are properties of the machine rather than of
-the mathematics, and cannot be settled by reasoning.  \code{Tuning.h} times
+the mathematics, and cannot be settled by reasoning.  \code{Tuning.hpp} times
 the alternatives on the caller's
 own problem and returns \emph{values} --- never a configured grid, so nothing
 is substituted silently, which matters most for the piece of machinery most

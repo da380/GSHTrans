@@ -4,7 +4,7 @@
 // conj(T^alpha). Storing one component per orbit of that relation costs
 // exactly the tensor's real degrees of freedom, and the rest are derived.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <iostream>

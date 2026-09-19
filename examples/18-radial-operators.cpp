@@ -16,7 +16,7 @@
 // Chebyshev, say, which would sit behind this same seam as a transform, a
 // multiply and a transform back. These are conveniences.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <iomanip>
@@ -175,6 +175,48 @@ int main() {
   }
   std::cout << "  (r^2 is degree two, so a five-point rule is exact on it and\n"
                "   the error is rounding rather than truncation)\n";
+
+  //------------------------------------------------------------------------//
+  // The same, with a radial line contiguous
+  //------------------------------------------------------------------------//
+
+  // ApplyRadially gathers each line out of radius-major storage, applies the
+  // operator and scatters the answer back, which is right when a line is
+  // touched once. A solver touches it many times -- an iteration, a
+  // factorisation applied again and again -- and then the layout to be in is
+  // the other one, [(l, m)][r], where a line is a contiguous vector.
+  //
+  // ExpandToLines transforms straight into that layout and EvaluateLines out
+  // of it, so the radius-major coefficients never exist: a whole copy saved,
+  // which at production sizes is gigabytes. RadialMajor(Expand(f)) gives the
+  // same numbers, bit for bit, by way of the copy.
+  auto lines = ExpandToLines(f, lMax, Execution::Parallel());
+  std::cout << "\nExpandToLines: " << lines.NumberOfLines() << " lines of "
+            << lines.NumberOfRadii() << " radii, each contiguous\n";
+
+  // In place, as often as is wanted. The operator is handed a scratch line
+  // when the two buffers are one, so it need not cope with its output being
+  // its input.
+  ApplyToLines(lines, lines, fd, Execution::Parallel());
+  ApplyToLines(lines, lines, fd, Execution::Parallel());
+  const auto curvature =
+      EvaluateLines(lines, grid, lMax, Execution::Parallel());
+
+  // Against the gathering route, which must agree exactly: the arithmetic is
+  // the same and only the copying moved. Under the same policy, that is. A
+  // threaded transform chunks its sums differently from a sequential one and
+  // may differ from it in the last bit, as any two orders of summation may,
+  // so the promise is between the two routes and not between two policies.
+  const auto expanded = Expand(f, lMax, Execution::Parallel());
+  const auto gathered = Evaluate(ApplyRadially(ApplyRadially(expanded, fd), fd),
+                                 Execution::Parallel());
+  auto worst = Real{0};
+  for (Int i = 0; i < curvature.Size(); i++) {
+    worst = std::max(worst, std::abs(curvature.Data()[i] - gathered.Data()[i]));
+  }
+  std::cout << "  d^2/dr^2 through the lines against through the gather: "
+            << "differ by " << worst << '\n';
+  if (worst != 0) return 1;
 
   return 0;
 }

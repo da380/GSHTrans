@@ -8,7 +8,7 @@
 // path the example draws the figure itself; otherwise the data file is there
 // to be plotted however you like.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>

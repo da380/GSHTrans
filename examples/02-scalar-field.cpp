@@ -3,7 +3,7 @@
 // The unit of the field algebra is a single field of definite upper index.
 // At upper index zero that is an ordinary scalar field, and it may be real.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <iostream>
 #include <numbers>

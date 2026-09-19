@@ -5,7 +5,7 @@
 // upper index is the signed sum of that multi-index -- which for rank two and
 // above are different things.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <complex>
 #include <iostream>
 

@@ -9,7 +9,13 @@ include(CMakeFindDependencyMacro)
 find_dependency(NumericConcepts)
 find_dependency(GaussQuad)
 find_dependency(FFTWpp)
-find_dependency(OpenMP)
+
+# OpenMP only when this build had it, for the reason given for the two below:
+# the exported target names OpenMP::OpenMP_CXX in that case and no other.
+set(GSHTRANS_WITH_OPENMP @GSHTRANS_WITH_OPENMP@)
+if(GSHTRANS_WITH_OPENMP)
+  find_dependency(OpenMP)
+endif()
 
 # Optional, and only when this build had it: the exported target names
 # Interpolation::Interpolation only in that case, so looking for it
@@ -17,6 +23,17 @@ find_dependency(OpenMP)
 set(GSHTRANS_WITH_INTERPOLATION @GSHTRANS_WITH_INTERPOLATION@)
 if(GSHTRANS_WITH_INTERPOLATION)
   find_dependency(Interpolation)
+endif()
+
+# The same for BLAS, which the exported target names as BLAS::BLAS when this
+# build found one. It was found rather than fetched, so the consumer finds it
+# again -- on the same machine that is the same library, and on another it is
+# whatever that machine has, which is what a system BLAS means. Left out, the
+# package resolved and then failed at generate time with a message about a
+# missing target, on exactly the machines that had a BLAS to offer.
+set(GSHTRANS_BLAS_FOUND @GSHTRANS_BLAS_FOUND@)
+if(GSHTRANS_BLAS_FOUND)
+  find_dependency(BLAS)
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/GSHTransTargets.cmake")

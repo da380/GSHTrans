@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <array>
 #include <complex>
 #include <cstddef>
@@ -406,6 +406,12 @@ TEST(TensorAlgebra, MaterialiseStoresOnlyWhatTheAskedSymmetryKeeps) {
 
 // The composite the whole layer exists for: an elastic tensor applied to a
 // strain, which is a double contraction of a tensor product.
+//
+// What this checks is the *shape* of the result -- ranks, upper indices -- and
+// that materialising agrees with the expression it materialises. It compares
+// the expression with itself, so it says nothing about the values; those are
+// checked against the double sum written out, and on a real tensor, in
+// TestTensorOrbitValues.cpp.
 TEST(TensorAlgebra, ElasticTensorAppliedToAStrain) {
   using C = TensorField<4, ElasticSymmetry, ComplexTensor, Grid>;
   using E = TensorField<2, Symmetric<2>, ComplexTensor, Grid>;
@@ -715,4 +721,228 @@ TEST(TensorAlgebra, ASpectralTensorIsNotATensorExpression) {
   static_assert(Materialisable<Field>);
   static_assert(!Materialisable<Expansion>);
   SUCCEED();
+}
+
+//--------------------------------------------------------------------------//
+//                 A sum whose terms are not all represented                 //
+//--------------------------------------------------------------------------//
+
+// "Not represented" means identically zero: the diagonal of an antisymmetric
+// tensor, a radial component of an embedded tangential one. A contraction or a
+// symmetrisation is a sum, and a zero term in a sum is a term to leave out --
+// not a reason to declare the whole sum unrepresented, which Materialise then
+// leaves at zero. It used to be exactly that, so a rotation applied to a
+// vector materialised as nothing at all.
+
+namespace {
+
+using Vector = TensorField<1, NoSymmetry<1>, ComplexTensor, Grid>;
+using Antisymmetric2 = TensorField<2, Antisymmetric<2>, ComplexTensor, Grid>;
+
+}  // namespace
+
+TEST(TensorAlgebra, AnAntisymmetricTensorActsOnAVector) {
+  auto grid = TestGrid();
+  auto a = Antisymmetric2(grid);
+  auto v = Vector(grid);
+  Fill<Antisymmetric2, -1, 0>(a, 1.0);
+  Fill<Antisymmetric2, -1, 1>(a, 3.0);
+  Fill<Antisymmetric2, 0, 1>(a, 5.0);
+  Fill<Vector, -1>(v, 7.0);
+  Fill<Vector, 0>(v, 9.0);
+  Fill<Vector, 1>(v, 11.0);
+
+  const auto& A = a;
+  const auto& V = v;
+  auto applied = Contract<1, 2>(TensorProduct(A, V));
+  static_assert(decltype(applied)::Rank == 1);
+  static_assert(decltype(applied)::Represents<-1>);
+  static_assert(decltype(applied)::Represents<0>);
+  static_assert(decltype(applied)::Represents<1>);
+
+  // (A.v)^i = sum_a (-1)^a A^{i a} v^{-a}, with A^{ii} = 0 and
+  // A^{ji} = -A^{ij}, written out.
+  const auto at = [&](const auto& field) { return Complex{field[2, 3]}; };
+  const auto Amz = at(A.Component<-1, 0>());
+  const auto Amp = at(A.Component<-1, 1>());
+  const auto Azp = at(A.Component<0, 1>());
+  const auto vm = at(V.Component<-1>());
+  const auto vz = at(V.Component<0>());
+  const auto vp = at(V.Component<1>());
+
+  // i = -1: a = 0 gives +A^{-0} v^0, a = +1 gives -A^{-+} v^-.
+  EXPECT_EQ(at(applied.Component<-1>()), Amz * vz - Amp * vm);
+  // i = 0: a = -1 gives -A^{0-} v^+ = +A^{-0} v^+, a = +1 gives -A^{0+} v^-.
+  EXPECT_EQ(at(applied.Component<0>()), Amz * vp - Azp * vm);
+  // i = +1: a = -1 gives -A^{+-} v^+ = +A^{-+} v^+, a = 0 gives
+  // +A^{+0} v^0 = -A^{0+} v^0.
+  EXPECT_EQ(at(applied.Component<1>()), Amp * vp - Azp * vz);
+
+  const auto stored = Materialise(applied);
+  EXPECT_EQ(at(stored.Component<0>()), Amz * vp - Azp * vm);
+}
+
+TEST(TensorAlgebra, AnEmbeddedTensorContractsOverTheSlotsItHas) {
+  auto grid = TestGrid();
+  auto u = Tangential1(grid);
+  auto v = Vector(grid);
+  Fill<Tangential1, -1>(u, 1.0);
+  Fill<Tangential1, 1>(u, 3.0);
+  Fill<Vector, -1>(v, 7.0);
+  Fill<Vector, 0>(v, 9.0);
+  Fill<Vector, 1>(v, 11.0);
+
+  const auto& U = u;
+  const auto& V = v;
+  // u . v = -u^- v^+ + u^0 v^0 - u^+ v^-, and an embedded u has no u^0.
+  auto dot = Contract<0, 1>(TensorProduct(Embed(U), V));
+  static_assert(decltype(dot)::Represents<>);
+  const auto at = [&](const auto& field) { return Complex{field[1, 2]}; };
+  EXPECT_EQ(at(dot.Component<>()),
+            -(at(U.Component<-1>()) * at(V.Component<1>())) -
+                at(U.Component<1>()) * at(V.Component<-1>()));
+
+  // And the trace of an embedded tensor is its tangential trace.
+  auto t = Tangential2(grid);
+  Fill<Tangential2, -1, 1>(t, 1.0);
+  Fill<Tangential2, 1, -1>(t, 3.0);
+  const auto& T = t;
+  auto embedded = Embed(T);
+  EXPECT_EQ(at(Trace(embedded)), at(Trace(T)));
+}
+
+TEST(TensorAlgebra, SymmetrisingKeepsTheTermsThatExist) {
+  auto grid = TestGrid();
+  auto u = Tangential1(grid);
+  auto v = Vector(grid);
+  Fill<Tangential1, -1>(u, 1.0);
+  Fill<Tangential1, 1>(u, 3.0);
+  Fill<Vector, 0>(v, 9.0);
+  const auto& U = u;
+  const auto& V = v;
+
+  // Sym(u v)^{-0} = (u^- v^0 + u^0 v^-) / 2, of which only the first exists.
+  auto symmetric = Symmetrise<Symmetric<2>>(TensorProduct(Embed(U), V));
+  static_assert(decltype(symmetric)::Represents<-1, 0>);
+  // A component none of whose terms exists is still not represented.
+  static_assert(!decltype(Symmetrise<Symmetric<2>>(
+      TensorProduct(Embed(U), Embed(U))))::Represents<0, 0>);
+
+  const auto at = [&](const auto& field) { return Complex{field[1, 2]}; };
+  EXPECT_EQ(at(symmetric.Component<-1, 0>()),
+            at(U.Component<-1>()) * at(V.Component<0>()) / Real{2});
+}
+
+//--------------------------------------------------------------------------//
+//                                 Lifetimes                                 //
+//--------------------------------------------------------------------------//
+
+namespace {
+
+// A product of two components, built from named views and returned. The views
+// die with this function, so the product must not refer to them.
+template <typename T>
+auto ProductOfNamedViews(const T& t) {
+  auto u = t.template Component<1>();
+  auto w = t.template Component<-1>();
+  return u * w;
+}
+
+using SymmetricComplex2 = TensorField<2, Symmetric<2>, ComplexTensor, Grid>;
+
+auto MakeStrain(const Grid& grid) {
+  auto e = SymmetricComplex2(grid);
+  Fill<SymmetricComplex2, -1, 1>(e, 2.0);
+  Fill<SymmetricComplex2, 0, 0>(e, 4.0);
+  return e;
+}
+
+template <typename T>
+concept ComponentOfATemporary =
+    requires { std::declval<T>().template Component<0, 0>(); };
+
+template <typename T>
+concept TraceOfATemporary = requires { Trace(std::declval<T>()); };
+
+}  // namespace
+
+TEST(TensorAlgebra, AnExpressionOfNamedViewsOwnsThem) {
+  // A view is a handle and not storage: cheap to copy, and natural to name. An
+  // expression holds it by value, so that naming one is not a trap. This read
+  // a dead stack frame -- a stack-use-after-return under the address
+  // sanitiser, and otherwise whatever happened to be there.
+  auto grid = TestGrid();
+  auto v = Vector(grid);
+  Fill<Vector, -1>(v, 7.0);
+  Fill<Vector, 1>(v, 11.0);
+  const auto& V = v;
+
+  auto product = ProductOfNamedViews(V);
+  SpinField<0, Grid> evaluated = product;
+  EXPECT_EQ((evaluated[2, 3]),
+            (V.Component<1>()[2, 3]) * (V.Component<-1>()[2, 3]));
+}
+
+TEST(TensorAlgebra, AComponentCannotOutliveTheStorageItNames) {
+  // A component is a view into the tensor's storage. Taken from a temporary
+  // tensor, or from an expression that has taken ownership of one, it names
+  // storage that is gone by the end of the statement -- so it is not
+  // offered. Taken from an expression over *named* tensors it names their
+  // storage, which is still there, and is as available as it ever was.
+  static_assert(!ComponentOfATemporary<SymmetricComplex2>);
+  static_assert(!ComponentOfATemporary<decltype(Transpose(
+                    std::declval<SymmetricComplex2>()))>);
+  static_assert(ComponentOfATemporary<decltype(Transpose(
+                    std::declval<const SymmetricComplex2&>()))>);
+
+  static_assert(!TraceOfATemporary<SymmetricComplex2>);
+  static_assert(TraceOfATemporary<const SymmetricComplex2&>);
+
+  // Named, it is fine, and that is the whole of the remedy.
+  auto grid = TestGrid();
+  const auto strain = MakeStrain(grid);
+  auto trace = Trace(strain);
+  EXPECT_EQ((trace[1, 1]), -(strain.Component<-1, 1>()[1, 1]) * Real{2} +
+                               (strain.Component<0, 0>()[1, 1]));
+}
+
+//--------------------------------------------------------------------------//
+//                       Which way a permutation goes                        //
+//--------------------------------------------------------------------------//
+
+namespace {
+
+template <auto Image, typename T>
+concept Permutable = requires(const T& t) { Permute<Image>(t); };
+
+}  // namespace
+
+TEST(TensorAlgebra, APermutationIsNotItsInverse) {
+  // Permute<Image>(T)^{a0 a1 a2} = T^{a_Image[0] a_Image[1] a_Image[2]}, so
+  // with Image = {1, 2, 0} the result R has R^{abc} = T^{bca}. A transposition
+  // or a product of disjoint ones is its own inverse and cannot tell this from
+  // the opposite convention; a three-cycle can.
+  using T3 = TensorField<3, NoSymmetry<3>, ComplexTensor, Grid>;
+  auto grid = TestGrid();
+  auto t = T3(grid);
+  Fill<T3, -1, 0, 1>(t, 5.0);
+  const auto& tensor = t;
+
+  auto cycled = Permute<std::array<Int, 3>{1, 2, 0}>(tensor);
+  // R^{abc} = T^{bca} = T^{-1,0,1} needs (b, c, a) = (-1, 0, 1).
+  EXPECT_EQ((cycled.Component<1, -1, 0>()[1, 2]),
+            (tensor.Component<-1, 0, 1>()[1, 2]));
+  // The inverse convention would put it here, where there is nothing.
+  EXPECT_EQ((cycled.Component<0, 1, -1>()[1, 2]), Complex{});
+
+  // The image may be written with plain ints, as the documentation does.
+  auto written = Permute<std::array{1, 2, 0}>(tensor);
+  EXPECT_EQ((written.Component<1, -1, 0>()[1, 2]),
+            (tensor.Component<-1, 0, 1>()[1, 2]));
+
+  // And it has to be a permutation.
+  static_assert(Permutable<std::array<Int, 3>{1, 2, 0}, T3>);
+  static_assert(!Permutable<std::array<Int, 3>{0, 0, 1}, T3>);
+  static_assert(!Permutable<std::array<Int, 3>{0, 1, 3}, T3>);
+  static_assert(!Permutable<std::array<Int, 2>{1, 0}, T3>);
 }

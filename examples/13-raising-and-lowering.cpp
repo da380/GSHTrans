@@ -5,7 +5,7 @@
 // algebra is local in (theta, phi), and these are local in (l, m), so "the
 // gradient of a product" is necessarily evaluated in both.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <iostream>

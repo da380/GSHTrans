@@ -10,7 +10,7 @@
 // from a list of numbers, and the one thing here that more than one facility
 // needs and none can infer.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <iomanip>

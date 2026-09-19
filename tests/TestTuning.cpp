@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <complex>
 #include <cstddef>
 #include <vector>
@@ -79,7 +79,7 @@ TEST(Tuning, ATunedGridAnswersIdentically) {
   constexpr auto count = Int{4};
 
   auto grid = TestGrid(lMax, n);
-  const auto fieldSize = static_cast<Int>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
   const auto coefficientSize = static_cast<Int>(grid.CoefficientSize(lMax, n));
 
   auto fields =
@@ -219,7 +219,7 @@ TEST(Tuning, TimesBothKernelsWhereBothExist) {
 #endif
 
 // Every candidate is a cache figure rather than a chunk, which is what lets
-// one answer serve every batch size (section 12.4).
+// one answer serve every batch size.
 TEST(Tuning, SweepsCacheFiguresAndTheyAreDistinct) {
   const auto candidates = TuningCacheCandidates();
   ASSERT_GE(candidates.size(), 4u);

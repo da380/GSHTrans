@@ -3,7 +3,7 @@
 // The grid is where everything starts: it fixes the point set, the quadrature
 // and the range of upper indices a field can carry.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <iostream>
 #include <numbers>
 

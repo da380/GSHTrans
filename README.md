@@ -20,12 +20,13 @@ The library is complete through the layers below.
   Legendre kernels are carried permanently, `TransformKernel::Loop()` and,
   where a BLAS is present, `TransformKernel::Matrix()` — the second worth 3–6×
   where it is worth anything and storing half the table, with the first kept
-  as its oracle. `Tuning.h` chooses between them by measuring the caller's own
+  as its oracle. `Tuning.hpp` chooses between them by measuring the caller's own
   problem.
 * **The field layer** — spin fields, tensor storage and algebra, the reality
   reduction, and the spectral side; the contravariant derivative, which is
   D&T's surface gradient; layered (three-dimensional) fields, the radial seam
-  and `RadialMajor`; tangential tensors, the intrinsic derivative and the
+  and `RadialMajor`, with `ExpandToLines` and `EvaluateLines` transforming
+  straight into and out of it; tangential tensors, the intrinsic derivative and the
   bundle maps; ready-made radial derivatives and resampling; the element
   partition on `RadialGrid`; and interpolation of a field as a callable of the
   two angles.
@@ -60,7 +61,8 @@ concept, which fixes `UpperIndex`, `Value`, the grid handle, `operator[](iTheta,
 iPhi)` returning by value, and `EvaluateInto(span)`. Operators return lazy
 nodes; evaluation happens on assignment, on `Materialise`, or on `Integrate`.
 
-`examples/FieldExample.cpp` is the worked version of the above.
+`examples/02-scalar-field.cpp` to `04-lazy-evaluation.cpp` are the worked
+version of the above; `examples/README.md` lists the whole series.
 
 ### The index rules
 
@@ -109,6 +111,8 @@ spectral layer instead.
 shared immutable implementation: copying one is a pointer copy, and two grids
 are the same grid when `Identity()` matches. It owns the quadrature, the Wigner
 table, and a per-thread cache of FFTW plans and their work buffers.
+`Grid::ReleaseThreadCaches()` gives the calling thread's back, which is what
+makes `FFTWpp::CleanUp()` callable again after a transform.
 
 * `GaussLegendreGrid(lMax, nMax, flag, chunking, values, kernel)` — a grid of
   that resolution.
@@ -120,6 +124,19 @@ table, and a per-thread cache of FFTW plans and their work buffers.
 the orders `m = ±lMax` are resolved separately. Samples are stored
 colatitude-major with longitude fastest: flat index `iTheta * nPhi + iPhi`.
 
+`Real` is `float`, `double` or `long double`, and **`lMax` has a ceiling**:
+`MaxSafeDegree<Real>()`, which is 1827 in `double` and 30747 in `long double`.
+The Wigner recursion is seeded with a value of about `(sin θ)^m`, which
+underflows; beyond `e·|ln min|` it underflows in a column that still matters,
+and the table is then wrong by order one without a word. A grid above the
+ceiling is refused. `float` shares `double`'s ceiling and not the 194 its own
+arithmetic would give, because a single-precision table is recursed in double
+and rounded: single precision is for what is stored and moved, which is where
+it pays, and the recursion runs once.
+
+Sizes and indices are signed, `std::ptrdiff_t` throughout. `std::size_t`
+appears only where a standard container is indexed.
+
 The transform primitive is **a batch of `k` same-spin fields**, with the single
 field as `k = 1`:
 
@@ -128,9 +145,18 @@ grid.ForwardTransformation(lMax, n, in, inBatch, out, outBatch, policy);
 grid.ForwardTransformation(lMax, n, in, out);   // the k = 1 wrapper
 ```
 
-* A batch is a `Batch{count, stride, dist}` — element `j` of field `k` lives at
-  `j * stride + k * dist`. `Batch::Contiguous`, `Batch::Interleaved` and
-  `Batch::Strided` name the usual cases. Fields and coefficients take separate
+* A batch is a count, a stride and a dist — element `j` of field `k` lives at
+  `j * stride + k * dist` — and is made by name: `Batch::Contiguous(count,
+  size)`, `Batch::Interleaved(count, stride)`, or `Batch::Strided(count,
+  stride, dist)` for a layout that is neither. Those are every layout that is
+  affine in the field index. For one that is not — storage with padding
+  between elements, some radii out of many — `Batch::At(offsets, stride,
+  size)` places each field where a table says, and `batch.Subset(which, size)`
+  is some fields of an existing batch:
+  `field.Batch().Subset(solidRadii, field.FieldSize())` transforms the solid
+  regions of a layered field and nothing else. Neither costs the transform
+  anything, since it gathers every field into its own scratch whatever the
+  layout. Fields and coefficients take separate
   descriptors, since `dist` differs between them.
 * A batch shares grid, degree **and upper index**: the Wigner block for that
   index is exactly what batching amortises. "Batch all my fields" is the
@@ -217,7 +243,7 @@ differently.
 ## Choosing a policy by measuring it
 
 Some of the library's choices cannot be settled by reasoning and vary by
-machine. `Tuning.h` times the alternatives on the caller's own problem and
+machine. `Tuning.hpp` times the alternatives on the caller's own problem and
 hands back **values**, never a configured grid — so nothing is substituted
 behind your back, which matters most for the thing most likely to substitute
 silently.
@@ -249,8 +275,8 @@ difference is picking noise.
 
 where `d^l_{Nm} = P^N_{lm}(cos θ)` is the generalised Legendre function of
 **Dahlen & Tromp (1998) eq. (C.115)** — **upper index first**. This is pinned
-by `tests/CheckWignerConvention.h` against the `l = 1` table, and corroborated
-by `tests/CheckLegendre.h`, which fixes the `N = 0` row against
+by `tests/CheckWignerConvention.hpp` against the `l = 1` table, and corroborated
+by `tests/CheckLegendre.hpp`, which fixes the `N = 0` row against
 `std::sph_legendre`.
 
 Values come from stable recurrence relations, computed in parallel over
@@ -259,7 +285,7 @@ Values come from stable recurrence relations, computed in parallel over
 
 ## Wigner 3-j symbols
 
-`3j.h` gives the coupling coefficients, which is what Gaunt integrals and
+`3j.hpp` gives the coupling coefficients, which is what Gaunt integrals and
 mode coupling need. The table is the primitive — a single symbol costs a whole
 table, so ask for the table:
 
@@ -303,8 +329,9 @@ cmake --build build -j
 cd build && ctest
 ```
 
-Requires a C++23 compiler (GCC 13+), CMake 3.20+, and a local FFTW. OpenMP is
-used for the parallel paths. `GaussQuad`, `FFTWpp`, `NumericConcepts` and
+Requires a C++23 compiler (GCC 13+ or Clang 18+), CMake 3.24+, and a local
+FFTW. OpenMP is used for the parallel paths and is optional: without it the
+library is the same library on one thread. `GaussQuad`, `FFTWpp`, `NumericConcepts` and
 `Interpolation` are looked for on the system and fetched by `FetchContent`
 only if they are not there. All four are header-only, and none of them brings
 Eigen: GaussQuad used to, and no longer does.
@@ -316,14 +343,16 @@ Eigen: GaussQuad used to, and no longer does.
 | `GSHTRANS_BUILD_BENCHMARKS` | `ON` | build `benchmarks/TransformBenchmark` |
 | `GSHTRANS_INSTALL` | `ON` when top level | generate the install and export rules |
 | `GSHTRANS_WITH_INTERPOLATION` | `ON` | radial resampling, spline derivatives, and the local interpolation schemes |
+| `GSHTRANS_WITH_OPENMP` | `ON` | thread with OpenMP. `OFF` builds the same library serially, and skips the benchmark, which measures threading |
 | `GSHTRANS_WITH_BLAS` | `AUTO` | the matrix transform kernel. `ON` fails the configure without a BLAS; `OFF` never looks |
 
 **Both optional dependencies are absent rather than disabled.** Without
 `Interpolation` there is no `Scheme::Bicubic()` to call and no
-`RadialSplineDerivative.h` to include; without a BLAS there is no
+`RadialSplineDerivative.hpp` to include; without a BLAS there is no
 `TransformKernel::Matrix()`. Asking for one is a compile error at the call
 site rather than a throw at run time, and CI builds with both off so that the
-claim is run rather than asserted — 344 tests there against 380.
+claim is run rather than asserted: the suite there is the same suite, less
+the tests of what is absent.
 
 ### Using it from another project
 
@@ -333,8 +362,26 @@ target_link_libraries(your_target PRIVATE GSHTrans::GSHTrans)
 ```
 
 `add_subdirectory` and `FetchContent` work too, and give the same target name.
-`GSHTrans/src/Version.h` defines `GSHTRANS_VERSION` for feature tests against
+`GSHTrans/Version.hpp` defines `GSHTRANS_VERSION` for feature tests against
 a particular release.
+
+Copying the `GSHTrans/` directory into a project is a third way, and a
+complete one, with two things to know since no build system is saying them.
+Threading follows the compiler: with `-fopenmp` or its equivalent the library
+is threaded, and without it the same code runs on one thread, silently and
+with no macro to set -- `GSHTrans::OpenMP::Available` says which was built.
+And the optional halves are switched on by macros that the CMake target
+defines and a bare copy does not: `GSHTRANS_HAVE_BLAS`, with a BLAS to link,
+for `TransformKernel::Matrix()`; and `GSHTRANS_HAVE_INTERPOLATION`, with
+`Interpolation` on the include path, for the local interpolation schemes,
+`SplineDerivative` and `Resample`. Without them the library is whole and those
+facilities are simply not there.
+
+A tagged release fetches the revisions of `NumericConcepts`, `GaussQuad`,
+`FFTWpp` and `Interpolation` it was tested against; a development branch
+tracks their `main`. Either can be overridden —
+`-DGSHTRANS_FFTWPP_TAG=<commit>` and its three siblings — by anyone who needs
+a build to stay still.
 
 `tests/package` is a standalone project that consumes the installed package;
 it is what CI uses to check that the export rules still produce something
@@ -351,9 +398,13 @@ waiting for the first consumer that does not already pull the missing include.
 
 The sanitiser jobs run `Debug` with **leak detection on**, which is not what a
 casual local run does; `scripts/test_sanitized.sh address` is the exact
-configuration and is worth using rather than a hand-rolled one. The clang leg
-is advisory and allowed to fail, since no clang OpenMP runtime is installed on
-the development machine — but it earns its place: it is what found a
+configuration and is worth using rather than a hand-rolled one. They run
+under GCC and under Clang, and every job but the one that builds with no
+optional dependencies has a BLAS and demands it, so the matrix kernel is
+built, run and sanitised there and not only on a developer's machine. The
+Clang jobs are required like the rest. No Clang OpenMP runtime is installed on
+the development machine, so CI is the only place they run — and they earn
+it: Clang is what found a
 `static constexpr bool` constraint whose later terms named members a
 non-spin-weighted operand does not have, which GCC accepted and clang did not.
 
@@ -379,13 +430,14 @@ without `NDEBUG`.
 ## Layout
 
 ```
-GSHTrans/Core          umbrella: grid, Wigner, indexing, policies, tuning, 3j
-GSHTrans/Field         umbrella: the spin-field algebra
-GSHTrans/Tensor        umbrella: tensor fields and their algebra
-GSHTrans/Expansion     umbrella: the spectral side
-GSHTrans/Layered       umbrella: three-dimensional fields
-GSHTrans/All           all of them
-GSHTrans/src/          the headers themselves
+GSHTrans/GSHTrans.hpp  the whole library; the header to include
+GSHTrans/Core.hpp      the core alone: grid, Wigner, indexing, policies, tuning, 3j
+GSHTrans/*.hpp         the core headers themselves
+GSHTrans/SpinField/    the spin-field algebra
+GSHTrans/Tensor/       tensor fields and their algebra
+GSHTrans/Expansion/    the spectral side
+GSHTrans/Layered/      three-dimensional fields
+GSHTrans/All, Core     forwarding headers, kept so that older code still builds
 docs/                  the theory note, the reference, the lessons
 tests/  examples/  benchmarks/  scripts/
 ```

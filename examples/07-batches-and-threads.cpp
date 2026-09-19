@@ -7,7 +7,7 @@
 // Batched is also the regime where the choice of Legendre kernel matters most,
 // and there are two -- see example 20.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <chrono>
 #include <cmath>
 #include <complex>
@@ -31,7 +31,7 @@ int main() {
   // figure and does better.
   auto grid = Grid(lMax, n, FFTWpp::Measure, Chunking::ForCache(Int{16} << 20));
 
-  const auto fieldSize = static_cast<Int>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
   const auto coefficientSize = static_cast<Int>(grid.CoefficientSize(lMax, n));
 
   auto fields = std::vector<Complex>(count * fieldSize);

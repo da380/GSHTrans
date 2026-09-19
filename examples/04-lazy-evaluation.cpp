@@ -4,7 +4,7 @@
 // until a value is asked for, so an intermediate is never materialised unless
 // you ask for it.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <iostream>

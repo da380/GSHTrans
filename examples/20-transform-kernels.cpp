@@ -19,7 +19,7 @@
 //      verified against the loop path on identical inputs.
 //
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <chrono>
 #include <cmath>
 #include <complex>
@@ -54,7 +54,7 @@ int main() {
   auto matrix = Grid(lMax, n, FFTWpp::Measure, Chunking::Automatic(),
                      WignerValues::Stored(), TransformKernel::Matrix());
 
-  const auto fieldSize = static_cast<Int>(loop.FieldSize());
+  const auto fieldSize = loop.FieldSize();
   const auto coefficientSize = static_cast<Int>(loop.CoefficientSize(lMax, n));
 
   auto fields = std::vector<Complex>(count * fieldSize);

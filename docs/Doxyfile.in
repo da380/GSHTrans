@@ -16,9 +16,9 @@ OUTPUT_DIRECTORY       = @DOXYGEN_OUTPUT_DIR@
 INPUT                  = @DOXYGEN_INPUT_DIR@
 RECURSIVE              = YES
 
-# The umbrella headers have no extension, so they need naming explicitly;
-# without this doxygen ignores them and the module groups have no home.
-FILE_PATTERNS          = *.h All Core Field Tensor Expansion Layered
+# All and Core are forwarding headers with no extension and nothing to
+# document, so only the real headers are read.
+FILE_PATTERNS          = *.hpp
 EXTENSION_MAPPING      = no_extension=C++
 
 # Documentation is written, not inferred. EXTRACT_ALL would paper over an
@@ -71,7 +71,7 @@ GENERATE_HTML          = YES
 
 # The mathematics is rendered by MathJax in the browser rather than by doxygen
 # shelling out to latex. There is a good deal of it -- the @f$...@f$ formulas
-# in Wigner.h, WignerMatrices.h and Policies.h among others -- and the latex
+# in Wigner.hpp, WignerMatrices.hpp and Policies.hpp among others -- and the latex
 # route needs a TeX installation present wherever the documentation is built,
 # which is a heavy dependency for a CI leg whose job is to check that every
 # entity is documented. MathJax needs nothing installed.
