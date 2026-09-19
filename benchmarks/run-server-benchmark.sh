@@ -28,6 +28,13 @@
 #          perCoreL3 / (2 * 16 * nCoefficients).
 #          The header records this machine's per-core L3, which is the input.
 #
+#   lines  Radial lines made directly by the transform, against transforming
+#          and then transposing. On the laptop the direct route won by twenty
+#          per cent at nR = 100 and 200 and *lost* by as much at 64 and 128,
+#          a power-of-two stride colliding in cache; with the threaded loop
+#          kernel it lost everywhere. Whether any of that holds with 256 MiB of
+#          L3 is what this run is for.
+#
 #   NUMA   Measured nowhere yet, and testable here for the first time. The
 #          Wigner table is a std::vector<Real> built by its size constructor
 #          (in Wigner's own constructor), so it is zero-filled by the single constructing
@@ -134,7 +141,7 @@ cmake --build "$build" --target TransformBenchmark -j "$(nproc)" || exit 1
 # reported "Built target" without compiling anything, and the log that came
 # back looked entirely plausible while having been produced by the previous
 # harness. Nothing in the output said so, which is the part worth fixing.
-expected=10
+expected=11
 got="$("$binary" --check 2>/dev/null | awk '/harness revision/ {print $3}')"
 if [ "${got:-0}" -lt "$expected" ]; then
   echo
@@ -190,15 +197,15 @@ run () {
 }
 
 run "Run 1 of 3 -- threads bound to cores, memory wherever it falls" \
-  env OMP_PROC_BIND=spread OMP_PLACES=cores "$binary" stream batching server
+  env OMP_PROC_BIND=spread OMP_PLACES=cores "$binary" stream batching server lines
 
 run "Run 2 of 3 -- unbound, which is what an unprepared caller gets" \
-  env OMP_PROC_BIND=false "$binary" stream batching server
+  env OMP_PROC_BIND=false "$binary" stream batching server lines
 
 if command -v numactl >/dev/null && [ "$(ls -d /sys/devices/system/node/node* 2>/dev/null | wc -l)" -gt 1 ]; then
   run "Run 3 of 3 -- pages interleaved across nodes, the NUMA control" \
     env OMP_PROC_BIND=spread OMP_PLACES=cores \
-    numactl --interleave=all "$binary" stream batching server
+    numactl --interleave=all "$binary" stream batching server lines
 else
   echo
   nodes="$(ls -d /sys/devices/system/node/node* 2>/dev/null | wc -l)"

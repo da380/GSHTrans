@@ -25,7 +25,8 @@ The library is complete through the layers below.
 * **The field layer** — spin fields, tensor storage and algebra, the reality
   reduction, and the spectral side; the contravariant derivative, which is
   D&T's surface gradient; layered (three-dimensional) fields, the radial seam
-  and `RadialMajor`; tangential tensors, the intrinsic derivative and the
+  and `RadialMajor`, with `ExpandToLines` and `EvaluateLines` transforming
+  straight into and out of it; tangential tensors, the intrinsic derivative and the
   bundle maps; ready-made radial derivatives and resampling; the element
   partition on `RadialGrid`; and interpolation of a field as a callable of the
   two angles.

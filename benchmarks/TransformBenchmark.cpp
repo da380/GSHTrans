@@ -289,7 +289,7 @@ double TimePerCall(Action&& action, double target = 0.15, int windows = 5) {
 //
 // The `touch` argument is the point. Pages are placed on the NUMA node of the
 // thread that first writes them, and `Wigner::data_` is a std::vector<Real>
-// built by its size constructor (Wigner.h:131), so the whole table is
+// built by its size constructor, so the whole table is
 // zero-filled by the single constructing thread and lives on one node however
 // many nodes the machine has. Touching with one thread reproduces that;
 // touching with the full team is the roof the transform could reach if the
@@ -534,7 +534,7 @@ int main(int argc, char** argv) {
   // server runs were lost to exactly that: the source reached the machine with
   // an old timestamp, make saw nothing to do, and the log looked plausible
   // while being produced by the previous harness.
-  constexpr auto revision = 10;
+  constexpr auto revision = 11;
 
   if (argc == 2 && std::string(argv[1]) == "--check") {
     std::printf("harness revision %d\n", revision);
@@ -1178,6 +1178,119 @@ int main(int argc, char** argv) {
         "being re-read. If `auto` sits well below the peak, the default cache\n"
         "figure is too conservative for this machine and Chunking::ForCache\n"
         "is what fixes it.\n");
+  }
+
+  //------------------------------------------------------------------------//
+  //              Radial lines: direct, or transform and transpose           //
+  //------------------------------------------------------------------------//
+  //
+  // A layered code wants its coefficients as radial lines, [(l,m)][r], and
+  // there are two ways to get them: transform to radius-major and transpose,
+  // or tell the transform its coefficient side is Batch::Interleaved(nR, nR)
+  // and let it write the lines itself (ExpandToLines, EvaluateLines). The
+  // second never makes the radius-major copy, which is its real merit. On
+  // *time* it was uneven on the development laptop, with a trap: the scatter
+  // has stride nR, and at lMax = 256 with nR = 64 and 128 under threads it
+  // lost by eight to twenty per cent -- a power-of-two stride landing
+  // successive writes in the same cache sets -- while at nR = 100 and 200 it
+  // won by twenty, and at lMax = 128 the matrix kernel won at every nR. With
+  // the loop kernel the routes are close, and the direct one slower at 128. So
+  // the radii here are chosen to show that, two powers of two and two not, and
+  // this section exists so that the answer for a particular machine can be had
+  // by asking.
+  //
+  // Nothing is allocated inside a timed region, in either route.
+  if (WantNamed("lines")) {
+    PrintHeader("Radial lines: direct transform against transform + transpose");
+    std::printf(
+        "B/A below one means the direct route is faster. Its saving in memory\n"
+        "is the radius-major expansion, which it never makes: the last "
+        "column.\n\n");
+    using Grid = GaussLegendreGrid<Real, All, All>;
+    using Field = LayeredSpinField<0, Grid>;
+    using Expansion = LayeredSpinExpansion<0, Grid>;
+    const auto cores = PhysicalCores();
+
+    for (auto lMax : {Int{128}, Int{256}}) {
+      for (auto matrix : {false, true}) {
+        // Without a BLAS the matrix kernel is absent and not merely
+        // disabled, so it cannot even be named.
+#ifdef GSHTRANS_HAVE_BLAS
+        const auto grid =
+            matrix ? Grid(lMax, 0, FFTWpp::Measure, Chunking::Automatic(),
+                          WignerValues::Stored(), TransformKernel::Matrix())
+                   : Grid(lMax, 0, FFTWpp::Measure);
+#else
+        if (matrix) continue;
+        const auto grid = Grid(lMax, 0, FFTWpp::Measure);
+#endif
+        for (auto threads : {1, cores}) {
+          const auto policy = threads > 1 ? Execution::Parallel(threads)
+                                          : Execution::Sequential();
+          std::printf("lMax %3ld, %s kernel, %d thread%s\n",
+                      static_cast<long>(lMax), matrix ? "matrix" : "loop",
+                      threads, threads == 1 ? "" : "s");
+          std::printf(
+              "    nR     forward A     B   B/A     inverse A     B   "
+              "B/A    saved\n");
+          for (auto nR : {Int{64}, Int{100}, Int{128}, Int{200}}) {
+            auto radii = std::vector<Real>{};
+            for (auto i = Int{0}; i < nR; ++i) {
+              radii.push_back(0.5 + 0.5 * static_cast<Real>(i) /
+                                        static_cast<Real>(nR - 1));
+            }
+            const auto radial = RadialGrid<Real>(radii);
+            auto field = Field(radial, grid);
+            auto j = Int{0};
+            for (auto& x : field.Data()) {
+              x = Complex{std::sin(1e-3 * static_cast<Real>(j)),
+                          std::cos(7e-4 * static_cast<Real>(j))};
+              ++j;
+            }
+
+            // Route A, with its buffers made once.
+            auto expansion = Expansion(radial, grid, lMax);
+            auto lines = RadialMajor(expansion, policy);
+            auto scratch = Field(radial, grid);
+            auto coefficients = expansion.Data();
+            auto samples = scratch.Data();
+            const auto forwardA = TimePerCall([&] {
+              grid.ForwardTransformation(lMax, 0, field.Data(), field.Batch(),
+                                         coefficients, expansion.Batch(),
+                                         policy);
+              lines.CopyFrom(expansion, policy);
+            });
+            const auto inverseA = TimePerCall([&] {
+              lines.CopyInto(expansion, policy);
+              grid.InverseTransformation(lMax, 0, expansion.Data(),
+                                         expansion.Batch(), samples,
+                                         scratch.Batch(), policy);
+            });
+
+            // Route B, into the same lines.
+            auto direct = lines.Data();
+            const auto forwardB = TimePerCall([&] {
+              grid.ForwardTransformation(lMax, 0, field.Data(), field.Batch(),
+                                         direct, lines.Batch(), policy);
+            });
+            const auto inverseB = TimePerCall([&] {
+              grid.InverseTransformation(lMax, 0, lines.Data(), lines.Batch(),
+                                         samples, scratch.Batch(), policy);
+            });
+
+            const auto savedMegabytes =
+                static_cast<double>(expansion.Size()) * sizeof(Complex) / 1e6;
+            std::printf(
+                "  %4ld   %9.2f %7.2f  %4.2f   %9.2f %7.2f  %4.2f   "
+                "%5.0f MB\n",
+                static_cast<long>(nR), forwardA * 1e3, forwardB * 1e3,
+                forwardB / forwardA, inverseA * 1e3, inverseB * 1e3,
+                inverseB / inverseA, savedMegabytes);
+          }
+          std::printf("\n");
+        }
+      }
+    }
   }
 
   // Named explicitly or not run. A 233 GB table needs a machine that has it

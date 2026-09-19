@@ -1,9 +1,10 @@
 # Plan: fixing the findings of the 2026-09-19 review
 
 Companion to `code-review.md`; finding labels (T1, L2, …) are the ones used
-there. The decisions table was settled on 2026-09-19; the phases are agreed in
-outline and each is started only on a go-ahead. Nothing in it has been
-started.
+there. **Status: complete.** Every phase below was carried out between 2026-09-19 and
+the end of that work, each behind its own commit; what each one did, and where
+it departed from what is written here, is in the Status section of
+`code-review.md`, which is the record. This file is kept as the plan it was.
 
 ## Ground rules
 

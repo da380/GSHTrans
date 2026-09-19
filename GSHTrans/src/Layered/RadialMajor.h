@@ -8,6 +8,7 @@
 #include <ranges>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -74,8 +75,31 @@ class RadialMajor {
     Transpose(stack.Data().data(), data_.data(), nR_, lines_, policy);
   }
 
+  /**
+   * @brief An empty buffer of a given shape, to be filled by whoever asked.
+   * @details For filling *directly* -- by a transform writing radial lines,
+   * which is what ExpandToLines does -- so that the radius-major stack this
+   * would otherwise be transposed from need never exist.
+   * @param radial The radial grid the lines run along.
+   * @param lines How many lines: one per element of a slice of the stack.
+   */
+  static RadialMajor OfShape(RadialGridType radial, Int lines) {
+    if (lines < 1) {
+      throw std::invalid_argument(
+          "A radial-major buffer needs at least one line");
+    }
+    const auto nR = radial.NumberOfRadii();
+    return RadialMajor(std::move(radial), nR, lines);
+  }
+
   /** @brief The radial grid the lines run along. */
   const RadialGridType& Radial() const { return radial_; }
+
+  /// The buffer as the transform's batch. Element j of radius i is at
+  /// j * nR + i, which is `nR` fields interleaved element by element -- so the
+  /// transform can read and write radial lines as they stand, and no
+  /// transpose is needed to get in or out of this layout.
+  auto Batch() const { return GSHTrans::Batch::Interleaved(nR_, nR_); }
   /** @brief How many radii the stack holds. */
   auto NumberOfRadii() const { return nR_; }
   /** @brief How many radial lines there are, one per element of a slice. */
@@ -253,6 +277,94 @@ void ApplyToLines(const RadialMajor<Stack>& in, RadialMajor<Stack>& out,
     }
     capture.Rethrow();
   }
+}
+
+//--------------------------------------------------------------------------//
+//                  Transforming straight into radial lines                  //
+//--------------------------------------------------------------------------//
+
+// Expand a layered field into radial lines, and evaluate radial lines into a
+// layered field, without the radius-major expansion ever existing.
+//
+// `RadialMajor(Expand(field))` makes the expansion and then a transposed copy
+// of it. These make only the copy: the transform is told that its coefficient
+// side is RadialMajor::Batch() and writes the lines itself. The numbers are
+// the same to the last bit, being one transform writing to a different place.
+//
+// **What this saves is memory, and it should be chosen for that.** One whole
+// set of coefficients: `nR * CoefficientSize * 16` bytes a scalar field, which
+// is 211 MB at lMax = 256 with 200 radii and 2.1 GB at lMax = 512 with 500.
+//
+// It does not reliably save time, and in one case it costs it. The transpose
+// is five to ten per cent of a transform, so that is the most there is to
+// win, and measured on a laptop it is won sequentially and with the matrix
+// kernel under threads, by fifteen to twenty-five per cent at lMax = 128 --
+// *but not always when nR is a power of two*. The scatter into this layout
+// has stride nR, and at lMax = 256 with nR = 64 and 128 under threads it ran
+// eight to twenty per cent *slower* than transform-and-transpose: successive
+// writes land in the same cache sets, which is the hazard the Fourier stage
+// guards against and the reason the transpose above is tiled. With the loop
+// kernel the two routes are within a few per cent, and at nR = 128 the direct
+// one was the slower by up to a sixth. So there is no rule
+// here simple enough to build in, and none is: where time matters more than
+// memory, measure both on the machine in question -- the benchmark's `lines`
+// section is that measurement.
+
+/**
+ * @brief The expansion of a layered field, as radial lines.
+ * @param field The field, radius-major as every layered field is.
+ * @param lMax The degree to expand to.
+ * @param policy Whether the transform may thread.
+ * @return What `RadialMajor(Expand(field, lMax))` holds, bit for bit.
+ */
+template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
+auto ExpandToLines(const LayeredSpinField<N, Grid, Value>& field,
+                   std::ptrdiff_t lMax,
+                   Execution policy = Execution::Sequential()) {
+  using Lines = RadialMajor<LayeredSpinExpansion<N, Grid, Value>>;
+  const auto& grid = field.Grid();
+  const auto size = std::same_as<Value, RealValued>
+                        ? grid.RealCoefficientSize(lMax)
+                        : grid.CoefficientSize(lMax, N);
+  auto lines = Lines::OfShape(field.Radial(), size);
+  auto out = lines.Data();
+  grid.ForwardTransformation(lMax, N, field.Data(), field.Batch(), out,
+                             lines.Batch(), policy);
+  return lines;
+}
+
+/**
+ * @brief The layered field whose expansion a set of radial lines is.
+ * @details A radial-major buffer is a shape and knows neither its angular grid
+ * nor its degree, so both are given. They are checked against the shape,
+ * which is all that can be checked.
+ * @param lines The coefficients, one line per (l, m).
+ * @param grid The angular grid to evaluate on.
+ * @param lMax The degree the lines were expanded to.
+ * @param policy Whether the transform may thread.
+ * @throws std::invalid_argument if the lines are not as many as that degree
+ * has coefficients.
+ */
+template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
+auto EvaluateLines(
+    const RadialMajor<LayeredSpinExpansion<N, Grid, Value>>& lines,
+    const Grid& grid, std::ptrdiff_t lMax,
+    Execution policy = Execution::Sequential()) {
+  const auto size = std::same_as<Value, RealValued>
+                        ? grid.RealCoefficientSize(lMax)
+                        : grid.CoefficientSize(lMax, N);
+  if (lines.NumberOfLines() != size) {
+    throw std::invalid_argument(
+        "These radial lines number " + std::to_string(lines.NumberOfLines()) +
+        ", and an expansion to degree " + std::to_string(lMax) + " has " +
+        std::to_string(size) +
+        " coefficients, so they were not expanded to that degree");
+  }
+  auto field = LayeredSpinField<N, Grid, Value>(lines.Radial(), grid);
+  auto out = field.Data();
+  grid.InverseTransformation(lMax, N, lines.Data(), lines.Batch(), out,
+                             field.Batch(), policy);
+  return field;
 }
 
 }  // namespace GSHTrans

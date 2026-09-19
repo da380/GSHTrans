@@ -328,9 +328,23 @@ Kept current as `fix-plan.md` is worked through. Anything not listed is open.
   with padding round-trips and leaves the padding alone, and a subset of a
   layered field's radii transforms those and no others.
 
+- **General batching, stage 2.** `RadialMajor::Batch()` is
+  `Batch::Interleaved(nR, nR)`, `RadialMajor::OfShape` makes an empty buffer,
+  and `ExpandToLines` / `EvaluateLines` transform straight into and out of
+  radial lines, so the radius-major expansion never exists. Bit-identical to
+  `RadialMajor(Expand(f))` — tested for complex and real-valued fields, both
+  kernels, sequential and threaded — and the lines go through `ApplyToLines`
+  and the operator-grid check as a transposed buffer does. Offered as the
+  route that saves *memory*, one whole set of coefficients, with no automatic
+  choice: on time the two routes are uneven and a power-of-two nR can make
+  the direct one slower, which the header says and the benchmark's new `lines`
+  section measures. `examples/18-radial-operators` shows it and checks itself
+  against the gathering route.
+
 **What is left of the review:** nothing in its High, Medium or Low lists is
 open except the items marked above as deliberately left. Phase 11 of the plan,
-general batching, is new work and not a finding.
+general batching, was new work and not a finding, and is also done: the plan is
+complete.
 
 ## Summary
 

@@ -2058,3 +2058,109 @@ TEST(RadialResample, ATargetInterfaceInsideASourcePieceStaysContinuous) {
 }
 
 #endif  // GSHTRANS_HAVE_INTERPOLATION
+
+//--------------------------------------------------------------------------//
+//                     Transforming straight into radial lines               //
+//--------------------------------------------------------------------------//
+
+// [(l, m)][r] is Batch::Interleaved(nR, nR), so the transform can write radial
+// lines directly and the radius-major expansion need never exist. That is a
+// saving in memory -- one whole copy of the coefficients -- and not reliably in
+// time, and either way it has to be *the same numbers*: not close, the same,
+// since both routes are one transform writing to two places.
+
+namespace {
+
+template <typename Field>
+void ExpectLinesMatchTheTranspose(const Field& field, const Grid& grid,
+                                  Int lMax, Execution policy) {
+  const auto viaTranspose = RadialMajor(Expand(field, lMax, policy));
+  const auto direct = ExpandToLines(field, lMax, policy);
+
+  ASSERT_EQ(direct.NumberOfRadii(), viaTranspose.NumberOfRadii());
+  ASSERT_EQ(direct.NumberOfLines(), viaTranspose.NumberOfLines());
+  EXPECT_EQ(direct.Radial().Identity(), field.Radial().Identity());
+  for (std::size_t i = 0; i < direct.Data().size(); i++) {
+    ASSERT_EQ(direct.Data()[i], viaTranspose.Data()[i]) << "element " << i;
+  }
+
+  // And back: the same field that evaluating the expansion gives.
+  const auto back = EvaluateLines(direct, grid, lMax, policy);
+  const auto wanted = Evaluate(Expand(field, lMax, policy), policy);
+  for (std::size_t i = 0; i < back.Data().size(); i++) {
+    ASSERT_EQ(back.Data()[i], wanted.Data()[i]) << "sample " << i;
+  }
+}
+
+std::vector<Grid> LayeredKernels(Int lMax) {
+  auto grids = std::vector<Grid>{Grid(lMax, 2, FFTWpp::Estimate)};
+#ifdef GSHTRANS_HAVE_BLAS
+  grids.push_back(Grid(lMax, 2, FFTWpp::Estimate, Chunking::Automatic(),
+                       WignerValues::Stored(), TransformKernel::Matrix()));
+#endif
+  return grids;
+}
+
+}  // namespace
+
+TEST(RadialMajor, ExpandingToLinesIsTheTransposeOfExpanding) {
+  constexpr auto lMax = Int{10};
+  for (const auto& grid : LayeredKernels(lMax)) {
+    const auto radial = Radii(9);
+
+    auto complexField = LayeredSpinField<1, Grid>(radial, grid);
+    auto realField = LayeredSpinField<0, Grid, RealValued>(radial, grid);
+    auto j = Int{0};
+    for (auto& x : complexField.Data()) {
+      x = Complex{std::sin(0.013 * static_cast<Real>(j)),
+                  std::cos(0.007 * static_cast<Real>(j))};
+      j++;
+    }
+    for (auto& x : realField.Data())
+      x = std::sin(0.011 * static_cast<Real>(j++));
+
+    for (auto policy : {Execution::Sequential(), Execution::Parallel(4)}) {
+      ExpectLinesMatchTheTranspose(complexField, grid, lMax, policy);
+      ExpectLinesMatchTheTranspose(realField, grid, lMax, policy);
+    }
+  }
+}
+
+TEST(RadialMajor, LinesMadeDirectlyAreLinesLikeAnyOthers) {
+  // They carry the radial grid, so an operator is checked against it, and
+  // they go through ApplyToLines as a transposed buffer does.
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  const auto radial = Radii(17);
+  auto field = LayeredSpinField<0, Grid>(radial, grid);
+  auto j = Int{0};
+  for (auto& x : field.Data()) {
+    x = Complex{std::sin(0.01 * static_cast<Real>(j)), 0.3};
+    j++;
+  }
+
+  auto lines = ExpandToLines(field, lMax);
+  const auto ddr = FiniteDifferenceDerivative<Real>(radial, 2);
+  auto viaLines = lines.SameShape();
+  ApplyToLines(lines, viaLines, ddr);
+
+  const auto viaGather = RadialMajor(ApplyRadially(Expand(field, lMax), ddr));
+  for (std::size_t i = 0; i < viaLines.Data().size(); i++) {
+    ASSERT_EQ(viaLines.Data()[i], viaGather.Data()[i]) << "element " << i;
+  }
+
+  const auto elsewhere =
+      FiniteDifferenceDerivative<Real>(Radii(17, 0.1, 0.6), 2);
+  EXPECT_THROW(ApplyToLines(lines, viaLines, elsewhere), std::invalid_argument);
+}
+
+TEST(RadialMajor, EvaluatingLinesNeedsTheDegreeTheyWereExpandedTo) {
+  // The buffer is a shape and knows neither its grid nor its degree, so both
+  // are given, and a degree that does not fit the shape is refused.
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto field = LayeredSpinField<0, Grid>(Radii(5), grid);
+  const auto lines = ExpandToLines(field, lMax);
+  EXPECT_NO_THROW(EvaluateLines(lines, grid, lMax));
+  EXPECT_THROW(EvaluateLines(lines, grid, lMax - 1), std::invalid_argument);
+}
