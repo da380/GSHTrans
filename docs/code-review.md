@@ -155,6 +155,25 @@ Kept current as `fix-plan.md` is worked through. Anything not listed is open.
   - `GSHTRANS_TEST_THOROUGH=1` runs the full acceptance sweeps; the default
     suite runs a thinned set that still includes the first failures.
 
+- **W2, and the Wigner half of W3 — fixed** (plan Phase 6b; see
+  `large-degree-note.md`).
+  - `MaxSafeDegree<Real>()` is ⌊e (|ln min| − |ln ε|)⌋, computed from the
+    floating-point format: 1827 in double, 30747 in long double. `Wigner`,
+    `WignerMatrices` and `SphericalGrid::Impl` throw above it — the last
+    because a generating grid has no table to do the refusing. The table is
+    still unitary to 1e-11 *at* the limit, at the worst colatitude asin(1/e).
+  - Single precision is recursed in double and narrowed
+    (`WignerRecursionReal`, `WignerDetails::FillBlock`), by all three routes:
+    the stored table, the transform-major matrices, and a generating grid's
+    per-thread block. Its limit is therefore double's and not 194. A `float`
+    grid at lMax = 288 round-trips to 8e-4, where it was wrong by 13, and at
+    320 to 1e-3 where it was wrong by 3e11; stored and generated still agree
+    bit for bit, which is tested. `double` and `long double` tables are
+    unchanged to the bit, checked by hashing whole tables before and after.
+  - The seed row forms its binomial directly while it fits (|n| ≤ 508 in
+    double) and from logarithms above, so n = 600 at lMax = 700 is finite and
+    unitary where two thirds of it was not.
+
 ## Summary
 
 The numerical core is in good shape. The loop and matrix kernels, the batching

@@ -1747,12 +1747,16 @@ class SphericalGrid {
 
     const auto size =
         static_cast<std::size_t>(GSHIndices<MRange_>(lMax, lMax, n).Size());
+    // Through FillBlock, as the stored table is, so that a single-precision
+    // block is the same rounded double whichever route it came by: the two
+    // paths agreeing to the bit is tested, and depends on it.
+    using Work = WignerRecursionReal<Real>;
     auto& scratch = WignerScratch(size);
-    WignerDetails::ComputeBlock(
+    WignerDetails::FillBlock(
         GSHView<Real, MRange_>(lMax, lMax, n, scratch.data()), n,
-        impl_->coLatitudes[static_cast<std::size_t>(iTheta)],
-        std::span<const Real>(impl_->sqrtInt),
-        std::span<const Real>(impl_->sqrtIntInv));
+        static_cast<Work>(impl_->coLatitudes[static_cast<std::size_t>(iTheta)]),
+        std::span<const Work>(impl_->sqrtInt),
+        std::span<const Work>(impl_->sqrtIntInv));
     return ConstGSHView<Real, MRange_>(lMax, lMax, n, scratch.data());
   }
 
@@ -1906,6 +1910,10 @@ class SphericalGrid {
             "zero, and this one is " +
             std::to_string(lMax));
       }
+      // Here as well as in the tables, because a generating grid builds no
+      // table and would otherwise run the recursion past its range inside
+      // every transform.
+      WignerDetails::CheckSafeDegree<Real>(lMax);
       if (std::abs(nMax) > lMax) {
         throw std::invalid_argument(
             "A grid's maximum upper index cannot exceed its maximum degree, "
@@ -2009,7 +2017,7 @@ class SphericalGrid {
       // both would double 648 MB for nothing.
       if (!values.AreStored()) {
         std::tie(sqrtInt, sqrtIntInv) =
-            WignerDetails::PreComputeTables<Real>(lMax, lMax, nMax);
+            WignerDetails::PreComputeRecursionTables<Real>(lMax, lMax, nMax);
       } else if (kernel.IsMatrix()) {
         // Reflected: non-negative orders only, halving 648 MB to 324 at
         // lMax = 256 with nMax = 2. What makes it available is that the nodes
@@ -2050,8 +2058,10 @@ class SphericalGrid {
     std::optional<WignerMatrices<Real, MRange_, NRange_>> wignerMatrices;
 
     // Empty on a stored grid, whose table already carries what these are for.
-    std::vector<Real> sqrtInt;
-    std::vector<Real> sqrtIntInv;
+    // In the precision the recursion runs in, which for a single-precision
+    // grid is double: see WignerRecursionReal.
+    std::vector<WignerRecursionReal<Real>> sqrtInt;
+    std::vector<WignerRecursionReal<Real>> sqrtIntInv;
   };
 
   std::shared_ptr<const Impl> impl_;

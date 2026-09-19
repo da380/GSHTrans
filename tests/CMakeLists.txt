@@ -37,6 +37,10 @@ add_executable(TestTensorReality
                TestTensorReality.cpp)
 target_link_libraries(TestTensorReality PRIVATE GSHTrans gtest_main)
 
+add_executable(TestLargeDegree
+               TestLargeDegree.cpp)
+target_link_libraries(TestLargeDegree PRIVATE GSHTrans gtest_main)
+
 add_executable(TestPreconditions
                TestPreconditions.cpp)
 target_link_libraries(TestPreconditions PRIVATE GSHTrans gtest_main)
@@ -157,6 +161,7 @@ gtest_discover_tests(TestTensorAlgebra)
 gtest_discover_tests(TestTensorReality)
 gtest_discover_tests(TestTensorOrbitValues)
 gtest_discover_tests(TestPreconditions)
+gtest_discover_tests(TestLargeDegree)
 gtest_discover_tests(TestExpansion)
 gtest_discover_tests(TestInterpolate)
 gtest_discover_tests(TestTuning)

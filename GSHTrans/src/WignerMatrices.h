@@ -115,6 +115,7 @@ class WignerMatrices {
         reflected_{reflected} {
     if (lMax < 0)
       throw std::invalid_argument("Maximum degree must be positive");
+    WignerDetails::CheckSafeDegree<Real>(lMax);
     if (mMax < 0 || mMax > lMax) {
       throw std::invalid_argument(
           "Maximum order must lie between zero and the maximum degree");
@@ -289,10 +290,14 @@ class WignerMatrices {
   template <std::ranges::range Range>
   requires RealFloatingPoint<std::ranges::range_value_t<Range>>
   void ComputeAll(Range &&thetaRange) {
+    // Recursed in at least double and narrowed at the scatter below; see
+    // WignerRecursionReal. The block was always computed into scratch here,
+    // so for single precision this is a change of the scratch's type.
+    using Work = WignerRecursionReal<Real>;
     const auto [sqrtInt, sqrtIntInv] =
-        WignerDetails::PreComputeTables<Real>(lMax_, mMax_, nMax_);
-    const auto sqrtIntView = std::span<const Real>(sqrtInt);
-    const auto sqrtIntInvView = std::span<const Real>(sqrtIntInv);
+        WignerDetails::PreComputeRecursionTables<Real>(lMax_, mMax_, nMax_);
+    const auto sqrtIntView = std::span<const Work>(sqrtInt);
+    const auto sqrtIntInvView = std::span<const Work>(sqrtIntInv);
 
     // The largest (n, theta) block is the one at the smallest |n|, since a
     // block starts at degree |n|. One scratch buffer of that size per thread.
@@ -313,7 +318,7 @@ class WignerMatrices {
     auto capture = Details::ExceptionCapture{};
 #pragma omp parallel if (!nested)
     {
-      auto scratch = std::vector<Real>{};
+      auto scratch = std::vector<Work>{};
       capture.Run([&] { scratch.resize(scratchSize); });
 
 #pragma omp for schedule(static)
@@ -328,8 +333,9 @@ class WignerMatrices {
           // already the stored value sqrt((2l+1)/(4 pi)) d^l_{nm}.
           auto indices = GSHIndices<MRange>(lMax_, mMax_, n);
           WignerDetails::ComputeBlock(
-              GSHView<Real, MRange>(lMax_, mMax_, n, scratch.data()), n,
-              thetaRange[iTheta], sqrtIntView, sqrtIntInvView);
+              GSHView<Work, MRange>(lMax_, mMax_, n, scratch.data()), n,
+              static_cast<Work>(thetaRange[iTheta]), sqrtIntView,
+              sqrtIntInvView);
 
           // Scatter: (l, m) in the block goes to column iTheta of matrix (n,
           // m).
@@ -341,7 +347,7 @@ class WignerMatrices {
               data_[offset_[OffsetIndex(n, m)] +
                     static_cast<std::size_t>((l - MinDegree(n, m)) * nTheta +
                                              iTheta)] =
-                  scratch[blockOffset + sub.Index(m)];
+                  static_cast<Real>(scratch[blockOffset + sub.Index(m)]);
             }
           }
         });

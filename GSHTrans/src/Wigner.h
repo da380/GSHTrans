@@ -47,6 +47,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -56,6 +57,62 @@
 #include "Views.h"
 
 namespace GSHTrans {
+
+/**
+ * @brief The precision the Wigner recursion is *run* in, for values stored in
+ * @p Real: at least double.
+ *
+ * @details Single precision is worth having for what is stored and moved --
+ * half the table's traffic, half a field's memory -- and buys nothing in a
+ * recursion that runs once, where it costs a great deal: the recursion's
+ * range is the range of its arithmetic, and in single precision that ends
+ * near degree 240. So a single-precision table is the double-precision one,
+ * rounded. Double and long double are recursed in themselves, and nothing
+ * about them changes.
+ */
+template <RealFloatingPoint Real>
+using WignerRecursionReal =
+    std::conditional_t<(std::numeric_limits<Real>::digits <
+                        std::numeric_limits<double>::digits),
+                       double, Real>;
+
+/**
+ * @brief The largest degree at which a table of Wigner functions is right.
+ *
+ * @details The recursion in degree is seeded at @f$l = |m|@f$ with a value of
+ * about @f$(\sin\theta)^m@f$, and the column it starts grows back to order one
+ * only once @f$l \sin\theta@f$ reaches @f$m@f$. A seed that has underflowed
+ * *and* still matters therefore needs
+ * @f$l_{\max}\, s|\ln s| > |\ln \mathrm{min}|@f$ for some
+ * @f$s = \sin\theta@f$, and @f$s|\ln s|@f$ is largest at @f$s = 1/e@f$: the
+ * plain recursion is safe if and only if
+ * @f$l_{\max} < e\,|\ln \mathrm{min}|@f$. Measured, that puts the onset
+ * within a per cent -- 1926 in double, where the table is right at 1900 and
+ * wrong in the ninth place at 1930, and by order one at 3000.
+ *
+ * What is returned is a little less,
+ * @f$\lfloor e\,(|\ln \mathrm{min}| - |\ln \epsilon|) \rfloor@f$, which
+ * keeps the seed above @f$\mathrm{min}/\epsilon@f$ and so out of the denormal
+ * range, where it loses bits before it loses everything: 1827 in double and
+ * 30747 in long double. Single precision is recursed in double (see
+ * WignerRecursionReal) and so shares double's limit and not the 194 its own
+ * arithmetic would give.
+ *
+ * Above this a table is refused. The cure, an exponent carried beside each
+ * column (Fukushima, J. Geod. 86, 2012), is known and not built: nothing
+ * this library is used for comes near the limit.
+ */
+template <RealFloatingPoint Real>
+constexpr std::ptrdiff_t MaxSafeDegree() {
+  using Work = WignerRecursionReal<Real>;
+  // |ln min| - |ln eps| in units of ln 2, exactly, from the format:
+  // min = 2^(min_exponent - 1) and eps = 2^(1 - digits).
+  constexpr auto bits = 2 - std::numeric_limits<Work>::min_exponent -
+                        std::numeric_limits<Work>::digits;
+  return static_cast<std::ptrdiff_t>(std::numbers::e_v<long double> *
+                                     std::numbers::ln2_v<long double> *
+                                     static_cast<long double>(bits));
+}
 
 namespace WignerDetails {
 
@@ -314,19 +371,60 @@ constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
     auto iter = d[l].begin();
     auto finish = d[l].end();
 
-    // C(2l, l+m) at the first order stored, formed by the same step.
-    auto binomial = static_cast<Real>(1);
-    for (auto k = Int{1}; k <= l + m; k++) {
-      binomial *= static_cast<Real>(2 * l - k + 1) / static_cast<Real>(k);
-    }
+    // The binomial itself is formed only while it fits. C(2l, l) is about
+    // 4^l, so past l = max_exponent / 2 it overflows before its root is taken
+    // -- |n| above 508 in double -- and the row, and everything recursed from
+    // it, came back non-finite. Beyond that the entry is formed from
+    // logarithms instead: the binomial's as a running sum, which needs no
+    // lgamma, and the two that Arguments already carries. That is accurate
+    // and not exact, which is why it is not simply used throughout: every
+    // table anyone has built sits below the switch, and stays bit for bit
+    // what it was.
+    constexpr auto directLimit =
+        static_cast<Int>((std::numeric_limits<Real>::max_exponent - 8) / 2);
 
-    while (iter != finish) {
-      const auto root = std::sqrt(binomial);
-      *iter++ = n >= 0 ? root * IntegerPower(s, l - m) * IntegerPower(c, l + m)
-                       : MinusOneToPower<Real>(l - m) * root *
-                             IntegerPower(s, l + m) * IntegerPower(c, l - m);
-      binomial *= static_cast<Real>(l - m) / static_cast<Real>(l + m + 1);
-      m++;
+    if (l <= directLimit) {
+      // C(2l, l+m) at the first order stored, formed by the same step.
+      auto binomial = static_cast<Real>(1);
+      for (auto k = Int{1}; k <= l + m; k++) {
+        binomial *= static_cast<Real>(2 * l - k + 1) / static_cast<Real>(k);
+      }
+
+      while (iter != finish) {
+        const auto root = std::sqrt(binomial);
+        *iter++ = n >= 0
+                      ? root * IntegerPower(s, l - m) * IntegerPower(c, l + m)
+                      : MinusOneToPower<Real>(l - m) * root *
+                            IntegerPower(s, l + m) * IntegerPower(c, l - m);
+        binomial *= static_cast<Real>(l - m) / static_cast<Real>(l + m + 1);
+        m++;
+      }
+    } else {
+      auto logBinomial = static_cast<Real>(0);
+      for (auto k = Int{1}; k <= l + m; k++) {
+        logBinomial +=
+            std::log(static_cast<Real>(2 * l - k + 1) / static_cast<Real>(k));
+      }
+
+      // x^k from ln x, where x may be zero: at a pole one of the two is, its
+      // logarithm is minus infinity, and the power zero must still be one.
+      const auto power = [](Real logX, Int k) {
+        return k == 0 ? static_cast<Real>(0) : static_cast<Real>(k) * logX;
+      };
+
+      while (iter != finish) {
+        const auto sPower = n >= 0 ? l - m : l + m;
+        const auto cPower = n >= 0 ? l + m : l - m;
+        const auto value =
+            std::exp(logBinomial / 2 + power(arg.LogSinHalf(), sPower) +
+                     power(arg.LogCosHalf(), cPower));
+        *iter++ = n >= 0 ? value : MinusOneToPower<Real>(l - m) * value;
+        if (m < l) {
+          logBinomial +=
+              std::log(static_cast<Real>(l - m) / static_cast<Real>(l + m + 1));
+        }
+        m++;
+      }
     }
   }
 
@@ -484,6 +582,62 @@ constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
   }
 }
 
+// Refuse a degree the recursion cannot reach. One function, so that the three
+// things that build tables -- Wigner, WignerMatrices and a generating grid,
+// which has no table to do the refusing -- say the same thing.
+template <RealFloatingPoint Real>
+void CheckSafeDegree(std::ptrdiff_t lMax) {
+  if (lMax > MaxSafeDegree<Real>()) {
+    throw std::invalid_argument(
+        "The Wigner recursion underflows above degree " +
+        std::to_string(MaxSafeDegree<Real>()) +
+        " in this precision, and the table it would build is silently wrong "
+        "by order one, so lMax = " +
+        std::to_string(lMax) +
+        " is refused. See MaxSafeDegree for where the limit comes from");
+  }
+}
+
+// The square-root tables, in the precision the recursion runs in.
+template <RealFloatingPoint Real>
+auto PreComputeRecursionTables(std::ptrdiff_t lMax, std::ptrdiff_t mMax,
+                               std::ptrdiff_t nMax) {
+  return PreComputeTables<WignerRecursionReal<Real>>(lMax, mMax, nMax);
+}
+
+// Fill a block stored in Real, recursing in WignerRecursionReal<Real>.
+//
+// For double and long double the two are one type and this *is*
+// ComputeBlock, called on the destination: not a value changes. For single
+// precision the recursion runs into this thread's scratch in double and is
+// narrowed into the destination, which is laid out identically, so the
+// narrowing is one pass over a contiguous block.
+//
+// Every route to a single-precision value comes through here or does the same
+// thing -- WignerMatrices narrows as it scatters -- and that is a requirement
+// and not a convenience: a stored grid and a generating one agree bit for
+// bit, which they can only do if both round the same double.
+template <RealFloatingPoint Real, OrderIndexRange MRange>
+void FillBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
+               WignerRecursionReal<Real> theta,
+               std::span<const WignerRecursionReal<Real>> sqrtInt,
+               std::span<const WignerRecursionReal<Real>> sqrtIntInv) {
+  using Work = WignerRecursionReal<Real>;
+  if constexpr (std::same_as<Work, Real>) {
+    ComputeBlock(d, n, theta, sqrtInt, sqrtIntInv);
+  } else {
+    thread_local auto scratch = std::vector<Work>{};
+    const auto size = static_cast<std::size_t>(d.Size());
+    if (scratch.size() < size) scratch.resize(size);
+    ComputeBlock(
+        GSHView<Work, MRange>(d.MaxDegree(), d.MaxOrder(), n, scratch.data()),
+        n, theta, sqrtInt, sqrtIntInv);
+    std::transform(scratch.begin(),
+                   scratch.begin() + static_cast<std::ptrdiff_t>(size),
+                   d.begin(), [](Work x) { return static_cast<Real>(x); });
+  }
+}
+
 }  // namespace WignerDetails
 
 /**
@@ -501,6 +655,8 @@ class Wigner {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   using Real = Real_;          ///< The precision.
+  /// The precision the recursion runs in: at least double.
+  using Work = WignerRecursionReal<Real>;
   /// Whether all orders are stored, or only the non-negative ones.
   using MRange = MRange_;
   using NRange = NRange_;          ///< Which upper indices are covered.
@@ -716,6 +872,7 @@ class Wigner {
       throw std::invalid_argument(
           "A Wigner table's maximum degree must be at least zero");
     }
+    WignerDetails::CheckSafeDegree<Real>(lMax);
     if (mMax < 0) {
       throw std::invalid_argument(
           "A Wigner table's maximum order must be at least zero");
@@ -760,10 +917,11 @@ class Wigner {
       }
     }
 
-    const auto [sqrtInt, sqrtIntInv] = WignerDetails::PreComputeTables<Real>(
-        MaxDegree(), MaxOrder(), MaxUpperIndex());
-    const auto sqrtIntView = std::span<const Real>(sqrtInt);
-    const auto sqrtIntInvView = std::span<const Real>(sqrtIntInv);
+    const auto [sqrtInt, sqrtIntInv] =
+        WignerDetails::PreComputeRecursionTables<Real>(MaxDegree(), MaxOrder(),
+                                                       MaxUpperIndex());
+    const auto sqrtIntView = std::span<const Work>(sqrtInt);
+    const auto sqrtIntInvView = std::span<const Work>(sqrtIntInv);
 
     // Flattened to an integer loop and decoded inside. OpenMP's canonical loop
     // form wants an integer induction variable or, from 5.0, a random-access
@@ -786,17 +944,17 @@ class Wigner {
       capture.Run([&] {
         const auto n = minUpperIndex + index / nAngles;
         const auto iTheta = index % nAngles;
-        Compute(n, iTheta, thetaRange[iTheta], sqrtIntView, sqrtIntInvView);
+        Compute(n, iTheta, static_cast<Work>(thetaRange[iTheta]), sqrtIntView,
+                sqrtIntInvView);
       });
     }
     capture.Rethrow();
   }
 
   // Point the recursion at this table's storage for one (n, iTheta).
-  constexpr void Compute(Int n, Int iTheta, Real theta,
-                         std::span<const Real> sqrtInt,
-                         std::span<const Real> sqrtIntInv) {
-    WignerDetails::ComputeBlock(
+  void Compute(Int n, Int iTheta, Work theta, std::span<const Work> sqrtInt,
+               std::span<const Work> sqrtIntInv) {
+    WignerDetails::FillBlock(
         GSHView<Real, MRange>(lMax_, mMax_, n, &data_[Offset(n, iTheta)]), n,
         theta, sqrtInt, sqrtIntInv);
   }
