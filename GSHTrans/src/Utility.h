@@ -6,8 +6,12 @@
  * @brief Small numerical helpers used across the library.
  */
 
+#include <atomic>
 #include <cstddef>
+#include <exception>
 #include <initializer_list>
+#include <mutex>
+#include <utility>
 
 namespace GSHTrans {
 
@@ -58,6 +62,76 @@ constexpr auto FastFFTSize(std::ptrdiff_t n) -> std::ptrdiff_t {
   while (!IsFastFFTSize(n)) n++;
   return n;
 }
+
+namespace Details {
+
+/**
+ * @brief Carries an exception out of an OpenMP region.
+ *
+ * @details An exception that leaves a structured block inside a parallel
+ * region does not propagate: the program is terminated. So nothing may leave
+ * one, and everything that can throw inside a region -- a per-thread
+ * workspace being allocated, a plan being made, and above all a *caller's*
+ * radial operator, which the library knows nothing about -- runs through
+ * Run(). The first exception is kept and the rest are dropped, which is what
+ * a sequential loop would have shown the caller anyway; Rethrow() after the
+ * region hands it on, so a call that throws when it runs sequentially throws
+ * the same thing when it runs threaded.
+ *
+ * Two rules for using it, both of which come from OpenMP and not from here.
+ *
+ * **Every thread must still reach every worksharing construct.** A thread
+ * whose set-up failed cannot skip the `omp for` that follows, or the others
+ * wait at its barrier for ever. It goes through the loop and does nothing,
+ * which is what Failed() is for.
+ *
+ * **Failed() is a hint and not a lock.** It is read without synchronisation
+ * beyond its own atomicity, so an iteration may start after another has
+ * failed. That is harmless -- each iteration is guarded by its own Run() --
+ * and it is what keeps the cost to one load per iteration of an *outer*
+ * loop. It is not for inner loops.
+ */
+class ExceptionCapture {
+ public:
+  /**
+   * @brief Calls @p f, keeping whatever it throws.
+   * @param f Called with no arguments.
+   */
+  template <typename F>
+  void Run(F&& f) noexcept {
+    try {
+      std::forward<F>(f)();
+    } catch (...) {
+      Keep(std::current_exception());
+    }
+  }
+
+  /** @brief Whether anything has been kept, so that remaining work can be
+   * skipped. */
+  bool Failed() const noexcept {
+    return failed_.load(std::memory_order_relaxed);
+  }
+
+  /** @brief Throws what was kept, if anything was. Call after the region. */
+  void Rethrow() const {
+    if (exception_) std::rethrow_exception(exception_);
+  }
+
+ private:
+  void Keep(std::exception_ptr exception) noexcept {
+    {
+      const auto lock = std::lock_guard(mutex_);
+      if (!exception_) exception_ = std::move(exception);
+    }
+    failed_.store(true, std::memory_order_relaxed);
+  }
+
+  std::mutex mutex_;
+  std::exception_ptr exception_;
+  std::atomic<bool> failed_{false};
+};
+
+}  // namespace Details
 
 }  // namespace GSHTrans
 

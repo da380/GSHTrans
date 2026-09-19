@@ -845,6 +845,49 @@ TEST(Threading, ARegionOpenedInsideTheSerialisingRegionGetsOneThread) {
   EXPECT_EQ(omp_get_max_threads(), available);
 }
 
+// An exception must not leave a parallel region -- the program is terminated
+// if one does -- so inside one everything that can throw runs through this,
+// and is thrown again after the region has closed.
+TEST(Threading, AnExceptionIsCarriedOutOfARegion) {
+  auto capture = Details::ExceptionCapture{};
+  auto ran = std::vector<int>(64, 0);
+
+#pragma omp parallel for schedule(static) num_threads(4)
+  for (int i = 0; i < 64; i++) {
+    if (capture.Failed()) continue;
+    capture.Run([&] {
+      if (i == 5 || i == 41) {
+        throw std::runtime_error("iteration " + std::to_string(i));
+      }
+      ran[static_cast<std::size_t>(i)] = 1;
+    });
+  }
+
+  EXPECT_TRUE(capture.Failed());
+  try {
+    capture.Rethrow();
+    FAIL() << "nothing was thrown";
+  } catch (const std::runtime_error& e) {
+    // One of the two, whichever came first; the other is dropped.
+    const auto what = std::string(e.what());
+    EXPECT_TRUE(what == "iteration 5" || what == "iteration 41") << what;
+  }
+  EXPECT_EQ(ran[5], 0);
+  EXPECT_EQ(ran[41], 0);
+}
+
+TEST(Threading, NothingIsRethrownWhenNothingWasThrown) {
+  auto capture = Details::ExceptionCapture{};
+  auto sum = 0;
+#pragma omp parallel for schedule(static) num_threads(4) reduction(+ : sum)
+  for (int i = 0; i < 64; i++) {
+    capture.Run([&] { sum += i; });
+  }
+  EXPECT_FALSE(capture.Failed());
+  EXPECT_NO_THROW(capture.Rethrow());
+  EXPECT_EQ(sum, 63 * 64 / 2);
+}
+
 // The answers do not depend on who owns the parallelism: transforms that ask
 // to thread, called from a loop that already does, give what they give alone.
 TEST(GaussLegendreGrid, NestedParallelismIsSuppressed) {

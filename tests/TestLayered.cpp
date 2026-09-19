@@ -1924,6 +1924,64 @@ TEST(RadialOperator, AnOperatorBuiltOnAnotherGridIsRefused) {
   EXPECT_NO_THROW(ApplyRadially(e, CentredDifference<Complex>{0.0625}));
 }
 
+//--------------------------------------------------------------------------//
+//                     An operator that throws, under threads                //
+//--------------------------------------------------------------------------//
+
+// The seam exists for a caller's own operators, and a caller's operator may
+// throw: a band solve that finds a singular line, say. Run sequentially that
+// is an ordinary exception. Run under Execution::Parallel it used to leave an
+// OpenMP region, which terminates the program -- so the same call was
+// catchable or fatal depending on a policy argument.
+
+namespace {
+
+// Refuses any line whose first value is the sentinel, and is otherwise the
+// identity. Stateless, as an operator called from many threads has to be.
+struct RefusesOneLine {
+  static constexpr Real Sentinel = -12345.0;
+
+  void operator()(std::span<const Complex> in, std::span<Complex> out) const {
+    if (in[0].real() == Sentinel) {
+      throw std::runtime_error("this line is singular");
+    }
+    std::ranges::copy(in, out.begin());
+  }
+};
+
+template <typename Call>
+void ExpectTheOperatorsException(Call&& call) {
+  try {
+    call();
+    FAIL() << "nothing was thrown";
+  } catch (const std::runtime_error& e) {
+    EXPECT_STREQ(e.what(), "this line is singular");
+  }
+}
+
+}  // namespace
+
+TEST(RadialOperator, AThrowingOperatorThrowsTheSameUnderThreads) {
+  constexpr auto lMax = Int{6};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  auto e = LayeredSpinExpansion<0, Grid>(Radii(9), grid, lMax);
+  for (Int j = 0; j < e.Size(); j++) e.Data()[j] = Complex{0.01 * j, 1.0};
+  e[0, 3, -2] = Complex{RefusesOneLine::Sentinel, 0.0};
+
+  const auto op = RefusesOneLine{};
+  ExpectTheOperatorsException([&] { ApplyRadially(e, op); });
+  ExpectTheOperatorsException(
+      [&] { ApplyRadially(e, op, Execution::Parallel(4)); });
+
+  auto major = RadialMajor(e);
+  auto out = major.SameShape();
+  ExpectTheOperatorsException([&] { ApplyToLines(major, out, op); });
+  ExpectTheOperatorsException(
+      [&] { ApplyToLines(major, out, op, Execution::Parallel(4)); });
+  ExpectTheOperatorsException(
+      [&] { ApplyToLines(major, major, op, Execution::Parallel(4)); });
+}
+
 #ifdef GSHTRANS_HAVE_INTERPOLATION
 
 TEST(RadialResample, OntoTheSameLayeredMeshIsTheIdentity) {
@@ -1952,6 +2010,23 @@ TEST(RadialResample, OntoTheSameLayeredMeshIsTheIdentity) {
           << "radius " << i;
     }
   }
+}
+
+TEST(RadialResample, ASchemeThatRefusesALineThrowsTheSameUnderThreads) {
+  // Akima's scheme needs more nodes than a two-node element has, and says so
+  // from inside the loop over lines.
+  constexpr auto lMax = Int{4};
+  auto grid = Grid(lMax, 2, FFTWpp::Estimate);
+  const auto source = RadialGrid<Real>::WithElements(
+      {0.4, 0.8, 0.8, 1.0, 1.1, 1.2, 1.3, 1.4}, {0, 2, 8});
+  const auto target = RadialGrid<Real>(std::vector<Real>{0.5, 0.9, 1.25});
+  auto f = LayeredSpinField<0, Grid, ComplexValued>(source, grid);
+
+  EXPECT_THROW(Resample(f, target, RadialInterpolation::Akima()),
+               std::exception);
+  EXPECT_THROW(
+      Resample(f, target, RadialInterpolation::Akima(), Execution::Parallel(4)),
+      std::exception);
 }
 
 TEST(RadialResample, ATargetInterfaceInsideASourcePieceStaysContinuous) {

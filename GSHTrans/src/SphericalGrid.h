@@ -667,38 +667,45 @@ class SphericalGrid {
     const auto blocks = (nTheta + block - 1) / block;
     const bool parallel = RunInParallel(policy);
 
+    // The workspace is made on first use, inside the region, and making it
+    // can throw. Nothing may leave a region: see ExceptionCapture.
+    auto capture = Details::ExceptionCapture{};
 #pragma omp parallel for schedule(static) \
     num_threads(ThreadCount(policy)) if (parallel)
     for (Int b = 0; b < blocks; b++) {
-      const auto theta0 = b * block;
-      const auto rows = std::min(block, nTheta - theta0);
-      auto& work = GetWorkspace<Scalar, true>(nPhi, rows * count, flag_);
+      if (capture.Failed()) continue;
+      capture.Run([&] {
+        const auto theta0 = b * block;
+        const auto rows = std::min(block, nTheta - theta0);
+        auto& work = GetWorkspace<Scalar, true>(nPhi, rows * count, flag_);
 
-      // Pack (theta, k) rows in that order, so the FFT's own transform index
-      // runs theta-major with k fastest -- which is precisely the order the
-      // output block wants.
-      for (auto iRow = Int{0}; iRow < rows; iRow++) {
-        for (auto k = Int{0}; k < count; k++) {
-          PackRow(std::next(inFirst,
-                            inBatch.Offset((theta0 + iRow) * nPhi, first + k)),
-                  nPhi, inBatch.Stride(),
-                  std::next(work.in.begin(), (iRow * count + k) * nPhi));
+        // Pack (theta, k) rows in that order, so the FFT's own transform index
+        // runs theta-major with k fastest -- which is precisely the order the
+        // output block wants.
+        for (auto iRow = Int{0}; iRow < rows; iRow++) {
+          for (auto k = Int{0}; k < count; k++) {
+            PackRow(std::next(inFirst, inBatch.Offset((theta0 + iRow) * nPhi,
+                                                      first + k)),
+                    nPhi, inBatch.Stride(),
+                    std::next(work.in.begin(), (iRow * count + k) * nPhi));
+          }
         }
-      }
-      work.plan.Execute();
+        work.plan.Execute();
 
-      // One contiguous run per order. The workspace holds
-      // [m][thetaLocal][k] and the target holds [m][theta][k], so the run for
-      // order m starts at m * rows * count in one and at
-      // m * nTheta * count + theta0 * count in the other, and has the same
-      // length in both.
-      const auto run = rows * count;
-      for (auto m = Int{0}; m < nFourier; m++) {
-        const auto* source = work.out.data() + m * run;
-        std::copy_n(source, run,
-                    out.begin() + m * nTheta * count + theta0 * count);
-      }
+        // One contiguous run per order. The workspace holds
+        // [m][thetaLocal][k] and the target holds [m][theta][k], so the run for
+        // order m starts at m * rows * count in one and at
+        // m * nTheta * count + theta0 * count in the other, and has the same
+        // length in both.
+        const auto run = rows * count;
+        for (auto m = Int{0}; m < nFourier; m++) {
+          const auto* source = work.out.data() + m * run;
+          std::copy_n(source, run,
+                      out.begin() + m * nTheta * count + theta0 * count);
+        }
+      });
     }
+    capture.Rethrow();
   }
 
   /// The inverse of ForwardFourierStage: an m-major intermediate in, `count`
@@ -747,30 +754,37 @@ class SphericalGrid {
     const auto blocks = (nTheta + block - 1) / block;
     const bool parallel = RunInParallel(policy);
 
+    // The workspace is made on first use, inside the region, and making it
+    // can throw. Nothing may leave a region: see ExceptionCapture.
+    auto capture = Details::ExceptionCapture{};
 #pragma omp parallel for schedule(static) \
     num_threads(ThreadCount(policy)) if (parallel)
     for (Int b = 0; b < blocks; b++) {
-      const auto theta0 = b * block;
-      const auto rows = std::min(block, nTheta - theta0);
-      auto& work = GetWorkspace<Scalar, false>(nPhi, rows * count, flag_);
+      if (capture.Failed()) continue;
+      capture.Run([&] {
+        const auto theta0 = b * block;
+        const auto rows = std::min(block, nTheta - theta0);
+        auto& work = GetWorkspace<Scalar, false>(nPhi, rows * count, flag_);
 
-      const auto run = rows * count;
-      for (auto m = Int{0}; m < nFourier; m++) {
-        std::copy_n(in.begin() + m * nTheta * count + theta0 * count, run,
-                    work.in.begin() + m * run);
-      }
-      work.plan.Execute();
-
-      for (auto iRow = Int{0}; iRow < rows; iRow++) {
-        for (auto k = Int{0}; k < count; k++) {
-          UnpackRow(
-              std::next(work.out.begin(), (iRow * count + k) * nPhi), nPhi,
-              std::next(outFirst,
-                        outBatch.Offset((theta0 + iRow) * nPhi, first + k)),
-              outBatch.Stride());
+        const auto run = rows * count;
+        for (auto m = Int{0}; m < nFourier; m++) {
+          std::copy_n(in.begin() + m * nTheta * count + theta0 * count, run,
+                      work.in.begin() + m * run);
         }
-      }
+        work.plan.Execute();
+
+        for (auto iRow = Int{0}; iRow < rows; iRow++) {
+          for (auto k = Int{0}; k < count; k++) {
+            UnpackRow(
+                std::next(work.out.begin(), (iRow * count + k) * nPhi), nPhi,
+                std::next(outFirst,
+                          outBatch.Offset((theta0 + iRow) * nPhi, first + k)),
+                outBatch.Stride());
+          }
+        }
+      });
     }
+    capture.Rethrow();
   }
 
  private:
@@ -1173,29 +1187,52 @@ class SphericalGrid {
       // barrier at the end of the colatitude loop and read after it.
       auto partials = std::vector<Complex*>(threadCount, nullptr);
 
+      // Each thread's workspace and accumulator are made or grown on first
+      // use, in here, and either can throw; nothing may leave a region. A
+      // thread whose set-up failed still goes through the loop below -- every
+      // thread must reach a worksharing construct, or the rest wait at its
+      // barrier for ever -- and does nothing in it. The reduction reads every
+      // thread's accumulator, so it runs only if every set-up succeeded.
+      auto capture = Details::ExceptionCapture{};
+
 #pragma omp parallel num_threads(threadCount)
       {
         const auto thread = static_cast<Int>(omp_get_thread_num());
         const auto threads = static_cast<Int>(omp_get_num_threads());
-        auto& work = GetWorkspace<Scalar, true>(nPhi, c, flag_);
-        auto& partial = Accumulator(scratchSize);
-        std::fill_n(partial.begin(), scratchSize, Complex{});
-        partials[thread] = partial.data();
+        using Work =
+            std::remove_reference_t<decltype(GetWorkspace<Scalar, true>(
+                nPhi, c, flag_))>;
+        Work* work = nullptr;
+        Complex* partial = nullptr;
+        capture.Run([&] {
+          work = &GetWorkspace<Scalar, true>(nPhi, c, flag_);
+          auto& accumulator = Accumulator(scratchSize);
+          std::fill_n(accumulator.begin(), scratchSize, Complex{});
+          partial = accumulator.data();
+          partials[thread] = partial;
+        });
 
 #pragma omp for schedule(static)
         for (Int iTheta = 0; iTheta < nTheta; iTheta++) {
-          AccumulateRow(iTheta, first, c, partial.data(), work);
+          // Not run through the capture, as in the inverse kernel: a row
+          // allocates nothing and cannot throw.
+          if (work != nullptr) AccumulateRow(iTheta, first, c, partial, *work);
         }
 
-        const auto fromJ = coefficientSize * thread / threads;
-        const auto toJ = coefficientSize * (thread + 1) / threads;
-        auto* base = partials[0];
-        for (auto t = Int{1}; t < threads; t++) {
-          const auto* p = partials[t];
-          for (auto i = fromJ * c; i < toJ * c; i++) base[i] += p[i];
+        if (!capture.Failed()) {
+          capture.Run([&] {
+            const auto fromJ = coefficientSize * thread / threads;
+            const auto toJ = coefficientSize * (thread + 1) / threads;
+            auto* base = partials[0];
+            for (auto t = Int{1}; t < threads; t++) {
+              const auto* p = partials[t];
+              for (auto i = fromJ * c; i < toJ * c; i++) base[i] += p[i];
+            }
+            Scatter(base, first, c, fromJ, toJ);
+          });
         }
-        Scatter(base, first, c, fromJ, toJ);
       }
+      capture.Rethrow();
     }
   }
 
@@ -1302,14 +1339,28 @@ class SphericalGrid {
         continue;
       }
 
+      // As in the forward kernel: the workspace is made in here and making it
+      // can throw, nothing may leave a region, and a thread whose set-up
+      // failed still goes through the loop and does nothing in it.
+      auto capture = Details::ExceptionCapture{};
+
 #pragma omp parallel num_threads(ThreadCount(policy))
       {
-        auto& work = GetWorkspace<Scalar, false>(nPhi, c, flag_);
+        using Work =
+            std::remove_reference_t<decltype(GetWorkspace<Scalar, false>(
+                nPhi, c, flag_))>;
+        Work* work = nullptr;
+        capture.Run(
+            [&] { work = &GetWorkspace<Scalar, false>(nPhi, c, flag_); });
 #pragma omp for schedule(static)
         for (Int iTheta = 0; iTheta < nTheta; iTheta++) {
-          SynthesiseRow(iTheta, first, c, gathered, work);
+          // Not run through the capture: a row allocates nothing and cannot
+          // throw, and wrapping it costs the sequential path above its
+          // inlining -- measured at a tenth of the inverse transform.
+          if (work != nullptr) SynthesiseRow(iTheta, first, c, gathered, *work);
         }
       }
+      capture.Rethrow();
     }
   }
 
@@ -1382,11 +1433,21 @@ class SphericalGrid {
     // Found by falling into it: the benchmark's sequential rows reported
     // table traffic at twice single-core bandwidth, because "GSHTrans
     // sequential" had been letting the BLAS take the whole machine.
+    //
+    // The scratch is grown in here and growing it can throw, and nothing may
+    // leave a region: see ExceptionCapture, including for why a thread whose
+    // set-up failed still goes through the loop.
+    auto capture = Details::ExceptionCapture{};
     Details::InSerialisingRegion(policy.TeamSize(), [&] {
-      auto& scratch = OrderScratch(scratchSize);
+      Complex* scratch = nullptr;
+      capture.Run([&] { scratch = OrderScratch(scratchSize).data(); });
 #pragma omp for schedule(dynamic)
-      for (Int i = 0; i < orders; i++) body(minOrder + i, scratch.data());
+      for (Int i = 0; i < orders; i++) {
+        if (capture.Failed()) continue;
+        capture.Run([&] { body(minOrder + i, scratch); });
+      }
     });
+    capture.Rethrow();
   }
 
   // The forward transform as one matrix product per order.

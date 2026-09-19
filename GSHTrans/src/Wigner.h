@@ -778,12 +778,18 @@ class Wigner {
     const auto minUpperIndex = MinUpperIndex();
     const bool nested = omp_in_parallel();
 
+    // Nothing may leave a region: see ExceptionCapture.
+    auto capture = Details::ExceptionCapture{};
 #pragma omp parallel for schedule(static) if (!nested)
     for (Int index = 0; index < count; index++) {
-      const auto n = minUpperIndex + index / nAngles;
-      const auto iTheta = index % nAngles;
-      Compute(n, iTheta, thetaRange[iTheta], sqrtIntView, sqrtIntInvView);
+      if (capture.Failed()) continue;
+      capture.Run([&] {
+        const auto n = minUpperIndex + index / nAngles;
+        const auto iTheta = index % nAngles;
+        Compute(n, iTheta, thetaRange[iTheta], sqrtIntView, sqrtIntInvView);
+      });
     }
+    capture.Rethrow();
   }
 
   // Point the recursion at this table's storage for one (n, iTheta).

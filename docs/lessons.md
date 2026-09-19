@@ -20,6 +20,20 @@ pass over a fixed grid runs about nine per cent slow against the sixth,
 systematically against whichever candidate goes first. Timing A to completion
 and then B is what this forbids.
 
+**A sequential kernel's time moves by ten per cent with where the code
+lands.** Checking that a change to the OpenMP regions cost nothing, the
+sequential inverse came out 11 per cent slower, reproducibly, in code the
+change had not touched. Reverting half the change moved the loss to the
+forward transform instead; forcing the row lambdas inline made both worse.
+Then the *old* headers were rebuilt with a no-op edit to the benchmark's
+`main`, and they moved by the same amount — 61 to 69 ms one way, 63 to 70 the
+other. It is the placement of a hot loop in the binary, so it is a property of
+the build and not of the run: interleaving does not average it away, and two
+builds that differ anywhere cannot be told apart below about a tenth on those
+rows. The threaded rows and the matrix kernel do not show it. Before believing
+a small sequential difference, perturb the *baseline* and see how far it moves
+by itself.
+
 **Require a margin.** Ten per cent is the noise floor. A tuner that picks the
 nominal winner of a seven per cent difference is picking noise, and will pick
 differently next run.

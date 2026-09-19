@@ -113,6 +113,28 @@ Kept current as `fix-plan.md` is worked through. Anything not listed is open.
   - *W4.* `GSHIndices::Indices()` captures by value and may outlive its block.
     `GSHSubIndices::Index` asserts against the orders the row holds.
 
+- **C3 — fixed** (plan Phase 5). `Details::ExceptionCapture` in `Utility.h`
+  keeps the first exception thrown inside an OpenMP region and rethrows it
+  after the region closes, so a call that throws sequentially throws the same
+  thing threaded. Applied to every region that can throw: both Fourier stages,
+  both loop kernels, `OverOrders`, `Wigner::ComputeAll`, `WignerMatrices`, and
+  the three loops over radial lines. A thread whose set-up failed still goes
+  through the worksharing loop and does nothing, as OpenMP requires. A caller's
+  radial operator that throws under `Execution::Parallel`, and an Akima
+  resample onto a two-node element, both used to terminate the process and are
+  now tested as ordinary exceptions.
+  - Not wrapped: `RadialMajor`'s transpose, which only copies, and the
+    per-row bodies of the two loop kernels, which allocate nothing.
+  - Not done: hoisting Akima's minimum element size out of `Resample`'s loop.
+    With the capture in place the scheme's own exception arrives intact, which
+    is what the hoist was for.
+  - The kernels have no natural way to be made to throw now that `WisdomOnly`
+    is refused, so their regions are covered by the utility's own tests and by
+    the suite not regressing, and not by a test that throws inside them.
+  - Cost: none measurable on the threaded or matrix-kernel rows. The sequential
+    loop-kernel rows moved by ten per cent — and so did the *unchanged* code
+    under a no-op edit to the benchmark, which is recorded in `lessons.md`.
+
 ## Summary
 
 The numerical core is in good shape. The loop and matrix kernels, the batching

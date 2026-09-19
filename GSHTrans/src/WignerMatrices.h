@@ -16,6 +16,7 @@
 
 #include "Concepts.h"
 #include "Indexing.h"
+#include "Utility.h"
 #include "Views.h"
 #include "Wigner.h"
 
@@ -306,37 +307,47 @@ class WignerMatrices {
     const auto nTheta = nTheta_;
     const bool nested = omp_in_parallel();
 
+    // The per-thread scratch is allocated in here, which can throw, and
+    // nothing may leave a region: see ExceptionCapture, including for why a
+    // thread whose allocation failed still goes through the loop.
+    auto capture = Details::ExceptionCapture{};
 #pragma omp parallel if (!nested)
     {
-      auto scratch = std::vector<Real>(scratchSize);
+      auto scratch = std::vector<Real>{};
+      capture.Run([&] { scratch.resize(scratchSize); });
 
 #pragma omp for schedule(static)
       for (Int index = 0; index < count; index++) {
-        const auto n = minUpperIndex + index / nTheta;
-        const auto iTheta = index % nTheta;
+        if (capture.Failed()) continue;
+        capture.Run([&] {
+          const auto n = minUpperIndex + index / nTheta;
+          const auto iTheta = index % nTheta;
 
-        // Exactly the call Wigner makes, into scratch instead of into place.
-        // Orthonormalisation happens inside it, so what is scattered below is
-        // already the stored value sqrt((2l+1)/(4 pi)) d^l_{nm}.
-        auto indices = GSHIndices<MRange>(lMax_, mMax_, n);
-        WignerDetails::ComputeBlock(
-            GSHView<Real, MRange>(lMax_, mMax_, n, scratch.data()), n,
-            thetaRange[iTheta], sqrtIntView, sqrtIntInvView);
+          // Exactly the call Wigner makes, into scratch instead of into place.
+          // Orthonormalisation happens inside it, so what is scattered below is
+          // already the stored value sqrt((2l+1)/(4 pi)) d^l_{nm}.
+          auto indices = GSHIndices<MRange>(lMax_, mMax_, n);
+          WignerDetails::ComputeBlock(
+              GSHView<Real, MRange>(lMax_, mMax_, n, scratch.data()), n,
+              thetaRange[iTheta], sqrtIntView, sqrtIntInvView);
 
-        // Scatter: (l, m) in the block goes to column iTheta of matrix (n, m).
-        const auto lowest = MinOrder();
-        for (auto l : indices.Degrees()) {
-          auto [blockOffset, sub] = indices.Index(l);
-          for (auto m : sub.Orders()) {
-            if (m < lowest) continue;
-            data_[offset_[OffsetIndex(n, m)] +
-                  static_cast<std::size_t>((l - MinDegree(n, m)) * nTheta +
-                                           iTheta)] =
-                scratch[blockOffset + sub.Index(m)];
+          // Scatter: (l, m) in the block goes to column iTheta of matrix (n,
+          // m).
+          const auto lowest = MinOrder();
+          for (auto l : indices.Degrees()) {
+            auto [blockOffset, sub] = indices.Index(l);
+            for (auto m : sub.Orders()) {
+              if (m < lowest) continue;
+              data_[offset_[OffsetIndex(n, m)] +
+                    static_cast<std::size_t>((l - MinDegree(n, m)) * nTheta +
+                                             iTheta)] =
+                  scratch[blockOffset + sub.Index(m)];
+            }
           }
-        }
+        });
       }
     }
+    capture.Rethrow();
   }
 
   // The upper index of smallest modulus this table carries, which is the one

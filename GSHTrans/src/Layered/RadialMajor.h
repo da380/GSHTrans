@@ -13,6 +13,7 @@
 
 #include "../Concepts.h"
 #include "../Policies.h"
+#include "../Utility.h"
 #include "RadialOperator.h"
 
 namespace GSHTrans {
@@ -240,8 +241,17 @@ void ApplyToLines(const RadialMajor<Stack>& in, RadialMajor<Stack>& out,
   if (threads == 1) {
     for (auto j = Int{0}; j < lines; j++) run(j);
   } else {
+    // Nothing may leave the region, and what runs in it is the caller's: see
+    // ExceptionCapture. The first line to throw stops the rest being started,
+    // and its exception is the one the caller sees, as it would be
+    // sequentially.
+    auto capture = Details::ExceptionCapture{};
 #pragma omp parallel for schedule(static) num_threads(threads)
-    for (Int j = 0; j < lines; j++) run(j);
+    for (Int j = 0; j < lines; j++) {
+      if (capture.Failed()) continue;
+      capture.Run([&] { run(j); });
+    }
+    capture.Rethrow();
   }
 }
 
