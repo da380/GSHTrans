@@ -210,32 +210,8 @@ class LayeredTensorField {
   requires Represents<Alphas...>
   auto Component(Int i) const {
     constexpr auto flat = Flat::template FlatOf<Alphas...>;
-    constexpr auto sign = Orbits.sign[flat];
-    constexpr auto conjugated = Orbits.conjugate[flat];
-    constexpr auto constraint = Orbits.constraint[flat];
-    constexpr auto scale = static_cast<Real>(sign);
-
-    auto view = SliceOfSlot<SlotOfFlat(Orbits.representative[flat])>(i);
-
-    if constexpr (constraint == ComponentConstraint::None) {
-      if constexpr (conjugated) {
-        return scale * conj(std::move(view));
-      } else if constexpr (sign == 1) {
-        return view;
-      } else {
-        return -std::move(view);
-      }
-    } else {
-      // A pinned component is one real number per point: Real means the value
-      // is that number, Imaginary that it is i times it. Conjugation turns the
-      // imaginary case's sign, as on the flat type.
-      constexpr auto turn = conjugated ? -scale : scale;
-      if constexpr (constraint == ComponentConstraint::Real) {
-        return scale * view;
-      } else {
-        return turn * view;
-      }
-    }
+    return DerivedComponent<Orbits.RelationOf(flat), Real>(
+        SliceOfSlot<SlotOfFlat(Orbits.representative[flat])>(i));
   }
 
  private:
@@ -243,9 +219,14 @@ class LayeredTensorField {
   RadialGridType radialGrid_;
   GridType grid_;
 
+  // The slot holding a writable component. Writable means "is the stored
+  // representative, unchanged", which a permutation image with sign +1 is as
+  // much as the representative itself -- the (0, -1) component of a symmetric
+  // tensor is the storage of (-1, 0) -- so the slot is the representative's.
   template <Int... Alphas>
   static constexpr Int SlotOf() {
-    return Flat::SlotOfFlat(Flat::template FlatOf<Alphas...>);
+    return Flat::SlotOfFlat(
+        Orbits.representative[Flat::template FlatOf<Alphas...>]);
   }
 
   static constexpr Int SlotOfFlat(Int flat) { return Flat::SlotOfFlat(flat); }
@@ -381,8 +362,6 @@ class LayeredTensorExpansion {
       constexpr auto rep = Orbits.representative[flat];
       constexpr auto slot = Flat::SlotOfFlat(rep);
       constexpr auto repN = ComponentLayout.upperIndexOfSlot[slot];
-      constexpr auto sign = static_cast<Real>(Orbits.sign[flat]);
-      constexpr auto conjugated = Orbits.conjugate[flat];
       constexpr auto real = ComponentLayout.realOfSlot[slot];
 
       const auto& block = std::get<static_cast<std::size_t>(slot)>(stacks_);
@@ -399,16 +378,7 @@ class LayeredTensorExpansion {
         return Complex{block[i, l, order]};
       };
 
-      constexpr auto turn = constraint == ComponentConstraint::Imaginary
-                                ? Complex{0, 1}
-                                : Complex{1, 0};
-
-      if constexpr (conjugated) {
-        return sign * turn * static_cast<Real>(MinusOneToPower(m + repN)) *
-               std::conj(stored(-m));
-      } else {
-        return sign * turn * stored(m);
-      }
+      return DerivedCoefficient<Orbits.RelationOf(flat), Real>(m, repN, stored);
     }
   }
 
@@ -418,9 +388,14 @@ class LayeredTensorExpansion {
   GridType grid_;
   Int lMax_;
 
+  // The slot holding a writable component. Writable means "is the stored
+  // representative, unchanged", which a permutation image with sign +1 is as
+  // much as the representative itself -- the (0, -1) component of a symmetric
+  // tensor is the storage of (-1, 0) -- so the slot is the representative's.
   template <Int... Alphas>
   static constexpr Int SlotOf() {
-    return Flat::SlotOfFlat(Flat::template FlatOf<Alphas...>);
+    return Flat::SlotOfFlat(
+        Orbits.representative[Flat::template FlatOf<Alphas...>]);
   }
 
   template <std::size_t... Slots>

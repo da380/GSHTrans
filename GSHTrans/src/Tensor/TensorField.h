@@ -374,40 +374,24 @@ class TensorField {
   requires Represents<Alphas...>
   auto Component() const {
     constexpr auto flat = FlatOf<Alphas...>;
-    constexpr auto sign = Orbits.sign[flat];
-    constexpr auto conjugated = Orbits.conjugate[flat];
-    constexpr auto constraint = Orbits.constraint[flat];
-    constexpr auto scale = static_cast<Real>(sign);
+    constexpr auto relation = Orbits.RelationOf(flat);
 
-    if constexpr (constraint == ComponentConstraint::None) {
+    // The view is of what is stored; DerivedComponent turns it into the
+    // component, and owns it from there on.
+    if constexpr (relation.constraint == ComponentConstraint::None) {
       // The stored component's own upper index, which is this one's when the
       // relation does not conjugate and its negative when it does.
       constexpr auto stored = UpperIndexOfFlat(Orbits.representative[flat]);
-      auto view = ConstSpinFieldView<stored, GridType, ComplexValued>(
-          grid_, StoredSpan<flat>(), ComponentStride);
-
-      // Moved in so that the expression node owns the view rather than
-      // referring to this local one. A spin-weighted node holds an lvalue
-      // terminal by reference, which is right at a call site and wrong here.
-      if constexpr (conjugated) {
-        return scale * conj(std::move(view));
-      } else if constexpr (sign == 1) {
-        return view;
-      } else {
-        return -std::move(view);
-      }
+      return DerivedComponent<relation, Real>(
+          ConstSpinFieldView<stored, GridType, ComplexValued>(
+              grid_, StoredSpan<flat>(), ComponentStride));
     } else {
-      // A pinned component: one real number per point. Real means the value
-      // is that number; Imaginary means it is i times it, which is what an
-      // antisymmetric real tensor's self-paired component is.
-      auto view = ConstSpinFieldView<0, GridType, RealValued>(
-          grid_, RealStoredSpan<flat>(), RealComponentStride);
-      constexpr auto turn = conjugated ? -scale : scale;
-      if constexpr (constraint == ComponentConstraint::Real) {
-        return turn * std::move(view);
-      } else {
-        return Complex{0, turn} * std::move(view);
-      }
+      // A pinned component: one real number per point, which is the value
+      // itself for a Real orbit and the coefficient of i for an Imaginary one
+      // -- what an antisymmetric real tensor's self-paired component is.
+      return DerivedComponent<relation, Real>(
+          ConstSpinFieldView<0, GridType, RealValued>(
+              grid_, RealStoredSpan<flat>(), RealComponentStride));
     }
   }
 

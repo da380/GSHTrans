@@ -406,6 +406,12 @@ TEST(TensorAlgebra, MaterialiseStoresOnlyWhatTheAskedSymmetryKeeps) {
 
 // The composite the whole layer exists for: an elastic tensor applied to a
 // strain, which is a double contraction of a tensor product.
+//
+// What this checks is the *shape* of the result -- ranks, upper indices -- and
+// that materialising agrees with the expression it materialises. It compares
+// the expression with itself, so it says nothing about the values; those are
+// checked against the double sum written out, and on a real tensor, in
+// TestTensorOrbitValues.cpp.
 TEST(TensorAlgebra, ElasticTensorAppliedToAStrain) {
   using C = TensorField<4, ElasticSymmetry, ComplexTensor, Grid>;
   using E = TensorField<2, Symmetric<2>, ComplexTensor, Grid>;

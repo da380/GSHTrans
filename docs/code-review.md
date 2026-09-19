@@ -8,12 +8,27 @@ finding marked **reproduced** was re-run or re-read by a second pass before
 being written down here. Reproducers are given inline as one-liners because
 the probe directory was session-scoped and is gone.
 
-Nothing here has been fixed. Items that `lessons.md` records as settled or
-deliberately open are not re-raised, with one exception (C2), where the
-settled mechanism turns out not to work.
+What has since been fixed is listed under Status. Items that `lessons.md`
+records as settled or deliberately open are not re-raised, with one exception
+(C2), where the settled mechanism turns out not to work.
 
 Severity is for *this* library's use: real rank-2 and rank-4 tensors, layered
 Earth models, a 64-core target, Release builds.
+
+## Status
+
+Kept current as `fix-plan.md` is worked through. Anything not listed is open.
+
+- **T1, T2, L3 — fixed** (plan Phase 1). One pair of functions in
+  `Tensor/Orbits.h`, `DerivedComponent` and `DerivedCoefficient`, replaces the
+  four hand-written copies; `tests/TestTensorOrbitValues.cpp` checks the
+  defining relations on every component of every tensor type, spatially and
+  spectrally, the layered type against the flat one, and a real elastic tensor
+  applied to a strain against the double sum written out. Found on the way and
+  fixed with them: `LayeredTensorField::ComponentStack<0,-1>()` and its
+  expansion twin did not compile for a symmetric tensor although `Writable`
+  said they would, because the slot was looked up for the component rather
+  than for its representative.
 
 ## Summary
 

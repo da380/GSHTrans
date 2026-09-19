@@ -201,8 +201,6 @@ class TensorExpansion {
       constexpr auto rep = Orbits.representative[flat];
       constexpr auto slot = FieldType::SlotOfFlat(rep);
       constexpr auto repN = ComponentLayout.upperIndexOfSlot[slot];
-      constexpr auto sign = static_cast<Real>(Orbits.sign[flat]);
-      constexpr auto conjugated = Orbits.conjugate[flat];
       constexpr auto real = ComponentLayout.realOfSlot[slot];
 
       // The representative's own coefficient, at whichever order this term
@@ -221,17 +219,7 @@ class TensorExpansion {
         return Complex{block[l, order]};
       };
 
-      // A pinned-imaginary component is i times the real field stored for it.
-      constexpr auto turn = constraint == ComponentConstraint::Imaginary
-                                ? Complex{0, 1}
-                                : Complex{1, 0};
-
-      if constexpr (conjugated) {
-        return sign * turn * static_cast<Real>(MinusOneToPower(m + repN)) *
-               std::conj(stored(-m));
-      } else {
-        return sign * turn * stored(m);
-      }
+      return DerivedCoefficient<Orbits.RelationOf(flat), Real>(m, repN, stored);
     }
   }
 

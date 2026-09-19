@@ -2,7 +2,9 @@
 #define GSH_TRANS_ORBITS_GUARD_H
 
 #include <array>
+#include <complex>
 #include <cstddef>
+#include <utility>
 
 #include "../Utility.h"
 #include "MultiIndex.h"
@@ -55,6 +57,19 @@ namespace GSHTrans {
 enum class ComponentConstraint { None, Zero, Real, Imaginary };
 
 /**
+ * @brief How one component is obtained from the representative stored for it.
+ * @details A value rather than three loose constants so that it can be handed
+ * whole, as a template argument, to the two functions that interpret it --
+ * DerivedComponent and DerivedCoefficient -- and to nothing else.
+ */
+struct OrbitRelation {
+  std::ptrdiff_t sign;  ///< The sign relating the two.
+  bool conjugate;       ///< Whether the relation conjugates.
+  /** @brief What the orbit pins its members to. */
+  ComponentConstraint constraint;
+};
+
+/**
  * @brief For every component of a tensor: which component is actually stored
  * for it, how the two are related, and what its orbit pins it to.
  *
@@ -96,6 +111,11 @@ struct OrbitTable {
   /** @brief The upper index of the component with that flat index. */
   constexpr Int UpperIndexOf(Int flat) const {
     return MultiIndex<Rank, SlotSet>::FromFlat(flat).UpperIndex();
+  }
+
+  /** @brief How the component with that flat index is obtained. */
+  constexpr OrbitRelation RelationOf(Int flat) const {
+    return {sign[flat], conjugate[flat], constraint[flat]};
   }
 };
 
@@ -189,6 +209,100 @@ constexpr auto MakeOrbitTable() {
   }
 
   return table;
+}
+
+//--------------------------------------------------------------------------//
+//                    A derived component from its representative            //
+//--------------------------------------------------------------------------//
+
+// What the table records is the relation
+//
+//   T = sign * (conjugate ? conj : id)(R),
+//
+// with R the representative's *value*. What is stored for R depends on what
+// its orbit pins it to, and the three cases differ in what conjugation does:
+//
+//   None        R is the stored complex field,    conj(R) is its conjugate
+//   Real        R = r, the stored real field,     conj(R) = R
+//   Imaginary   R = i r,                          conj(R) = -R
+//
+// So conjugation is a sign change for an imaginary orbit and *nothing at all*
+// for a real one. That distinction is the whole content of these two
+// functions, and it is why there are two functions and not four accessors:
+// written out separately on the flat and the layered type, and again on their
+// expansions, the four copies came to disagree, each wrong for a different
+// case -- a sign lost on the real orbits of an elastic tensor, which no rank-2
+// test could see because no pinned member there is reached by conjugating.
+// tests/TestTensorOrbitValues.cpp checks the defining relations on every
+// component of every type, which is a check on this and not a copy of it.
+
+/**
+ * @brief The field a component takes, from the view of what is stored for it.
+ *
+ * @details The view is taken **by value** and moved into whatever is returned.
+ * A spin-weighted node holds an lvalue terminal by reference, which is right
+ * at a call site and wrong in an accessor whose view is a local: the node
+ * would outlive it. Taking the view by value makes that mistake impossible to
+ * write here rather than something each caller must remember.
+ *
+ * @tparam relation How the component is obtained from its representative.
+ * @tparam Real The precision.
+ * @param view A view of the representative's storage: complex at the
+ * representative's upper index if the orbit is unpinned, real at upper index
+ * zero if it is pinned.
+ */
+template <OrbitRelation relation, typename Real, typename View>
+auto DerivedComponent(View view) {
+  constexpr auto scale = static_cast<Real>(relation.sign);
+  if constexpr (relation.constraint == ComponentConstraint::None) {
+    if constexpr (relation.conjugate) {
+      return scale * conj(std::move(view));
+    } else if constexpr (relation.sign == 1) {
+      return view;
+    } else {
+      return -std::move(view);
+    }
+  } else if constexpr (relation.constraint == ComponentConstraint::Real) {
+    return scale * std::move(view);
+  } else {
+    constexpr auto turn = relation.conjugate ? -scale : scale;
+    return std::complex<Real>{0, turn} * std::move(view);
+  }
+}
+
+/**
+ * @brief The coefficient a component takes at order m, from the coefficients
+ * of what is stored for it.
+ *
+ * @details The spectral form of the same relation. Conjugating a field of
+ * upper index N sends its coefficients to
+ * @f$(-1)^{m+N}\,\overline{f_{l,-m}}@f$, and the factor i of an imaginary
+ * orbit is conjugated with the field it multiplies.
+ *
+ * @tparam relation How the component is obtained from its representative.
+ * @tparam Real The precision.
+ * @param m The order wanted.
+ * @param storedUpperIndex The upper index of the stored field: the
+ * representative's, or zero for a pinned orbit.
+ * @param stored Returns the stored field's coefficient at a given order, at
+ * the degree the caller has fixed. It is asked for order m or for order -m.
+ */
+template <OrbitRelation relation, typename Real, typename Stored>
+std::complex<Real> DerivedCoefficient(std::ptrdiff_t m,
+                                      std::ptrdiff_t storedUpperIndex,
+                                      Stored&& stored) {
+  using Complex = std::complex<Real>;
+  constexpr auto scale = static_cast<Real>(relation.sign);
+  constexpr auto turn = relation.constraint == ComponentConstraint::Imaginary
+                            ? Complex{0, 1}
+                            : Complex{1, 0};
+  if constexpr (relation.conjugate) {
+    return scale * std::conj(turn) *
+           static_cast<Real>(MinusOneToPower(m + storedUpperIndex)) *
+           std::conj(Complex{stored(-m)});
+  } else {
+    return scale * turn * Complex{stored(m)};
+  }
 }
 
 /// The stored-component table for a tensor: permutation symmetry always, the
