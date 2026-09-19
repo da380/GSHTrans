@@ -203,10 +203,13 @@ int main() {
       EvaluateLines(lines, grid, lMax, Execution::Parallel());
 
   // Against the gathering route, which must agree exactly: the arithmetic is
-  // the same and only the copying moved.
-  const auto expanded = Expand(f, lMax);
-  const auto gathered =
-      Evaluate(ApplyRadially(ApplyRadially(expanded, fd), fd));
+  // the same and only the copying moved. Under the same policy, that is. A
+  // threaded transform chunks its sums differently from a sequential one and
+  // may differ from it in the last bit, as any two orders of summation may,
+  // so the promise is between the two routes and not between two policies.
+  const auto expanded = Expand(f, lMax, Execution::Parallel());
+  const auto gathered = Evaluate(ApplyRadially(ApplyRadially(expanded, fd), fd),
+                                 Execution::Parallel());
   auto worst = Real{0};
   for (Int i = 0; i < curvature.Size(); i++) {
     worst = std::max(worst, std::abs(curvature.Data()[i] - gathered.Data()[i]));

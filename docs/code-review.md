@@ -339,7 +339,9 @@ Kept current as `fix-plan.md` is worked through. Anything not listed is open.
   choice: on time the two routes are uneven and a power-of-two nR can make
   the direct one slower, which the header says and the benchmark's new `lines`
   section measures. `examples/18-radial-operators` shows it and checks itself
-  against the gathering route.
+  against the gathering route — under the same policy, since its first
+  version compared a threaded route with a sequential one, asked for equal
+  bits, and failed on the four-core CI runners by one unit in the last place.
 
 - **Layout and build housekeeping, after the plan.** Not findings; four
   routine changes made together so that include paths moved once. The paths

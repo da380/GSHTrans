@@ -198,6 +198,18 @@ powered itself off in the middle of a gate run at sixteen jobs, straight after
 two other full builds; six jobs still touched 88 °C. Give the number, and on
 the laptop give a small one.
 
+**Run the suite at the runner's width before pushing: `OMP_NUM_THREADS=4`.**
+An example that demanded bit-equality between a threaded route and a
+sequential one passed at sixteen threads and at one, where the chunking
+happens to coincide, and failed in every CI job at four. The difference was
+one unit in the last place, which is what two orders of summation are allowed;
+the promise that does hold exactly is between two routes *under one policy*,
+and that is the one to assert. Two things to know when chasing such a thing: a
+threaded transform reproduces itself bit for bit from call to call, so a
+difference that moves between calls is a race; and one that moves between
+*processes* need not be, because `FFTWpp::Measure` plans by timing and two
+runs may get different plans — under `Estimate` it goes away.
+
 **Build the no-dependency configuration before pushing anything that touches
 `SphericalGrid.hpp`.** A private member added inside its
 `#ifdef GSHTRANS_HAVE_BLAS` block compiles in the default tree and fails only
