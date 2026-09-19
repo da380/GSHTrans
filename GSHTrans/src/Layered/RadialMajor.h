@@ -160,10 +160,7 @@ class RadialMajor {
   static void Transpose(const T* in, T* out, Int rows, Int cols,
                         Execution policy) {
     const auto tile = TileSize();
-    const auto threads =
-        policy.IsParallel() && !omp_in_parallel()
-            ? (policy.Threads() > 0 ? policy.Threads() : omp_get_max_threads())
-            : 1;
+    const auto threads = policy.TeamSize();
 
     const auto block = [&](Int i0) {
       const auto iEnd = std::min(i0 + tile, rows);
@@ -206,10 +203,7 @@ void ApplyToLines(const RadialMajor<Stack>& in, RadialMajor<Stack>& out,
   }
 
   const auto lines = in.NumberOfLines();
-  const auto threads =
-      policy.IsParallel() && !omp_in_parallel()
-          ? (policy.Threads() > 0 ? policy.Threads() : omp_get_max_threads())
-          : 1;
+  const auto threads = policy.TeamSize();
 
   const auto run = [&](Int j) {
     op(std::span<const Scalar>(in.Line(j)), std::span<Scalar>(out.Line(j)));

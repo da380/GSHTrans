@@ -79,22 +79,44 @@ endif()
 #
 # All URLs are https. GaussQuad was previously fetched over SSH, which meant
 # the project could not be configured at all without GitHub keys.
+#
+# Which revision of each is fetched is a cache variable, and the default is
+# main. The four are one author's and move together, so on a development
+# branch tracking main is the point. It is wrong for a *release*: a tag that
+# fetches whatever main is that day does not name a state anyone can rebuild,
+# and an upstream change has already broken a tagged tree once. So the commit
+# that tags a release sets these four defaults to the commits it was tested
+# against, and the commit after it sets them back. They are cache variables
+# rather than literals so that the same thing can be done from outside, by
+# anyone who needs a build to stay still:
+#
+#   cmake -DGSHTRANS_FFTWPP_TAG=<commit> ...
+set(GSHTRANS_NUMERICCONCEPTS_TAG main CACHE STRING
+    "The NumericConcepts revision to fetch if none is installed")
+set(GSHTRANS_GAUSSQUAD_TAG main CACHE STRING
+    "The GaussQuad revision to fetch if none is installed")
+set(GSHTRANS_FFTWPP_TAG main CACHE STRING
+    "The FFTWpp revision to fetch if none is installed")
+set(GSHTRANS_INTERPOLATION_TAG main CACHE STRING
+    "The Interpolation revision to fetch if none is installed")
+mark_as_advanced(GSHTRANS_NUMERICCONCEPTS_TAG GSHTRANS_GAUSSQUAD_TAG
+                 GSHTRANS_FFTWPP_TAG GSHTRANS_INTERPOLATION_TAG)
 FetchContent_Declare(
   NumericConcepts
   GIT_REPOSITORY https://github.com/da380/NumericConcepts.git
-  GIT_TAG main
+  GIT_TAG ${GSHTRANS_NUMERICCONCEPTS_TAG}
   FIND_PACKAGE_ARGS)
 
 FetchContent_Declare(
   GaussQuad
   GIT_REPOSITORY https://github.com/da380/GaussQuad.git
-  GIT_TAG main
+  GIT_TAG ${GSHTRANS_GAUSSQUAD_TAG}
   FIND_PACKAGE_ARGS)
 
 FetchContent_Declare(
   FFTWpp
   GIT_REPOSITORY https://github.com/da380/FFTWpp.git
-  GIT_TAG main
+  GIT_TAG ${GSHTRANS_FFTWPP_TAG}
   FIND_PACKAGE_ARGS)
 
 FetchContent_MakeAvailable(NumericConcepts GaussQuad FFTWpp)
@@ -113,9 +135,10 @@ FetchContent_MakeAvailable(NumericConcepts GaussQuad FFTWpp)
 # NumericConcepts -- which is already here -- and is small. Off is a supported
 # configuration and the suite runs in it.
 #
-# Tracking main, like the three above. Interpolation's own README asks
-# consumers to pin a reviewed commit, which is right for a stranger and wrong
-# for four libraries with one author that move together.
+# Tracking main by default, like the three above. Interpolation's own README
+# asks consumers to pin a reviewed commit, which is right for a stranger and
+# wrong for four libraries with one author that move together -- except at a
+# release, which is what GSHTRANS_INTERPOLATION_TAG is for.
 option(GSHTRANS_WITH_INTERPOLATION
        "Radial resampling, built on da380/Interpolation" ON)
 
@@ -123,7 +146,7 @@ if(GSHTRANS_WITH_INTERPOLATION)
   FetchContent_Declare(
     Interpolation
     GIT_REPOSITORY https://github.com/da380/Interpolation.git
-    GIT_TAG main
+    GIT_TAG ${GSHTRANS_INTERPOLATION_TAG}
     FIND_PACKAGE_ARGS)
   FetchContent_MakeAvailable(Interpolation)
 endif()
@@ -147,15 +170,32 @@ endif()
 #
 # A note for whoever links this against a threaded BLAS: the matrix kernel
 # threads over orders itself, so the BLAS must be single-threaded when it
-# does. A BLAS on the same OpenMP runtime gets that for free; one with its own
-# pthread pool needs OPENBLAS_NUM_THREADS=1 or its equivalent.
+# does. A BLAS on the same OpenMP runtime is held to one thread by the library
+# itself; one with its own pthread pool is out of its reach and needs
+# OPENBLAS_NUM_THREADS=1 or its equivalent.
 set(GSHTRANS_WITH_BLAS AUTO CACHE STRING
     "Matrix transform kernel, built on a system BLAS (AUTO, ON, OFF)")
 set_property(CACHE GSHTRANS_WITH_BLAS PROPERTY STRINGS AUTO ON OFF)
 
+# The three states are compared as strings, so the other spellings CMake
+# accepts for a boolean have to be folded onto them first. Unfolded, "0" and
+# "FALSE" were neither "OFF" nor "ON" and so meant AUTO -- BLAS linked for a
+# caller who had asked for none -- and "1" and "TRUE" lost the hard failure
+# that ON exists to give. Anything else is refused rather than guessed at.
+string(TOUPPER "${GSHTRANS_WITH_BLAS}" _with_blas)
+if(_with_blas MATCHES "^(ON|1|TRUE|YES|Y)$")
+  set(_with_blas ON)
+elseif(_with_blas MATCHES "^(OFF|0|FALSE|NO|N)$")
+  set(_with_blas OFF)
+elseif(NOT _with_blas STREQUAL "AUTO")
+  message(FATAL_ERROR
+    "GSHTRANS_WITH_BLAS is \"${GSHTRANS_WITH_BLAS}\", "
+    "which is none of AUTO, ON and OFF.")
+endif()
+
 set(GSHTRANS_BLAS_FOUND OFF)
-if(NOT GSHTRANS_WITH_BLAS STREQUAL "OFF")
-  if(GSHTRANS_WITH_BLAS STREQUAL "ON")
+if(NOT _with_blas STREQUAL "OFF")
+  if(_with_blas STREQUAL "ON")
     find_package(BLAS REQUIRED)
   else()
     find_package(BLAS)

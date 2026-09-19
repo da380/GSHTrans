@@ -30,6 +30,35 @@ Kept current as `fix-plan.md` is worked through. Anything not listed is open.
   said they would, because the slot was looked up for the component rather
   than for its representative.
 
+- **B1, B2, B3, B4, B5, C2 — fixed** (plan Phase 2).
+  - *B1.* The package config finds BLAS when the build had it. `tests/package`
+    now runs the matrix kernel and a bicubic interpolant when the package says
+    it has them, so a forgotten link dependency fails instead of passing.
+  - *B2.* Every CI build entry, the sanitizer job and the package job install
+    a BLAS and configure with `GSHTRANS_WITH_BLAS=ON`. The `undefined`
+    sanitizer entry, a strict subset of `address`, is replaced by a clang one,
+    advisory until it has been seen green.
+  - *B3.* The option's boolean spellings are folded onto `ON`/`OFF`; anything
+    else is a configure error.
+  - *B4, C2.* `Details::InSerialisingRegion` sets the nested thread count to
+    one inside the team, and is tested for teams of 1, 2 and max — the test
+    failed with 16 threads from a team of one before the fix. The one-level
+    rule now lives in `Execution::TeamSize`, replacing five copies, and is
+    tested directly; the assertion that could not fail is gone. **The
+    measured effect is smaller than this review's probe suggested:** OpenBLAS
+    threads a GEMM only above a size threshold, and the library's default
+    chunking at `lMax = 256` stays under it, so nothing changes there. At
+    `lMax = 512` with a chunk of eight, a transform under
+    `Execution::Sequential()` went from 4.7 cores and 340 ms to one core and
+    299 ms.
+  - *B5.* googletest is pinned to `v1.17.0`. The four sibling revisions are
+    cache variables (`GSHTRANS_FFTWPP_TAG`, …) defaulting to `main`, for a
+    release commit to set.
+  - Not done, on reflection: making example 20 exit non-zero "when built `ON`
+    without the kernel". That state cannot arise — `ON` without a BLAS fails
+    the configure — and under `AUTO` returning zero is the documented
+    behaviour.
+
 ## Summary
 
 The numerical core is in good shape. The loop and matrix kernels, the batching

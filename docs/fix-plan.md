@@ -125,7 +125,10 @@ Done early so every later phase is checked with the matrix kernel built.
      (one runtime, one level), the stated mechanism was wrong.
    - Re-run the sequential matrix-kernel rows of the benchmark on a machine
      with OpenMP OpenBLAS, interleaved A/B from `build-bench`, and record the
-     figure. Expected ~4× on those rows.
+     figure. *Done: not the ~4× first expected. At the default chunking the
+     products sit under OpenBLAS's own threading threshold and nothing
+     changes; at `lMax = 512` with a chunk of eight the sequential transform
+     went from 4.7 cores and 340 ms to one core and 299 ms.*
 5. **B5 / D6.** Pin googletest to a release tag, and add a
    `GSHTRANS_PIN_DEPENDENCIES` list of SHAs that the release commit fills in.
 

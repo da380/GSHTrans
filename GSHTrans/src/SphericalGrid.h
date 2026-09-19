@@ -775,9 +775,11 @@ class SphericalGrid {
   // inside an existing parallel region runs sequentially instead, so that a
   // caller parallelising over slices, components or realisations cannot nest
   // with this, and neither can Wigner::ComputeAll.
-  static bool RunInParallel(Execution policy) {
-    return policy.IsParallel() && !omp_in_parallel();
-  }
+  //
+  // The rule itself lives in Execution::TeamSize. These two are what the
+  // pragmas below are written in terms of: whether to open a team at all, and
+  // how large a team to ask for when one is opened.
+  static bool RunInParallel(Execution policy) { return policy.TeamSize() > 1; }
 
   static int ThreadCount(Execution policy) {
     return policy.Threads() > 0 ? policy.Threads() : omp_get_max_threads();
@@ -1344,31 +1346,29 @@ class SphericalGrid {
     const auto orders = lMax - minOrder + 1;
 
     // **A team is opened even for the sequential case, and that is the point
-    // rather than an accident of the code.** M3a measured that a threaded
-    // BLAS loses on these products -- 23.7 ms against 17.0 at
-    // lMax = 256, k = 8, with GSHTrans sequential and so with no nesting to
-    // blame -- because the 513 products are skinny and thread launch
-    // dominates. The library cannot set a BLAS's thread count portably: there
-    // is no standard call, and OPENBLAS_NUM_THREADS is a property of one
-    // implementation and is inert in its OpenMP build.
+    // rather than an accident of the code.** A threaded BLAS loses on these
+    // products -- 23.7 ms against 17.0 at lMax = 256, k = 8, with GSHTrans
+    // sequential and so with no nesting to blame -- because the 513 products
+    // are skinny and thread launch dominates. The library cannot set a BLAS's
+    // thread count portably: there is no standard call, and
+    // OPENBLAS_NUM_THREADS is a property of one implementation and is inert
+    // in its OpenMP build.
     //
-    // What it can do is make sure every GEMM is issued from *inside* an
-    // OpenMP region. A BLAS on the same runtime is then nested, and the
-    // default of one active level makes it serial without anyone being asked
-    // to set anything. A BLAS on its own pthread pool is unaffected and still
-    // needs the caller's environment, which is what the CMake comment says.
+    // What it can do is issue every GEMM from inside a region that holds
+    // nested regions to one thread, which is what InSerialisingRegion is and
+    // where the mechanism is described -- including why opening a team is not
+    // enough by itself, which this comment used to claim it was. A BLAS on its
+    // own pthread pool is unaffected and still needs the caller's environment,
+    // which is what the CMake comment says.
     //
     // Found by falling into it: the benchmark's sequential rows reported
     // table traffic at twice single-core bandwidth, because "GSHTrans
     // sequential" had been letting the BLAS take the whole machine.
-    const auto threads = RunInParallel(policy) ? ThreadCount(policy) : 1;
-
-#pragma omp parallel num_threads(threads)
-    {
+    Details::InSerialisingRegion(policy.TeamSize(), [&] {
       auto& scratch = OrderScratch(scratchSize);
 #pragma omp for schedule(dynamic)
       for (Int i = 0; i < orders; i++) body(minOrder + i, scratch.data());
-    }
+    });
   }
 
   // The forward transform as one matrix product per order.

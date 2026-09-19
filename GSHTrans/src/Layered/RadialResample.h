@@ -247,10 +247,7 @@ auto Resample(const Stack& in, RadialGrid<Real> onto,
     }
   };
 
-  const auto threads =
-      policy.IsParallel() && !omp_in_parallel()
-          ? (policy.Threads() > 0 ? policy.Threads() : omp_get_max_threads())
-          : 1;
+  const auto threads = policy.TeamSize();
 
   if (threads == 1) {
     for (auto j = Int{0}; j < lines; j++) run(j);

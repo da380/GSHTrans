@@ -20,9 +20,12 @@
  * exception, and says below why.
  */
 
+#include <omp.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <stdexcept>
+#include <utility>
 
 namespace GSHTrans {
 
@@ -64,6 +67,19 @@ class Execution {
   /** @brief Whether threading is permitted at all. */
   auto IsParallel() const { return threads_ != 1; }
 
+  /**
+   * @brief How many threads an operation given this policy uses *here*.
+   * @details The one-level rule, decided in the one place: one thread unless
+   * threading was asked for **and** the caller is not already inside an active
+   * parallel region. Everything that threads asks this rather than working it
+   * out, which is what makes the rule a property of the library and not of
+   * however many call sites remembered it.
+   */
+  int TeamSize() const {
+    if (!IsParallel() || omp_in_parallel()) return 1;
+    return threads_ > 0 ? threads_ : omp_get_max_threads();
+  }
+
   /** @brief Compares componentwise. */
   bool operator==(const Execution&) const = default;
 
@@ -71,6 +87,49 @@ class Execution {
   explicit Execution(int threads) : threads_{threads} {}
   int threads_;
 };
+
+namespace Details {
+
+/**
+ * @brief Runs @p body on every thread of a team, with any OpenMP region
+ * opened from inside it held to one thread.
+ *
+ * @details This is for code that calls a BLAS. A GEMM here is small and
+ * skinny, a threaded BLAS loses on it, and the library threads over orders
+ * itself -- so the BLAS has to run serially, and there is no portable call
+ * that says so. What there is, for a BLAS built on the same OpenMP runtime, is
+ * the runtime: the thread count a nested region gets is an internal control
+ * variable of the *task* that opens it, so setting it to one inside the team
+ * serialises every region the body goes on to open and nothing else. It is
+ * scoped to the team's implicit tasks and the caller's own setting is as it
+ * was when this returns.
+ *
+ * Opening the team is not enough by itself, though it was once thought to be.
+ * The argument was that a region opened inside a region is nested, and that
+ * the default of one active level makes a nested region serial. That holds
+ * for a team of two or more. A team of **one** is an *inactive* region: it
+ * does not count as a level, `omp_in_parallel()` is false inside it, and a
+ * region opened from it gets the whole machine -- so the sequential case,
+ * which is the one that was measured and the one most callers run, was
+ * exactly the case in which the BLAS was not being held back.
+ *
+ * A BLAS with its own pthread pool is untouched by any of this and needs
+ * `OPENBLAS_NUM_THREADS=1` or its equivalent from the caller.
+ *
+ * @param threads The team size; one is allowed and is not a special case.
+ * @param body Called once on each thread. It may contain an orphaned
+ * worksharing construct, which binds to this team.
+ */
+template <typename Body>
+void InSerialisingRegion(int threads, Body&& body) {
+#pragma omp parallel num_threads(threads)
+  {
+    omp_set_num_threads(1);
+    body();
+  }
+}
+
+}  // namespace Details
 
 //-------------------------------------------------------------------------//
 //                             Batch descriptor                             //

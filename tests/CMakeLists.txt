@@ -2,7 +2,10 @@ include(FetchContent)
 FetchContent_Declare(
   googletest
   GIT_REPOSITORY https://github.com/google/googletest.git
-  GIT_TAG main
+  # A release and not main. GoogleTest is someone else's, its main raises its
+  # minimum compiler and CMake versions without notice, and nothing here needs
+  # anything newer than this.
+  GIT_TAG v1.17.0
 )
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 # Do not let a test dependency install itself alongside the library: without

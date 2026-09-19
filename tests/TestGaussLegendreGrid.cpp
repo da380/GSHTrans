@@ -784,8 +784,69 @@ TEST(GaussLegendreGrid, ParallelAgreesWithSequential) {
   }
 }
 
-// Exactly one level threads. A transform asked to run in parallel from inside
-// a parallel region must run sequentially rather than nest.
+// Exactly one level threads, and the rule is decided in one place:
+// Execution::TeamSize. From outside any region it is what was asked for; from
+// inside an active one it is one, whatever was asked for.
+//
+// This is tested on the decision itself because nothing else can see it. The
+// test below once counted `omp_get_level() > 1` in its outer loop body -- but
+// that is evaluated after the inner calls have returned, where the level is
+// one whatever they did, so it could not fail. Nor can the answers tell: a
+// nested region under the default of one active level runs on one thread and
+// computes the same numbers.
+TEST(Threading, TeamSizeIsOneInsideAnActiveRegion) {
+  if (omp_get_max_threads() < 2) GTEST_SKIP() << "needs two threads";
+
+  EXPECT_EQ(Execution::Sequential().TeamSize(), 1);
+  EXPECT_EQ(Execution::Parallel(3).TeamSize(), 3);
+  EXPECT_EQ(Execution::Parallel().TeamSize(), omp_get_max_threads());
+
+  auto inside = std::vector<int>(2, -1);
+  auto insideDefault = std::vector<int>(2, -1);
+#pragma omp parallel num_threads(2)
+  {
+    const auto t = static_cast<std::size_t>(omp_get_thread_num());
+    inside[t] = Execution::Parallel(3).TeamSize();
+    insideDefault[t] = Execution::Parallel().TeamSize();
+  }
+  EXPECT_EQ(inside, (std::vector<int>{1, 1}));
+  EXPECT_EQ(insideDefault, (std::vector<int>{1, 1}));
+}
+
+// The matrix kernel issues every GEMM from inside this region so that a BLAS
+// on the same OpenMP runtime runs serially. What has to hold is that a region
+// opened from inside it -- which is what such a BLAS does -- gets one thread,
+// for *every* team size. A team of one is the case that matters and the case
+// that failed: it is an inactive region, so nothing about it is nested, and a
+// region opened from it took the whole machine.
+TEST(Threading, ARegionOpenedInsideTheSerialisingRegionGetsOneThread) {
+  const auto available = omp_get_max_threads();
+  if (available < 2) GTEST_SKIP() << "needs two threads";
+
+  for (auto team : {1, 2, available}) {
+    auto opened = std::vector<int>(static_cast<std::size_t>(team), -1);
+    Details::InSerialisingRegion(team, [&] {
+      auto got = 0;
+#pragma omp parallel
+      {
+#pragma omp single
+        got = omp_get_num_threads();
+      }
+      opened[static_cast<std::size_t>(omp_get_thread_num())] = got;
+    });
+    for (auto got : opened) {
+      // A thread the runtime declined to supply never ran, and says -1.
+      if (got != -1) EXPECT_EQ(got, 1) << "from a team of " << team;
+    }
+    EXPECT_EQ(opened[0], 1) << "from a team of " << team;
+  }
+
+  // And the caller's own setting is untouched.
+  EXPECT_EQ(omp_get_max_threads(), available);
+}
+
+// The answers do not depend on who owns the parallelism: transforms that ask
+// to thread, called from a loop that already does, give what they give alone.
 TEST(GaussLegendreGrid, NestedParallelismIsSuppressed) {
   using Real = double;
   using Complex = std::complex<Real>;
@@ -819,18 +880,15 @@ TEST(GaussLegendreGrid, NestedParallelismIsSuppressed) {
   // must not get it.
   auto results = std::vector<FFTWpp::vector<Complex>>(
       count, FFTWpp::vector<Complex>(indices.Size()));
-  auto sawNesting = 0;
-#pragma omp parallel for schedule(static) reduction(+ : sawNesting)
+#pragma omp parallel for schedule(static)
   for (auto s = 0; s < count; ++s) {
     auto given = Given(s);
     auto field = FFTWpp::vector<Complex>(grid.FieldSize());
     grid.InverseTransformation(lMax, 0, given, field, Execution::Parallel(4));
     grid.ForwardTransformation(lMax, 0, field, results[s],
                                Execution::Parallel(4));
-    if (omp_get_level() > 1) sawNesting += 1;
   }
 
-  EXPECT_EQ(sawNesting, 0);
   for (auto s = 0; s < count; ++s) {
     for (auto j = std::size_t{0}; j < reference[s].size(); ++j) {
       EXPECT_NEAR(std::abs(results[s][j] - reference[s][j]), 0.0, tolerance)

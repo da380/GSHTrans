@@ -27,8 +27,27 @@ differently next run.
 **One OpenMP runtime per process.** The OpenMP build of OpenBLAS links
 `libgomp`, so a clang build of this library — which uses `libomp` — puts two
 runtimes in one process. Results stay correct; timings do not, because the
-library issues every GEMM from inside an OpenMP region and relies on a
-same-runtime BLAS nesting and staying serial.
+library holds a same-runtime BLAS to one thread through that runtime, and a
+BLAS on another runtime is out of its reach.
+
+**A parallel region with one thread is not a parallel region.** The BLAS was
+first kept serial by issuing every GEMM from inside an OpenMP region, on the
+argument that a region opened inside a region is nested and the default of one
+active level makes a nested region serial. True of a team of two or more. A
+team of *one* is inactive: it is not a level, `omp_in_parallel()` is false
+inside it, and a region opened from it gets the whole machine — so the
+sequential case, the commonest, was the one case in which the BLAS was not
+held back. Measured against the OpenMP build of OpenBLAS at `lMax = 512` with
+a chunk of eight, a transform under `Execution::Sequential()` used 4.7 cores
+and ran 14 per cent *slower* than it does on one. It went unseen twice over:
+the development machine's default BLAS is the pthread build, which none of
+this touches, and OpenBLAS threads a GEMM only above a size that the default
+chunking at `lMax = 256` stays under — so it waits for a large cache, a large
+degree, or a tuned chunk, which is to say for the production machine. What
+works is `omp_set_num_threads(1)` inside the
+region: that sets the thread count of the tasks that go on to open nested
+regions, and of nothing else. `Details::InSerialisingRegion` is that, and
+`Threading.ARegionOpenedInsideTheSerialisingRegionGetsOneThread` is the test.
 
 ## Numerics
 
