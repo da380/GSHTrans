@@ -135,6 +135,26 @@ Kept current as `fix-plan.md` is worked through. Anything not listed is open.
     loop-kernel rows moved by ten per cent — and so did the *unchanged* code
     under a no-op edit to the benchmark, which is recorded in `lessons.md`.
 
+- **W1, and the 3-j half of W3 — fixed** (plan Phase 6a; the design and the
+  measurements are in `large-degree-note.md`).
+  - The forward half of a row now stops where the *values* first fall, not
+    where the recurrence coefficient first rises, and the halves are joined
+    through `hypot` so that the ratio is never squared. All 124 throws across
+    the stretched sweeps are gone — 44 of 77 `(l, 2l, l)` tables to l = 1000
+    could not be built — and the error against exact values in the stretched
+    region fell from 3.9e-10 to 7e-13, which is the oracle's floor.
+  - Rows are computed in at least double precision and narrowed as they are
+    scattered. This went beyond the note, which said single precision would
+    need no help: the algorithm was then right, but a flat row of 900 values
+    still lost n² ε, leaving two digits at l = 450. A single-precision table
+    is now the double one, rounded, where it was previously wrong by up to six
+    tenths of its own scale while passing the residual check.
+  - `ResidualTolerance` went from a guessed 1000 to a measured 50 in units of
+    (n + 1) ε: the worst residual a row leaves, over the sweeps, fat and flat
+    tables and 400 random triples, is 1.9 in double and 2.6 in long double.
+  - `GSHTRANS_TEST_THOROUGH=1` runs the full acceptance sweeps; the default
+    suite runs a thinned set that still includes the first failures.
+
 ## Summary
 
 The numerical core is in good shape. The loop and matrix kernels, the batching

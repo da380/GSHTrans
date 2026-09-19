@@ -4,6 +4,9 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdlib>
+#include <random>
+#include <string>
 #include <vector>
 
 #include "RacahReference.h"
@@ -20,11 +23,11 @@
 // a table that has just been built, it needs nothing to compare against, and
 // it is what the rest of the plan is built on.
 //
-// Half of what is asserted here is where the identity **fails**, which is as
-// important as where it holds: the existing recursion is run in its unstable
-// direction near stretched triangles, and pinning the boundary is what turns
-// an unknown into a known one. Those assertions are inverted where Racah's
-// closed form covers the region.
+// Completeness cannot see everything -- Schulten-Gordon normalises each row
+// by it, so it holds by construction -- and the tests further down say what
+// each of the other checks can and cannot see. The stretched region, where
+// the recursion once ran in its unstable direction, is covered at the end of
+// the file against Racah's closed form, which is exact there.
 
 namespace {
 
@@ -471,6 +474,186 @@ TEST(ThreeJ, TheCouplingLayoutIsAConventionAndIsItsOwnInverse) {
                                                 std::span<double>(twice));
   for (std::size_t i = 0; i < twice.size(); ++i) {
     EXPECT_NEAR(twice[i], plain.Data()[i], 1e-15) << "entry " << i;
+  }
+}
+
+//--------------------------------------------------------------------------//
+//                      Stretched triangles at high degree                   //
+//--------------------------------------------------------------------------//
+
+// A row of a near-stretched table is a single hump with no classically
+// allowed region, and the rule that decides where the two halves of the
+// recursion meet has to find the top of it. It once did not -- it watched the
+// recurrence coefficient, which is a proxy for the values and a poor one
+// here -- so one half ran downhill, which costs digits, and beyond a certain
+// disparity the join overflowed and the table threw. More than half of all
+// (l, 2l, l) tables up to l = 1000 could not be built, and in single precision
+// tables came back wrong by a third of their own scale without complaint.
+//
+// The oracle is Racah's closed form, which is exact to rounding where its sum
+// is short. A short sum *is* the stretched region, reached by whichever cyclic
+// permutation of the columns puts the stretched degree third.
+//
+// GSHTRANS_TEST_THOROUGH=1 runs the full sweeps the fix was accepted on, which
+// take a few seconds optimised and rather longer under a sanitiser.
+
+namespace Stretched {
+
+inline bool Thorough() {
+  const auto* value = std::getenv("GSHTRANS_TEST_THOROUGH");
+  return value != nullptr && std::string(value) != "0";
+}
+
+inline std::vector<int> Degrees() {
+  if (Thorough()) {
+    auto all = std::vector<int>{};
+    for (auto l = 2; l <= 1000; l += 13) all.push_back(l);
+    return all;
+  }
+  // Small, the first failures, the band where they were densest, and one well
+  // beyond it.
+  return {2, 33, 130, 260, 264, 275, 302, 520};
+}
+
+// The worst disagreement with Racah over the entries it can be trusted on, as
+// a fraction of the table's largest entry.
+template <typename T>
+double WorstAgainstRacah(int l1, int l2, int l3) {
+  const auto table = Wigner3jMatrix<T>(l1, l2, l3);
+  auto scale = 0.0;
+  for (auto v : table.Data()) scale = std::max<double>(scale, std::abs(v));
+
+  auto worst = 0.0;
+  for (auto m1 = -l1; m1 <= l1; m1 += std::max(1, l1 / 12)) {
+    for (auto m3 = -l3; m3 <= l3; m3 += std::max(1, l3 / 12)) {
+      const auto m2 = -m1 - m3;
+      if (std::abs(m2) > l2) continue;
+      // An even permutation of the columns leaves the symbol unchanged, so
+      // use whichever arrangement Racah finds shortest.
+      const std::array<std::array<int, 6>, 3> cyclic{
+          {{l1, l2, l3, m1, m2, m3},
+           {l2, l3, l1, m2, m3, m1},
+           {l3, l1, l2, m3, m1, m2}}};
+      for (const auto& a : cyclic) {
+        // Two terms at most: at three the oracle's own cancellation shows.
+        if (RacahSumLength(a[0], a[1], a[2], a[3], a[4]) > 2) continue;
+        const auto exact =
+            RacahSymbol<long double>(a[0], a[1], a[2], a[3], a[4], a[5]);
+        worst = std::max<double>(
+            worst, std::abs(static_cast<long double>(table(m1, m3)) - exact));
+        break;
+      }
+    }
+  }
+  return worst / scale;
+}
+
+template <typename A, typename B>
+double WorstBetween(int l1, int l2, int l3) {
+  const auto a = Wigner3jMatrix<A>(l1, l2, l3);
+  const auto b = Wigner3jMatrix<B>(l1, l2, l3);
+  auto scale = 0.0;
+  auto worst = 0.0;
+  for (std::size_t i = 0; i < a.Data().size(); ++i) {
+    scale = std::max<double>(scale, std::abs(b.Data()[i]));
+    worst = std::max<double>(worst,
+                             std::abs(static_cast<long double>(a.Data()[i]) -
+                                      static_cast<long double>(b.Data()[i])));
+  }
+  return worst / scale;
+}
+
+inline std::vector<std::array<int, 3>> RandomTriples(int count, int lTop) {
+  auto gen = std::mt19937(20260919u);
+  auto triples = std::vector<std::array<int, 3>>{};
+  for (auto i = 0; i < count; ++i) {
+    const auto l1 = static_cast<int>(gen() % static_cast<unsigned>(lTop + 1));
+    const auto l3 = static_cast<int>(gen() % static_cast<unsigned>(lTop + 1));
+    const auto lowest = std::abs(l1 - l3);
+    const auto l2 =
+        lowest +
+        static_cast<int>(gen() % static_cast<unsigned>(l1 + l3 - lowest + 1));
+    triples.push_back({l1, l2, l3});
+  }
+  return triples;
+}
+
+}  // namespace Stretched
+
+TEST(ThreeJ, StretchedTablesCanBeBuiltAndAgreeWithRacah) {
+  for (auto l : Stretched::Degrees()) {
+    for (const auto& t : std::vector<std::array<int, 3>>{{l, 2 * l, l},
+                                                         {l, 2 * l - 1, l},
+                                                         {l, 2 * l - 2, l},
+                                                         {l, l, 2 * l}}) {
+      auto worst = 0.0;
+      ASSERT_NO_THROW(
+          worst = Stretched::WorstAgainstRacah<double>(t[0], t[1], t[2]))
+          << "(" << t[0] << "," << t[1] << "," << t[2] << ")";
+      // The oracle's floor, not the library's: a logarithm of size O(l)
+      // exponentiated in double precision.
+      EXPECT_LT(worst, 1e-11)
+          << "(" << t[0] << "," << t[1] << "," << t[2] << ")";
+    }
+  }
+}
+
+TEST(ThreeJ, StretchedInTheMiddleDegreeCanBeBuilt) {
+  // l2 = l1 + l3 with the outer two different, which is what Wigner3jStack
+  // reaches by default at the top of its range.
+  const auto step = Stretched::Thorough() ? 25 : 125;
+  for (auto l1 = 150; l1 <= 400; l1 += step) {
+    for (auto l3 = 150; l3 <= 400; l3 += step) {
+      auto worst = 0.0;
+      ASSERT_NO_THROW(worst =
+                          Stretched::WorstAgainstRacah<double>(l1, l1 + l3, l3))
+          << "(" << l1 << "," << l1 + l3 << "," << l3 << ")";
+      EXPECT_LT(worst, 1e-11)
+          << "(" << l1 << "," << l1 + l3 << "," << l3 << ")";
+    }
+  }
+  EXPECT_NO_THROW((Wigner3jStack<double>(40, 30)));
+}
+
+TEST(ThreeJ, DoublePrecisionHoldsAwayFromTheStretchedRegion) {
+  // Against long double, which is the same algorithm and so no oracle for a
+  // wrong answer, but a good one for lost digits. The bound is set by flat
+  // rows -- l1 = 0 has 2 l + 1 equal entries -- where any three-term
+  // recurrence accumulates about n^2 epsilon.
+  const auto triples = Stretched::RandomTriples(
+      Stretched::Thorough() ? 300 : 20, Stretched::Thorough() ? 500 : 350);
+  for (const auto& t : triples) {
+    auto worst = 0.0;
+    ASSERT_NO_THROW(worst = (Stretched::WorstBetween<double, long double>(
+                        t[0], t[1], t[2])))
+        << "(" << t[0] << "," << t[1] << "," << t[2] << ")";
+    EXPECT_LT(worst, 1e-10) << "(" << t[0] << "," << t[1] << "," << t[2] << ")";
+  }
+}
+
+TEST(ThreeJ, SinglePrecisionIsRightAndNotMerelyReturned) {
+  // Single precision used to come back wrong by up to six tenths of the
+  // table's own scale, having passed the residual check, and threw from
+  // l = 33 on stretched tables. The first three named here are from the
+  // review. The flat rows are here for a different reason: even a correct
+  // recursion loses n^2 epsilon along a row, which in single precision left
+  // two digits at l = 450, so the rows are computed in double and a
+  // single-precision table is the double one, rounded.
+  auto triples = Stretched::RandomTriples(Stretched::Thorough() ? 300 : 20,
+                                          Stretched::Thorough() ? 500 : 350);
+  triples.push_back({74, 466, 392});
+  triples.push_back({203, 480, 277});
+  triples.push_back({40, 70, 30});
+  triples.push_back({170, 340, 170});
+  triples.push_back({0, 448, 448});
+  triples.push_back({2, 300, 301});
+  for (const auto& t : triples) {
+    auto worst = 0.0;
+    ASSERT_NO_THROW(
+        worst = (Stretched::WorstBetween<float, double>(t[0], t[1], t[2])))
+        << "(" << t[0] << "," << t[1] << "," << t[2] << ")";
+    // Rounding to single precision and nothing more.
+    EXPECT_LT(worst, 1e-6) << "(" << t[0] << "," << t[1] << "," << t[2] << ")";
   }
 }
 

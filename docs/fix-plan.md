@@ -243,6 +243,11 @@ cost on the transform rows.
 
 ## Phase 6 — large degree (W1, W2, W3) — *each needs a short note agreed first*
 
+**The note is `large-degree-note.md`**, with the measurements and the
+prototype's results. It supersedes the sketch below where they differ:
+proposal A passes its acceptance table so B is not needed, and `float` 3-j
+symbols turn out to need no help once A is in.
+
 ### 6a. 3-j: stretched triangles (W1)
 
 **What is wrong.** Two separate things. (i) The join always scales *up*, so

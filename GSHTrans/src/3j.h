@@ -10,6 +10,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -206,10 +207,22 @@ inline std::pair<int, int> OrderRange(int l2, int l3, int m1) {
  *
  * fixes it. No closed-form seed is needed and no factorial is ever formed.
  *
- * The turning point is found by watching the recurrence coefficient rather
- * than by locating it analytically: while |c1| is decreasing the run is
- * heading towards larger values and is stable, and the first increase says to
- * stop and come from the other end.
+ * The forward run stops where the values first fall, and the backward run
+ * comes up to meet it. Recursing towards larger values is what is stable, so
+ * the quantity to watch is the values themselves -- and the first fall is the
+ * edge of the allowed region where there is one, and the top of the hump in a
+ * near-stretched row, which has none. Either way the three points the halves
+ * are matched on sit where the row is largest, which is where a least-squares
+ * match is best conditioned.
+ *
+ * SLATEC watches the recurrence coefficient |c1| instead and stops when it
+ * first rises, and so did this. It is a proxy, good in a row with an allowed
+ * region because |c1| is smallest near the middle of one, and wrong in a
+ * near-stretched row, where its minimum is nowhere near the hump: one half
+ * then ran downhill, in the direction the unwanted solution grows. That cost
+ * four digits where it cost least, and where the halves ended more than
+ * 1e154 apart the join overflowed and the table could not be built at all --
+ * which was more than half of all (l, 2l, l) tables up to l = 1000.
  *
  * Schulten, K. and Gordon, R. G., J. Math. Phys. 16 (1975) 1961, and the
  * companion at 1971 for the semiclassical picture behind the turning points.
@@ -239,13 +252,12 @@ int SchultenGordonRow(int l1, int l2, int l3, int m1, std::span<T> g) {
   const auto A = [&](int m2) { return RecurrenceA<T>(l1, l2, l3, m1, m2); };
   const auto B = [&](int m2) { return RecurrenceB<T>(l1, l2, l3, m1, m2); };
 
-  // Forward from m2Min, while |c1| decreases.
+  // Forward from m2Min, while the values grow.
   g[0] = rootSmall;
   auto sumAll = small;
   auto sumForward = small;
   auto factor = T{0};
   auto c1 = T{0};
-  auto previous = std::numeric_limits<T>::max();
   auto value = T{0};
   auto last = 0;
 
@@ -253,7 +265,6 @@ int SchultenGordonRow(int l1, int l2, int l3, int m1, std::span<T> g) {
     const auto m2 = m2Min + k;
     const auto older = factor;
     factor = A(m2);
-    if (k > 1) previous = std::abs(c1);
     c1 = -B(m2) / factor;
 
     if (k == 1) {
@@ -276,10 +287,12 @@ int SchultenGordonRow(int l1, int l2, int l3, int m1, std::span<T> g) {
       sumForward /= big;
       value /= rootBig;
     }
-    if (previous <= std::abs(c1)) break;
+    // The first fall. Not before the third value: the match needs three
+    // points, and a hump at the very start is two harmless steps downhill.
+    if (k >= 2 && std::abs(g[k]) < std::abs(g[k - 1])) break;
   }
 
-  auto sumTotal = sumAll;
+  auto rootTotal = std::sqrt(sumAll);
 
   // The sign the tail carries, tracked rather than read back from storage.
   //
@@ -336,19 +349,25 @@ int SchultenGordonRow(int l1, int l2, int l3, int m1, std::span<T> g) {
     // matching on one of them.
     auto ratio = (x1 * y1 + x2 * y2 + x3 * y3) / (x1 * x1 + x2 * x2 + x3 * x3);
 
+    // The root of the total and not the total. Each half was seeded at
+    // rootSmall and rescaled as it grew, so the two can differ in scale by
+    // about the whole range of T, and the ratio squared then overflows where
+    // nothing else in the row does. hypot forms the root without the square.
     if (std::abs(ratio) >= 1) {
       for (auto i = 0; i <= last - 2; ++i) g[i] *= ratio;
-      sumTotal = ratio * ratio * sumForward + sumBackward;
+      rootTotal =
+          std::hypot(ratio * std::sqrt(sumForward), std::sqrt(sumBackward));
       tailSign = 1;  // the backward seed was positive and is untouched
     } else {
       ratio = 1 / ratio;
       for (auto i = last - 1; i < n; ++i) g[i] *= ratio;
-      sumTotal = sumForward + ratio * ratio * sumBackward;
+      rootTotal =
+          std::hypot(std::sqrt(sumForward), ratio * std::sqrt(sumBackward));
       tailSign = (ratio >= 0) ? T{1} : T{-1};
     }
   }
 
-  auto norm = 1 / std::sqrt(static_cast<T>(2 * l1 + 1) * sumTotal);
+  auto norm = 1 / (std::sqrt(static_cast<T>(2 * l1 + 1)) * rootTotal);
   const auto wanted = (std::abs(l2 - l3 - m1) % 2 == 0) ? T{1} : T{-1};
   if (tailSign * wanted < 0) norm = -norm;
   for (auto i = 0; i < n; ++i) g[i] *= norm;
@@ -357,13 +376,25 @@ int SchultenGordonRow(int l1, int l2, int l3, int m1, std::span<T> g) {
 
 /**
  * @brief The tolerance the recurrence residual is judged against.
- * @details Relative to the row's own largest value, and loose: the residual
- * of a good row is a few epsilon times the number of steps, while a broken
- * match shows up at order one.
+ * @details Relative to the row's own largest value and to the size of the
+ * recurrence's coefficients, and proportional to the number of steps, since
+ * the rounding of a recursion accumulates along it.
+ *
+ * The constant is measured and not chosen. Over the stretched sweeps to
+ * l = 1000, fat and flat tables and four hundred random triples, the largest
+ * residual a row leaves is 1.9 of these units in double, 2.6 in long double
+ * and 2.8 in single precision, the worst always on a flat row such as
+ * (0, l, l). Fifty is that with room for another compiler's arithmetic.
+ *
+ * It was a thousand, which was a guess, and a generous one: for a long row in
+ * single precision it came to a tenth of the row's scale, and tables wrong by
+ * a third of theirs passed it. A broken match shows up at order one in these
+ * units times the row length, so there is a great deal of room between the
+ * two and no reason to sit at the far end of it.
  */
 template <NumericConcepts::Real T>
 T ResidualTolerance(int steps) {
-  return static_cast<T>(1000 * (steps + 1)) * std::numeric_limits<T>::epsilon();
+  return static_cast<T>(50 * (steps + 1)) * std::numeric_limits<T>::epsilon();
 }
 
 /**
@@ -473,16 +504,29 @@ void Wigner3jPlane(int l1, int l2, int l3, std::span<T> table) {
   std::fill(table.begin(), table.end(), T{0});
   if (not SatisfiesTriangle(l1, l2, l3)) return;
 
+  // The precision the rows are *computed* in, which is at least double
+  // whatever they are stored in. A three-term recurrence accumulates about
+  // n^2 epsilon along a row of n values, and in single precision that is two
+  // or three digits left at l = 450 -- a flat row such as l1 = 0 shows it
+  // plainly. Single precision is worth having for what is stored and moved,
+  // and buys nothing in a recursion that runs once, so a row is computed in
+  // double and narrowed as it is scattered. The row was always a scratch
+  // buffer, so this costs the difference in its arithmetic and no memory.
+  using Work = std::conditional_t<(std::numeric_limits<T>::digits <
+                                   std::numeric_limits<double>::digits),
+                                  double, T>;
+
   const auto columns = 2 * l3 + 1;
-  auto row = std::vector<T>(static_cast<std::size_t>(2 * l2 + 2));
+  auto row = std::vector<Work>(static_cast<std::size_t>(2 * l2 + 2));
 
   for (auto m1 = -l1; m1 <= l1; ++m1) {
     const auto [m2Min, m2Max] = OrderRange(l2, l3, m1);
     if (m2Max < m2Min) continue;
-    const auto n = SchultenGordonRow<T>(l1, l2, l3, m1, std::span<T>(row));
+    const auto n =
+        SchultenGordonRow<Work>(l1, l2, l3, m1, std::span<Work>(row));
 
-    if (not RowSatisfiesRecurrence<T>(l1, l2, l3, m1,
-                                      std::span<const T>(row.data(), n), n)) {
+    if (not RowSatisfiesRecurrence<Work>(
+            l1, l2, l3, m1, std::span<const Work>(row.data(), n), n)) {
       throw std::runtime_error(
           "Wigner3jMatrix: the recurrence is not satisfied for degrees (" +
           std::to_string(l1) + ", " + std::to_string(l2) + ", " +
@@ -493,7 +537,8 @@ void Wigner3jPlane(int l1, int l2, int l3, std::span<T> table) {
     for (auto k = 0; k < n; ++k) {
       const auto m3 = -m1 - (m2Min + k);
       if (std::abs(m3) > l3) continue;
-      table[static_cast<std::size_t>(m1 + l1) * columns + (m3 + l3)] = row[k];
+      table[static_cast<std::size_t>(m1 + l1) * columns + (m3 + l3)] =
+          static_cast<T>(row[k]);
     }
   }
 }
