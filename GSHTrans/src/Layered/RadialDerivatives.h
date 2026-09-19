@@ -1,6 +1,7 @@
 #ifndef GSH_TRANS_RADIAL_DERIVATIVES_GUARD_H
 #define GSH_TRANS_RADIAL_DERIVATIVES_GUARD_H
 
+#include <algorithm>
 #include <cstddef>
 #include <span>
 #include <stdexcept>
@@ -118,12 +119,23 @@ auto DifferentiationMatrix(std::span<const Real> nodes) {
   const auto n = static_cast<Int>(nodes.size());
 
   // Barycentric weights, w_i = 1 / prod_{k != i} (r_i - r_k).
+  //
+  // Formed on nodes scaled to an interval of length four, not on the nodes
+  // themselves. Only the ratios w_i / w_j are used below and a common scale
+  // cancels from them, so this changes nothing but the size of the products --
+  // which is the point: a product of n - 1 differences grows or shrinks like
+  // (length / 4)^n, and on radii in kilometres that overflows at a hundred
+  // nodes, turning every ratio into a NaN without a word. Four is the length
+  // at which the products neither grow nor shrink for well-spaced nodes.
+  const auto [lowest, highest] = std::ranges::minmax(nodes);
+  const auto scale = highest > lowest ? Real{4} / (highest - lowest) : Real{1};
   auto w = std::vector<Real>(static_cast<std::size_t>(n), Real{1});
   for (auto i = Int{0}; i < n; i++) {
     for (auto k = Int{0}; k < n; k++) {
       if (k == i) continue;
-      w[static_cast<std::size_t>(i)] *= nodes[static_cast<std::size_t>(i)] -
-                                        nodes[static_cast<std::size_t>(k)];
+      w[static_cast<std::size_t>(i)] *=
+          scale * (nodes[static_cast<std::size_t>(i)] -
+                   nodes[static_cast<std::size_t>(k)]);
     }
     w[static_cast<std::size_t>(i)] = Real{1} / w[static_cast<std::size_t>(i)];
   }
@@ -145,6 +157,25 @@ auto DifferentiationMatrix(std::span<const Real> nodes) {
   return d;
 }
 
+// Every operator here divides by the difference of two radii, so two equal
+// ones give an infinity or a NaN and no exception. A grid may hold a repeated
+// radius -- that is how an interface is written -- so an operator has to say
+// what it does about one, and an operator that can do nothing says so here.
+template <RealFloatingPoint Real>
+void RequireDistinctRadii(std::span<const Real> radii, const char* remedy) {
+  for (std::size_t i = 0; i + 1 < radii.size(); i++) {
+    if (!(radii[i] < radii[i + 1])) {
+      throw std::invalid_argument(
+          "The radius " + std::to_string(radii[i]) +
+          " is repeated, at indices " + std::to_string(i) + " and " +
+          std::to_string(i + 1) +
+          ". A repeated radius is an interface, and this cannot tell which "
+          "side a sample belongs to. " +
+          remedy);
+    }
+  }
+}
+
 }  // namespace RadialDetails
 
 //--------------------------------------------------------------------------//
@@ -158,6 +189,13 @@ auto DifferentiationMatrix(std::span<const Real> nodes) {
 /// is what makes it usable on a grid that has ends -- a centred rule alone
 /// would leave the first and last radii undefined, and those are exactly the
 /// radii a boundary condition is applied at.
+///
+/// On a grid that knows its elements the same is done *within each element*:
+/// a stencil is one-sided at an element's ends exactly as at the grid's, and
+/// never reaches across an interface, so the two copies of an interface radius
+/// get the derivative from below and the derivative from above. An element
+/// with fewer nodes than the stencil is refused, as is a repeated radius on a
+/// grid without elements, which cannot say what it means.
 ///
 /// The weights are Fornberg's, so unequal spacing costs nothing extra and the
 /// rule is exact for polynomials of degree at most `order`. This is the one to
@@ -177,6 +215,9 @@ class FiniteDifferenceDerivative {
    * @param radial The radii, which need not be uniformly spaced.
    * @param order The order of accuracy, giving a stencil of `order + 1`
    * points.
+   * @throws std::invalid_argument if the order is less than one, if the grid
+   * or any element of it has fewer radii than the stencil, or if a radius is
+   * repeated on a grid without elements.
    */
   explicit FiniteDifferenceDerivative(RadialGrid<Real> radial, Int order = 2)
       : radial_{std::move(radial)}, width_{order + 1} {
@@ -196,21 +237,32 @@ class FiniteDifferenceDerivative {
     const auto radii = radial_.Radii();
     first_.resize(static_cast<std::size_t>(nR));
     weights_.resize(static_cast<std::size_t>(nR * width_));
-    for (auto j = Int{0}; j < nR; j++) {
-      // Centred where there is room, shifted just enough at the ends.
-      auto first = j - width_ / 2;
-      if (first < 0) first = 0;
-      if (first > nR - width_) first = nR - width_;
-      first_[static_cast<std::size_t>(j)] = first;
 
-      const auto stencil = radii.subspan(static_cast<std::size_t>(first),
-                                         static_cast<std::size_t>(width_));
-      const auto w = RadialDetails::FirstDerivativeWeights<Real>(
-          radii[static_cast<std::size_t>(j)], stencil);
-      for (auto k = Int{0}; k < width_; k++) {
-        weights_[static_cast<std::size_t>(j * width_ + k)] =
-            w[static_cast<std::size_t>(k)];
+    // A stencil never leaves the element its node is in. Two elements meet at
+    // a repeated radius whose two copies carry different values, so a stencil
+    // reaching across would difference the two sides of an interface against
+    // each other -- and would divide by the zero spacing between the copies on
+    // the way. A grid that does not know its elements is one element, provided
+    // it has no repeated radius to be in doubt about.
+    if (radial_.HasElements()) {
+      for (auto k : radial_.ElementIndices()) {
+        if (radial_.ElementSize(k) < width_) {
+          throw std::invalid_argument(
+              "A finite-difference derivative of order " +
+              std::to_string(order) + " needs a stencil of " +
+              std::to_string(width_) + " radii, but element " +
+              std::to_string(k) + " holds " +
+              std::to_string(radial_.ElementSize(k)) +
+              ", and a stencil does not reach into the next element");
+        }
+        FillStencils(radii, radial_.ElementStart(k), radial_.ElementEnd(k));
       }
+    } else {
+      RadialDetails::RequireDistinctRadii(
+          radii,
+          "Build the grid with RadialGrid::WithElements, and the stencils "
+          "will stay within each element.");
+      FillStencils(radii, Int{0}, nR);
     }
   }
 
@@ -245,6 +297,26 @@ class FiniteDifferenceDerivative {
   Int width_;
   std::vector<Int> first_;
   std::vector<Real> weights_;
+
+  // The stencils for the nodes [lo, hi), drawn from those nodes alone.
+  void FillStencils(std::span<const Real> radii, Int lo, Int hi) {
+    for (auto j = lo; j < hi; j++) {
+      // Centred where there is room, shifted just enough at the ends.
+      auto first = j - width_ / 2;
+      if (first < lo) first = lo;
+      if (first > hi - width_) first = hi - width_;
+      first_[static_cast<std::size_t>(j)] = first;
+
+      const auto stencil = radii.subspan(static_cast<std::size_t>(first),
+                                         static_cast<std::size_t>(width_));
+      const auto w = RadialDetails::FirstDerivativeWeights<Real>(
+          radii[static_cast<std::size_t>(j)], stencil);
+      for (auto k = Int{0}; k < width_; k++) {
+        weights_[static_cast<std::size_t>(j * width_ + k)] =
+            w[static_cast<std::size_t>(k)];
+      }
+    }
+  }
 
   static void CheckLine(std::size_t in, std::size_t out, Int nR) {
     if (in != static_cast<std::size_t>(nR) ||
@@ -281,7 +353,10 @@ class LagrangeDerivative {
 
   /**
    * @brief Builds the differentiation matrix for a grid.
-   * @param radial The radii, of which there must be at least two.
+   * @param radial The radii, of which there must be at least two, all
+   * distinct: a grid with an interface wants ElementDerivative.
+   * @throws std::invalid_argument if there are fewer than two radii or if
+   * one is repeated.
    */
   explicit LagrangeDerivative(RadialGrid<Real> radial)
       : radial_{std::move(radial)} {
@@ -291,6 +366,14 @@ class LagrangeDerivative {
           "A differentiation matrix needs at least two radii");
     }
     const auto radii = radial_.Radii();
+
+    // One polynomial through every node. Across an interface that is a
+    // polynomial through two different functions, and with the interface's
+    // repeated radius among the nodes it is not defined at all.
+    RadialDetails::RequireDistinctRadii(
+        radii,
+        "ElementDerivative is the same matrix built element by element, and "
+        "is the operator for a grid with interfaces.");
 
     d_ = RadialDetails::DifferentiationMatrix<Real>(radii);
   }

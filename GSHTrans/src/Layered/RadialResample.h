@@ -104,20 +104,47 @@ void Fit(std::span<const Real> from, std::span<const Scalar> values,
 // which side of the core-mantle boundary a query is answered from is a trap
 // laid for a future reader, so a test pins it rather than a comment.
 //
-// The target radii are sorted, so this is one pass rather than a search per
-// point.
+// **With one exception, which is the target saying otherwise.** A target grid
+// that knows its elements writes an interface as a repeated radius, and the
+// two copies are different points: the first is the top of the element below
+// and the second the bottom of the one above. The first is therefore answered
+// from *below*. Without this both copies were answered from above, and
+// resampling a layered model onto its own mesh overwrote the lower side of
+// every discontinuity with the upper. The exception covers the top of the
+// last element as well -- a target that stops at an interface lies below it.
+// Where the source has no breakpoint at that radius there is one piece and no
+// choice to make, so nothing changes.
+//
+// The target radii are sorted, and the exception moves a node down by at most
+// one piece without reordering anything, so this is still one pass and the
+// targets of a piece are still a contiguous run.
 template <typename Real>
-auto AssignPieces(const RadialGrid<Real>& source, std::span<const Real> onto) {
+auto AssignPieces(const RadialGrid<Real>& source,
+                  const RadialGrid<Real>& target) {
   using Int = std::ptrdiff_t;
+  const auto onto = target.Radii();
   const auto pieces = source.ElementCount();
   auto first = std::vector<Int>(static_cast<std::size_t>(pieces + 1), Int{0});
+
+  // Whether target node t is the last of its element, tracked alongside.
+  auto element = Int{0};
+  const auto isTop = [&](Int t) {
+    if (!target.HasElements()) return false;
+    while (t >= target.ElementEnd(element)) element++;
+    return t == target.ElementEnd(element) - 1;
+  };
 
   auto k = Int{0};
   for (std::size_t t = 0; t < onto.size(); t++) {
     // Advance to the piece that owns this radius. The comparison is against
     // the breakpoint that *ends* piece k, and a target sitting exactly on it
-    // belongs to the piece above -- Side::Right.
-    while (k + 1 < pieces && !(onto[t] < source.Breakpoint(k + 1))) {
+    // belongs to the piece above -- Side::Right -- unless it is the top of a
+    // target element, which belongs below.
+    const auto top = isTop(static_cast<Int>(t));
+    while (k + 1 < pieces) {
+      const auto breakpoint = source.Breakpoint(k + 1);
+      const auto stays = top ? !(breakpoint < onto[t]) : onto[t] < breakpoint;
+      if (stays) break;
       first[static_cast<std::size_t>(++k)] = static_cast<Int>(t);
     }
   }
@@ -165,7 +192,7 @@ auto Resample(const Stack& in, RadialGrid<Real> onto,
   // since it depends on the two grids and not on the data. Empty when the
   // source grid does not know its elements, which is the one-piece case.
   const auto pieces = in.Radial().HasElements()
-                          ? ResampleDetails::AssignPieces(in.Radial(), target)
+                          ? ResampleDetails::AssignPieces(in.Radial(), onto)
                           : std::vector<Int>{};
 
   const auto nOld = in.NumberOfRadii();

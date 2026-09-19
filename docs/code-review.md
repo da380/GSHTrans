@@ -59,6 +59,29 @@ Kept current as `fix-plan.md` is worked through. Anything not listed is open.
     the configure — and under `AUTO` returning zero is the documented
     behaviour.
 
+- **L1, L2, L4, L5, L6 — fixed** (plan Phase 3), within the scope that the
+  radial operators are conveniences: none may return a wrong number silently,
+  none gains a capability.
+  - *L1.* `FiniteDifferenceDerivative` builds its stencils within each
+    element, one-sided at an element's ends, and refuses an element narrower
+    than the stencil. It and `LagrangeDerivative` refuse a repeated radius on a
+    grid that cannot say what it means, and `LagrangeDerivative` refuses any
+    interface, naming `ElementDerivative`. A plain grid gives bit-identical
+    results, which a test asserts.
+  - *L2.* `Resample` answers the top node of a target element from below. A
+    layered model resampled onto its own mesh is now the identity; a target
+    interface inside one source piece stays continuous.
+  - *L4.* `ApplyToLines` gives the operator a scratch line when its two
+    buffers are one, which is what its comment had always said. The seam's
+    contract now states that an operator is never handed aliasing spans.
+  - *L5.* Barycentric weights are formed on nodes scaled to an interval of
+    length four; 101 Chebyshev nodes on [0, 6.371e6] differentiate as well as
+    on [0, 1].
+  - *L6.* An operator that exposes `Radial()` is checked against the stack's
+    grid by identity in `ApplyRadially` and `ApplyToLines` (and so in
+    `Gradient`); a bare callable is not. `RadialMajor` now keeps the radial
+    grid its lines run along, which is what makes the second check possible.
+
 ## Summary
 
 The numerical core is in good shape. The loop and matrix kernels, the batching

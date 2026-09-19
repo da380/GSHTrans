@@ -38,7 +38,11 @@ namespace GSHTrans {
 // sits beside.
 //
 // A radial operator maps one radial line to another. Both spans have length
-// nR, and it must not assume they alias or that they do not.
+// nR, and **they are never the same span**: ApplyRadially hands it a gathered
+// line and a scratch line, and ApplyToLines a scratch line whenever its two
+// buffers are one. So an operator may read its input after writing its output,
+// which a difference stencil does and a band solve does not, and need not be
+// written to survive the alternative.
 //
 // Two obligations come with that signature, and they are obligations rather
 // than advice because ApplyRadially below calls the operator the way it does.
@@ -89,6 +93,29 @@ concept LayeredStack = requires(const Stack& stack) {
 // with no dependence between iterations. The gather buffers are thread-local
 // and grow to fit, for the same reason the transform's work buffers are: the
 // alternative is an allocation per line.
+namespace RadialDetails {
+
+// An operator's weights belong to the radii it was built on. One that says
+// which grid that was -- every ready-made operator does, through Radial() --
+// is checked against the grid of the stack it is given, by identity, as two
+// stacks are checked against each other. Without it an operator built on one
+// grid and applied on another of the same length is simply wrong, in silence.
+// A bare callable says nothing about a grid and is taken at its word, which is
+// what keeps the seam open to a caller's own operators.
+template <typename Op, typename Radial>
+void CheckOperatorGrid(const Op& op, const Radial& radial) {
+  if constexpr (requires { op.Radial().Identity(); }) {
+    if (op.Radial().Identity() != radial.Identity()) {
+      throw std::invalid_argument(
+          "This radial operator was built on a different radial grid from the "
+          "one it is being applied on. Its weights belong to the radii it was "
+          "built with, so build it from the grid the stack is on");
+    }
+  }
+}
+
+}  // namespace RadialDetails
+
 template <LayeredStack Stack, typename Op>
 requires RadialOperator<
     Op, typename std::remove_cvref_t<
@@ -103,6 +130,7 @@ void ApplyRadially(const Stack& in, Stack& out, const Op& op,
     throw std::invalid_argument(
         "A radial operator maps a stack to one on the same radial grid");
   }
+  RadialDetails::CheckOperatorGrid(op, in.Radial());
   if (in.SliceSize() != out.SliceSize()) {
     throw std::invalid_argument(
         "A radial operator acts along the radial axis alone, so the slices of "

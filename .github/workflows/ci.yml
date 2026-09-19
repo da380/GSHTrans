@@ -109,15 +109,12 @@ jobs:
   # There was an "undefined" entry here. It ran a strict subset of what
   # "address" runs, under the same compiler, so it could not fail alone.
   #
-  # The clang entry is advisory for now, on the same terms the clang build
-  # entry once was: there is no clang OpenMP runtime on the development
-  # machine, so it has not been seen to pass, and LeakSanitizer is known to
-  # be talkative about OpenMP runtimes it was not built with. Make it gating
-  # by deleting `advisory` once it has been green here.
+  # The clang entry cannot be run on the development machine, which has no
+  # clang OpenMP runtime, so this is the only place it is ever seen. It was
+  # advisory until it had passed here, as the clang build entry once was.
   sanitizers:
     name: sanitizers / ${{ matrix.toolchain.name }}
     runs-on: ubuntu-24.04
-    continue-on-error: ${{ matrix.toolchain.advisory }}
     strategy:
       fail-fast: false
       matrix:
@@ -125,12 +122,10 @@ jobs:
           - name: gcc
             packages: libopenblas-openmp-dev
             arguments: -DGSHTRANS_WITH_BLAS=ON
-            advisory: false
           - name: clang
             packages: clang-18 libomp-18-dev libopenblas-pthread-dev
             arguments: >-
               -DCMAKE_CXX_COMPILER=clang++-18 -DGSHTRANS_WITH_BLAS=ON
-            advisory: true
     steps:
       - uses: actions/checkout@v5
 

@@ -38,9 +38,11 @@ namespace GSHTrans {
 // operators. That is what this is for, and the choice between the two is a
 // measurement rather than a principle.
 //
-// This is a buffer and a shape, not a field type. It has no grid, no upper
-// index and no algebra, because nothing angular is meaningful once the angular
-// axis has been shredded into lines. Repack, work on lines, repack back.
+// This is a buffer and a shape, not a field type. It has no angular grid, no
+// upper index and no algebra, because nothing angular is meaningful once the
+// angular axis has been shredded into lines. Repack, work on lines, repack
+// back. What it does keep is the *radial* grid, since a line is a function of
+// radius and an operator applied to it was built on particular radii.
 
 /// @tparam Stack The radius-major stack this is repacked from.
 template <typename Stack>
@@ -50,6 +52,9 @@ class RadialMajor {
   using Scalar = typename std::remove_cvref_t<
       decltype(std::declval<const Stack&>()
                    .Data())>::value_type;  ///< The stack's value type.
+  /// The radial grid type of the stack.
+  using RadialGridType =
+      std::remove_cvref_t<decltype(std::declval<const Stack&>().Radial())>;
 
   RadialMajor() = delete;
 
@@ -60,13 +65,16 @@ class RadialMajor {
    */
   explicit RadialMajor(const Stack& stack,
                        Execution policy = Execution::Sequential())
-      : nR_{stack.NumberOfRadii()},
+      : radial_{stack.Radial()},
+        nR_{stack.NumberOfRadii()},
         lines_{stack.SliceSize()},
         data_(static_cast<std::size_t>(nR_) *
               static_cast<std::size_t>(lines_)) {
     Transpose(stack.Data().data(), data_.data(), nR_, lines_, policy);
   }
 
+  /** @brief The radial grid the lines run along. */
+  const RadialGridType& Radial() const { return radial_; }
   /** @brief How many radii the stack holds. */
   auto NumberOfRadii() const { return nR_; }
   /** @brief How many radial lines there are, one per element of a slice. */
@@ -76,7 +84,7 @@ class RadialMajor {
   /// operator to write into: transposing a buffer whose contents are about to
   /// be overwritten is pure waste, and without this there is no way to avoid
   /// it.
-  auto SameShape() const { return RadialMajor(nR_, lines_); }
+  auto SameShape() const { return RadialMajor(radial_, nR_, lines_); }
   /** @brief How many elements are stored. */
   auto Size() const { return static_cast<Int>(data_.size()); }
 
@@ -128,12 +136,14 @@ class RadialMajor {
   }
 
  private:
+  RadialGridType radial_;
   Int nR_;
   Int lines_;
   std::vector<Scalar> data_;
 
-  RadialMajor(Int nR, Int lines)
-      : nR_{nR},
+  RadialMajor(RadialGridType radial, Int nR, Int lines)
+      : radial_{std::move(radial)},
+        nR_{nR},
         lines_{lines},
         data_(static_cast<std::size_t>(nR) * static_cast<std::size_t>(lines)) {}
 
@@ -186,9 +196,15 @@ class RadialMajor {
 // Apply a radial operator to every line of a radial-major buffer.
 //
 // The difference from `ApplyRadially` is the whole point of the layout: there
-// is no gather and no scatter, because the line is already contiguous. The
-// operator writes into a scratch line and the result is copied back, so it
-// still need not handle aliasing.
+// is no gather and no scatter, because the line is already contiguous.
+//
+// `in` and `out` may be the same buffer, and in the loop this layout exists
+// for -- one operator after another on the same lines -- they usually are.
+// The operator is then given a scratch line to write into and the result is
+// copied over the input afterwards, so it never sees its output alias its
+// input and need not be written to cope with that. Two different buffers
+// cannot overlap, each owning its storage, so they are handed over directly
+// and cost no copy.
 template <typename Stack, typename Op>
 void ApplyToLines(const RadialMajor<Stack>& in, RadialMajor<Stack>& out,
                   const Op& op, Execution policy = Execution::Sequential()) {
@@ -202,11 +218,23 @@ void ApplyToLines(const RadialMajor<Stack>& in, RadialMajor<Stack>& out,
         "and its result must have the same shape");
   }
 
+  RadialDetails::CheckOperatorGrid(op, in.Radial());
+
   const auto lines = in.NumberOfLines();
+  const auto nR = static_cast<std::size_t>(in.NumberOfRadii());
   const auto threads = policy.TeamSize();
+  const bool inPlace = static_cast<const void*>(&in) == &out;
 
   const auto run = [&](Int j) {
-    op(std::span<const Scalar>(in.Line(j)), std::span<Scalar>(out.Line(j)));
+    if (!inPlace) {
+      op(std::span<const Scalar>(in.Line(j)), std::span<Scalar>(out.Line(j)));
+      return;
+    }
+    thread_local auto scratch = std::vector<Scalar>{};
+    if (scratch.size() < nR) scratch.resize(nR);
+    op(std::span<const Scalar>(in.Line(j)),
+       std::span<Scalar>(scratch.data(), nR));
+    std::copy_n(scratch.data(), nR, out.Line(j).data());
   };
 
   if (threads == 1) {
