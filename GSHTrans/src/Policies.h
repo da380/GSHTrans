@@ -24,8 +24,12 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <memory>
+#include <span>
 #include <stdexcept>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace GSHTrans {
 
@@ -201,19 +205,117 @@ class Batch {
    */
   static Batch One(Int size) { return Batch(1, 1, size); }
 
+  /**
+   * @brief Fields that start wherever a table says they do.
+   *
+   * @details The three forms above are every layout that is *affine* in the
+   * field index. This is the rest: a subset of the radii of a layered field,
+   * storage with padding between elements or with duplicated interface nodes,
+   * the components of a tensor that share an upper index in a caller's own
+   * array. Field @f$k@f$ starts at `offsets[k]` and its elements are @p stride
+   * apart, so element @f$j@f$ of it is at `offsets[k] + j * stride`. The
+   * offsets need be in no particular order.
+   *
+   * It costs the transform nothing to admit this, and no kernel changed to do
+   * it. A layout is reached only through Count(), Stride(), Offset(), Span()
+   * and Disjoint(), and every field is gathered into the library's own
+   * scratch before FFTW or a BLAS is given anything, so neither ever meets the
+   * caller's layout.
+   *
+   * **The batch owns its offsets**, as a table shared between its copies and
+   * never changed, so a Batch stays an ordinary value: it can be stored,
+   * returned, and outlive whatever it was made from. FFTW's guru interface
+   * borrows its tables instead. That is free, and the way it goes wrong here
+   * is a transform that *writes* through a table which has since gone --
+   * silently, into whatever is there. The copy that prevents it is one
+   * reference count when a Batch is copied, which is a dozen times a
+   * transform and never once per element.
+   *
+   * Disjointness is checked here and not in the transform, which is why the
+   * size is given here: for a table it is a sort, where for an affine layout
+   * it is two comparisons. Two fields overlap exactly when their offsets agree
+   * modulo the stride and differ by less than `size * stride`.
+   *
+   * @param offsets Where each field starts; at least one, none negative.
+   * @param stride The separation of successive elements of one field.
+   * @param size How many elements the longest field this will be used for
+   * holds.
+   * @throws std::invalid_argument if there are no offsets, if one is negative,
+   * if @p stride or @p size is less than one, or if two fields overlap.
+   */
+  static Batch At(std::vector<Int> offsets, Int stride, Int size) {
+    if (offsets.empty()) {
+      throw std::invalid_argument("A batch needs at least one field");
+    }
+    if (size < 1) {
+      throw std::invalid_argument("A batch's field size must be positive");
+    }
+    auto batch = Batch(static_cast<Int>(offsets.size()), stride, 1);
+    for (auto offset : offsets) {
+      if (offset < 0) {
+        throw std::invalid_argument(
+            "A batch's offsets are measured from the start of the range it is "
+            "used with, so none can be negative, and one is " +
+            std::to_string(offset));
+      }
+    }
+    if (!OffsetsAreDisjoint(offsets, stride, size)) {
+      throw std::invalid_argument(
+          "Two fields of this batch overlap: their offsets agree modulo the "
+          "stride and are closer than size * stride. The transform writes "
+          "every element of every field, so it would give a wrong answer "
+          "rather than fail");
+    }
+    batch.dist_ = 0;
+    batch.builtFor_ = size;
+    batch.lastStart_ = *std::max_element(offsets.begin(), offsets.end());
+    batch.offsets_ =
+        std::make_shared<const std::vector<Int>>(std::move(offsets));
+    return batch;
+  }
+
+  /**
+   * @brief Some of this batch's fields, chosen by index, as a batch.
+   * @details "Only the solid regions", "only the radii the preconditioner
+   * touches": `field.Batch().Subset(which, field.FieldSize())`. The indices
+   * may be in any order and the fields are taken in that order. It may be
+   * taken of any batch, one made by At() or by Subset() included.
+   * @param which The indices of the fields to keep, each in `[0, Count())`.
+   * @param size How many elements the longest field this will be used for
+   * holds, as for At().
+   * @throws std::invalid_argument if an index is not one this batch has, and
+   * as At() does.
+   */
+  Batch Subset(std::span<const Int> which, Int size) const {
+    auto offsets = std::vector<Int>{};
+    offsets.reserve(which.size());
+    for (auto k : which) {
+      if (k < 0 || k >= count_) {
+        throw std::invalid_argument(
+            "Field " + std::to_string(k) + " is not one of the " +
+            std::to_string(count_) + " this batch holds");
+      }
+      offsets.push_back(Start(k));
+    }
+    return At(std::move(offsets), stride_, size);
+  }
+
   /** @brief How many fields take part. */
   auto Count() const { return count_; }
   /** @brief The separation of successive elements of one field. */
   auto Stride() const { return stride_; }
-  /** @brief The separation of successive fields. */
+  /** @brief The separation of successive fields, or zero for a batch made by
+   * At(), whose fields have no one separation. */
   auto Dist() const { return dist_; }
+  /** @brief Whether the fields are placed by a table rather than by a dist. */
+  bool HasOffsets() const { return offsets_ != nullptr; }
 
   /**
    * @brief Where element @p j of field @p k lives.
    * @param j The element index within a field.
    * @param k The field index within the batch.
    */
-  Int Offset(Int j, Int k) const { return j * stride_ + k * dist_; }
+  Int Offset(Int j, Int k) const { return j * stride_ + Start(k); }
 
   /**
    * @brief The smallest range that holds this batch.
@@ -228,7 +330,8 @@ class Batch {
    * @param size How many elements each field holds.
    */
   Int Span(Int size) const {
-    return (size - 1) * stride_ + (count_ - 1) * dist_ + 1;
+    const auto lastStart = offsets_ ? lastStart_ : (count_ - 1) * dist_;
+    return (size - 1) * stride_ + lastStart + 1;
   }
 
   /**
@@ -243,11 +346,25 @@ class Batch {
    */
   bool Disjoint(Int size) const {
     if (count_ <= 1 || size <= 0) return true;
+    if (offsets_) {
+      // Settled when the batch was made, for fields up to the size it was
+      // made for; a longer field is a question nobody has asked yet.
+      return size <= builtFor_ || OffsetsAreDisjoint(*offsets_, stride_, size);
+    }
     return dist_ >= size * stride_ || stride_ >= count_ * dist_;
   }
 
-  /** @brief Compares componentwise. */
-  bool operator==(const Batch&) const = default;
+  /// Whether two batches describe one layout: the same fields, in the same
+  /// order, at the same places. By value, so that it does not matter which
+  /// table an offset batch holds or how it was arrived at.
+  bool operator==(const Batch& other) const {
+    if (count_ != other.count_ || stride_ != other.stride_) return false;
+    if (!offsets_ && !other.offsets_) return dist_ == other.dist_;
+    for (auto k = Int{0}; k < count_; k++) {
+      if (Start(k) != other.Start(k)) return false;
+    }
+    return true;
+  }
 
  private:
   Batch(Int count, Int stride, Int dist)
@@ -260,9 +377,37 @@ class Batch {
     }
   }
 
+  // Where field k starts.
+  Int Start(Int k) const {
+    return offsets_ ? (*offsets_)[static_cast<std::size_t>(k)] : k * dist_;
+  }
+
+  // Sorted by residue modulo the stride and then by value, fields that could
+  // meet are neighbours, and they meet iff they are closer than size * stride.
+  static bool OffsetsAreDisjoint(const std::vector<Int>& offsets, Int stride,
+                                 Int size) {
+    auto sorted = offsets;
+    std::sort(sorted.begin(), sorted.end(), [stride](Int a, Int b) {
+      return std::pair(a % stride, a) < std::pair(b % stride, b);
+    });
+    for (std::size_t i = 1; i < sorted.size(); i++) {
+      if (sorted[i] % stride == sorted[i - 1] % stride &&
+          sorted[i] - sorted[i - 1] < size * stride) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   Int count_;
   Int stride_;
   Int dist_;
+
+  // Set by At(), and empty otherwise: the table, the largest entry in it, and
+  // the field size its disjointness was established for.
+  std::shared_ptr<const std::vector<Int>> offsets_{};
+  Int lastStart_{0};
+  Int builtFor_{0};
 };
 
 //-------------------------------------------------------------------------//

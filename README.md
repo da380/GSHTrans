@@ -147,7 +147,15 @@ grid.ForwardTransformation(lMax, n, in, out);   // the k = 1 wrapper
 * A batch is a count, a stride and a dist — element `j` of field `k` lives at
   `j * stride + k * dist` — and is made by name: `Batch::Contiguous(count,
   size)`, `Batch::Interleaved(count, stride)`, or `Batch::Strided(count,
-  stride, dist)` for a layout that is neither. Fields and coefficients take separate
+  stride, dist)` for a layout that is neither. Those are every layout that is
+  affine in the field index. For one that is not — storage with padding
+  between elements, some radii out of many — `Batch::At(offsets, stride,
+  size)` places each field where a table says, and `batch.Subset(which, size)`
+  is some fields of an existing batch:
+  `field.Batch().Subset(solidRadii, field.FieldSize())` transforms the solid
+  regions of a layered field and nothing else. Neither costs the transform
+  anything, since it gathers every field into its own scratch whatever the
+  layout. Fields and coefficients take separate
   descriptors, since `dist` differs between them.
 * A batch shares grid, degree **and upper index**: the Wigner block for that
   index is exactly what batching amortises. "Batch all my fields" is the

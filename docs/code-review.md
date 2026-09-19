@@ -318,6 +318,16 @@ Kept current as `fix-plan.md` is worked through. Anything not listed is open.
     test that cannot fail is worse than none, and look for the test that pins
     an oddity before fixing it.
 
+- **General batching, stage 1** (plan Phase 11; `batching-note.md`).
+  `Batch::At(offsets, stride, size)` places each field where a table says, and
+  `Batch::Subset(which, size)` takes some fields of any batch. The batch owns
+  its table, shared and immutable; disjointness is a sort done once, when the
+  batch is made; equality is by value. No kernel changed. `tests/TestBatch.cpp`
+  holds it: an offset batch describing an affine layout gives the affine
+  answer bit for bit through every kernel and under threads, a shuffled layout
+  with padding round-trips and leaves the padding alone, and a subset of a
+  layered field's radii transforms those and no others.
+
 **What is left of the review:** nothing in its High, Medium or Low lists is
 open except the items marked above as deliberately left. Phase 11 of the plan,
 general batching, is new work and not a finding.

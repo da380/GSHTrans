@@ -425,6 +425,12 @@ corrected OpenMP entry, "a relation copied four times drifts three ways", the
 
 ## Phase 11 — general batching (a feature, not a fix)
 
+**The note is `batching-note.md`**, with the measurements. Its findings differ
+from the sketch below in one respect: transforming straight into radial lines
+turns out to be a wash on time — a few per cent better sequentially, worse at
+power-of-two nR under threads, worse everywhere with the threaded loop kernel
+— and is worth having for the *memory* it saves and not for speed.
+
 **What is already there.** More than it may seem. `Batch` in `Policies.h` *is*
 FFTW's advanced interface — `(count, stride, dist)`, given independently for
 input and output — and it is public on

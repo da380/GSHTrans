@@ -37,6 +37,10 @@ add_executable(TestTensorReality
                TestTensorReality.cpp)
 target_link_libraries(TestTensorReality PRIVATE GSHTrans gtest_main)
 
+add_executable(TestBatch
+               TestBatch.cpp)
+target_link_libraries(TestBatch PRIVATE GSHTrans gtest_main)
+
 add_executable(TestSinglePrecision
                TestSinglePrecision.cpp)
 target_link_libraries(TestSinglePrecision PRIVATE GSHTrans gtest_main)
@@ -200,6 +204,7 @@ gtest_discover_tests(TestTensorOrbitValues)
 gtest_discover_tests(TestPreconditions)
 gtest_discover_tests(TestLargeDegree)
 gtest_discover_tests(TestSinglePrecision)
+gtest_discover_tests(TestBatch)
 gtest_discover_tests(TestExpansion)
 gtest_discover_tests(TestInterpolate)
 gtest_discover_tests(TestTuning)
