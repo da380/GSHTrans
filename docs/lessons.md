@@ -20,6 +20,19 @@ pass over a fixed grid runs about nine per cent slow against the sixth,
 systematically against whichever candidate goes first. Timing A to completion
 and then B is what this forbids.
 
+**A handle copied in an inner loop is a contended atomic.** The grid is a
+`shared_ptr` handle so that fields and views can carry it by value, and copying
+one is an atomic increment and decrement on a count *every* holder shares.
+`TensorExpansion::Coefficient` built a view — and so copied the handle — on
+every `(l, m)` read, and every spectral operator reads through it. Alone that
+was 8 ns a call. On eight threads, each working on its *own* expansion over
+the one grid, it was 380 ns, and eight surface gradients took four times
+longer on eight threads than on one: no data was shared, only the count.
+Reading the buffer directly gave 1.1 ns and 3 ns, and the eight gradients went
+from 0.48 s to 0.0096 s. The rule is the one the radial seam already states
+for allocation: a handle is copied when an object is made, never when an
+element is read.
+
 **A sequential kernel's time moves by ten per cent with where the code
 lands.** Checking that a change to the OpenMP regions cost nothing, the
 sequential inverse came out 11 per cent slower, reproducibly, in code the

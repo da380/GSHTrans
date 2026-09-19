@@ -299,11 +299,21 @@ class Chunking {
 
   /**
    * @brief The largest chunk the heuristic may return.
-   * @details A guard, not a measurement: at small degrees the formula below
-   * grows without bound, and there the limit is per-call overhead rather than
-   * cache. It also bounds the scratch a single call can ask for.
+   * @details A guard: at small degrees the formula below grows without bound,
+   * and there the limit is per-call overhead rather than cache. It also
+   * bounds the scratch a single call can ask for.
+   *
+   * Sixty-three and not sixty-four, which *is* a measurement. The loop kernel
+   * hands FFTW a chunk of complex fields at once, so a chunk of 64 is an
+   * output stride of 1024 bytes, and at a power-of-two stride the writes for
+   * successive orders land in the same cache sets -- the hazard the Fourier
+   * stage guards against with ChooseThetaBlock. Timed in one binary, forward
+   * and inverse over 256 fields: 10.1, 10.1, **12.0**, 10.3, 10.3 ms at
+   * chunks of 62 to 66 for lMax = 32, and 72, 72, **78**, 74, 72 ms at
+   * lMax = 63. The heuristic returns the maximum for every degree up to about
+   * 63 once a batch is that large, so it returned the one bad value.
    */
-  static constexpr Int MaximumCount = 64;
+  static constexpr Int MaximumCount = 63;
 
   /** @brief The heuristic, against DefaultCacheBytes. */
   static Chunking Automatic() { return Chunking(DefaultCacheBytes, 0); }

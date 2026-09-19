@@ -512,7 +512,14 @@ auto Interpolate(const F& field, Tag, std::ptrdiff_t lMax = -1) {
       std::vector<Scalar>(static_cast<std::size_t>(grid.FieldSize()));
   field.EvaluateInto(std::span<Scalar>(samples));
 
-  const auto expansion = Expand(field, degree);
+  // Transformed from the samples just taken and not through Expand(field),
+  // which would evaluate the field a second time -- nothing for a stored
+  // field and the whole cost again for a lazy expression.
+  auto expansion =
+      SpinExpansion<F::UpperIndex, typename F::GridType, typename F::Value>(
+          grid, degree);
+  auto coefficients = expansion.Data();
+  grid.ForwardTransformation(degree, F::UpperIndex, samples, coefficients);
   const auto rows = InterpolateDetails::PolarRows<Scalar>(expansion, grid);
 
   auto padded = InterpolateDetails::Pad<typename F::GridType, Scalar>(

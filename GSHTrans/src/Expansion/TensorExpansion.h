@@ -2,6 +2,7 @@
 #define GSH_TRANS_TENSOR_EXPANSION_GUARD_H
 
 #include <FFTWpp/Core>
+#include <array>
 #include <cmath>
 #include <complex>
 #include <cstddef>
@@ -94,7 +95,8 @@ class TensorExpansion {
   TensorExpansion(GridType grid, Int lMax)
       : grid_{std::move(grid)},
         lMax_{Checked(lMax)},
-        data_(BlockTotal(grid_, lMax_)) {}
+        blockStart_{BlockStarts(grid_, lMax_)},
+        data_(blockStart_.back()) {}
 
   /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return grid_; }
@@ -201,18 +203,27 @@ class TensorExpansion {
 
       // The representative's own coefficient, at whichever order this term
       // needs, allowing for a real block's reduced storage.
+      //
+      // Read straight out of the buffer, by the index arithmetic a view of
+      // the block would use, and **without making the view**. A view holds a
+      // grid handle, which is a shared_ptr, and this is called once per
+      // (l, m) per term by every spectral operator: the copy was a contended
+      // atomic on a count every thread shares, and it made eight surface
+      // gradients on eight threads four times *slower* than the same eight on
+      // one -- 8 ns a call alone, 380 ns in company. The index block is three
+      // integers and its arithmetic is closed-form.
+      using Orders = std::conditional_t<real, NonNegative, All>;
+      const auto indices = GSHIndices<Orders>(lMax_, lMax_, repN);
+      const auto* block =
+          data_.data() + blockStart_[static_cast<std::size_t>(slot)];
       const auto stored = [&](Int order) {
-        auto block = ConstSpinExpansionView<
-            repN, GridType,
-            std::conditional_t<real, RealValued, ComplexValued>>(grid_, lMax_,
-                                                                 BlockOf(slot));
         if constexpr (real) {
           if (order < 0) {
             return static_cast<Real>(MinusOneToPower(order)) *
-                   std::conj(block[l, -order]);
+                   std::conj(block[indices.Index(l, -order)]);
           }
         }
-        return Complex{block[l, order]};
+        return Complex{block[indices.Index(l, order)]};
       };
 
       return DerivedCoefficient<Orbits.RelationOf(flat), Real>(m, repN, stored);
@@ -221,28 +232,35 @@ class TensorExpansion {
 
   /// The block a stored component occupies, by slot.
   std::span<Complex> BlockOf(Int slot) {
-    const auto [offset, size] = Block(grid_, lMax_, slot);
-    return Data().subspan(offset, size);
+    const auto k = static_cast<std::size_t>(slot);
+    return Data().subspan(blockStart_[k], blockStart_[k + 1] - blockStart_[k]);
   }
 
   /// The same, read-only.
   std::span<const Complex> BlockOf(Int slot) const {
-    const auto [offset, size] = Block(grid_, lMax_, slot);
-    return Data().subspan(offset, size);
+    const auto k = static_cast<std::size_t>(slot);
+    return Data().subspan(blockStart_[k], blockStart_[k + 1] - blockStart_[k]);
   }
 
  private:
   GridType grid_;
   Int lMax_;
+  // Where each slot's block starts, with the total at the end. Worked out
+  // once: the blocks follow the component order, which is the order the
+  // transform writes them in, and summing the sizes of the blocks before a
+  // slot on every read was a loop inside the innermost one.
+  std::array<std::size_t, static_cast<std::size_t>(StoredComponents) + 1>
+      blockStart_;
   FFTWpp::vector<Complex> data_;
 
-  // Where a slot's block starts and how long it is. The blocks follow the
-  // component order, which is the order the transform writes them in.
-  static std::pair<std::size_t, std::size_t> Block(const GridType& grid,
-                                                   Int lMax, Int slot) {
-    auto offset = std::size_t{0};
-    for (auto i = Int{0}; i < slot; i++) offset += BlockSize(grid, lMax, i);
-    return {offset, BlockSize(grid, lMax, slot)};
+  static auto BlockStarts(const GridType& grid, Int lMax) {
+    auto starts = std::array<std::size_t,
+                             static_cast<std::size_t>(StoredComponents) + 1>{};
+    for (auto slot = Int{0}; slot < StoredComponents; slot++) {
+      const auto k = static_cast<std::size_t>(slot);
+      starts[k + 1] = starts[k] + BlockSize(grid, lMax, slot);
+    }
+    return starts;
   }
 
   static std::size_t BlockSize(const GridType& grid, Int lMax, Int slot) {
@@ -263,14 +281,6 @@ class TensorExpansion {
           ", so its expansion needs at least that degree");
     }
     return lMax;
-  }
-
-  static std::size_t BlockTotal(const GridType& grid, Int lMax) {
-    auto total = std::size_t{0};
-    for (auto slot = Int{0}; slot < StoredComponents; slot++) {
-      total += BlockSize(grid, lMax, slot);
-    }
-    return total;
   }
 };
 

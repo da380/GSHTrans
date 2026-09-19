@@ -205,6 +205,25 @@ Kept current as `fix-plan.md` is worked through. Anything not listed is open.
     generator, since it is a type and not a call, and wants its check in
     `MakeOrbitTable`.
 
+- **E1 and the Phase 8 items — fixed** (plan Phase 8).
+  - *E1.* `TensorExpansion::Coefficient` reads its buffer directly, by the
+    index arithmetic a view would use, instead of building a view per read;
+    block starts are computed once in the constructor. The cost was the grid
+    handle's atomic count, shared by every thread: 8.0 → 1.1 ns a call on one
+    thread and **378 → 3.0 ns** on eight, and eight rank-2 `SurfaceGradient`s
+    at lMax = 256 went from 0.109 to 0.028 s serially and from **0.479 to
+    0.0096 s** on eight threads — so threading them is now a gain of three
+    where it was a loss of four. No reader type was needed, and the public
+    interface is unchanged. The layered path held references already and had
+    no such cost.
+  - Local `Interpolate` transforms the samples it has already taken instead
+    of evaluating the field a second time through `Expand`.
+  - `Chunking::MaximumCount` is 63. The 64 hazard is confirmed inside one
+    binary — so not code placement — at 19 % for lMax = 32 and 8 % for 63.
+  - Not done: threading the layered `Gradient`'s angular half, which the plan
+    marks optional and the radial operators' standing as conveniences argues
+    against.
+
 ## Summary
 
 The numerical core is in good shape. The loop and matrix kernels, the batching
