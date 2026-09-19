@@ -164,11 +164,11 @@ auto DifferentiationMatrix(std::span<const Real> nodes) {
 /// reach for by default: it is banded, so a line costs `nR * (order + 1)`
 /// multiplications, and it is the only one here whose cost does not grow with
 /// the number of radii.
-template <RealFloatingPoint _Real>
+template <RealFloatingPoint Real_>
 class FiniteDifferenceDerivative {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using Real = _Real;          ///< The precision.
+  using Real = Real_;          ///< The precision.
 
   FiniteDifferenceDerivative() = delete;
 
@@ -179,45 +179,45 @@ class FiniteDifferenceDerivative {
    * points.
    */
   explicit FiniteDifferenceDerivative(RadialGrid<Real> radial, Int order = 2)
-      : _radial{std::move(radial)}, _width{order + 1} {
-    const auto nR = _radial.NumberOfRadii();
+      : radial_{std::move(radial)}, width_{order + 1} {
+    const auto nR = radial_.NumberOfRadii();
     if (order < 1) {
       throw std::invalid_argument(
           "A finite-difference derivative needs an order of at least one");
     }
-    if (_width > nR) {
+    if (width_ > nR) {
       throw std::invalid_argument(
           "A finite-difference derivative of order " + std::to_string(order) +
-          " needs a stencil of " + std::to_string(_width) +
+          " needs a stencil of " + std::to_string(width_) +
           " radii, but this grid has " + std::to_string(nR));
     }
 
     // Everything below depends on the radii alone, so it is done once.
-    const auto radii = _radial.Radii();
-    _first.resize(static_cast<std::size_t>(nR));
-    _weights.resize(static_cast<std::size_t>(nR * _width));
+    const auto radii = radial_.Radii();
+    first_.resize(static_cast<std::size_t>(nR));
+    weights_.resize(static_cast<std::size_t>(nR * width_));
     for (auto j = Int{0}; j < nR; j++) {
       // Centred where there is room, shifted just enough at the ends.
-      auto first = j - _width / 2;
+      auto first = j - width_ / 2;
       if (first < 0) first = 0;
-      if (first > nR - _width) first = nR - _width;
-      _first[static_cast<std::size_t>(j)] = first;
+      if (first > nR - width_) first = nR - width_;
+      first_[static_cast<std::size_t>(j)] = first;
 
       const auto stencil = radii.subspan(static_cast<std::size_t>(first),
-                                         static_cast<std::size_t>(_width));
+                                         static_cast<std::size_t>(width_));
       const auto w = RadialDetails::FirstDerivativeWeights<Real>(
           radii[static_cast<std::size_t>(j)], stencil);
-      for (auto k = Int{0}; k < _width; k++) {
-        _weights[static_cast<std::size_t>(j * _width + k)] =
+      for (auto k = Int{0}; k < width_; k++) {
+        weights_[static_cast<std::size_t>(j * width_ + k)] =
             w[static_cast<std::size_t>(k)];
       }
     }
   }
 
   /** @brief The radial grid this is defined on. */
-  const RadialGrid<Real>& Radial() const { return _radial; }
+  const RadialGrid<Real>& Radial() const { return radial_; }
   /** @brief The order of accuracy. */
-  Int Order() const { return _width - 1; }
+  Int Order() const { return width_ - 1; }
 
   /**
    * @brief Differentiates one radial line.
@@ -227,13 +227,13 @@ class FiniteDifferenceDerivative {
    */
   template <typename Scalar>
   void operator()(std::span<const Scalar> in, std::span<Scalar> out) const {
-    const auto nR = _radial.NumberOfRadii();
+    const auto nR = radial_.NumberOfRadii();
     CheckLine(in.size(), out.size(), nR);
     for (auto j = Int{0}; j < nR; j++) {
-      const auto first = _first[static_cast<std::size_t>(j)];
+      const auto first = first_[static_cast<std::size_t>(j)];
       auto sum = Scalar{};
-      for (auto k = Int{0}; k < _width; k++) {
-        sum += _weights[static_cast<std::size_t>(j * _width + k)] *
+      for (auto k = Int{0}; k < width_; k++) {
+        sum += weights_[static_cast<std::size_t>(j * width_ + k)] *
                in[static_cast<std::size_t>(first + k)];
       }
       out[static_cast<std::size_t>(j)] = sum;
@@ -241,10 +241,10 @@ class FiniteDifferenceDerivative {
   }
 
  private:
-  RadialGrid<Real> _radial;
-  Int _width;
-  std::vector<Int> _first;
-  std::vector<Real> _weights;
+  RadialGrid<Real> radial_;
+  Int width_;
+  std::vector<Int> first_;
+  std::vector<Real> weights_;
 
   static void CheckLine(std::size_t in, std::size_t out, Int nR) {
     if (in != static_cast<std::size_t>(nR) ||
@@ -271,11 +271,11 @@ class FiniteDifferenceDerivative {
 ///
 /// Built barycentrically, which is the numerically sound way to form the
 /// matrix, and once: the entries depend on the nodes alone.
-template <RealFloatingPoint _Real>
+template <RealFloatingPoint Real_>
 class LagrangeDerivative {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using Real = _Real;          ///< The precision.
+  using Real = Real_;          ///< The precision.
 
   LagrangeDerivative() = delete;
 
@@ -284,23 +284,23 @@ class LagrangeDerivative {
    * @param radial The radii, of which there must be at least two.
    */
   explicit LagrangeDerivative(RadialGrid<Real> radial)
-      : _radial{std::move(radial)} {
-    const auto nR = _radial.NumberOfRadii();
+      : radial_{std::move(radial)} {
+    const auto nR = radial_.NumberOfRadii();
     if (nR < 2) {
       throw std::invalid_argument(
           "A differentiation matrix needs at least two radii");
     }
-    const auto radii = _radial.Radii();
+    const auto radii = radial_.Radii();
 
-    _d = RadialDetails::DifferentiationMatrix<Real>(radii);
+    d_ = RadialDetails::DifferentiationMatrix<Real>(radii);
   }
 
   /** @brief The radial grid this is defined on. */
-  const RadialGrid<Real>& Radial() const { return _radial; }
+  const RadialGrid<Real>& Radial() const { return radial_; }
 
   /// The matrix itself, row-major, for a caller who wants to compose it with
   /// something rather than apply it.
-  std::span<const Real> Matrix() const { return std::span<const Real>(_d); }
+  std::span<const Real> Matrix() const { return std::span<const Real>(d_); }
 
   /**
    * @brief Differentiates one radial line.
@@ -310,7 +310,7 @@ class LagrangeDerivative {
    */
   template <typename Scalar>
   void operator()(std::span<const Scalar> in, std::span<Scalar> out) const {
-    const auto nR = _radial.NumberOfRadii();
+    const auto nR = radial_.NumberOfRadii();
     if (in.size() != static_cast<std::size_t>(nR) ||
         out.size() != static_cast<std::size_t>(nR)) {
       throw std::invalid_argument(
@@ -319,7 +319,7 @@ class LagrangeDerivative {
     for (auto j = Int{0}; j < nR; j++) {
       auto sum = Scalar{};
       for (auto i = Int{0}; i < nR; i++) {
-        sum += _d[static_cast<std::size_t>(j * nR + i)] *
+        sum += d_[static_cast<std::size_t>(j * nR + i)] *
                in[static_cast<std::size_t>(i)];
       }
       out[static_cast<std::size_t>(j)] = sum;
@@ -327,8 +327,8 @@ class LagrangeDerivative {
   }
 
  private:
-  RadialGrid<Real> _radial;
-  std::vector<Real> _d;
+  RadialGrid<Real> radial_;
+  std::vector<Real> d_;
 };
 
 //--------------------------------------------------------------------------//
@@ -358,11 +358,11 @@ class LagrangeDerivative {
 /// Needs a grid built by `RadialGrid::WithElements`; a grid that does not know
 /// its elements cannot say what the blocks are, and guessing is precisely what
 /// the partition exists to stop.
-template <RealFloatingPoint _Real>
+template <RealFloatingPoint Real_>
 class ElementDerivative {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using Real = _Real;          ///< The precision.
+  using Real = Real_;          ///< The precision.
 
   ElementDerivative() = delete;
 
@@ -372,8 +372,8 @@ class ElementDerivative {
    * @throws std::invalid_argument if the grid has no elements.
    */
   explicit ElementDerivative(RadialGrid<Real> radial)
-      : _radial{std::move(radial)} {
-    if (!_radial.HasElements()) {
+      : radial_{std::move(radial)} {
+    if (!radial_.HasElements()) {
       throw std::invalid_argument(
           "An element derivative needs a grid that knows its elements, which "
           "is what RadialGrid::WithElements builds; a plain grid is a list of "
@@ -382,30 +382,30 @@ class ElementDerivative {
 
     // One matrix per element, all node-dependent and so all built here.
     // Stored end to end, since the elements need not be the same size.
-    const auto radii = _radial.Radii();
-    _offset.resize(static_cast<std::size_t>(_radial.ElementCount() + 1));
-    _offset[0] = 0;
-    for (auto k : _radial.ElementIndices()) {
-      const auto size = _radial.ElementSize(k);
+    const auto radii = radial_.Radii();
+    offset_.resize(static_cast<std::size_t>(radial_.ElementCount() + 1));
+    offset_[0] = 0;
+    for (auto k : radial_.ElementIndices()) {
+      const auto size = radial_.ElementSize(k);
       const auto nodes =
-          radii.subspan(static_cast<std::size_t>(_radial.ElementStart(k)),
+          radii.subspan(static_cast<std::size_t>(radial_.ElementStart(k)),
                         static_cast<std::size_t>(size));
       const auto block = RadialDetails::DifferentiationMatrix<Real>(nodes);
-      _d.insert(_d.end(), block.begin(), block.end());
-      _offset[static_cast<std::size_t>(k + 1)] = static_cast<Int>(_d.size());
+      d_.insert(d_.end(), block.begin(), block.end());
+      offset_[static_cast<std::size_t>(k + 1)] = static_cast<Int>(d_.size());
     }
   }
 
   /** @brief The radial grid this is defined on. */
-  const RadialGrid<Real>& Radial() const { return _radial; }
+  const RadialGrid<Real>& Radial() const { return radial_; }
 
   /// One element's matrix, row-major over its own nodes.
   std::span<const Real> Matrix(Int k) const {
     const auto first =
-        static_cast<std::size_t>(_offset[static_cast<std::size_t>(k)]);
+        static_cast<std::size_t>(offset_[static_cast<std::size_t>(k)]);
     const auto last =
-        static_cast<std::size_t>(_offset[static_cast<std::size_t>(k + 1)]);
-    return std::span<const Real>(_d).subspan(first, last - first);
+        static_cast<std::size_t>(offset_[static_cast<std::size_t>(k + 1)]);
+    return std::span<const Real>(d_).subspan(first, last - first);
   }
 
   /**
@@ -416,16 +416,16 @@ class ElementDerivative {
    */
   template <typename Scalar>
   void operator()(std::span<const Scalar> in, std::span<Scalar> out) const {
-    const auto nR = _radial.NumberOfRadii();
+    const auto nR = radial_.NumberOfRadii();
     if (in.size() != static_cast<std::size_t>(nR) ||
         out.size() != static_cast<std::size_t>(nR)) {
       throw std::invalid_argument(
           "A radial operator acts on a line of one value per radius");
     }
 
-    for (auto k : _radial.ElementIndices()) {
-      const auto first = _radial.ElementStart(k);
-      const auto size = _radial.ElementSize(k);
+    for (auto k : radial_.ElementIndices()) {
+      const auto first = radial_.ElementStart(k);
+      const auto size = radial_.ElementSize(k);
       const auto block = Matrix(k);
       for (auto j = Int{0}; j < size; j++) {
         auto sum = Scalar{};
@@ -439,9 +439,9 @@ class ElementDerivative {
   }
 
  private:
-  RadialGrid<Real> _radial;
-  std::vector<Real> _d;
-  std::vector<Int> _offset;
+  RadialGrid<Real> radial_;
+  std::vector<Real> d_;
+  std::vector<Int> offset_;
 };
 
 }  // namespace GSHTrans

@@ -67,15 +67,15 @@ namespace GSHTrans {
 /// the worst case. It is paid once, at construction, in parallel, and section
 /// the loop kernel's; blocking over colatitudes would fix it
 /// and is not done until something says it needs fixing.
-template <RealFloatingPoint _Real, OrderIndexRange _MRange = All,
-          IndexRange _NRange = All>
+template <RealFloatingPoint Real_, OrderIndexRange MRange_ = All,
+          IndexRange NRange_ = All>
 class WignerMatrices {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using Real = _Real;          ///< The precision.
+  using Real = Real_;          ///< The precision.
   /// Whether all orders are stored, or only the non-negative ones.
-  using MRange = _MRange;
-  using NRange = _NRange;  ///< Which upper indices are covered.
+  using MRange = MRange_;
+  using NRange = NRange_;  ///< Which upper indices are covered.
 
   WignerMatrices() = default;
 
@@ -107,11 +107,11 @@ class WignerMatrices {
   requires RealFloatingPoint<std::ranges::range_value_t<Range>>
   WignerMatrices(Int lMax, Int mMax, Int nMax, Range &&theta,
                  bool reflected = false)
-      : _lMax{lMax},
-        _mMax{mMax},
-        _nMax{nMax},
-        _nTheta(static_cast<Int>(std::ranges::size(theta))),
-        _reflected{reflected} {
+      : lMax_{lMax},
+        mMax_{mMax},
+        nMax_{nMax},
+        nTheta_(static_cast<Int>(std::ranges::size(theta))),
+        reflected_{reflected} {
     if (lMax < 0)
       throw std::invalid_argument("Maximum degree must be positive");
     if (mMax < 0 || mMax > lMax) {
@@ -129,10 +129,10 @@ class WignerMatrices {
     // its weights exactly -- but this class takes any angles at all, so it
     // asks rather than assumes. Getting this wrong would produce a table that
     // is quietly the wrong values for half the orders.
-    if (_reflected) {
+    if (reflected_) {
       const auto pi = std::numbers::pi_v<Real>;
-      for (auto i = Int{0}; i < _nTheta; i++) {
-        const auto mirror = theta[_nTheta - 1 - i];
+      for (auto i = Int{0}; i < nTheta_; i++) {
+        const auto mirror = theta[nTheta_ - 1 - i];
         if (std::abs(theta[i] + mirror - pi) >
             static_cast<Real>(64) * std::numeric_limits<Real>::epsilon() * pi) {
           throw std::invalid_argument(
@@ -144,16 +144,16 @@ class WignerMatrices {
     }
 
     // One offset per (n, m), and the matrices laid end to end in that order.
-    _offset.reserve(
+    offset_.reserve(
         static_cast<std::size_t>(NumberOfUpperIndices() * NumberOfOrders()));
     auto size = std::size_t{0};
     for (auto n : UpperIndices()) {
       for (auto m : Orders()) {
-        _offset.push_back(size);
-        size += static_cast<std::size_t>(NumberOfDegrees(n, m) * _nTheta);
+        offset_.push_back(size);
+        size += static_cast<std::size_t>(NumberOfDegrees(n, m) * nTheta_);
       }
     }
-    _data = std::vector<Real>(size);
+    data_ = std::vector<Real>(size);
 
     ComputeAll(theta);
   }
@@ -161,23 +161,23 @@ class WignerMatrices {
   // Degrees, orders, upper indices and angles. The upper-index accessors
   // match Wigner's exactly, since a grid hands both the same NRange.
   /** @brief The largest degree stored. */
-  auto MaxDegree() const { return _lMax; }
+  auto MaxDegree() const { return lMax_; }
   /** @brief The largest order stored. */
-  auto MaxOrder() const { return _mMax; }
+  auto MaxOrder() const { return mMax_; }
 
   /// Zero when reflected, whatever the alphabet: the negative orders are not
   /// stored and are reached through Sign() instead.
   auto MinOrder() const {
-    if (_reflected) return Int{0};
+    if (reflected_) return Int{0};
     if constexpr (std::same_as<MRange, All>) {
-      return -_mMax;
+      return -mMax_;
     } else {
       return Int{0};
     }
   }
 
   /** @brief Whether only the non-negative orders are stored. */
-  auto IsReflected() const { return _reflected; }
+  auto IsReflected() const { return reflected_; }
 
   /// The reflection itself, as one function so that no caller writes the sign
   /// out by hand:
@@ -192,7 +192,7 @@ class WignerMatrices {
   }
 
   /// Where the mirror of colatitude i lives.
-  auto MirrorAngle(Int iTheta) const { return _nTheta - 1 - iTheta; }
+  auto MirrorAngle(Int iTheta) const { return nTheta_ - 1 - iTheta; }
 
   /** @brief Every order stored. */
   auto Orders() const {
@@ -205,16 +205,16 @@ class WignerMatrices {
   /** @brief The smallest upper index covered. */
   auto MinUpperIndex() const {
     if constexpr (std::same_as<NRange, All>) {
-      return -_nMax;
+      return -nMax_;
     } else if constexpr (std::same_as<NRange, NonNegative>) {
       return Int{0};
     } else {
-      return _nMax;
+      return nMax_;
     }
   }
 
   /** @brief The largest upper index covered. */
-  auto MaxUpperIndex() const { return _nMax; }
+  auto MaxUpperIndex() const { return nMax_; }
 
   /** @brief Every upper index covered. */
   auto UpperIndices() const {
@@ -227,7 +227,7 @@ class WignerMatrices {
   }
 
   /** @brief How many colatitudes the table holds. */
-  auto NumberOfAngles() const { return _nTheta; }
+  auto NumberOfAngles() const { return nTheta_; }
 
   /// The lowest degree present at (n, m), and how many there are.
   ///
@@ -236,19 +236,19 @@ class WignerMatrices {
   /// |m|. That is the source of the load imbalance a parallel matrix kernel
   /// has to divide work for rather than count orders.
   auto MinDegree(Int n, Int m) const {
-    assert(std::abs(n) <= _nMax);
+    assert(std::abs(n) <= nMax_);
     assert(m >= MinOrder() && m <= MaxOrder());
     return std::max(std::abs(n), std::abs(m));
   }
 
   /** @brief How many degrees are present at @p n and @p m. */
   auto NumberOfDegrees(Int n, Int m) const {
-    return _lMax - MinDegree(n, m) + 1;
+    return lMax_ - MinDegree(n, m) + 1;
   }
 
   /** @brief Every degree present at @p n and @p m. */
   auto Degrees(Int n, Int m) const {
-    return std::ranges::views::iota(MinDegree(n, m), _lMax + 1);
+    return std::ranges::views::iota(MinDegree(n, m), lMax_ + 1);
   }
 
   /// The matrix D^(n,m): NumberOfDegrees(n, m) rows by NumberOfAngles()
@@ -264,19 +264,19 @@ class WignerMatrices {
   /// a member that could be wrong in the same way twice.
   auto operator[](Int n, Int m) const {
     return std::span<const Real>(
-        _data.data() + _offset[OffsetIndex(n, m)],
-        static_cast<std::size_t>(NumberOfDegrees(n, m) * _nTheta));
+        data_.data() + offset_[OffsetIndex(n, m)],
+        static_cast<std::size_t>(NumberOfDegrees(n, m) * nTheta_));
   }
 
  private:
-  Int _lMax{};
-  Int _mMax{};
-  Int _nMax{};
-  Int _nTheta{};
-  bool _reflected{false};
+  Int lMax_{};
+  Int mMax_{};
+  Int nMax_{};
+  Int nTheta_{};
+  bool reflected_{false};
 
-  std::vector<Real> _data;
-  std::vector<std::size_t> _offset;
+  std::vector<Real> data_;
+  std::vector<std::size_t> offset_;
 
   auto OffsetIndex(Int n, Int m) const {
     assert(n >= MinUpperIndex() && n <= MaxUpperIndex());
@@ -289,21 +289,21 @@ class WignerMatrices {
   requires RealFloatingPoint<std::ranges::range_value_t<Range>>
   void ComputeAll(Range &&thetaRange) {
     const auto [sqrtInt, sqrtIntInv] =
-        WignerDetails::PreComputeTables<Real>(_lMax, _mMax, _nMax);
+        WignerDetails::PreComputeTables<Real>(lMax_, mMax_, nMax_);
     const auto sqrtIntView = std::span<const Real>(sqrtInt);
     const auto sqrtIntInvView = std::span<const Real>(sqrtIntInv);
 
     // The largest (n, theta) block is the one at the smallest |n|, since a
     // block starts at degree |n|. One scratch buffer of that size per thread.
     const auto scratchSize = static_cast<std::size_t>(
-        GSHIndices<MRange>(_lMax, _mMax, SmallestUpperIndexModulus()).Size());
+        GSHIndices<MRange>(lMax_, mMax_, SmallestUpperIndexModulus()).Size());
 
     // Flattened to an integer loop and decoded inside, and the region
     // suppressed when one is already open, for the reasons Wigner::ComputeAll
     // gives: OpenMP's canonical loop form, and exactly one level threads.
-    const auto count = NumberOfUpperIndices() * _nTheta;
+    const auto count = NumberOfUpperIndices() * nTheta_;
     const auto minUpperIndex = MinUpperIndex();
-    const auto nTheta = _nTheta;
+    const auto nTheta = nTheta_;
     const bool nested = omp_in_parallel();
 
 #pragma omp parallel if (!nested)
@@ -318,9 +318,9 @@ class WignerMatrices {
         // Exactly the call Wigner makes, into scratch instead of into place.
         // Orthonormalisation happens inside it, so what is scattered below is
         // already the stored value sqrt((2l+1)/(4 pi)) d^l_{nm}.
-        auto indices = GSHIndices<MRange>(_lMax, _mMax, n);
+        auto indices = GSHIndices<MRange>(lMax_, mMax_, n);
         WignerDetails::ComputeBlock(
-            GSHView<Real, MRange>(_lMax, _mMax, n, scratch.data()), n,
+            GSHView<Real, MRange>(lMax_, mMax_, n, scratch.data()), n,
             thetaRange[iTheta], sqrtIntView, sqrtIntInvView);
 
         // Scatter: (l, m) in the block goes to column iTheta of matrix (n, m).
@@ -329,7 +329,7 @@ class WignerMatrices {
           auto [blockOffset, sub] = indices.Index(l);
           for (auto m : sub.Orders()) {
             if (m < lowest) continue;
-            _data[_offset[OffsetIndex(n, m)] +
+            data_[offset_[OffsetIndex(n, m)] +
                   static_cast<std::size_t>((l - MinDegree(n, m)) * nTheta +
                                            iTheta)] =
                 scratch[blockOffset + sub.Index(m)];

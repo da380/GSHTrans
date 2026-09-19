@@ -63,11 +63,11 @@ namespace InterpolateDetails {
 // It owns its arrays. An interpolant is a snapshot, and here there is nothing
 // to borrow anyway, since every array below is new storage whatever the
 // caller passed.
-template <RealFloatingPoint _Real, RealOrComplexFloatingPoint _Scalar>
+template <RealFloatingPoint Real_, RealOrComplexFloatingPoint Scalar_>
 struct Padded {
-  using Real = _Real;  ///< The precision.
+  using Real = Real_;  ///< The precision.
   /// The value type: Real when real-valued, Complex otherwise.
-  using Scalar = _Scalar;
+  using Scalar = Scalar_;
 
   std::vector<Real> theta;     // nTheta + 2, running 0 ... pi
   std::vector<Real> phi;       // nPhi + 1,   running 0 ... 2 pi
@@ -221,16 +221,16 @@ auto PolarRows(const Expansion& expansion, const GridType& grid) {
 /// more to the point, keeps the state at a stable address so that copying the
 /// interpolant is well defined -- which it has to be, because the grid's
 /// ProjectFunction takes its callable by value.
-template <std::ptrdiff_t _N, AngularGrid _Grid,
-          RealOrComplexValued _Value = ComplexValued>
+template <std::ptrdiff_t N_, AngularGrid Grid_,
+          RealOrComplexValued Value_ = ComplexValued>
 class SpectralInterpolant {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   /** @brief The upper index N of what this evaluates to. */
-  static constexpr Int UpperIndex = _N;
-  using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Value = _Value;    ///< Whether the samples are real-valued or complex.
-  using Real = typename _Grid::Real;   ///< The precision.
+  static constexpr Int UpperIndex = N_;
+  using GridType = Grid_;  ///< The angular grid this is defined on.
+  using Value = Value_;    ///< Whether the samples are real-valued or complex.
+  using Real = typename Grid_::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   using Scalar = std::conditional_t<std::same_as<Value, RealValued>, Real,
                                     Complex>;  ///< What evaluation returns.
@@ -250,10 +250,10 @@ class SpectralInterpolant {
    * @param coefficients The coefficients, laid out as GSHIndices describes.
    */
   SpectralInterpolant(Int lMax, std::span<const Complex> coefficients)
-      : _state{std::make_shared<const State>(lMax, coefficients)} {}
+      : state_{std::make_shared<const State>(lMax, coefficients)} {}
 
   /** @brief The largest degree stored. */
-  auto MaxDegree() const { return _state->lMax; }
+  auto MaxDegree() const { return state_->lMax; }
 
   /**
    * @brief The field at @p theta, @p phi, summed from the expansion.
@@ -261,7 +261,7 @@ class SpectralInterpolant {
    * longitude outside @f$[0, 2\pi)@f$ is reduced instead, which is exact.
    */
   Scalar operator()(Real theta, Real phi) const {
-    const auto lMax = _state->lMax;
+    const auto lMax = state_->lMax;
     constexpr auto pi = std::numbers::pi_v<Real>;
 
     // A colatitude outside [0, pi] is not a point on the sphere, so
@@ -292,8 +292,8 @@ class SpectralInterpolant {
     // disagreement here would be a disagreement with the transform.
     auto d = GSHView<Real, All>(lMax, lMax, UpperIndex, block.data());
     WignerDetails::ComputeBlock(d, UpperIndex, theta,
-                                std::span<const Real>(_state->sqrtInt),
-                                std::span<const Real>(_state->sqrtIntInv));
+                                std::span<const Real>(state_->sqrtInt),
+                                std::span<const Real>(state_->sqrtIntInv));
 
     // exp(i m phi) for every order at once. Built with polar rather than by
     // repeated multiplication: it is O(lMax) against the sum's O(lMax^2), so
@@ -305,7 +305,7 @@ class SpectralInterpolant {
     }
 
     const auto coefficients = ConstGSHView<Complex, MRange>(
-        lMax, lMax, UpperIndex, _state->data.data());
+        lMax, lMax, UpperIndex, state_->data.data());
 
     auto sum = Complex{};
     for (auto l : d.Degrees()) {
@@ -366,7 +366,7 @@ class SpectralInterpolant {
     }
   }
 
-  std::shared_ptr<const State> _state;
+  std::shared_ptr<const State> state_;
 };
 
 //--------------------------------------------------------------------------//
@@ -415,16 +415,16 @@ auto Interpolate(const F& field, Scheme::SpectralTag = Scheme::Spectral(),
 /// initialised in order. Handing upstream an owning view instead would make
 /// this class move-only, and it has to be copyable -- ProjectFunction takes
 /// its callable by value.
-template <std::ptrdiff_t _N, AngularGrid _Grid, RealOrComplexValued _Value,
-          typename _Upstream>
+template <std::ptrdiff_t N_, AngularGrid Grid_, RealOrComplexValued Value_,
+          typename Upstream_>
 class LocalInterpolant {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   /** @brief The upper index N of what this evaluates to. */
-  static constexpr Int UpperIndex = _N;
-  using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Value = _Value;    ///< Whether the samples are real-valued or complex.
-  using Real = typename _Grid::Real;   ///< The precision.
+  static constexpr Int UpperIndex = N_;
+  using GridType = Grid_;  ///< The angular grid this is defined on.
+  using Value = Value_;    ///< Whether the samples are real-valued or complex.
+  using Real = typename Grid_::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   using Scalar = std::conditional_t<std::same_as<Value, RealValued>, Real,
                                     Complex>;  ///< What evaluation returns.
@@ -432,7 +432,7 @@ class LocalInterpolant {
   /** @brief Takes ownership of a padded grid and builds the upstream scheme
    * over it. */
   explicit LocalInterpolant(InterpolateDetails::Padded<Real, Scalar> padded)
-      : _state{std::make_shared<const State>(std::move(padded))} {}
+      : state_{std::make_shared<const State>(std::move(padded))} {}
 
   /**
    * @brief The field at @p theta, @p phi, from the padded samples.
@@ -447,13 +447,13 @@ class LocalInterpolant {
     }
     phi = std::fmod(phi, 2 * pi);
     if (phi < 0) phi += 2 * pi;
-    return _state->upstream(theta, phi);
+    return state_->upstream(theta, phi);
   }
 
  private:
   struct State {
     InterpolateDetails::Padded<Real, Scalar> padded;
-    _Upstream upstream;
+    Upstream_ upstream;
 
     // padded is declared first, so it is built first and the spans below
     // point at arrays that already exist. State is never moved -- it is
@@ -465,7 +465,7 @@ class LocalInterpolant {
                    std::span<const Scalar>(padded.values)) {}
   };
 
-  std::shared_ptr<const State> _state;
+  std::shared_ptr<const State> state_;
 };
 
 namespace InterpolateDetails {

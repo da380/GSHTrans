@@ -58,16 +58,16 @@ using Int = std::ptrdiff_t;
 template <typename Layered>
 class OperandAtRadius {
  public:
-  OperandAtRadius(const Layered& layered, Int i) : _layered{layered}, _i{i} {}
+  OperandAtRadius(const Layered& layered, Int i) : layered_{layered}, i_{i} {}
 
   template <Int... Alphas>
   auto Coefficient(Int l, Int m) const {
-    return _layered.template Coefficient<Alphas...>(_i, l, m);
+    return layered_.template Coefficient<Alphas...>(i_, l, m);
   }
 
  private:
-  const Layered& _layered;
-  Int _i;
+  const Layered& layered_;
+  Int i_;
 };
 
 // One result block at one radius, presented as the gradient formula expects a
@@ -75,17 +75,17 @@ class OperandAtRadius {
 template <typename Stack>
 class BlockAtRadius {
  public:
-  BlockAtRadius(Stack& stack, Int i) : _stack{stack}, _i{i} {}
+  BlockAtRadius(Stack& stack, Int i) : stack_{stack}, i_{i} {}
 
   /** @brief Every degree stored. */
-  auto Degrees() const { return _stack.Degrees(); }
+  auto Degrees() const { return stack_.Degrees(); }
   /** @brief Every order stored at degree @p l. */
-  auto Orders(Int l) const { return _stack.Orders(l); }
-  auto& operator[](Int l, Int m) { return _stack[_i, l, m]; }
+  auto Orders(Int l) const { return stack_.Orders(l); }
+  auto& operator[](Int l, Int m) { return stack_[i_, l, m]; }
 
  private:
-  Stack& _stack;
-  Int _i;
+  Stack& stack_;
+  Int i_;
 };
 
 template <typename Layered>
@@ -96,16 +96,16 @@ class ResultAtRadius {
   using Complex = typename Layered::Complex;
   static constexpr auto& Orbits = Layered::Orbits;
 
-  ResultAtRadius(Layered& layered, Int i) : _layered{layered}, _i{i} {}
+  ResultAtRadius(Layered& layered, Int i) : layered_{layered}, i_{i} {}
 
   template <Int... Alphas>
   auto Component() {
-    return BlockAtRadius(_layered.template ComponentStack<Alphas...>(), _i);
+    return BlockAtRadius(layered_.template ComponentStack<Alphas...>(), i_);
   }
 
  private:
-  Layered& _layered;
-  Int _i;
+  Layered& layered_;
+  Int i_;
 };
 
 // Apply a radial operator to every stored component of a layered tensor

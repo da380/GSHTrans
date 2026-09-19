@@ -108,32 +108,32 @@ class Axis {
    * @param min The smallest index on the axis.
    * @param max The largest index on the axis.
    */
-  constexpr Axis(int min, int max) : _min{min}, _max{max} {}
+  constexpr Axis(int min, int max) : min_{min}, max_{max} {}
 
   /** @brief Returns the smallest index on the axis. */
-  constexpr auto Min() const { return _min; }
+  constexpr auto Min() const { return min_; }
 
   /** @brief Returns the largest index on the axis. */
-  constexpr auto Max() const { return _max; }
+  constexpr auto Max() const { return max_; }
 
   /** @brief Returns the number of indices on the axis. */
   constexpr auto Size() const {
-    return _max >= _min ? static_cast<std::size_t>(_max - _min + 1)
+    return max_ >= min_ ? static_cast<std::size_t>(max_ - min_ + 1)
                         : std::size_t{0};
   }
 
   /** @brief Returns true if the index i lies on the axis. */
-  constexpr auto Contains(int i) const { return i >= _min and i <= _max; }
+  constexpr auto Contains(int i) const { return i >= min_ and i <= max_; }
 
   /** @brief Returns the zero-based offset of the index i along the axis. */
   constexpr auto Offset(int i) const {
     assert(Contains(i));
-    return static_cast<std::size_t>(i - _min);
+    return static_cast<std::size_t>(i - min_);
   }
 
   /** @brief Returns a view of the indices on the axis. */
   constexpr auto Values() const {
-    return std::views::iota(_min, std::max(_min, _max + 1));
+    return std::views::iota(min_, std::max(min_, max_ + 1));
   }
 
   /** @brief Iterator to the first index on the axis. */
@@ -146,8 +146,8 @@ class Axis {
   constexpr bool operator==(const Axis&) const = default;
 
  private:
-  int _min{0};
-  int _max{-1};
+  int min_{0};
+  int max_{-1};
 };
 
 /*------------------------------------------------------------------------*/
@@ -553,32 +553,32 @@ class Wigner3jMatrix {
    * @param l3 The third degree.
    */
   Wigner3jMatrix(int l1, int l2, int l3)
-      : _l1{l1},
-        _l2{l2},
-        _l3{l3},
-        _data(static_cast<std::size_t>(2 * l1 + 1) *
+      : l1_{l1},
+        l2_{l2},
+        l3_{l3},
+        data_(static_cast<std::size_t>(2 * l1 + 1) *
               static_cast<std::size_t>(2 * l3 + 1)) {
     assert(l1 >= 0 and l2 >= 0 and l3 >= 0);
-    ThreeJDetails::Wigner3jPlane<T>(_l1, _l2, _l3, std::span<T>(_data));
+    ThreeJDetails::Wigner3jPlane<T>(l1_, l2_, l3_, std::span<T>(data_));
   }
 
   /** @brief Returns the first degree. */
-  auto L1() const { return _l1; }
+  auto L1() const { return l1_; }
 
   /** @brief Returns the second degree. */
-  auto L2() const { return _l2; }
+  auto L2() const { return l2_; }
 
   /** @brief Returns the third degree. */
-  auto L3() const { return _l3; }
+  auto L3() const { return l3_; }
 
   /** @brief Returns the degrees as an array {l1, l2, l3}. */
-  auto Degrees() const { return std::array{_l1, _l2, _l3}; }
+  auto Degrees() const { return std::array{l1_, l2_, l3_}; }
 
   /** @brief Returns the axis for the first order, m1 in [-l1, l1]. */
-  auto M1Axis() const { return Axis(-_l1, _l1); }
+  auto M1Axis() const { return Axis(-l1_, l1_); }
 
   /** @brief Returns the axis for the third order, m3 in [-l3, l3]. */
-  auto M3Axis() const { return Axis(-_l3, _l3); }
+  auto M3Axis() const { return Axis(-l3_, l3_); }
 
   /**
    * @brief Returns the symbol (l1 l2 l3; m1, -(m1+m3), m3).
@@ -588,7 +588,7 @@ class Wigner3jMatrix {
    */
   auto operator()(int m1, int m3) const {
     if (not(M1Axis().Contains(m1) and M3Axis().Contains(m3))) return T{0};
-    return _data[M1Axis().Offset(m1) * M3Axis().Size() + M3Axis().Offset(m3)];
+    return data_[M1Axis().Offset(m1) * M3Axis().Size() + M3Axis().Offset(m3)];
   }
 
   /**
@@ -601,7 +601,7 @@ class Wigner3jMatrix {
    * m1 + m2 + m3 = 0 and |mi| <= li are not met.
    */
   auto operator()(int m1, int m2, int m3) const {
-    if (m1 + m2 + m3 != 0 or std::abs(m2) > _l2) return T{0};
+    if (m1 + m2 + m3 != 0 or std::abs(m2) > l2_) return T{0};
     return (*this)(m1, m3);
   }
 
@@ -624,26 +624,26 @@ class Wigner3jMatrix {
   /** @brief Returns a view of the row of symbols with fixed m1. */
   auto Row(int m1) const {
     return std::span<const T>(
-        _data.data() + M1Axis().Offset(m1) * M3Axis().Size(), M3Axis().Size());
+        data_.data() + M1Axis().Offset(m1) * M3Axis().Size(), M3Axis().Size());
   }
 
   /** @brief Returns a flat view of the table, row-major in (m1, m3). */
-  auto Data() const { return std::span<const T>(_data); }
+  auto Data() const { return std::span<const T>(data_); }
 
   /** @brief Iterator to the start of the flattened table. */
-  auto begin() const { return _data.cbegin(); }
+  auto begin() const { return data_.cbegin(); }
 
   /** @brief Iterator past the end of the flattened table. */
-  auto end() const { return _data.cend(); }
+  auto end() const { return data_.cend(); }
 
   /** @brief Returns the total number of stored values. */
-  auto size() const { return _data.size(); }
+  auto size() const { return data_.size(); }
 
  private:
-  int _l1{0};
-  int _l2{0};
-  int _l3{0};
-  std::vector<T> _data;
+  int l1_{0};
+  int l2_{0};
+  int l3_{0};
+  std::vector<T> data_;
 };
 
 /*------------------------------------------------------------------------*/
@@ -686,34 +686,34 @@ class Wigner3jStack {
    * @param l2Max The largest middle degree.
    */
   Wigner3jStack(int l1, int l3, int l2Min, int l2Max)
-      : _l1{l1}, _l3{l3}, _l2Axis{l2Min, l2Max} {
+      : l1_{l1}, l3_{l3}, l2Axis_{l2Min, l2Max} {
     assert(l1 >= 0 and l3 >= 0 and l2Min >= 0 and l2Max >= l2Min);
-    _matrices.reserve(_l2Axis.Size());
-    for (auto l2 : _l2Axis) _matrices.emplace_back(_l1, l2, _l3);
+    matrices_.reserve(l2Axis_.Size());
+    for (auto l2 : l2Axis_) matrices_.emplace_back(l1_, l2, l3_);
   }
 
   /** @brief Returns the first degree. */
-  auto L1() const { return _l1; }
+  auto L1() const { return l1_; }
 
   /** @brief Returns the third degree. */
-  auto L3() const { return _l3; }
+  auto L3() const { return l3_; }
 
   /** @brief Returns the axis for the middle degree l2. */
-  auto L2Axis() const { return _l2Axis; }
+  auto L2Axis() const { return l2Axis_; }
 
   /** @brief Returns the axis for the first order, m1 in [-l1, l1]. */
-  auto M1Axis() const { return Axis(-_l1, _l1); }
+  auto M1Axis() const { return Axis(-l1_, l1_); }
 
   /** @brief Returns the axis for the third order, m3 in [-l3, l3]. */
-  auto M3Axis() const { return Axis(-_l3, _l3); }
+  auto M3Axis() const { return Axis(-l3_, l3_); }
 
   /**
    * @brief Returns the table of symbols for a given middle degree.
    * @param l2 The middle degree; must lie on L2Axis().
    */
   const Wigner3jMatrix<T>& Matrix(int l2) const {
-    assert(_l2Axis.Contains(l2));
-    return _matrices[_l2Axis.Offset(l2)];
+    assert(l2Axis_.Contains(l2));
+    return matrices_[l2Axis_.Offset(l2)];
   }
 
   /** @brief Equivalent to Matrix(l2), allowing stack[l2](m1, m3). */
@@ -728,7 +728,7 @@ class Wigner3jStack {
    * an order is out of range.
    */
   auto operator()(int l2, int m1, int m3) const {
-    if (not _l2Axis.Contains(l2)) return T{0};
+    if (not l2Axis_.Contains(l2)) return T{0};
     return Matrix(l2)(m1, m3);
   }
 
@@ -741,7 +741,7 @@ class Wigner3jStack {
    * @param m3 The third order.
    */
   auto operator()(int l2, int m1, int m2, int m3) const {
-    if (not _l2Axis.Contains(l2)) return T{0};
+    if (not l2Axis_.Contains(l2)) return T{0};
     return Matrix(l2)(m1, m2, m3);
   }
 
@@ -753,24 +753,24 @@ class Wigner3jStack {
    * @param mp The column order.
    */
   auto CouplingElement(int l2, int m, int mp) const {
-    if (not _l2Axis.Contains(l2)) return T{0};
+    if (not l2Axis_.Contains(l2)) return T{0};
     return Matrix(l2).CouplingElement(m, mp);
   }
 
   /** @brief Iterator to the first stored matrix (smallest l2). */
-  auto begin() const { return _matrices.cbegin(); }
+  auto begin() const { return matrices_.cbegin(); }
 
   /** @brief Iterator past the last stored matrix. */
-  auto end() const { return _matrices.cend(); }
+  auto end() const { return matrices_.cend(); }
 
   /** @brief Returns the number of stored matrices. */
-  auto size() const { return _matrices.size(); }
+  auto size() const { return matrices_.size(); }
 
  private:
-  int _l1{0};
-  int _l3{0};
-  Axis _l2Axis;
-  std::vector<Wigner3jMatrix<T>> _matrices;
+  int l1_{0};
+  int l3_{0};
+  Axis l2Axis_;
+  std::vector<Wigner3jMatrix<T>> matrices_;
 };
 
 /*------------------------------------------------------------------------*/

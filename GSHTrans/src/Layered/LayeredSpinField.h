@@ -39,24 +39,24 @@ namespace GSHTrans {
 /// A one-slice stack is *not* an angular field. The idiom stays available to
 /// application code, but the two are distinct types here, so that a function
 /// taking one cannot silently be handed the other.
-template <std::ptrdiff_t _N, AngularGrid _Grid,
-          RealOrComplexValued _Value = ComplexValued>
+template <std::ptrdiff_t N_, AngularGrid Grid_,
+          RealOrComplexValued Value_ = ComplexValued>
 class LayeredSpinField {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /** @brief The upper index N of what this evaluates to. */
-  static constexpr Int UpperIndex = _N;
-  using Value = _Value;    ///< Whether the samples are real-valued or complex.
-  using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Real = typename _Grid::Real;   ///< The precision.
+  static constexpr Int UpperIndex = N_;
+  using Value = Value_;    ///< Whether the samples are real-valued or complex.
+  using GridType = Grid_;  ///< The angular grid this is defined on.
+  using Real = typename Grid_::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   /// The value type: Real when real-valued, Complex otherwise.
   using Scalar = ScalarFor<Real, Value>;
   using RadialGridType = RadialGrid<Real>;  ///< The radial grid type.
-  using SliceType = SpinFieldView<_N, _Grid, _Value>;  ///< One angular field.
+  using SliceType = SpinFieldView<N_, Grid_, Value_>;  ///< One angular field.
   using ConstSliceType =
-      ConstSpinFieldView<_N, _Grid, _Value>;  ///< One angular field, read-only.
+      ConstSpinFieldView<N_, Grid_, Value_>;  ///< One angular field, read-only.
 
   static_assert(std::same_as<Value, ComplexValued> or UpperIndex == 0,
                 "A spin-weighted field can be real-valued only at upper index "
@@ -70,24 +70,24 @@ class LayeredSpinField {
    * @param grid The angular grid every slice is on.
    */
   LayeredSpinField(RadialGridType radialGrid, GridType grid)
-      : _radialGrid{std::move(radialGrid)},
-        _grid{std::move(grid)},
-        _data(static_cast<std::size_t>(_radialGrid.NumberOfRadii()) *
-              static_cast<std::size_t>(_grid.FieldSize())) {}
+      : radialGrid_{std::move(radialGrid)},
+        grid_{std::move(grid)},
+        data_(static_cast<std::size_t>(radialGrid_.NumberOfRadii()) *
+              static_cast<std::size_t>(grid_.FieldSize())) {}
 
   /** @brief The angular grid this is defined on. */
-  const GridType& Grid() const { return _grid; }
+  const GridType& Grid() const { return grid_; }
   /** @brief The radial grid this is defined on. */
-  const RadialGridType& Radial() const { return _radialGrid; }
+  const RadialGridType& Radial() const { return radialGrid_; }
 
   /** @brief How many radii the stack holds. */
-  auto NumberOfRadii() const { return _radialGrid.NumberOfRadii(); }
+  auto NumberOfRadii() const { return radialGrid_.NumberOfRadii(); }
   /** @brief Indices of the stored radii. */
-  auto RadiusIndices() const { return _radialGrid.RadiusIndices(); }
+  auto RadiusIndices() const { return radialGrid_.RadiusIndices(); }
   /** @brief How many samples one angular field holds. */
-  auto FieldSize() const { return static_cast<Int>(_grid.FieldSize()); }
+  auto FieldSize() const { return static_cast<Int>(grid_.FieldSize()); }
   /** @brief How many elements are stored. */
-  auto Size() const { return static_cast<Int>(_data.size()); }
+  auto Size() const { return static_cast<Int>(data_.size()); }
 
   // The uniform names a radial operator sees. A field's slice is a set of
   // angular points and an expansion's is a set of coefficients, but the radial
@@ -98,29 +98,29 @@ class LayeredSpinField {
   auto SliceSize() const { return FieldSize(); }
   /** @brief A zero stack of the same shape, which is what an operator needs
    * to write into. */
-  auto SameShape() const { return LayeredSpinField(_radialGrid, _grid); }
+  auto SameShape() const { return LayeredSpinField(radialGrid_, grid_); }
 
   /// The same field on a different set of radii, which is what resampling
   /// needs and what SameShape cannot give: a radial operator maps a stack to
   /// one of the same shape, and changing nR is precisely not that.
   auto SameShapeOn(RadialGridType radialGrid) const {
-    return LayeredSpinField(std::move(radialGrid), _grid);
+    return LayeredSpinField(std::move(radialGrid), grid_);
   }
 
   /** @brief The underlying buffer. */
-  auto Data() { return std::span<Scalar>(_data); }
+  auto Data() { return std::span<Scalar>(data_); }
   /** @brief The underlying buffer. */
-  auto Data() const { return std::span<const Scalar>(_data); }
+  auto Data() const { return std::span<const Scalar>(data_); }
 
   /// One angular field, as a view over this stack's storage. Writing through it
   /// writes the stack.
   auto Slice(Int i) {
-    return SliceType(_grid, Data().subspan(Offset(i), SliceExtent()));
+    return SliceType(grid_, Data().subspan(Offset(i), SliceExtent()));
   }
 
   /// The same, read-only.
   auto Slice(Int i) const {
-    return ConstSliceType(_grid, Data().subspan(Offset(i), SliceExtent()));
+    return ConstSliceType(grid_, Data().subspan(Offset(i), SliceExtent()));
   }
 
   /// The whole stack as the transform's batch: nR fields, each contiguous,
@@ -130,12 +130,12 @@ class LayeredSpinField {
   }
 
  private:
-  RadialGridType _radialGrid;
-  GridType _grid;
-  FFTWpp::vector<Scalar> _data;
+  RadialGridType radialGrid_;
+  GridType grid_;
+  FFTWpp::vector<Scalar> data_;
 
   std::size_t SliceExtent() const {
-    return static_cast<std::size_t>(_grid.FieldSize());
+    return static_cast<std::size_t>(grid_.FieldSize());
   }
 
   std::size_t Offset(Int i) const {
@@ -159,21 +159,21 @@ class LayeredSpinField {
 /// This is the [r][(l,m)] of the two layouts the plan names. The other,
 /// [(l,m)][r], is what a radial solve at fixed degree and order wants, and the
 /// repack between them is a separate step.
-template <std::ptrdiff_t _N, AngularGrid _Grid,
-          RealOrComplexValued _Value = ComplexValued>
+template <std::ptrdiff_t N_, AngularGrid Grid_,
+          RealOrComplexValued Value_ = ComplexValued>
 class LayeredSpinExpansion {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /** @brief The upper index N of what this evaluates to. */
-  static constexpr Int UpperIndex = _N;
-  using Value = _Value;    ///< Whether the samples are real-valued or complex.
-  using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Real = typename _Grid::Real;   ///< The precision.
+  static constexpr Int UpperIndex = N_;
+  using Value = Value_;    ///< Whether the samples are real-valued or complex.
+  using GridType = Grid_;  ///< The angular grid this is defined on.
+  using Real = typename Grid_::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   using RadialGridType = RadialGrid<Real>;  ///< The radial grid type.
   using MRange =
-      std::conditional_t<std::same_as<_Value, RealValued>, NonNegative,
+      std::conditional_t<std::same_as<Value_, RealValued>, NonNegative,
                          All>;  ///< Which orders are stored.
 
   LayeredSpinExpansion() = delete;
@@ -185,35 +185,35 @@ class LayeredSpinExpansion {
    * @param lMax The largest degree stored.
    */
   LayeredSpinExpansion(RadialGridType radialGrid, GridType grid, Int lMax)
-      : _radialGrid{std::move(radialGrid)},
-        _grid{std::move(grid)},
-        _indices{Checked(lMax), lMax, UpperIndex},
-        _data(static_cast<std::size_t>(_radialGrid.NumberOfRadii()) *
-              static_cast<std::size_t>(_indices.Size())) {}
+      : radialGrid_{std::move(radialGrid)},
+        grid_{std::move(grid)},
+        indices_{Checked(lMax), lMax, UpperIndex},
+        data_(static_cast<std::size_t>(radialGrid_.NumberOfRadii()) *
+              static_cast<std::size_t>(indices_.Size())) {}
 
   /** @brief The angular grid this is defined on. */
-  const GridType& Grid() const { return _grid; }
+  const GridType& Grid() const { return grid_; }
   /** @brief The radial grid this is defined on. */
-  const RadialGridType& Radial() const { return _radialGrid; }
+  const RadialGridType& Radial() const { return radialGrid_; }
 
   /** @brief How many radii the stack holds. */
-  auto NumberOfRadii() const { return _radialGrid.NumberOfRadii(); }
+  auto NumberOfRadii() const { return radialGrid_.NumberOfRadii(); }
   /** @brief Indices of the stored radii. */
-  auto RadiusIndices() const { return _radialGrid.RadiusIndices(); }
+  auto RadiusIndices() const { return radialGrid_.RadiusIndices(); }
   /** @brief The largest degree stored. */
-  auto MaxDegree() const { return _indices.MaxDegree(); }
+  auto MaxDegree() const { return indices_.MaxDegree(); }
   /** @brief The smallest degree stored. */
-  auto MinDegree() const { return _indices.MinDegree(); }
+  auto MinDegree() const { return indices_.MinDegree(); }
   /** @brief Every degree stored. */
-  auto Degrees() const { return _indices.Degrees(); }
+  auto Degrees() const { return indices_.Degrees(); }
   /** @brief Every order stored at degree @p l. */
   auto Orders(Int l) const {
     return GSHSubIndices<MRange>(l, MaxDegree()).Orders();
   }
   /** @brief How many coefficients one block holds. */
-  auto CoefficientSize() const { return static_cast<Int>(_indices.Size()); }
+  auto CoefficientSize() const { return static_cast<Int>(indices_.Size()); }
   /** @brief How many elements are stored. */
-  auto Size() const { return static_cast<Int>(_data.size()); }
+  auto Size() const { return static_cast<Int>(data_.size()); }
 
   /** @brief How many elements one radial slice holds. */
   auto SliceSize() const { return CoefficientSize(); }
@@ -222,33 +222,33 @@ class LayeredSpinExpansion {
   /// repack needs this: once the layout is [(l, m)][r] a line is addressed by
   /// its position in the block and no longer by (l, m) directly.
   auto CoefficientIndex(Int l, Int m) const {
-    return static_cast<Int>(_indices.Index(l, m));
+    return static_cast<Int>(indices_.Index(l, m));
   }
 
   /** @brief A zero expansion of the same shape, which is what an operator
    * needs to write into. */
   auto SameShape() const {
-    return LayeredSpinExpansion(_radialGrid, _grid, MaxDegree());
+    return LayeredSpinExpansion(radialGrid_, grid_, MaxDegree());
   }
 
   /// The same expansion on a different set of radii, which is what resampling
   /// needs and what SameShape cannot give.
   auto SameShapeOn(RadialGridType radialGrid) const {
-    return LayeredSpinExpansion(std::move(radialGrid), _grid, MaxDegree());
+    return LayeredSpinExpansion(std::move(radialGrid), grid_, MaxDegree());
   }
 
   /** @brief The underlying buffer. */
-  auto Data() { return std::span<Complex>(_data); }
+  auto Data() { return std::span<Complex>(data_); }
   /** @brief The underlying buffer. */
-  auto Data() const { return std::span<const Complex>(_data); }
+  auto Data() const { return std::span<const Complex>(data_); }
 
   /// The coefficient at one radius.
   Complex operator[](Int i, Int l, Int m) const {
-    return _data[Offset(i) + static_cast<std::size_t>(_indices.Index(l, m))];
+    return data_[Offset(i) + static_cast<std::size_t>(indices_.Index(l, m))];
   }
   /// The same, writable.
   Complex& operator[](Int i, Int l, Int m) {
-    return _data[Offset(i) + static_cast<std::size_t>(_indices.Index(l, m))];
+    return data_[Offset(i) + static_cast<std::size_t>(indices_.Index(l, m))];
   }
 
   /// The whole stack as the transform's batch: nR blocks, each contiguous,
@@ -258,10 +258,10 @@ class LayeredSpinExpansion {
   }
 
  private:
-  RadialGridType _radialGrid;
-  GridType _grid;
-  GSHIndices<MRange> _indices;
-  FFTWpp::vector<Complex> _data;
+  RadialGridType radialGrid_;
+  GridType grid_;
+  GSHIndices<MRange> indices_;
+  FFTWpp::vector<Complex> data_;
 
   static Int Checked(Int lMax) {
     if (lMax < (UpperIndex < 0 ? -UpperIndex : UpperIndex)) {
@@ -273,7 +273,7 @@ class LayeredSpinExpansion {
 
   std::size_t Offset(Int i) const {
     return static_cast<std::size_t>(i) *
-           static_cast<std::size_t>(_indices.Size());
+           static_cast<std::size_t>(indices_.Size());
   }
 };
 

@@ -126,15 +126,15 @@ constexpr bool HasRadialSlotIn() {
 /// components at N = 0, namely (-+), (00) and (+-). A collection labelled only
 /// by N therefore does not determine a tensor, which is why the unit below is
 /// called SpinField and why components are addressed by multi-index here.
-template <std::ptrdiff_t _Rank, SlotAlphabet _Slots = AllSlots>
+template <std::ptrdiff_t Rank_, SlotAlphabet Slots_ = AllSlots>
 class MultiIndex {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
   // Named SlotSet rather than Slots, which is taken by the accessor below.
-  using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
+  using SlotSet = Slots_;  ///< The alphabet the slots are drawn from.
 
   /** @brief The tensor rank. */
-  static constexpr Int Rank = _Rank;
+  static constexpr Int Rank = Rank_;
   static_assert(Rank >= 0, "A tensor rank cannot be negative");
 
   /// How many values one slot can take: the radix everything below counts in.
@@ -149,11 +149,11 @@ class MultiIndex {
     return size;
   }();
 
-  constexpr MultiIndex() : _slots{} {
+  constexpr MultiIndex() : slots_{} {
     // Not the all-zero index in general: zero is not in every alphabet. The
     // first letter is, and is the natural default for the same reason it is
     // the first flat index.
-    for (auto& alpha : _slots) alpha = SlotSet::Alphabet[0];
+    for (auto& alpha : slots_) alpha = SlotSet::Alphabet[0];
   }
 
   /**
@@ -161,8 +161,8 @@ class MultiIndex {
    * @param slots One letter per slot, each drawn from the alphabet.
    * @throws std::invalid_argument if a letter is not in the alphabet.
    */
-  constexpr explicit MultiIndex(std::array<Int, Rank> slots) : _slots{slots} {
-    for (auto alpha : _slots) {
+  constexpr explicit MultiIndex(std::array<Int, Rank> slots) : slots_{slots} {
+    for (auto alpha : slots_) {
       if (DigitOf(alpha) < 0) {
         throw std::invalid_argument(
             "A canonical index must be drawn from the slot alphabet");
@@ -190,7 +190,7 @@ class MultiIndex {
   /// The flat component index, in the lexicographic order FromFlat describes.
   constexpr Int Flat() const {
     auto flat = Int{0};
-    for (auto alpha : _slots) flat = Base * flat + DigitOf(alpha);
+    for (auto alpha : slots_) flat = Base * flat + DigitOf(alpha);
     return flat;
   }
 
@@ -198,14 +198,14 @@ class MultiIndex {
   /// and therefore a compile-time quantity wherever it is used.
   constexpr Int UpperIndex() const {
     auto n = Int{0};
-    for (auto alpha : _slots) n += alpha;
+    for (auto alpha : slots_) n += alpha;
     return n;
   }
 
   /** @brief The letter at slot @p slot. */
-  constexpr Int operator[](Int slot) const { return _slots[slot]; }
+  constexpr Int operator[](Int slot) const { return slots_[slot]; }
   /** @brief Every letter, one per slot. */
-  constexpr const std::array<Int, Rank>& Slots() const { return _slots; }
+  constexpr const std::array<Int, Rank>& Slots() const { return slots_; }
 
   /// The involution of the reality condition (eq:reality). Its only fixed point
   /// is the all-zero index -- which for a tangential tensor of rank >= 1 does
@@ -214,7 +214,7 @@ class MultiIndex {
   /// second buffer, from a tangential real tensor with no permutation
   /// symmetry.
   constexpr MultiIndex Negated() const {
-    auto slots = _slots;
+    auto slots = slots_;
     for (auto& alpha : slots) alpha = -alpha;
     return MultiIndex(slots);
   }
@@ -222,7 +222,7 @@ class MultiIndex {
   /// Slot i of the result is slot image[i] of this one.
   constexpr MultiIndex Permuted(const std::array<Int, Rank>& image) const {
     auto slots = std::array<Int, Rank>{};
-    for (auto i = Int{0}; i < Rank; i++) slots[i] = _slots[image[i]];
+    for (auto i = Int{0}; i < Rank; i++) slots[i] = slots_[image[i]];
     return MultiIndex(slots);
   }
 
@@ -240,7 +240,7 @@ class MultiIndex {
     return -1;
   }
 
-  std::array<Int, Rank> _slots;
+  std::array<Int, Rank> slots_;
 };
 
 // How many components of a rank-p tensor carry upper index N: the trinomial

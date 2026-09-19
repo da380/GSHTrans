@@ -60,44 +60,44 @@ class RadialMajor {
    */
   explicit RadialMajor(const Stack& stack,
                        Execution policy = Execution::Sequential())
-      : _nR{stack.NumberOfRadii()},
-        _lines{stack.SliceSize()},
-        _data(static_cast<std::size_t>(_nR) *
-              static_cast<std::size_t>(_lines)) {
-    Transpose(stack.Data().data(), _data.data(), _nR, _lines, policy);
+      : nR_{stack.NumberOfRadii()},
+        lines_{stack.SliceSize()},
+        data_(static_cast<std::size_t>(nR_) *
+              static_cast<std::size_t>(lines_)) {
+    Transpose(stack.Data().data(), data_.data(), nR_, lines_, policy);
   }
 
   /** @brief How many radii the stack holds. */
-  auto NumberOfRadii() const { return _nR; }
+  auto NumberOfRadii() const { return nR_; }
   /** @brief How many radial lines there are, one per element of a slice. */
-  auto NumberOfLines() const { return _lines; }
+  auto NumberOfLines() const { return lines_; }
 
   /// A buffer of the same shape, not transposed from anything. Scratch for an
   /// operator to write into: transposing a buffer whose contents are about to
   /// be overwritten is pure waste, and without this there is no way to avoid
   /// it.
-  auto SameShape() const { return RadialMajor(_nR, _lines); }
+  auto SameShape() const { return RadialMajor(nR_, lines_); }
   /** @brief How many elements are stored. */
-  auto Size() const { return static_cast<Int>(_data.size()); }
+  auto Size() const { return static_cast<Int>(data_.size()); }
 
   /** @brief The underlying buffer. */
-  auto Data() { return std::span<Scalar>(_data); }
+  auto Data() { return std::span<Scalar>(data_); }
   /** @brief The underlying buffer. */
-  auto Data() const { return std::span<const Scalar>(_data); }
+  auto Data() const { return std::span<const Scalar>(data_); }
 
   /// One radial line, contiguous. `j` is the position within a slice: for an
   /// expansion, what `CoefficientIndex(l, m)` returns.
   auto Line(Int j) {
-    return Data().subspan(Offset(j), static_cast<std::size_t>(_nR));
+    return Data().subspan(Offset(j), static_cast<std::size_t>(nR_));
   }
 
   /// The same, read-only.
   auto Line(Int j) const {
-    return Data().subspan(Offset(j), static_cast<std::size_t>(_nR));
+    return Data().subspan(Offset(j), static_cast<std::size_t>(nR_));
   }
 
   /** @brief Every line index. */
-  auto LineIndices() const { return std::ranges::views::iota(Int{0}, _lines); }
+  auto LineIndices() const { return std::ranges::views::iota(Int{0}, lines_); }
 
   /// Refill from a stack of the shape this already has, without allocating.
   ///
@@ -107,41 +107,41 @@ class RadialMajor {
   /// it is there to serve.
   void CopyFrom(const Stack& stack,
                 Execution policy = Execution::Sequential()) {
-    if (stack.NumberOfRadii() != _nR || stack.SliceSize() != _lines) {
+    if (stack.NumberOfRadii() != nR_ || stack.SliceSize() != lines_) {
       throw std::invalid_argument(
           "A radial-major buffer can only be refilled from a stack of the "
           "shape it already has");
     }
-    Transpose(stack.Data().data(), _data.data(), _nR, _lines, policy);
+    Transpose(stack.Data().data(), data_.data(), nR_, lines_, policy);
   }
 
   /// Back to radius-major, into a stack of the right shape.
   void CopyInto(Stack& stack,
                 Execution policy = Execution::Sequential()) const {
-    if (stack.NumberOfRadii() != _nR || stack.SliceSize() != _lines) {
+    if (stack.NumberOfRadii() != nR_ || stack.SliceSize() != lines_) {
       throw std::invalid_argument(
           "A radial-major buffer can only be copied back into a stack of the "
           "shape it came from");
     }
     auto target = stack.Data();
-    Transpose(_data.data(), target.data(), _lines, _nR, policy);
+    Transpose(data_.data(), target.data(), lines_, nR_, policy);
   }
 
  private:
-  Int _nR;
-  Int _lines;
-  std::vector<Scalar> _data;
+  Int nR_;
+  Int lines_;
+  std::vector<Scalar> data_;
 
   RadialMajor(Int nR, Int lines)
-      : _nR{nR},
-        _lines{lines},
-        _data(static_cast<std::size_t>(nR) * static_cast<std::size_t>(lines)) {}
+      : nR_{nR},
+        lines_{lines},
+        data_(static_cast<std::size_t>(nR) * static_cast<std::size_t>(lines)) {}
 
   std::size_t Offset(Int j) const {
-    if (j < 0 || j >= _lines) {
+    if (j < 0 || j >= lines_) {
       throw std::invalid_argument("Line index outside the slice");
     }
-    return static_cast<std::size_t>(j) * static_cast<std::size_t>(_nR);
+    return static_cast<std::size_t>(j) * static_cast<std::size_t>(nR_);
   }
 
   // The tile side, in elements. A pair of tiles has to sit in L1 alongside

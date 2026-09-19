@@ -54,21 +54,21 @@ namespace GSHTrans {
  * call. The nodes are passed in and held here instead, which also leaves the
  * point-set helpers nothing to defer.
  *
- * @tparam _Real The precision.
- * @tparam _MRange Whether coefficient blocks hold all orders or only the
+ * @tparam Real_ The precision.
+ * @tparam MRange_ Whether coefficient blocks hold all orders or only the
  * non-negative ones. A grid over the latter serves real scalars alone.
- * @tparam _NRange Which upper indices the grid covers.
+ * @tparam NRange_ Which upper indices the grid covers.
  */
-template <RealFloatingPoint _Real, OrderIndexRange _MRange, IndexRange _NRange>
+template <RealFloatingPoint Real_, OrderIndexRange MRange_, IndexRange NRange_>
 class SphericalGrid {
  public:
   // Public type aliases.
   using Int = std::ptrdiff_t;          ///< Signed index type used throughout.
-  using Real = _Real;                  ///< The precision.
+  using Real = Real_;                  ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   /// Whether all orders are stored, or only the non-negative ones.
-  using MRange = _MRange;
-  using NRange = _NRange;  ///< Which upper indices are covered.
+  using MRange = MRange_;
+  using NRange = NRange_;  ///< Which upper indices are covered.
 
   // A grid is a value-semantic handle over an immutable, shared
   // implementation: constructing one builds the Wigner values and copying one
@@ -105,11 +105,11 @@ class SphericalGrid {
                 Chunking chunking = Chunking::Automatic(),
                 WignerValues values = WignerValues::Stored(),
                 TransformKernel kernel = TransformKernel::Loop(), Int nPhi = 0)
-      : _impl{std::make_shared<const Impl>(
+      : impl_{std::make_shared<const Impl>(
             lMax, nMax, std::move(coLatitudes), std::move(coLatitudeWeights),
             nPhi > 0 ? nPhi : FastFFTSize(2 * lMax + 1), values, kernel)},
-        _chunking{chunking},
-        _flag{flag} {
+        chunking_{chunking},
+        flag_{flag} {
     assert(flag != FFTWpp::WisdomOnly);
   }
 
@@ -133,7 +133,7 @@ class SphericalGrid {
   // and treating them as interchangeable would make a node's operands
   // silently disagree about the buffers they index.
   /** @brief Identity, for deciding whether two share an implementation. */
-  auto Identity() const { return _impl.get(); }
+  auto Identity() const { return impl_.get(); }
 
   /// The same grid with a different chunking policy, or a different planner
   /// flag: a pointer copy and a scalar, sharing one table.
@@ -154,7 +154,7 @@ class SphericalGrid {
   /// the untuned one.
   auto With(Chunking chunking) const {
     auto grid = *this;
-    grid._chunking = chunking;
+    grid.chunking_ = chunking;
     return grid;
   }
 
@@ -162,30 +162,30 @@ class SphericalGrid {
   auto With(FFTWpp::Flag flag) const {
     assert(flag != FFTWpp::WisdomOnly);
     auto grid = *this;
-    grid._flag = flag;
+    grid.flag_ = flag;
     return grid;
   }
 
   /** @brief How many fields of a batch the inner loop takes at once. */
-  auto ChunkingPolicy() const { return _chunking; }
+  auto ChunkingPolicy() const { return chunking_; }
   /** @brief How hard FFTW is asked to work at planning. */
-  auto PlannerFlag() const { return _flag; }
+  auto PlannerFlag() const { return flag_; }
 
   //------------------------------------------------//
   //                 The grid itself                 //
   //------------------------------------------------//
   /** @brief The largest degree stored. */
-  auto MaxDegree() const { return _impl->lMax; }
+  auto MaxDegree() const { return impl_->lMax; }
   /** @brief The largest upper index covered. */
-  auto MaxUpperIndex() const { return _impl->nMax; }
+  auto MaxUpperIndex() const { return impl_->nMax; }
 
   /** @brief The colatitudes, strictly increasing in @f$(0,\pi)@f$. */
   auto CoLatitudes() const {
-    return std::ranges::views::all(_impl->coLatitudes);
+    return std::ranges::views::all(impl_->coLatitudes);
   }
   /** @brief The quadrature weights over colatitude. */
   auto CoLatitudeWeights() const {
-    return std::ranges::views::all(_impl->coLatitudeWeights);
+    return std::ranges::views::all(impl_->coLatitudeWeights);
   }
 
   /** @brief The longitudes, uniform from zero. */
@@ -330,7 +330,7 @@ class SphericalGrid {
   requires requires() {
     // A complex-valued field needs all orders in the coefficient storage; a
     // real-valued one uses the reduced m >= 0 storage and does not.
-    requires std::same_as<_MRange, All> or NumericConcepts::RealRange<InRange>;
+    requires std::same_as<MRange_, All> or NumericConcepts::RealRange<InRange>;
     // Field and coefficients both carry this grid's precision.
     requires std::same_as<NumericConcepts::RangePrecision<InRange>, Real>;
     requires std::same_as<std::ranges::range_value_t<OutRange>, Complex>;
@@ -366,7 +366,7 @@ class SphericalGrid {
     auto inFirst = std::ranges::begin(in);
 
     // A one-point grid needs no FFT.
-    if (_impl->lMax == 0) {
+    if (impl_->lMax == 0) {
       for (auto k = Int{0}; k < count; k++) {
         outFirst[outBatch.Offset(0, k)] = inFirst[inBatch.Offset(0, k)] *
                                           static_cast<Real>(2) /
@@ -391,7 +391,7 @@ class SphericalGrid {
     // constructor has already refused the combination, so the discarded
     // branch is unreachable as well as uninstantiated.
     if constexpr (BlasDetails::BlasReal<Real>)
-      if (_impl->kernel.IsMatrix()) {
+      if (impl_->kernel.IsMatrix()) {
         ForwardMatrixKernel<Scalar>(lMax, n, in, inBatch, outFirst, outBatch,
                                     count, nPhi, nTheta, scaleFactor, policy);
         return;
@@ -425,7 +425,7 @@ class SphericalGrid {
   template <NumericConcepts::RealOrComplexRange InRange,
             NumericConcepts::ComplexWritableRange OutRange>
   requires requires() {
-    requires std::same_as<_MRange, All> or NumericConcepts::RealRange<InRange>;
+    requires std::same_as<MRange_, All> or NumericConcepts::RealRange<InRange>;
     requires std::same_as<NumericConcepts::RangePrecision<InRange>, Real>;
     requires std::same_as<std::ranges::range_value_t<OutRange>, Complex>;
   }
@@ -463,7 +463,7 @@ class SphericalGrid {
             NumericConcepts::RealOrComplexWritableRange OutRange>
   requires requires() {
     // As above, read the other way round: the field is the output here.
-    requires std::same_as<_MRange, All> or
+    requires std::same_as<MRange_, All> or
                  NumericConcepts::RealWritableRange<OutRange>;
     requires std::same_as<NumericConcepts::RangePrecision<OutRange>, Real>;
     requires std::same_as<std::ranges::range_value_t<InRange>, Complex>;
@@ -490,7 +490,7 @@ class SphericalGrid {
     auto outFirst = std::ranges::begin(out);
 
     // A one-point grid needs no FFT.
-    if (_impl->lMax == 0) {
+    if (impl_->lMax == 0) {
       for (auto k = Int{0}; k < count; k++) {
         const auto value = inFirst[inBatch.Offset(0, k)] *
                            std::numbers::inv_sqrtpi_v<Real> /
@@ -509,7 +509,7 @@ class SphericalGrid {
 
 #ifdef GSHTRANS_HAVE_BLAS
     if constexpr (BlasDetails::BlasReal<Real>)
-      if (_impl->kernel.IsMatrix()) {
+      if (impl_->kernel.IsMatrix()) {
         InverseMatrixKernel<Scalar>(lMax, n, inFirst, inBatch, out, outBatch,
                                     count, nPhi, nTheta, policy);
         return;
@@ -536,7 +536,7 @@ class SphericalGrid {
   template <NumericConcepts::ComplexRange InRange,
             NumericConcepts::RealOrComplexWritableRange OutRange>
   requires requires() {
-    requires std::same_as<_MRange, All> or
+    requires std::same_as<MRange_, All> or
                  NumericConcepts::RealWritableRange<OutRange>;
     requires std::same_as<NumericConcepts::RangePrecision<OutRange>, Real>;
     requires std::same_as<std::ranges::range_value_t<InRange>, Complex>;
@@ -669,7 +669,7 @@ class SphericalGrid {
     for (Int b = 0; b < blocks; b++) {
       const auto theta0 = b * block;
       const auto rows = std::min(block, nTheta - theta0);
-      auto& work = GetWorkspace<Scalar, true>(nPhi, rows * count, _flag);
+      auto& work = GetWorkspace<Scalar, true>(nPhi, rows * count, flag_);
 
       // Pack (theta, k) rows in that order, so the FFT's own transform index
       // runs theta-major with k fastest -- which is precisely the order the
@@ -749,7 +749,7 @@ class SphericalGrid {
     for (Int b = 0; b < blocks; b++) {
       const auto theta0 = b * block;
       const auto rows = std::min(block, nTheta - theta0);
-      auto& work = GetWorkspace<Scalar, false>(nPhi, rows * count, _flag);
+      auto& work = GetWorkspace<Scalar, false>(nPhi, rows * count, flag_);
 
       const auto run = rows * count;
       for (auto m = Int{0}; m < nFourier; m++) {
@@ -996,12 +996,12 @@ class SphericalGrid {
   // region is already open, since that is what the call will really run on.
   Int ForwardChunkSize(Int coefficientSize, Execution policy) const {
     const auto threads = RunInParallel(policy) ? ThreadCount(policy) : 1;
-    return _chunking.Count(coefficientSize * static_cast<Int>(sizeof(Complex)),
+    return chunking_.Count(coefficientSize * static_cast<Int>(sizeof(Complex)),
                            threads);
   }
 
   Int InverseChunkSize(Int coefficientSize) const {
-    return _chunking.Count(coefficientSize * static_cast<Int>(sizeof(Complex)),
+    return chunking_.Count(coefficientSize * static_cast<Int>(sizeof(Complex)),
                            1);
   }
 
@@ -1039,7 +1039,7 @@ class SphericalGrid {
       // Get the Wigner values and quadrature weight.
       auto d = WignerBlock(n, iTheta, lMax);
       const auto w =
-          _impl->coLatitudeWeights[static_cast<std::size_t>(iTheta)] *
+          impl_->coLatitudeWeights[static_cast<std::size_t>(iTheta)] *
           scaleFactor;
       const auto orders = static_cast<Int>(work.out.size()) / c;
 
@@ -1085,7 +1085,7 @@ class SphericalGrid {
           }
         } else {
           const auto* source = work.out.data();
-          if constexpr (std::same_as<_MRange, All>) {
+          if constexpr (std::same_as<MRange_, All>) {
             std::advance(wigIter, dl.MaxOrder());
           }
           for ([[maybe_unused]] auto m : dl.NonNegativeOrders()) {
@@ -1120,7 +1120,7 @@ class SphericalGrid {
       const auto scratchSize = static_cast<std::size_t>(coefficientSize * c);
 
       if (!RunInParallel(policy)) {
-        auto& work = GetWorkspace<Scalar, true>(nPhi, c, _flag);
+        auto& work = GetWorkspace<Scalar, true>(nPhi, c, flag_);
         auto& scratch = CoefficientScratch(scratchSize);
         std::fill_n(scratch.begin(), scratchSize, Complex{});
         for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
@@ -1157,7 +1157,7 @@ class SphericalGrid {
       {
         const auto thread = static_cast<Int>(omp_get_thread_num());
         const auto threads = static_cast<Int>(omp_get_num_threads());
-        auto& work = GetWorkspace<Scalar, true>(nPhi, c, _flag);
+        auto& work = GetWorkspace<Scalar, true>(nPhi, c, flag_);
         auto& partial = Accumulator(scratchSize);
         std::fill_n(partial.begin(), scratchSize, Complex{});
         partials[thread] = partial.data();
@@ -1228,7 +1228,7 @@ class SphericalGrid {
           }
         } else {
           auto* target = work.in.data();
-          if constexpr (std::same_as<_MRange, All>) {
+          if constexpr (std::same_as<MRange_, All>) {
             std::advance(wigIter, dl.MaxOrder());
           }
           for ([[maybe_unused]] auto m : dl.NonNegativeOrders()) {
@@ -1275,7 +1275,7 @@ class SphericalGrid {
       const auto* gathered = scratch.data();
 
       if (!RunInParallel(policy)) {
-        auto& work = GetWorkspace<Scalar, false>(nPhi, c, _flag);
+        auto& work = GetWorkspace<Scalar, false>(nPhi, c, flag_);
         for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
           SynthesiseRow(iTheta, first, c, gathered, work);
         }
@@ -1284,7 +1284,7 @@ class SphericalGrid {
 
 #pragma omp parallel num_threads(ThreadCount(policy))
       {
-        auto& work = GetWorkspace<Scalar, false>(nPhi, c, _flag);
+        auto& work = GetWorkspace<Scalar, false>(nPhi, c, flag_);
 #pragma omp for schedule(static)
         for (Int iTheta = 0; iTheta < nTheta; iTheta++) {
           SynthesiseRow(iTheta, first, c, gathered, work);
@@ -1399,7 +1399,7 @@ class SphericalGrid {
     using MRangeForScalar =
         std::conditional_t<RealFloatingPoint<Scalar>, NonNegative, All>;
 
-    const auto& matrices = *_impl->wignerMatrices;
+    const auto& matrices = *impl_->wignerMatrices;
     const auto indices = GSHIndices<MRangeForScalar>(lMax, lMax, n);
     const auto coefficientSize = static_cast<Int>(indices.Size());
     const auto nFourier = FourierSize<Scalar>();
@@ -1457,7 +1457,7 @@ class SphericalGrid {
         // takes a negative stride.
         for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
           const auto w =
-              _impl->coLatitudeWeights[static_cast<std::size_t>(iTheta)] *
+              impl_->coLatitudeWeights[static_cast<std::size_t>(iTheta)] *
               scaleFactor;
           for (auto k = Int{0}; k < c; k++) plus[iTheta * c + k] *= w;
         }
@@ -1485,7 +1485,7 @@ class SphericalGrid {
         const auto* minus = stage.data() + (nPhi - m) * nTheta * c;
         for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
           const auto w =
-              _impl->coLatitudeWeights[static_cast<std::size_t>(iTheta)] *
+              impl_->coLatitudeWeights[static_cast<std::size_t>(iTheta)] *
               scaleFactor;
           const auto mirror = nTheta - 1 - iTheta;
           for (auto k = Int{0}; k < c; k++) {
@@ -1531,7 +1531,7 @@ class SphericalGrid {
     using MRangeForScalar =
         std::conditional_t<RealFloatingPoint<Scalar>, NonNegative, All>;
 
-    const auto& matrices = *_impl->wignerMatrices;
+    const auto& matrices = *impl_->wignerMatrices;
     const auto indices = GSHIndices<MRangeForScalar>(lMax, lMax, n);
     const auto coefficientSize = static_cast<Int>(indices.Size());
     const auto nFourier = FourierSize<Scalar>();
@@ -1660,17 +1660,17 @@ class SphericalGrid {
   // asks for another block. Both consumers use it within one colatitude and
   // then let it go.
   auto WignerBlock(Int n, Int iTheta, Int lMax) const {
-    if (_impl->wigner) return (*_impl->wigner)[n, iTheta];
+    if (impl_->wigner) return (*impl_->wigner)[n, iTheta];
 
     const auto size =
-        static_cast<std::size_t>(GSHIndices<_MRange>(lMax, lMax, n).Size());
+        static_cast<std::size_t>(GSHIndices<MRange_>(lMax, lMax, n).Size());
     auto& scratch = WignerScratch(size);
     WignerDetails::ComputeBlock(
-        GSHView<Real, _MRange>(lMax, lMax, n, scratch.data()), n,
-        _impl->coLatitudes[static_cast<std::size_t>(iTheta)],
-        std::span<const Real>(_impl->sqrtInt),
-        std::span<const Real>(_impl->sqrtIntInv));
-    return ConstGSHView<Real, _MRange>(lMax, lMax, n, scratch.data());
+        GSHView<Real, MRange_>(lMax, lMax, n, scratch.data()), n,
+        impl_->coLatitudes[static_cast<std::size_t>(iTheta)],
+        std::span<const Real>(impl_->sqrtInt),
+        std::span<const Real>(impl_->sqrtIntInv));
+    return ConstGSHView<Real, MRange_>(lMax, lMax, n, scratch.data());
   }
 
   // Where a generating grid puts the block it has just computed.
@@ -1759,7 +1759,7 @@ class SphericalGrid {
   // zero the (lMax, lMax) coefficient rather than compute it. The smallest
   // fast FFT length at or above the bound is used, so that
   // the fix does not land on a length with a large prime factor.
-  auto NPhi() const { return _impl->nPhi; }
+  auto NPhi() const { return impl_->nPhi; }
 
   template <RealOrComplexFloatingPoint Scalar>
   void ValidateTransformRequest(Int lMax, Int n) const {
@@ -1847,7 +1847,7 @@ class SphericalGrid {
       // transform whatever, so it is a configuration error rather than a
       // wasteful but usable choice: this is the "real scalar grid" reading
       // of MRange.
-      if constexpr (std::same_as<_MRange, NonNegative>) {
+      if constexpr (std::same_as<MRange_, NonNegative>) {
         if (nMax != 0) {
           throw std::invalid_argument(
               "A grid storing only non-negative orders serves real-valued "
@@ -1907,10 +1907,10 @@ class SphericalGrid {
         // symmetric simply does not get the halved table. That is a
         // property of the node set and not of Gauss-Legendre, which is why
         // the check lives here.
-        wignerMatrices = WignerMatrices<Real, _MRange, _NRange>::Reflected(
+        wignerMatrices = WignerMatrices<Real, MRange_, NRange_>::Reflected(
             lMax, lMax, nMax, coLatitudes);
       } else {
-        wigner = Wigner<Real, _MRange, _NRange, Multiple>(lMax, lMax, nMax,
+        wigner = Wigner<Real, MRange_, NRange_, Multiple>(lMax, lMax, nMax,
                                                           coLatitudes);
       }
 
@@ -1932,18 +1932,18 @@ class SphericalGrid {
 
     // Empty on a generating grid, which is the whole of what that grid saves,
     // and on a matrix grid, which holds the other layout instead.
-    std::optional<Wigner<Real, _MRange, _NRange, Multiple>> wigner;
+    std::optional<Wigner<Real, MRange_, NRange_, Multiple>> wigner;
 
     // Empty unless this is a matrix grid. Exactly one of these two is ever
     // occupied, and on a generating grid neither is.
-    std::optional<WignerMatrices<Real, _MRange, _NRange>> wignerMatrices;
+    std::optional<WignerMatrices<Real, MRange_, NRange_>> wignerMatrices;
 
     // Empty on a stored grid, whose table already carries what these are for.
     std::vector<Real> sqrtInt;
     std::vector<Real> sqrtIntInv;
   };
 
-  std::shared_ptr<const Impl> _impl;
+  std::shared_ptr<const Impl> impl_;
 
   // Read per call and shared with nothing. See Impl above for why they sit
   // here rather than in it.
@@ -1954,8 +1954,8 @@ class SphericalGrid {
   // anticipated -- every batched shape, in particular -- would fail to plan
   // rather than fall back. Shapes are planned on first use and cached, so
   // there is nothing to anticipate.
-  Chunking _chunking;
-  FFTWpp::Flag _flag;
+  Chunking chunking_;
+  FFTWpp::Flag flag_;
 };
 
 }  // namespace GSHTrans

@@ -36,26 +36,26 @@ namespace GSHTrans {
 /// The saving carries across. A real rank-2 tensor stores five components
 /// rather than nine here too, and each pinned one costs about half what a
 /// complex one of the same degree would.
-template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
-          TensorReality _Reality, AngularGrid _Grid,
-          SlotAlphabet _Slots = AllSlots>
+template <std::ptrdiff_t Rank_, TensorSymmetry<Rank_> Symmetry_,
+          TensorReality Reality_, AngularGrid Grid_,
+          SlotAlphabet Slots_ = AllSlots>
 class TensorExpansion {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /** @brief The tensor rank. */
-  static constexpr Int Rank = _Rank;
-  using Symmetry = _Symmetry;  ///< The permutation symmetry of the slots.
-  using Reality = _Reality;    ///< Whether the tensor is real or complex.
-  using GridType = _Grid;      ///< The angular grid this is defined on.
-  using Real = typename _Grid::Real;   ///< The precision.
+  static constexpr Int Rank = Rank_;
+  using Symmetry = Symmetry_;  ///< The permutation symmetry of the slots.
+  using Reality = Reality_;    ///< Whether the tensor is real or complex.
+  using GridType = Grid_;      ///< The angular grid this is defined on.
+  using Real = typename Grid_::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
 
   // The alphabet the slots are drawn from, appended last and defaulted as it
   // is on the field. The mirror holds here too: which components exist is the
   // field's question, and this side takes the answer rather than deciding it
   // again.
-  using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
+  using SlotSet = Slots_;  ///< The alphabet the slots are drawn from.
 
   /** @brief The spatial tensor this expands, which owns the combinatorics. */
   using FieldType =
@@ -91,7 +91,7 @@ class TensorExpansion {
    * a rank-p tensor has components at upper index p.
    */
   TensorExpansion(GridType grid, Int lMax)
-      : _grid{std::move(grid)}, _lMax{lMax}, _data(BlockTotal(_grid, lMax)) {
+      : grid_{std::move(grid)}, lMax_{lMax}, data_(BlockTotal(grid_, lMax)) {
     if (lMax < Rank) {
       throw std::invalid_argument(
           "A rank-" + std::to_string(Rank) +
@@ -101,15 +101,15 @@ class TensorExpansion {
   }
 
   /** @brief The angular grid this is defined on. */
-  const GridType& Grid() const { return _grid; }
+  const GridType& Grid() const { return grid_; }
   /** @brief The largest degree stored. */
-  auto MaxDegree() const { return _lMax; }
+  auto MaxDegree() const { return lMax_; }
   /** @brief How many elements are stored. */
-  auto Size() const { return static_cast<Int>(_data.size()); }
+  auto Size() const { return static_cast<Int>(data_.size()); }
   /** @brief The underlying buffer. */
-  auto Data() { return std::span<Complex>(_data); }
+  auto Data() { return std::span<Complex>(data_); }
   /** @brief The underlying buffer. */
-  auto Data() const { return std::span<const Complex>(_data); }
+  auto Data() const { return std::span<const Complex>(data_); }
 
   // The component with this multi-index, as a spin expansion over the block
   // holding it.
@@ -129,7 +129,7 @@ class TensorExpansion {
     constexpr auto n = ComponentLayout.upperIndexOfSlot[slot];
     constexpr auto real = ComponentLayout.realOfSlot[slot];
     using Value = std::conditional_t<real, RealValued, ComplexValued>;
-    return SpinExpansionView<n, GridType, Value>(_grid, _lMax, BlockOf(slot));
+    return SpinExpansionView<n, GridType, Value>(grid_, lMax_, BlockOf(slot));
   }
 
   /// The same, read-only.
@@ -141,7 +141,7 @@ class TensorExpansion {
     constexpr auto n = ComponentLayout.upperIndexOfSlot[slot];
     constexpr auto real = ComponentLayout.realOfSlot[slot];
     using Value = std::conditional_t<real, RealValued, ComplexValued>;
-    return ConstSpinExpansionView<n, GridType, Value>(_grid, _lMax,
+    return ConstSpinExpansionView<n, GridType, Value>(grid_, lMax_,
                                                       BlockOf(slot));
   }
 
@@ -185,7 +185,7 @@ class TensorExpansion {
   /// being formed from a letter that
   /// would make its constructor throw.
   template <Int... Alphas>
-  requires(sizeof...(Alphas) == Rank and AreSlotLetters<_Slots, Alphas...>())
+  requires(sizeof...(Alphas) == Rank and AreSlotLetters<Slots_, Alphas...>())
   Complex Coefficient(Int l, Int m) const {
     constexpr auto flat = FieldType::template FlatOf<Alphas...>;
     constexpr auto n = FieldType::template UpperIndexOf<Alphas...>;
@@ -194,7 +194,7 @@ class TensorExpansion {
     if constexpr (constraint == ComponentConstraint::Zero) {
       return Complex{};
     } else {
-      if (l < (n < 0 ? -n : n) || l > _lMax || m < -l || m > l) {
+      if (l < (n < 0 ? -n : n) || l > lMax_ || m < -l || m > l) {
         return Complex{};
       }
 
@@ -210,7 +210,7 @@ class TensorExpansion {
       const auto stored = [&](Int order) {
         auto block = ConstSpinExpansionView<
             repN, GridType,
-            std::conditional_t<real, RealValued, ComplexValued>>(_grid, _lMax,
+            std::conditional_t<real, RealValued, ComplexValued>>(grid_, lMax_,
                                                                  BlockOf(slot));
         if constexpr (real) {
           if (order < 0) {
@@ -237,20 +237,20 @@ class TensorExpansion {
 
   /// The block a stored component occupies, by slot.
   std::span<Complex> BlockOf(Int slot) {
-    const auto [offset, size] = Block(_grid, _lMax, slot);
+    const auto [offset, size] = Block(grid_, lMax_, slot);
     return Data().subspan(offset, size);
   }
 
   /// The same, read-only.
   std::span<const Complex> BlockOf(Int slot) const {
-    const auto [offset, size] = Block(_grid, _lMax, slot);
+    const auto [offset, size] = Block(grid_, lMax_, slot);
     return Data().subspan(offset, size);
   }
 
  private:
-  GridType _grid;
-  Int _lMax;
-  FFTWpp::vector<Complex> _data;
+  GridType grid_;
+  Int lMax_;
+  FFTWpp::vector<Complex> data_;
 
   // Where a slot's block starts and how long it is. The blocks follow the
   // component order, which is the order the transform writes them in.

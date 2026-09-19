@@ -52,18 +52,18 @@ class GSHSubView : public GSHSubIndices<MRange> {
    * @param start The first element of the row.
    */
   constexpr GSHSubView(Int l, Int mMax, Scalar* start)
-      : GSHSubIndices<MRange>(l, mMax), _start{start} {}
+      : GSHSubIndices<MRange>(l, mMax), start_{start} {}
 
   /** @brief The first stored order. */
-  constexpr auto begin() { return _start; }
+  constexpr auto begin() { return start_; }
   /** @brief One past the last stored order. */
   constexpr auto end() { return std::next(begin(), this->Size()); }
 
   /** @brief The coefficient at order @p m. */
-  constexpr auto& operator[](Int m) { return _start[this->Index(m)]; }
+  constexpr auto& operator[](Int m) { return start_[this->Index(m)]; }
 
  private:
-  Scalar* _start;
+  Scalar* start_;
 };
 
 /**
@@ -84,10 +84,10 @@ class GSHView : public GSHIndices<MRange> {
    * @param start The first element of the block.
    */
   constexpr GSHView(Int lMax, Int mMax, Int n, Scalar* start)
-      : GSHIndices<MRange>(lMax, mMax, n), _start{start} {}
+      : GSHIndices<MRange>(lMax, mMax, n), start_{start} {}
 
   /** @brief The first coefficient. */
-  constexpr auto begin() { return _start; }
+  constexpr auto begin() { return start_; }
   /** @brief One past the last coefficient. */
   constexpr auto end() { return std::next(begin(), this->Size()); }
 
@@ -102,10 +102,10 @@ class GSHView : public GSHIndices<MRange> {
   }
 
   /** @brief The coefficient at degree @p l and order @p m. */
-  constexpr auto& operator[](Int l, Int m) { return _start[this->Index(l, m)]; }
+  constexpr auto& operator[](Int l, Int m) { return start_[this->Index(l, m)]; }
 
  private:
-  Scalar* _start;
+  Scalar* start_;
 };
 
 //--------------------------------------------------------------------------//
@@ -128,18 +128,18 @@ class ConstGSHSubView : public GSHSubIndices<MRange> {
    * @param start The first element of the row.
    */
   constexpr ConstGSHSubView(Int l, Int mMax, const Scalar* start)
-      : GSHSubIndices<MRange>(l, mMax), _start{start} {}
+      : GSHSubIndices<MRange>(l, mMax), start_{start} {}
 
   /** @brief The first stored order. */
-  constexpr auto begin() const { return _start; }
+  constexpr auto begin() const { return start_; }
   /** @brief One past the last stored order. */
   constexpr auto end() const { return std::next(begin(), this->Size()); }
 
   /** @brief The coefficient at order @p m. */
-  constexpr auto operator[](Int m) const { return _start[this->Index(m)]; }
+  constexpr auto operator[](Int m) const { return start_[this->Index(m)]; }
 
  private:
-  const Scalar* _start;
+  const Scalar* start_;
 };
 
 /**
@@ -159,10 +159,10 @@ class ConstGSHView : public GSHIndices<MRange> {
    * @param start The first element of the block.
    */
   constexpr ConstGSHView(Int lMax, Int mMax, Int n, const Scalar* start)
-      : GSHIndices<MRange>(lMax, mMax, n), _start{start} {}
+      : GSHIndices<MRange>(lMax, mMax, n), start_{start} {}
 
   /** @brief The first coefficient. */
-  constexpr auto begin() const { return _start; }
+  constexpr auto begin() const { return start_; }
   /** @brief One past the last coefficient. */
   constexpr auto end() const { return std::next(begin(), this->Size()); }
 
@@ -180,11 +180,11 @@ class ConstGSHView : public GSHIndices<MRange> {
 
   /** @brief The coefficient at degree @p l and order @p m. */
   constexpr auto operator[](Int l, Int m) const {
-    return _start[this->Index(l, m)];
+    return start_[this->Index(l, m)];
   }
 
  private:
-  const Scalar* _start;
+  const Scalar* start_;
 };
 
 }  // namespace GSHTrans

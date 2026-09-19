@@ -29,27 +29,27 @@ namespace GSHTrans {
 ///
 /// Views are terminals: they name storage, so an expression may hold an lvalue
 /// one by reference.
-template <std::ptrdiff_t _N, AngularGrid _Grid,
-          RealOrComplexValued _Value = ComplexValued,
-          typename _Element = ScalarFor<typename _Grid::Real, _Value>>
+template <std::ptrdiff_t N_, AngularGrid Grid_,
+          RealOrComplexValued Value_ = ComplexValued,
+          typename Element_ = ScalarFor<typename Grid_::Real, Value_>>
 class SpinFieldView {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /** @brief The upper index N of what this evaluates to. */
-  static constexpr Int UpperIndex = _N;
-  using Value = _Value;    ///< Whether the samples are real-valued or complex.
-  using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Real = typename _Grid::Real;   ///< The precision.
+  static constexpr Int UpperIndex = N_;
+  using Value = Value_;    ///< Whether the samples are real-valued or complex.
+  using GridType = Grid_;  ///< The angular grid this is defined on.
+  using Real = typename Grid_::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   /// The value type: Real when real-valued, Complex otherwise.
-  using Scalar = std::remove_const_t<_Element>;
+  using Scalar = std::remove_const_t<Element_>;
 
   static_assert(std::same_as<Scalar, ScalarFor<Real, Value>>);
   static_assert(std::same_as<Value, ComplexValued> or UpperIndex == 0,
                 "A spin-weighted field can be real-valued only at upper index "
                 "zero");
-  static_assert(not std::same_as<typename _Grid::NRange, NonNegative> or
+  static_assert(not std::same_as<typename Grid_::NRange, NonNegative> or
                     UpperIndex >= 0,
                 "This grid stores only non-negative upper indices");
 
@@ -64,38 +64,38 @@ class SpinFieldView {
   /// transform needs no repack either, since a batch is described by (count,
   /// stride, dist) -- so the layout stays a choice rather than becoming a
   /// precondition.
-  SpinFieldView(GridType grid, std::span<_Element> data, Int stride = 1)
-      : _grid{std::move(grid)}, _data{data}, _stride{stride} {
-    if (!std::ranges::contains(_grid.UpperIndices(), UpperIndex)) {
+  SpinFieldView(GridType grid, std::span<Element_> data, Int stride = 1)
+      : grid_{std::move(grid)}, data_{data}, stride_{stride} {
+    if (!std::ranges::contains(grid_.UpperIndices(), UpperIndex)) {
       throw std::invalid_argument("This grid does not carry upper index " +
                                   std::to_string(UpperIndex));
     }
-    if (_stride < 1) {
+    if (stride_ < 1) {
       throw std::invalid_argument("A view's stride must be positive");
     }
     const auto span =
-        static_cast<std::size_t>((_grid.FieldSize() - 1) * _stride + 1);
-    if (_data.size() < span) {
+        static_cast<std::size_t>((grid_.FieldSize() - 1) * stride_ + 1);
+    if (data_.size() < span) {
       throw std::invalid_argument(
-          "A view over " + std::to_string(_data.size()) + " values at stride " +
-          std::to_string(_stride) + " does not cover this grid's " +
-          std::to_string(_grid.FieldSize()) + " points");
+          "A view over " + std::to_string(data_.size()) + " values at stride " +
+          std::to_string(stride_) + " does not cover this grid's " +
+          std::to_string(grid_.FieldSize()) + " points");
     }
   }
 
   /** @brief The angular grid this is defined on. */
-  const GridType& Grid() const { return _grid; }
+  const GridType& Grid() const { return grid_; }
 
   /** @brief The sample at the grid point @p iTheta, @p iPhi. */
   Scalar operator[](Int iTheta, Int iPhi) const {
-    return _data[FlatIndex(iTheta, iPhi)];
+    return data_[FlatIndex(iTheta, iPhi)];
   }
 
   /// Present only on a view over mutable storage.
-  _Element& operator[](Int iTheta, Int iPhi)
-  requires(not std::is_const_v<_Element>)
+  Element_& operator[](Int iTheta, Int iPhi)
+  requires(not std::is_const_v<Element_>)
   {
-    return _data[FlatIndex(iTheta, iPhi)];
+    return data_[FlatIndex(iTheta, iPhi)];
   }
 
   /**
@@ -111,35 +111,35 @@ class SpinFieldView {
           "Evaluation target has size " + std::to_string(target.size()) +
           ", but this field has " + std::to_string(size) + " points");
     }
-    if (_stride == 1) {
-      std::ranges::copy(_data.first(size), target.begin());
+    if (stride_ == 1) {
+      std::ranges::copy(data_.first(size), target.begin());
       return;
     }
     for (auto i = std::size_t{0}; i < size; i++) {
-      target[i] = static_cast<S>(_data[i * static_cast<std::size_t>(_stride)]);
+      target[i] = static_cast<S>(data_[i * static_cast<std::size_t>(stride_)]);
     }
   }
 
   // The number of samples, which is the grid's point count and not the extent
   // of the storage those samples are spread over.
   /** @brief How many elements are stored. */
-  auto Size() const { return static_cast<Int>(_grid.FieldSize()); }
+  auto Size() const { return static_cast<Int>(grid_.FieldSize()); }
   /** @brief The underlying buffer. */
-  auto Data() const { return _data; }
+  auto Data() const { return data_; }
   /** @brief How many elements separate successive samples. */
-  auto Stride() const { return _stride; }
+  auto Stride() const { return stride_; }
 
  private:
-  GridType _grid;
-  std::span<_Element> _data;
-  Int _stride;
+  GridType grid_;
+  std::span<Element_> data_;
+  Int stride_;
 
   Int FlatIndex(Int iTheta, Int iPhi) const {
-    const auto nPhi = static_cast<Int>(_grid.NumberOfLongitudes());
+    const auto nPhi = static_cast<Int>(grid_.NumberOfLongitudes());
     assert(iTheta >= 0 &&
-           iTheta < static_cast<Int>(_grid.NumberOfCoLatitudes()));
+           iTheta < static_cast<Int>(grid_.NumberOfCoLatitudes()));
     assert(iPhi >= 0 && iPhi < nPhi);
-    return (iTheta * nPhi + iPhi) * _stride;
+    return (iTheta * nPhi + iPhi) * stride_;
   }
 };
 

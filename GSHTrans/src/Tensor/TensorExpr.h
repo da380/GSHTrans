@@ -223,10 +223,10 @@ class PermuteNode {
 
   /** @brief Wraps an operand whose slots are to be relabelled. */
   explicit PermuteNode(Operand&& operand)
-      : _operand{std::forward<Operand>(operand)} {}
+      : operand_{std::forward<Operand>(operand)} {}
 
   /** @brief The angular grid this is defined on. */
-  const GridType& Grid() const { return _operand.Grid(); }
+  const GridType& Grid() const { return operand_.Grid(); }
 
   /// Slot i of this tensor is slot Image[i] of the operand, which is the same
   /// convention MultiIndex::Permuted uses.
@@ -260,11 +260,11 @@ class PermuteNode {
   template <Int... Alphas>
   requires Represents<Alphas...>
   auto Component() const {
-    return TensorDetails::ComponentOf<Source<Alphas...>>(_operand);
+    return TensorDetails::ComponentOf<Source<Alphas...>>(operand_);
   }
 
  private:
-  OperandStorage<Operand> _operand;
+  OperandStorage<Operand> operand_;
 };
 
 // Relabel a tensor's slots. The image is given as a std::array, so that
@@ -328,16 +328,16 @@ class TensorProductNode {
    * @throws std::invalid_argument if they are not on the same grid.
    */
   TensorProductNode(LeftOperand&& left, RightOperand&& right)
-      : _left{std::forward<LeftOperand>(left)},
-        _right{std::forward<RightOperand>(right)} {
-    if (_left.Grid().Identity() != _right.Grid().Identity()) {
+      : left_{std::forward<LeftOperand>(left)},
+        right_{std::forward<RightOperand>(right)} {
+    if (left_.Grid().Identity() != right_.Grid().Identity()) {
       throw std::invalid_argument(
           "A tensor product needs both operands on the same grid");
     }
   }
 
   /** @brief The angular grid this is defined on. */
-  const GridType& Grid() const { return _left.Grid(); }
+  const GridType& Grid() const { return left_.Grid(); }
 
   /// The multi-index splits: the first p slots name the left operand's
   /// component and the last q the right's.
@@ -375,13 +375,13 @@ class TensorProductNode {
   template <Int... Alphas>
   requires Represents<Alphas...>
   auto Component() const {
-    return TensorDetails::ComponentOf<LeftIndices<Alphas...>>(_left) *
-           TensorDetails::ComponentOf<RightIndices<Alphas...>>(_right);
+    return TensorDetails::ComponentOf<LeftIndices<Alphas...>>(left_) *
+           TensorDetails::ComponentOf<RightIndices<Alphas...>>(right_);
   }
 
  private:
-  OperandStorage<LeftOperand> _left;
-  OperandStorage<RightOperand> _right;
+  OperandStorage<LeftOperand> left_;
+  OperandStorage<RightOperand> right_;
 };
 
 template <typename L, typename R>
@@ -443,10 +443,10 @@ class ContractionNode {
 
   /** @brief Wraps an operand, two of whose slots are to be contracted. */
   explicit ContractionNode(Operand&& operand)
-      : _operand{std::forward<Operand>(operand)} {}
+      : operand_{std::forward<Operand>(operand)} {}
 
   /** @brief The angular grid this is defined on. */
-  const GridType& Grid() const { return _operand.Grid(); }
+  const GridType& Grid() const { return operand_.Grid(); }
 
   /// The operand's multi-index: the surviving slots in order, with a inserted
   /// at J and -a at K.
@@ -485,7 +485,7 @@ class ContractionNode {
   }
 
  private:
-  OperandStorage<Operand> _operand;
+  OperandStorage<Operand> operand_;
 
   // The metric's (-1)^a, folded over the alphabet. Written as a scalar
   // multiplication rather than as unary minus so that one expression covers
@@ -494,7 +494,7 @@ class ContractionNode {
   auto Sum(std::index_sequence<A...>) const {
     return (
         (MinusOneToPower<Real>(Alphabet[A]) *
-         TensorDetails::ComponentOf<Source<Alphabet[A], Alphas...>>(_operand)) +
+         TensorDetails::ComponentOf<Source<Alphabet[A], Alphas...>>(operand_)) +
         ...);
   }
 };
@@ -548,10 +548,10 @@ class SymmetriseNode {
 
   /** @brief Wraps an operand to be averaged over the symmetry group. */
   explicit SymmetriseNode(Operand&& operand)
-      : _operand{std::forward<Operand>(operand)} {}
+      : operand_{std::forward<Operand>(operand)} {}
 
   /** @brief The angular grid this is defined on. */
-  const GridType& Grid() const { return _operand.Grid(); }
+  const GridType& Grid() const { return operand_.Grid(); }
 
   /** @brief The operand's slot letters under group element @p Element. */
   template <std::size_t Element, Int... Alphas>
@@ -589,7 +589,7 @@ class SymmetriseNode {
   }
 
  private:
-  OperandStorage<Operand> _operand;
+  OperandStorage<Operand> operand_;
 
   // A fold over the group. Each term is the operand's component under one
   // element, scaled by that element's sign; the terms need not have the same
@@ -598,7 +598,7 @@ class SymmetriseNode {
   template <Int... Alphas, std::size_t... E>
   auto Sum(std::index_sequence<E...>) const {
     return ((static_cast<Real>(Group.first[E].sign) *
-             TensorDetails::ComponentOf<Source<E, Alphas...>>(_operand)) +
+             TensorDetails::ComponentOf<Source<E, Alphas...>>(operand_)) +
             ...);
   }
 };

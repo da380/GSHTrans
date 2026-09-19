@@ -31,11 +31,11 @@ namespace GSHTrans {
 /// A value-semantic handle over shared immutable state, for the same reason
 /// GaussLegendreGrid is one: two layered fields are on the same radial grid
 /// when their handles agree, and copying one is a pointer copy.
-template <RealFloatingPoint _Real>
+template <RealFloatingPoint Real_>
 class RadialGrid {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using Real = _Real;          ///< The precision.
+  using Real = Real_;          ///< The precision.
 
   RadialGrid() = delete;
 
@@ -43,7 +43,7 @@ class RadialGrid {
   /// means to integrate with. The weights may be empty, in which case the grid
   /// carries points alone and Integrate is unavailable.
   RadialGrid(std::vector<Real> radii, std::vector<Real> weights = {})
-      : _impl{std::make_shared<const Impl>(std::move(radii), std::move(weights),
+      : impl_{std::make_shared<const Impl>(std::move(radii), std::move(weights),
                                            std::vector<Int>{})} {}
 
   /// The same, knowing which radii belong to which element.
@@ -80,23 +80,23 @@ class RadialGrid {
   }
 
   /** @brief How many radii the stack holds. */
-  auto NumberOfRadii() const { return static_cast<Int>(_impl->radii.size()); }
+  auto NumberOfRadii() const { return static_cast<Int>(impl_->radii.size()); }
   /** @brief Indices of the stored radii. */
   auto RadiusIndices() const {
     return std::ranges::views::iota(Int{0}, NumberOfRadii());
   }
 
   /** @brief Every radius, in increasing order. */
-  auto Radii() const { return std::span<const Real>(_impl->radii); }
+  auto Radii() const { return std::span<const Real>(impl_->radii); }
   /** @brief The quadrature weight at every point. */
-  auto Weights() const { return std::span<const Real>(_impl->weights); }
+  auto Weights() const { return std::span<const Real>(impl_->weights); }
   /** @brief Whether the grid carries weights, and so can integrate. */
-  auto HasWeights() const { return !_impl->weights.empty(); }
+  auto HasWeights() const { return !impl_->weights.empty(); }
 
   /** @brief The radius at index @p i. */
-  Real Radius(Int i) const { return _impl->radii[i]; }
+  Real Radius(Int i) const { return impl_->radii[i]; }
   /** @brief The quadrature weight at index @p i. */
-  Real Weight(Int i) const { return _impl->weights[i]; }
+  Real Weight(Int i) const { return impl_->weights[i]; }
 
   //------------------------------------------------------------------------//
   //                             The elements                                //
@@ -105,11 +105,11 @@ class RadialGrid {
   /// Whether this grid knows its elements at all. A grid built without them is
   /// exactly what it was before, and everything that reads them says what it
   /// does when there are none.
-  auto HasElements() const { return !_impl->starts.empty(); }
+  auto HasElements() const { return !impl_->starts.empty(); }
 
   /** @brief How many elements there are, zero if the grid has none. */
   auto ElementCount() const {
-    return HasElements() ? static_cast<Int>(_impl->starts.size()) - 1 : Int{0};
+    return HasElements() ? static_cast<Int>(impl_->starts.size()) - 1 : Int{0};
   }
 
   /** @brief Every element index. */
@@ -119,9 +119,9 @@ class RadialGrid {
 
   /// Element k holds the radii [ElementStart(k), ElementEnd(k)), which is the
   /// half-open form everything else here uses.
-  Int ElementStart(Int k) const { return _impl->starts[k]; }
+  Int ElementStart(Int k) const { return impl_->starts[k]; }
   /** @brief One past element @p k's last radius index. */
-  Int ElementEnd(Int k) const { return _impl->starts[k + 1]; }
+  Int ElementEnd(Int k) const { return impl_->starts[k + 1]; }
   /** @brief How many radii element @p k holds. */
   Int ElementSize(Int k) const { return ElementEnd(k) - ElementStart(k); }
 
@@ -144,14 +144,14 @@ class RadialGrid {
   /// truth and no way for the two to disagree.
   Real Breakpoint(Int k) const {
     return k == 0
-               ? _impl->radii.front()
-               : _impl->radii[static_cast<std::size_t>(ElementEnd(k - 1) - 1)];
+               ? impl_->radii.front()
+               : impl_->radii[static_cast<std::size_t>(ElementEnd(k - 1) - 1)];
   }
 
   // Identity, not structure: two grids with equal radii built separately are
   // different grids, exactly as for the angular grid.
   /** @brief Identity, for deciding whether two share an implementation. */
-  auto Identity() const { return _impl.get(); }
+  auto Identity() const { return impl_.get(); }
 
  private:
   struct Impl {
@@ -231,9 +231,9 @@ class RadialGrid {
   };
 
   explicit RadialGrid(std::shared_ptr<const Impl> impl)
-      : _impl{std::move(impl)} {}
+      : impl_{std::move(impl)} {}
 
-  std::shared_ptr<const Impl> _impl;
+  std::shared_ptr<const Impl> impl_;
 };
 
 }  // namespace GSHTrans

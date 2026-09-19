@@ -64,35 +64,35 @@ class Arguments {
 
   constexpr Arguments(Real theta) {
     constexpr auto half = static_cast<Real>(1) / static_cast<Real>(2);
-    _sinHalf = std::sin(half * theta);
-    _cosHalf = std::cos(half * theta);
-    _atLeft = _sinHalf < std::numeric_limits<Real>::min();
-    _atRight = _cosHalf < std::numeric_limits<Real>::min();
-    _logSinHalf = _atLeft ? static_cast<Real>(0) : std::log(_sinHalf);
-    _logCosHalf = _atRight ? static_cast<Real>(0) : std::log(_cosHalf);
+    sinHalf_ = std::sin(half * theta);
+    cosHalf_ = std::cos(half * theta);
+    atLeft_ = sinHalf_ < std::numeric_limits<Real>::min();
+    atRight_ = cosHalf_ < std::numeric_limits<Real>::min();
+    logSinHalf_ = atLeft_ ? static_cast<Real>(0) : std::log(sinHalf_);
+    logCosHalf_ = atRight_ ? static_cast<Real>(0) : std::log(cosHalf_);
   }
 
-  constexpr auto AtLeft() const { return _atLeft; }
-  constexpr auto AtRight() const { return _atRight; }
+  constexpr auto AtLeft() const { return atLeft_; }
+  constexpr auto AtRight() const { return atRight_; }
 
-  constexpr auto LogSinHalf() const { return _logSinHalf; }
-  constexpr auto LogCosHalf() const { return _logCosHalf; }
+  constexpr auto LogSinHalf() const { return logSinHalf_; }
+  constexpr auto LogCosHalf() const { return logCosHalf_; }
 
   // The linear values are kept as well as their logarithms. The closed forms
   // below need the logarithms, because they form sqrt((2l)!/...) which is of
   // order 4^l; the recursions need the values themselves, and they stay
   // bounded because each step multiplies by about 2 sin(theta/2) cos(theta/2),
   // which is sin(theta).
-  constexpr auto SinHalf() const { return _sinHalf; }
-  constexpr auto CosHalf() const { return _cosHalf; }
+  constexpr auto SinHalf() const { return sinHalf_; }
+  constexpr auto CosHalf() const { return cosHalf_; }
 
  private:
-  Real _sinHalf;
-  Real _cosHalf;
-  Real _logSinHalf;
-  Real _logCosHalf;
-  bool _atLeft;
-  bool _atRight;
+  Real sinHalf_;
+  Real cosHalf_;
+  Real logSinHalf_;
+  Real logCosHalf_;
+  bool atLeft_;
+  bool atRight_;
 };
 
 template <std::integral Int, RealFloatingPoint Real>
@@ -197,43 +197,43 @@ class BoundaryValues {
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   constexpr BoundaryValues(Int n, const Arguments<Real> &arg)
-      : _n{n},
-        _l{n < 0 ? -n : n},
-        _sinCos{arg.SinHalf() * arg.CosHalf()},
-        _atUpperIndex{IntegerPower(n >= 0 ? arg.SinHalf() : arg.CosHalf(),
+      : n_{n},
+        l_{n < 0 ? -n : n},
+        sinCos_{arg.SinHalf() * arg.CosHalf()},
+        atUpperIndex_{IntegerPower(n >= 0 ? arg.SinHalf() : arg.CosHalf(),
                                    2 * (n < 0 ? -n : n))},
-        _atMinusUpperIndex{IntegerPower(n >= 0 ? arg.CosHalf() : arg.SinHalf(),
+        atMinusUpperIndex_{IntegerPower(n >= 0 ? arg.CosHalf() : arg.SinHalf(),
                                         2 * (n < 0 ? -n : n))} {}
 
   // Move to the next degree. Degrees must be visited in ascending order from
   // |n|, which is what Compute's loops already do; the recursion carries no
   // way to skip one or to go back.
   constexpr void Advance() {
-    _l++;
-    const auto Fl = static_cast<Real>(_l);
-    const auto Fn = static_cast<Real>(_n);
+    l_++;
+    const auto Fl = static_cast<Real>(l_);
+    const auto Fn = static_cast<Real>(n_);
     const auto factor =
-        std::sqrt(2 * Fl * (2 * Fl - 1) / ((Fl - Fn) * (Fl + Fn))) * _sinCos;
-    _atUpperIndex *= factor;
-    _atMinusUpperIndex *= factor;
+        std::sqrt(2 * Fl * (2 * Fl - 1) / ((Fl - Fn) * (Fl + Fn))) * sinCos_;
+    atUpperIndex_ *= factor;
+    atMinusUpperIndex_ *= factor;
   }
 
-  constexpr auto Degree() const { return _l; }
+  constexpr auto Degree() const { return l_; }
 
   // d^l_{n,-l}, which is WignerMinOrder(l, n).
-  constexpr auto MinOrder() const { return _atUpperIndex; }
+  constexpr auto MinOrder() const { return atUpperIndex_; }
 
   // d^l_{n,l}, which is WignerMaxOrder(l, n).
   constexpr auto MaxOrder() const {
-    return MinusOneToPower<Real>(_n + _l) * _atMinusUpperIndex;
+    return MinusOneToPower<Real>(n_ + l_) * atMinusUpperIndex_;
   }
 
  private:
-  Int _n;
-  Int _l;
-  Real _sinCos;
-  Real _atUpperIndex;
-  Real _atMinusUpperIndex;
+  Int n_;
+  Int l_;
+  Real sinCos_;
+  Real atUpperIndex_;
+  Real atMinusUpperIndex_;
 };
 
 // The square-root tables the recursion indexes: sqrt(k) and its reciprocal,
@@ -485,22 +485,22 @@ constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
 /**
  * @brief A table of generalised Legendre functions over a set of colatitudes.
  *
- * @tparam _Real The precision.
- * @tparam _MRange Whether each block holds all orders or only the
+ * @tparam Real_ The precision.
+ * @tparam MRange_ Whether each block holds all orders or only the
  * non-negative ones.
- * @tparam _NRange Which upper indices the table covers.
- * @tparam _AngleRange Whether the table holds one colatitude or many.
+ * @tparam NRange_ Which upper indices the table covers.
+ * @tparam AngleRange_ Whether the table holds one colatitude or many.
  */
-template <RealFloatingPoint _Real, OrderIndexRange _MRange = All,
-          IndexRange _NRange = Single, AngleIndexRange _AngleRange = Single>
+template <RealFloatingPoint Real_, OrderIndexRange MRange_ = All,
+          IndexRange NRange_ = Single, AngleIndexRange AngleRange_ = Single>
 class Wigner {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using Real = _Real;          ///< The precision.
+  using Real = Real_;          ///< The precision.
   /// Whether all orders are stored, or only the non-negative ones.
-  using MRange = _MRange;
-  using NRange = _NRange;          ///< Which upper indices are covered.
-  using AngleRange = _AngleRange;  ///< Whether one colatitude is held, or many.
+  using MRange = MRange_;
+  using NRange = NRange_;          ///< Which upper indices are covered.
+  using AngleRange = AngleRange_;  ///< Whether one colatitude is held, or many.
 
   /** @brief An empty table. */
   Wigner() = default;
@@ -515,16 +515,16 @@ class Wigner {
   template <std::ranges::range Range>
   requires RealFloatingPoint<std::ranges::range_value_t<Range>>
   Wigner(Int lMax, Int mMax, Int nMax, Range &&theta)
-      : _lMax{lMax}, _mMax{mMax}, _nMax{nMax}, _nTheta(theta.size()) {
+      : lMax_{lMax}, mMax_{mMax}, nMax_{nMax}, nTheta_(theta.size()) {
     // Compute the offsets and allocate memory.
     {
-      _offset.reserve(NumberOfUpperIndices() * NumberOfAngles());
+      offset_.reserve(NumberOfUpperIndices() * NumberOfAngles());
       auto size = std::size_t{0};
       for (auto [n, iTheta] : Indices()) {
-        _offset.push_back(size);
-        size += GSHIndices<MRange>(MaxDegree(), _mMax, n).Size();
+        offset_.push_back(size);
+        size += GSHIndices<MRange>(MaxDegree(), mMax_, n).Size();
       }
-      _data = std::vector<Real>(size);
+      data_ = std::vector<Real>(size);
     }
     ComputeAll(theta);
   }
@@ -564,17 +564,17 @@ class Wigner {
   /** @brief The smallest degree stored at upper index @p n, namely @f$|n|@f$.
    */
   auto MinDegree(Int n) const {
-    assert(std::abs(n) <= _nMax);
+    assert(std::abs(n) <= nMax_);
     return std::abs(n);
   }
   /** @brief The smallest degree stored. */
   auto MinDegree() const
   requires std::same_as<NRange, Single>
   {
-    return std::abs(_nMax);
+    return std::abs(nMax_);
   }
   /** @brief The largest degree stored. */
-  auto MaxDegree() const { return _lMax; }
+  auto MaxDegree() const { return lMax_; }
 
   /** @brief Every degree stored. */
   auto Degrees() const
@@ -592,15 +592,15 @@ class Wigner {
   auto MinOrder(Int l) const {
     assert(l >= 0 && l <= MaxDegree());
     if constexpr (std::same_as<MRange, All>) {
-      return -std::min(l, _mMax);
+      return -std::min(l, mMax_);
     } else {
       return 0;
     }
   }
   /** @brief The largest order stored anywhere in the table. */
-  auto MaxOrder() const { return _mMax; }
+  auto MaxOrder() const { return mMax_; }
   /** @brief The largest order stored at degree @p l. */
-  auto MaxOrder(Int l) const { return std::min(l, _mMax); }
+  auto MaxOrder(Int l) const { return std::min(l, mMax_); }
 
   /** @brief Every order stored at degree @p l. */
   auto Orders(Int l) const {
@@ -610,17 +610,17 @@ class Wigner {
   // Return upper index information.
   /** @brief The smallest upper index stored. */
   auto MinUpperIndex() const {
-    if constexpr (std::same_as<_NRange, All>) {
-      return -_nMax;
-    } else if constexpr (std::same_as<_NRange, NonNegative>) {
+    if constexpr (std::same_as<NRange_, All>) {
+      return -nMax_;
+    } else if constexpr (std::same_as<NRange_, NonNegative>) {
       return Int{0};
     } else {
-      return _nMax;
+      return nMax_;
     }
   }
 
   /** @brief The largest upper index stored. */
-  auto MaxUpperIndex() const { return _nMax; }
+  auto MaxUpperIndex() const { return nMax_; }
 
   /** @brief Every upper index stored. */
   auto UpperIndices() const {
@@ -634,11 +634,11 @@ class Wigner {
 
   // Return angle information.
   /** @brief How many colatitudes are stored. */
-  auto NumberOfAngles() const { return _nTheta; }
+  auto NumberOfAngles() const { return nTheta_; }
 
   /** @brief Indices of the stored colatitudes. */
   auto AngleIndices() const {
-    return std::ranges::views::iota(Int{0}, _nTheta);
+    return std::ranges::views::iota(Int{0}, nTheta_);
   }
 
   /**
@@ -655,7 +655,7 @@ class Wigner {
    */
   auto operator[](Int n, Int iTheta) const {
     return ConstGSHView<Real, MRange>(MaxDegree(), MaxOrder(), n,
-                                      &_data[Offset(n, iTheta)]);
+                                      &data_[Offset(n, iTheta)]);
   }
 
   /** @brief The block for upper index @p n, when only one colatitude is held.
@@ -671,31 +671,31 @@ class Wigner {
   auto operator[](Int iTheta) const
   requires std::same_as<NRange, Single> && (!std::same_as<AngleRange, Single>)
   {
-    return operator[](_nMax, iTheta);
+    return operator[](nMax_, iTheta);
   }
 
   /** @brief The row of orders at degree @p l, when one block is held. */
   auto operator[](Int l) const
   requires std::same_as<NRange, Single> && std::same_as<AngleRange, Single>
   {
-    return operator[](_nMax, 0)[l];
+    return operator[](nMax_, 0)[l];
   }
 
  private:
-  Int _lMax;    // Maximum degree.
-  Int _mMax;    // Maximum order.
-  Int _nMax;    // Maximum upper index.
-  Int _nTheta;  // Number of colatitudes.
+  Int lMax_;    // Maximum degree.
+  Int mMax_;    // Maximum order.
+  Int nMax_;    // Maximum upper index.
+  Int nTheta_;  // Number of colatitudes.
 
   // Vector storing the values.
-  std::vector<Real> _data;
+  std::vector<Real> data_;
 
   // Vector storing data offsets.
-  std::vector<std::size_t> _offset;
+  std::vector<std::size_t> offset_;
 
   // Offset for values for (n, iTheta).
   auto Offset(Int n, Int iTheta) const {
-    return _offset[NumberOfAngles() * (n - MinUpperIndex()) + iTheta];
+    return offset_[NumberOfAngles() * (n - MinUpperIndex()) + iTheta];
   }
 
   template <std::ranges::range Range>
@@ -732,7 +732,7 @@ class Wigner {
                          std::span<const Real> sqrtInt,
                          std::span<const Real> sqrtIntInv) {
     WignerDetails::ComputeBlock(
-        GSHView<Real, MRange>(_lMax, _mMax, n, &_data[Offset(n, iTheta)]), n,
+        GSHView<Real, MRange>(lMax_, mMax_, n, &data_[Offset(n, iTheta)]), n,
         theta, sqrtInt, sqrtIntInv);
   }
 };

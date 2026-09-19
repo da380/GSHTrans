@@ -59,17 +59,17 @@ class Execution {
   }
 
   /** @brief The thread count, zero meaning OpenMP's choice. */
-  auto Threads() const { return _threads; }
+  auto Threads() const { return threads_; }
 
   /** @brief Whether threading is permitted at all. */
-  auto IsParallel() const { return _threads != 1; }
+  auto IsParallel() const { return threads_ != 1; }
 
   /** @brief Compares componentwise. */
   bool operator==(const Execution&) const = default;
 
  private:
-  explicit Execution(int threads) : _threads{threads} {}
-  int _threads;
+  explicit Execution(int threads) : threads_{threads} {}
+  int threads_;
 };
 
 //-------------------------------------------------------------------------//
@@ -143,18 +143,18 @@ class Batch {
   static Batch One(Int size) { return Batch(1, 1, size); }
 
   /** @brief How many fields take part. */
-  auto Count() const { return _count; }
+  auto Count() const { return count_; }
   /** @brief The separation of successive elements of one field. */
-  auto Stride() const { return _stride; }
+  auto Stride() const { return stride_; }
   /** @brief The separation of successive fields. */
-  auto Dist() const { return _dist; }
+  auto Dist() const { return dist_; }
 
   /**
    * @brief Where element @p j of field @p k lives.
    * @param j The element index within a field.
    * @param k The field index within the batch.
    */
-  Int Offset(Int j, Int k) const { return j * _stride + k * _dist; }
+  Int Offset(Int j, Int k) const { return j * stride_ + k * dist_; }
 
   /**
    * @brief The smallest range that holds this batch.
@@ -169,7 +169,7 @@ class Batch {
    * @param size How many elements each field holds.
    */
   Int Span(Int size) const {
-    return (size - 1) * _stride + (_count - 1) * _dist + 1;
+    return (size - 1) * stride_ + (count_ - 1) * dist_ + 1;
   }
 
   /**
@@ -183,8 +183,8 @@ class Batch {
    * @param size How many elements each field holds.
    */
   bool Disjoint(Int size) const {
-    if (_count <= 1 || size <= 0) return true;
-    return _dist >= size * _stride || _stride >= _count * _dist;
+    if (count_ <= 1 || size <= 0) return true;
+    return dist_ >= size * stride_ || stride_ >= count_ * dist_;
   }
 
   /** @brief Compares componentwise. */
@@ -192,7 +192,7 @@ class Batch {
 
  private:
   Batch(Int count, Int stride, Int dist)
-      : _count{count}, _stride{stride}, _dist{dist} {
+      : count_{count}, stride_{stride}, dist_{dist} {
     if (count < 1) {
       throw std::invalid_argument("Batch count must be at least one");
     }
@@ -201,9 +201,9 @@ class Batch {
     }
   }
 
-  Int _count;
-  Int _stride;
-  Int _dist;
+  Int count_;
+  Int stride_;
+  Int dist_;
 };
 
 //-------------------------------------------------------------------------//
@@ -300,9 +300,9 @@ class Chunking {
    * the inverse, which measures 2.2x slower where the whole batch would fit.
    */
   Int Count(Int bytesPerField, int copies) const {
-    if (_fixed > 0) return _fixed;
+    if (fixed_ > 0) return fixed_;
     if (bytesPerField < 1) return MaximumCount;
-    const auto share = _cacheBytes / static_cast<Int>(copies > 0 ? copies : 1);
+    const auto share = cacheBytes_ / static_cast<Int>(copies > 0 ? copies : 1);
     const auto count = (share + bytesPerField) / (2 * bytesPerField);
     if (count < 1) return 1;
     return count < MaximumCount ? count : MaximumCount;
@@ -313,10 +313,10 @@ class Chunking {
 
  private:
   Chunking(Int cacheBytes, Int fixed)
-      : _cacheBytes{cacheBytes}, _fixed{fixed} {}
+      : cacheBytes_{cacheBytes}, fixed_{fixed} {}
 
-  Int _cacheBytes;
-  Int _fixed;  // zero means "use the heuristic"
+  Int cacheBytes_;
+  Int fixed_;  // zero means "use the heuristic"
 };
 
 //-------------------------------------------------------------------------//
@@ -354,14 +354,14 @@ class WignerValues {
   static WignerValues Generated() { return WignerValues(false); }
 
   /** @brief Whether the table is held. */
-  auto AreStored() const { return _stored; }
+  auto AreStored() const { return stored_; }
 
   /** @brief Compares componentwise. */
   bool operator==(const WignerValues&) const = default;
 
  private:
-  explicit WignerValues(bool stored) : _stored{stored} {}
-  bool _stored;
+  explicit WignerValues(bool stored) : stored_{stored} {}
+  bool stored_;
 };
 
 //-------------------------------------------------------------------------//
@@ -420,14 +420,14 @@ class TransformKernel {
 #endif
 
   /** @brief Whether the matrix kernel was asked for. */
-  auto IsMatrix() const { return _matrix; }
+  auto IsMatrix() const { return matrix_; }
 
   /** @brief Compares componentwise. */
   bool operator==(const TransformKernel&) const = default;
 
  private:
-  explicit TransformKernel(bool matrix) : _matrix{matrix} {}
-  bool _matrix;
+  explicit TransformKernel(bool matrix) : matrix_{matrix} {}
+  bool matrix_;
 };
 
 //-------------------------------------------------------------------------//

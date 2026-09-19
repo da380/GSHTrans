@@ -48,11 +48,11 @@ using Interpolation::BoundaryCondition;
 /// spectral basis; a spline is what a caller reaches for to process a field
 /// rather than to solve on one. Which is why this is written for clarity and
 /// correctness and not tuned.
-template <RealFloatingPoint _Real>
+template <RealFloatingPoint Real_>
 class SplineDerivative {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using Real = _Real;          ///< The precision.
+  using Real = Real_;          ///< The precision.
   using System = Interpolation::CubicSplineSystem<
       std::span<const Real>>;  ///< The factorised spline system.
 
@@ -69,7 +69,7 @@ class SplineDerivative {
       RadialGrid<Real> radial,
       BoundaryCondition left = BoundaryCondition::Natural,
       BoundaryCondition right = BoundaryCondition::Natural)
-      : _radial{std::move(radial)} {
+      : radial_{std::move(radial)} {
     if (left == BoundaryCondition::Clamped ||
         right == BoundaryCondition::Clamped) {
       throw std::invalid_argument(
@@ -83,10 +83,10 @@ class SplineDerivative {
     // grid where it does not. That is the whole of what the partition changes
     // here: a spline never spans an interface, so a layered model is an
     // ordinary case rather than a refusal.
-    const auto radii = _radial.Radii();
-    if (_radial.HasElements()) {
-      for (auto k : _radial.ElementIndices()) {
-        _block.emplace_back(_radial.ElementStart(k), _radial.ElementSize(k));
+    const auto radii = radial_.Radii();
+    if (radial_.HasElements()) {
+      for (auto k : radial_.ElementIndices()) {
+        block_.emplace_back(radial_.ElementStart(k), radial_.ElementSize(k));
       }
     } else {
       for (std::size_t i = 0; i + 1 < radii.size(); i++) {
@@ -98,27 +98,27 @@ class SplineDerivative {
               "operator fits each element separately instead of refusing");
         }
       }
-      _block.emplace_back(Int{0}, static_cast<Int>(radii.size()));
+      block_.emplace_back(Int{0}, static_cast<Int>(radii.size()));
     }
 
-    for (const auto& [first, count] : _block) {
-      _systems.emplace_back(radii.subspan(static_cast<std::size_t>(first),
+    for (const auto& [first, count] : block_) {
+      systems_.emplace_back(radii.subspan(static_cast<std::size_t>(first),
                                           static_cast<std::size_t>(count)),
                             left, right);
     }
   }
 
   /** @brief The radial grid this is defined on. */
-  const RadialGrid<Real>& Radial() const { return _radial; }
+  const RadialGrid<Real>& Radial() const { return radial_; }
 
   /// How many splines a line is carried by: one per element, or one.
-  Int PieceCount() const { return static_cast<Int>(_systems.size()); }
+  Int PieceCount() const { return static_cast<Int>(systems_.size()); }
 
   /// The factorised system of one piece, for a caller who wants the curvatures
   /// themselves rather than the slopes -- which is the point of the upstream
   /// type being public, so it would be odd to hide it again here.
   const System& SplineSystem(Int piece = 0) const {
-    return _systems[static_cast<std::size_t>(piece)];
+    return systems_[static_cast<std::size_t>(piece)];
   }
 
   /**
@@ -129,7 +129,7 @@ class SplineDerivative {
    */
   template <typename Scalar>
   void operator()(std::span<const Scalar> in, std::span<Scalar> out) const {
-    const auto n = static_cast<std::size_t>(_radial.NumberOfRadii());
+    const auto n = static_cast<std::size_t>(radial_.NumberOfRadii());
     if (in.size() != n || out.size() != n) {
       throw std::invalid_argument(
           "A radial operator acts on a line of one value per radius");
@@ -140,23 +140,23 @@ class SplineDerivative {
     thread_local auto curvature = std::vector<Scalar>{};
     if (curvature.size() < n) curvature.resize(n);
 
-    for (std::size_t p = 0; p < _systems.size(); p++) {
-      const auto [first, count] = _block[p];
+    for (std::size_t p = 0; p < systems_.size(); p++) {
+      const auto [first, count] = block_[p];
       const auto lo = static_cast<std::size_t>(first);
       const auto size = static_cast<std::size_t>(count);
       const auto work = std::span<Scalar>(curvature.data(), size);
 
-      _systems[p].Solve(in.subspan(lo, size), work);
-      _systems[p].template EvaluateAtNodes<1>(
+      systems_[p].Solve(in.subspan(lo, size), work);
+      systems_[p].template EvaluateAtNodes<1>(
           in.subspan(lo, size), std::span<const Scalar>(curvature.data(), size),
           out.subspan(lo, size));
     }
   }
 
  private:
-  RadialGrid<Real> _radial;
-  std::vector<std::pair<Int, Int>> _block;
-  std::vector<System> _systems;
+  RadialGrid<Real> radial_;
+  std::vector<std::pair<Int, Int>> block_;
+  std::vector<System> systems_;
 };
 
 }  // namespace GSHTrans

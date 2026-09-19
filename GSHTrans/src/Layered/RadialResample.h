@@ -67,19 +67,19 @@ class RadialInterpolation {
   }
 
   /** @brief Whether Linear() was asked for. */
-  bool IsLinear() const { return _kind == Kind::Line; }
+  bool IsLinear() const { return kind_ == Kind::Line; }
   /** @brief Whether CubicSpline() was asked for. */
-  bool IsCubicSpline() const { return _kind == Kind::Cubic; }
+  bool IsCubicSpline() const { return kind_ == Kind::Cubic; }
   /** @brief Whether Akima() was asked for. */
-  bool IsAkima() const { return _kind == Kind::Akima; }
+  bool IsAkima() const { return kind_ == Kind::Akima; }
 
   /** @brief Compares componentwise. */
   bool operator==(const RadialInterpolation&) const = default;
 
  private:
   enum class Kind { Line, Cubic, Akima };
-  explicit RadialInterpolation(Kind kind) : _kind{kind} {}
-  Kind _kind;
+  explicit RadialInterpolation(Kind kind) : kind_{kind} {}
+  Kind kind_;
 };
 
 namespace ResampleDetails {

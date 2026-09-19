@@ -99,28 +99,28 @@ using Stacks =
  * repeat. It adds a radial axis and nothing else, so a component is reached
  * by multi-index exactly as on the flat type and under the same conditions.
  *
- * @tparam _Rank The tensor rank.
- * @tparam _Symmetry The permutation symmetry of the slots.
- * @tparam _Reality Whether the tensor is real or complex.
- * @tparam _Grid The angular grid.
- * @tparam _Slots The alphabet the slots are drawn from.
+ * @tparam Rank_ The tensor rank.
+ * @tparam Symmetry_ The permutation symmetry of the slots.
+ * @tparam Reality_ Whether the tensor is real or complex.
+ * @tparam Grid_ The angular grid.
+ * @tparam Slots_ The alphabet the slots are drawn from.
  */
-template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
-          TensorReality _Reality, AngularGrid _Grid,
-          SlotAlphabet _Slots = AllSlots>
+template <std::ptrdiff_t Rank_, TensorSymmetry<Rank_> Symmetry_,
+          TensorReality Reality_, AngularGrid Grid_,
+          SlotAlphabet Slots_ = AllSlots>
 class LayeredTensorField {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /** @brief The tensor rank. */
-  static constexpr Int Rank = _Rank;
-  using Symmetry = _Symmetry;  ///< The permutation symmetry of the slots.
-  using Reality = _Reality;    ///< Whether the tensor is real or complex.
-  using GridType = _Grid;      ///< The angular grid this is defined on.
-  using Real = typename _Grid::Real;   ///< The precision.
+  static constexpr Int Rank = Rank_;
+  using Symmetry = Symmetry_;  ///< The permutation symmetry of the slots.
+  using Reality = Reality_;    ///< Whether the tensor is real or complex.
+  using GridType = Grid_;      ///< The angular grid this is defined on.
+  using Real = typename Grid_::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   using RadialGridType = RadialGrid<Real>;  ///< The radial grid type.
-  using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
+  using SlotSet = Slots_;  ///< The alphabet the slots are drawn from.
 
   /// The flat tensor of the same shape, which owns the combinatorics: the
   /// orbits, the slot layout and the conditions on the accessors. This type
@@ -162,23 +162,23 @@ class LayeredTensorField {
    * -Rank to Rank.
    */
   LayeredTensorField(RadialGridType radialGrid, GridType grid)
-      : _stacks{Build(radialGrid, grid,
+      : stacks_{Build(radialGrid, grid,
                       std::make_index_sequence<static_cast<std::size_t>(
                           StoredComponents)>{})},
-        _radialGrid{std::move(radialGrid)},
-        _grid{std::move(grid)} {}
+        radialGrid_{std::move(radialGrid)},
+        grid_{std::move(grid)} {}
 
   /** @brief The angular grid this is defined on. */
-  const GridType& Grid() const { return _grid; }
+  const GridType& Grid() const { return grid_; }
   /** @brief The radial grid this is defined on. */
-  const RadialGridType& Radial() const { return _radialGrid; }
+  const RadialGridType& Radial() const { return radialGrid_; }
 
   /** @brief How many radii the stack holds. */
-  auto NumberOfRadii() const { return _radialGrid.NumberOfRadii(); }
+  auto NumberOfRadii() const { return radialGrid_.NumberOfRadii(); }
   /** @brief Indices of the stored radii. */
-  auto RadiusIndices() const { return _radialGrid.RadiusIndices(); }
+  auto RadiusIndices() const { return radialGrid_.RadiusIndices(); }
   /** @brief How many samples one angular field holds. */
-  auto FieldSize() const { return static_cast<Int>(_grid.FieldSize()); }
+  auto FieldSize() const { return static_cast<Int>(grid_.FieldSize()); }
 
   /// The whole radial stack of one stored component: a LayeredSpinField, and
   /// therefore something Expand, ApplyRadially and IntegrateRadially already
@@ -186,14 +186,14 @@ class LayeredTensorField {
   template <Int... Alphas>
   requires Writable<Alphas...>
   auto& ComponentStack() {
-    return std::get<static_cast<std::size_t>(SlotOf<Alphas...>())>(_stacks);
+    return std::get<static_cast<std::size_t>(SlotOf<Alphas...>())>(stacks_);
   }
 
   /// The same, read-only.
   template <Int... Alphas>
   requires Writable<Alphas...>
   const auto& ComponentStack() const {
-    return std::get<static_cast<std::size_t>(SlotOf<Alphas...>())>(_stacks);
+    return std::get<static_cast<std::size_t>(SlotOf<Alphas...>())>(stacks_);
   }
 
   /// One angular slice of a stored component, as a writable view.
@@ -239,9 +239,9 @@ class LayeredTensorField {
   }
 
  private:
-  LayeredDetails::Stacks<LayeredDetails::FieldStackAt, Flat> _stacks;
-  RadialGridType _radialGrid;
-  GridType _grid;
+  LayeredDetails::Stacks<LayeredDetails::FieldStackAt, Flat> stacks_;
+  RadialGridType radialGrid_;
+  GridType grid_;
 
   template <Int... Alphas>
   static constexpr Int SlotOf() {
@@ -252,7 +252,7 @@ class LayeredTensorField {
 
   template <Int Slot>
   auto SliceOfSlot(Int i) const {
-    return std::get<static_cast<std::size_t>(Slot)>(_stacks).Slice(i);
+    return std::get<static_cast<std::size_t>(Slot)>(stacks_).Slice(i);
   }
 
   template <std::size_t... Slots>
@@ -274,22 +274,22 @@ class LayeredTensorField {
  *
  * @copydetails LayeredTensorField
  */
-template <std::ptrdiff_t _Rank, TensorSymmetry<_Rank> _Symmetry,
-          TensorReality _Reality, AngularGrid _Grid,
-          SlotAlphabet _Slots = AllSlots>
+template <std::ptrdiff_t Rank_, TensorSymmetry<Rank_> Symmetry_,
+          TensorReality Reality_, AngularGrid Grid_,
+          SlotAlphabet Slots_ = AllSlots>
 class LayeredTensorExpansion {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /** @brief The tensor rank. */
-  static constexpr Int Rank = _Rank;
-  using Symmetry = _Symmetry;  ///< The permutation symmetry of the slots.
-  using Reality = _Reality;    ///< Whether the tensor is real or complex.
-  using GridType = _Grid;      ///< The angular grid this is defined on.
-  using Real = typename _Grid::Real;   ///< The precision.
+  static constexpr Int Rank = Rank_;
+  using Symmetry = Symmetry_;  ///< The permutation symmetry of the slots.
+  using Reality = Reality_;    ///< Whether the tensor is real or complex.
+  using GridType = Grid_;      ///< The angular grid this is defined on.
+  using Real = typename Grid_::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   using RadialGridType = RadialGrid<Real>;  ///< The radial grid type.
-  using SlotSet = _Slots;  ///< The alphabet the slots are drawn from.
+  using SlotSet = Slots_;  ///< The alphabet the slots are drawn from.
 
   /** @brief The flat tensor of the same shape, which owns the
    * combinatorics. */
@@ -323,38 +323,38 @@ class LayeredTensorExpansion {
    * @param lMax The largest degree stored.
    */
   LayeredTensorExpansion(RadialGridType radialGrid, GridType grid, Int lMax)
-      : _stacks{Build(radialGrid, grid, lMax,
+      : stacks_{Build(radialGrid, grid, lMax,
                       std::make_index_sequence<static_cast<std::size_t>(
                           StoredComponents)>{})},
-        _radialGrid{std::move(radialGrid)},
-        _grid{std::move(grid)},
-        _lMax{lMax} {}
+        radialGrid_{std::move(radialGrid)},
+        grid_{std::move(grid)},
+        lMax_{lMax} {}
 
   /** @brief The angular grid this is defined on. */
-  const GridType& Grid() const { return _grid; }
+  const GridType& Grid() const { return grid_; }
   /** @brief The radial grid this is defined on. */
-  const RadialGridType& Radial() const { return _radialGrid; }
+  const RadialGridType& Radial() const { return radialGrid_; }
 
   /** @brief How many radii the stack holds. */
-  auto NumberOfRadii() const { return _radialGrid.NumberOfRadii(); }
+  auto NumberOfRadii() const { return radialGrid_.NumberOfRadii(); }
   /** @brief Indices of the stored radii. */
-  auto RadiusIndices() const { return _radialGrid.RadiusIndices(); }
+  auto RadiusIndices() const { return radialGrid_.RadiusIndices(); }
   /** @brief The largest degree stored. */
-  auto MaxDegree() const { return _lMax; }
+  auto MaxDegree() const { return lMax_; }
 
   /// The whole radial stack of one stored component's coefficients, as a
   /// LayeredSpinExpansion.
   template <Int... Alphas>
   requires Writable<Alphas...>
   auto& ComponentStack() {
-    return std::get<static_cast<std::size_t>(SlotOf<Alphas...>())>(_stacks);
+    return std::get<static_cast<std::size_t>(SlotOf<Alphas...>())>(stacks_);
   }
 
   /// The same, read-only.
   template <Int... Alphas>
   requires Writable<Alphas...>
   const auto& ComponentStack() const {
-    return std::get<static_cast<std::size_t>(SlotOf<Alphas...>())>(_stacks);
+    return std::get<static_cast<std::size_t>(SlotOf<Alphas...>())>(stacks_);
   }
 
   /// The coefficient of any representable component, at one radius.
@@ -374,7 +374,7 @@ class LayeredTensorExpansion {
     if constexpr (constraint == ComponentConstraint::Zero) {
       return Complex{};
     } else {
-      if (l < (n < 0 ? -n : n) || l > _lMax || m < -l || m > l) {
+      if (l < (n < 0 ? -n : n) || l > lMax_ || m < -l || m > l) {
         return Complex{};
       }
 
@@ -385,7 +385,7 @@ class LayeredTensorExpansion {
       constexpr auto conjugated = Orbits.conjugate[flat];
       constexpr auto real = ComponentLayout.realOfSlot[slot];
 
-      const auto& block = std::get<static_cast<std::size_t>(slot)>(_stacks);
+      const auto& block = std::get<static_cast<std::size_t>(slot)>(stacks_);
 
       // A real block holds only m >= 0; the rest is f_{l,-m} = (-1)^m
       // conj(f_{lm}).
@@ -413,10 +413,10 @@ class LayeredTensorExpansion {
   }
 
  private:
-  LayeredDetails::Stacks<LayeredDetails::ExpansionStackAt, Flat> _stacks;
-  RadialGridType _radialGrid;
-  GridType _grid;
-  Int _lMax;
+  LayeredDetails::Stacks<LayeredDetails::ExpansionStackAt, Flat> stacks_;
+  RadialGridType radialGrid_;
+  GridType grid_;
+  Int lMax_;
 
   template <Int... Alphas>
   static constexpr Int SlotOf() {

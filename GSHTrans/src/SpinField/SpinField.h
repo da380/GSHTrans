@@ -27,17 +27,17 @@ namespace GSHTrans {
 /// multi-index and not by an upper index -- for rank >= 2 the two are different
 /// things, and a collection labelled only by N does not determine a tensor.
 /// See section 2 of the theory note, docs/canonical-components.tex.
-template <std::ptrdiff_t _N, AngularGrid _Grid,
-          RealOrComplexValued _Value = ComplexValued>
+template <std::ptrdiff_t N_, AngularGrid Grid_,
+          RealOrComplexValued Value_ = ComplexValued>
 class SpinField {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /** @brief The upper index N of what this evaluates to. */
-  static constexpr Int UpperIndex = _N;
-  using Value = _Value;    ///< Whether the samples are real-valued or complex.
-  using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Real = typename _Grid::Real;   ///< The precision.
+  static constexpr Int UpperIndex = N_;
+  using Value = Value_;    ///< Whether the samples are real-valued or complex.
+  using GridType = Grid_;  ///< The angular grid this is defined on.
+  using Real = typename Grid_::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   /// The value type: Real when real-valued, Complex otherwise.
   using Scalar = ScalarFor<Real, Value>;
@@ -52,7 +52,7 @@ class SpinField {
 
   // Whether the grid admits negative upper indices at all is a property of its
   // type, so it is a static_assert and not a runtime test.
-  static_assert(not std::same_as<typename _Grid::NRange, NonNegative> or
+  static_assert(not std::same_as<typename Grid_::NRange, NonNegative> or
                     UpperIndex >= 0,
                 "This grid stores only non-negative upper indices");
 
@@ -61,7 +61,7 @@ class SpinField {
 
   /** @brief A zero field on @p grid. */
   explicit SpinField(GridType grid)
-      : _grid{std::move(grid)}, _data(CheckedSize(_grid), Scalar{}) {}
+      : grid_{std::move(grid)}, data_(CheckedSize(grid_), Scalar{}) {}
 
   /**
    * @brief A function of position, sampled over the grid's points in the
@@ -74,8 +74,8 @@ class SpinField {
     { f(theta, phi) } -> std::convertible_to<Scalar>;
   }
   SpinField(GridType grid, Function&& f) : SpinField(std::move(grid)) {
-    auto iter = _data.begin();
-    for (auto [theta, phi] : _grid.Points()) {
+    auto iter = data_.begin();
+    for (auto [theta, phi] : grid_.Points()) {
       *iter++ = static_cast<Scalar>(f(theta, phi));
     }
   }
@@ -106,8 +106,8 @@ class SpinField {
   /// grid its operands were on and nowhere else.
   template <typename Expr>
   requires Compatible<Expr> and (not std::same_as<Node<Expr>, SpinField>)
-  SpinField(const Expr& expr) : _grid{expr.Grid()}, _data(CheckedSize(_grid)) {
-    expr.EvaluateInto(std::span<Scalar>(_data));
+  SpinField(const Expr& expr) : grid_{expr.Grid()}, data_(CheckedSize(grid_)) {
+    expr.EvaluateInto(std::span<Scalar>(data_));
   }
 
   //------------------------------------------------------------------------//
@@ -130,7 +130,7 @@ class SpinField {
   requires Compatible<Expr> and (not std::same_as<Node<Expr>, SpinField>)
   SpinField& operator=(const Expr& expr) {
     CheckSameGrid(expr);
-    expr.EvaluateInto(std::span<Scalar>(_data));
+    expr.EvaluateInto(std::span<Scalar>(data_));
     return *this;
   }
 
@@ -209,17 +209,17 @@ class SpinField {
   //------------------------------------------------------------------------//
 
   /** @brief The angular grid this is defined on. */
-  const GridType& Grid() const { return _grid; }
+  const GridType& Grid() const { return grid_; }
 
   /// By value, as on every node: uniform value return is what lets terminals,
   /// views and expressions be used interchangeably.
   Scalar operator[](Int iTheta, Int iPhi) const {
-    return _data[FlatIndex(iTheta, iPhi)];
+    return data_[FlatIndex(iTheta, iPhi)];
   }
 
   /// Mutable access is a terminal's own, outside the concept.
   Scalar& operator[](Int iTheta, Int iPhi) {
-    return _data[FlatIndex(iTheta, iPhi)];
+    return data_[FlatIndex(iTheta, iPhi)];
   }
 
   /// Terminals override the generic element loop with a contiguous copy.
@@ -230,7 +230,7 @@ class SpinField {
   requires std::convertible_to<Scalar, S>
   void EvaluateInto(std::span<S> target) const {
     CheckTargetSize(target.size());
-    std::ranges::copy(_data, target.begin());
+    std::ranges::copy(data_, target.begin());
   }
 
   //------------------------------------------------------------------------//
@@ -238,31 +238,31 @@ class SpinField {
   //------------------------------------------------------------------------//
 
   /** @brief How many elements are stored. */
-  auto Size() const { return static_cast<Int>(_data.size()); }
+  auto Size() const { return static_cast<Int>(data_.size()); }
   /** @brief The underlying buffer. */
-  auto Data() const { return std::span<const Scalar>(_data); }
+  auto Data() const { return std::span<const Scalar>(data_); }
   /** @brief The underlying buffer. */
-  auto Data() { return std::span<Scalar>(_data); }
+  auto Data() { return std::span<Scalar>(data_); }
 
   /** @brief The first sample. */
-  auto begin() { return _data.begin(); }
+  auto begin() { return data_.begin(); }
   /** @brief One past the last sample. */
-  auto end() { return _data.end(); }
+  auto end() { return data_.end(); }
   /** @brief The first sample. */
-  auto begin() const { return _data.begin(); }
+  auto begin() const { return data_.begin(); }
   /** @brief One past the last sample. */
-  auto end() const { return _data.end(); }
+  auto end() const { return data_.end(); }
 
  private:
-  GridType _grid;
-  FFTWpp::vector<Scalar> _data;
+  GridType grid_;
+  FFTWpp::vector<Scalar> data_;
 
   // (iTheta, iPhi) with phi fastest, matching the transform's own layout.
   Int FlatIndex(Int iTheta, Int iPhi) const {
     assert(iTheta >= 0 &&
-           iTheta < static_cast<Int>(_grid.NumberOfCoLatitudes()));
-    assert(iPhi >= 0 && iPhi < static_cast<Int>(_grid.NumberOfLongitudes()));
-    return iTheta * static_cast<Int>(_grid.NumberOfLongitudes()) + iPhi;
+           iTheta < static_cast<Int>(grid_.NumberOfCoLatitudes()));
+    assert(iPhi >= 0 && iPhi < static_cast<Int>(grid_.NumberOfLongitudes()));
+    return iTheta * static_cast<Int>(grid_.NumberOfLongitudes()) + iPhi;
   }
 
   // Checked in all build modes: whether this grid carries the field's upper
@@ -281,7 +281,7 @@ class SpinField {
 
   template <typename Expr>
   void CheckSameGrid(const Expr& expr) const {
-    if (expr.Grid().Identity() != _grid.Identity()) {
+    if (expr.Grid().Identity() != grid_.Identity()) {
       throw std::invalid_argument(
           "Cannot assign an expression on a different grid: assignment does "
           "not rebind the destination's grid");
@@ -289,10 +289,10 @@ class SpinField {
   }
 
   void CheckTargetSize(std::size_t given) const {
-    if (given != _data.size()) {
+    if (given != data_.size()) {
       throw std::invalid_argument(
           "Evaluation target has size " + std::to_string(given) +
-          ", but this field has " + std::to_string(_data.size()) + " points");
+          ", but this field has " + std::to_string(data_.size()) + " points");
     }
   }
 };

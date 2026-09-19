@@ -81,13 +81,13 @@ class Binary {
    * samples are different arrays and pairing them elementwise is meaningless.
    */
   Binary(L&& l, R&& r, Op op = Op{})
-      : _l{std::forward<L>(l)}, _r{std::forward<R>(r)}, _op{std::move(op)} {
+      : l_{std::forward<L>(l)}, r_{std::forward<R>(r)}, op_{std::move(op)} {
     // Handle identity, in all build modes. Two separately built grids with
     // equal parameters are not the same grid: their samples are different
     // arrays and pairing them elementwise is meaningless. Before this rewrite
     // the grid was taken from the left operand alone and a mismatch was
     // silent.
-    if (_l.Grid().Identity() != _r.Grid().Identity()) {
+    if (l_.Grid().Identity() != r_.Grid().Identity()) {
       throw std::invalid_argument(
           "The operands of a binary spin-field expression are on different "
           "grids");
@@ -95,11 +95,11 @@ class Binary {
   }
 
   /** @brief The angular grid this is defined on. */
-  const GridType& Grid() const { return _l.Grid(); }
+  const GridType& Grid() const { return l_.Grid(); }
 
   /** @brief The value at the grid point @p iTheta, @p iPhi. */
   Scalar operator[](Int iTheta, Int iPhi) const {
-    return _op(_l[iTheta, iPhi], _r[iTheta, iPhi]);
+    return op_(l_[iTheta, iPhi], r_[iTheta, iPhi]);
   }
 
   /** @brief Writes every sample into @p target. */
@@ -110,9 +110,9 @@ class Binary {
   }
 
  private:
-  OperandStorage<L> _l;
-  OperandStorage<R> _r;
-  [[no_unique_address]] Op _op;
+  OperandStorage<L> l_;
+  OperandStorage<R> r_;
+  [[no_unique_address]] Op op_;
 };
 
 //--------------------------------------------------------------------------//
@@ -154,14 +154,14 @@ class Unary {
                 "index zero");
 
   /** @brief Wraps the operand of a unary operation. */
-  Unary(A&& a, Op op = Op{}) : _a{std::forward<A>(a)}, _op{std::move(op)} {}
+  Unary(A&& a, Op op = Op{}) : a_{std::forward<A>(a)}, op_{std::move(op)} {}
 
   /** @brief The angular grid this is defined on. */
-  const GridType& Grid() const { return _a.Grid(); }
+  const GridType& Grid() const { return a_.Grid(); }
 
   /** @brief The value at the grid point @p iTheta, @p iPhi. */
   Scalar operator[](Int iTheta, Int iPhi) const {
-    return _op(_a[iTheta, iPhi]);
+    return op_(a_[iTheta, iPhi]);
   }
 
   /** @brief Writes every sample into @p target. */
@@ -172,8 +172,8 @@ class Unary {
   }
 
  private:
-  OperandStorage<A> _a;
-  [[no_unique_address]] Op _op;
+  OperandStorage<A> a_;
+  [[no_unique_address]] Op op_;
 };
 
 }  // namespace GSHTrans

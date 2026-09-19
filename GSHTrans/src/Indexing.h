@@ -54,25 +54,25 @@ class GSHSubIndices {
    * @param mMax The largest order stored anywhere in the block; this row's own
    * largest order is @f$\min(l, m_{\max})@f$.
    */
-  constexpr GSHSubIndices(Int l, Int mMax) : _l{l}, _mMax{std::min(l, mMax)} {
-    assert(_l >= 0);
-    assert(_mMax >= 0);
+  constexpr GSHSubIndices(Int l, Int mMax) : l_{l}, mMax_{std::min(l, mMax)} {
+    assert(l_ >= 0);
+    assert(mMax_ >= 0);
   }
 
   /** @brief The degree this row belongs to. */
-  constexpr auto Degree() const { return _l; }
+  constexpr auto Degree() const { return l_; }
 
   /** @brief The smallest order stored: @f$-m_{\max}@f$, or zero. */
   constexpr auto MinOrder() const {
     if constexpr (std::same_as<MRange, All>) {
-      return -_mMax;
+      return -mMax_;
     } else {
       return Int{0};
     }
   }
 
   /** @brief The largest order stored. */
-  constexpr auto MaxOrder() const { return _mMax; }
+  constexpr auto MaxOrder() const { return mMax_; }
 
   /** @brief Every order stored, in storage order. */
   constexpr auto Orders() const {
@@ -98,17 +98,17 @@ class GSHSubIndices {
    */
   constexpr auto Index(Int m) const {
     if constexpr (std::same_as<MRange, All>) {
-      assert(m >= -_l && m <= _l);
-      return m + _mMax;
+      assert(m >= -l_ && m <= l_);
+      return m + mMax_;
     } else {
-      assert(m >= 0 && m <= _l);
+      assert(m >= 0 && m <= l_);
       return m;
     }
   }
 
  private:
-  Int _l;
-  Int _mMax;
+  Int l_;
+  Int mMax_;
 };
 
 /**
@@ -130,22 +130,22 @@ class GSHIndices {
    * @param n The upper index, which fixes the smallest degree at @f$|n|@f$.
    */
   constexpr GSHIndices(Int lMax, Int mMax, Int n)
-      : _lMax{lMax}, _mMax{std::min(lMax, mMax)}, _n{n} {
-    assert(_lMax >= 0);
-    assert(_mMax >= 0);
-    assert(std::abs(n) <= _lMax);
+      : lMax_{lMax}, mMax_{std::min(lMax, mMax)}, n_{n} {
+    assert(lMax_ >= 0);
+    assert(mMax_ >= 0);
+    assert(std::abs(n) <= lMax_);
   }
 
   /** @brief The upper index this block belongs to. */
-  constexpr auto UpperIndex() const { return _n; }
+  constexpr auto UpperIndex() const { return n_; }
 
   /** @brief The largest order stored. */
-  constexpr auto MaxOrder() const { return _mMax; }
+  constexpr auto MaxOrder() const { return mMax_; }
 
   /** @brief The smallest degree stored, @f$|n|@f$. */
-  constexpr auto MinDegree() const { return std::abs(_n); }
+  constexpr auto MinDegree() const { return std::abs(n_); }
   /** @brief The largest degree stored. */
-  constexpr auto MaxDegree() const { return _lMax; }
+  constexpr auto MaxDegree() const { return lMax_; }
   /** @brief Every degree stored, in storage order. */
   constexpr auto Degrees() const {
     return std::ranges::views::iota(MinDegree(), MaxDegree() + 1);
@@ -156,7 +156,7 @@ class GSHIndices {
     return Degrees() | std::ranges::views::transform([this](auto l) {
              return std::ranges::views::cartesian_product(
                  std::ranges::views::single(l),
-                 GSHSubIndices<MRange>(l, _mMax).Orders());
+                 GSHSubIndices<MRange>(l, mMax_).Orders());
            }) |
            std::ranges::views::join;
   }
@@ -177,13 +177,13 @@ class GSHIndices {
   requires std::same_as<MRange, All>
   {
     assert(l >= MinDegree() && l <= MaxDegree());
-    auto nAbs = std::abs(_n);
-    if (_mMax >= nAbs) {
-      return l <= _mMax ? l * l - nAbs * nAbs
-                        : (_mMax + 1) * (_mMax + 1) - nAbs * nAbs +
-                              (l - 1 - _mMax) * (2 * _mMax + 1);
+    auto nAbs = std::abs(n_);
+    if (mMax_ >= nAbs) {
+      return l <= mMax_ ? l * l - nAbs * nAbs
+                        : (mMax_ + 1) * (mMax_ + 1) - nAbs * nAbs +
+                              (l - 1 - mMax_) * (2 * mMax_ + 1);
     } else {
-      return (l - nAbs) * (2 * _mMax + 1);
+      return (l - nAbs) * (2 * mMax_ + 1);
     }
   }
 
@@ -201,21 +201,21 @@ class GSHIndices {
   requires std::same_as<MRange, NonNegative>
   {
     assert(l >= MinDegree() && l <= MaxDegree());
-    auto nAbs = std::abs(_n);
-    if (_mMax >= nAbs) {
-      return l <= _mMax
+    auto nAbs = std::abs(n_);
+    if (mMax_ >= nAbs) {
+      return l <= mMax_
                  ? (l * (l + 1)) / 2 - (nAbs * (nAbs + 1)) / 2
-                 : ((_mMax + 1) * (_mMax + 2)) / 2 - (nAbs * (nAbs + 1)) / 2 +
-                       (l - 1 - _mMax) * (_mMax + 1);
+                 : ((mMax_ + 1) * (mMax_ + 2)) / 2 - (nAbs * (nAbs + 1)) / 2 +
+                       (l - 1 - mMax_) * (mMax_ + 1);
     } else {
-      return (l - nAbs) * (_mMax + 1);
+      return (l - nAbs) * (mMax_ + 1);
     }
   }
 
   /** @brief How many coefficients the row for degree @p l holds. */
   constexpr auto SizeForDegree(Int l) const {
     assert(l >= MinDegree() && l <= MaxDegree());
-    return GSHSubIndices<MRange>(l, _mMax).Size();
+    return GSHSubIndices<MRange>(l, mMax_).Size();
   }
 
   /**
@@ -224,7 +224,7 @@ class GSHIndices {
    */
   constexpr auto Index(Int l) const {
     assert(l >= MinDegree() && l <= MaxDegree());
-    return std::pair(OffsetForDegree(l), GSHSubIndices<MRange>(l, _mMax));
+    return std::pair(OffsetForDegree(l), GSHSubIndices<MRange>(l, mMax_));
   }
 
   /** @brief Where the coefficient at degree @p l and order @p m sits. */
@@ -235,13 +235,13 @@ class GSHIndices {
 
   /** @brief How many coefficients the whole block holds. */
   constexpr auto Size() const {
-    return OffsetForDegree(_lMax) + SizeForDegree(_lMax);
+    return OffsetForDegree(lMax_) + SizeForDegree(lMax_);
   }
 
  private:
-  Int _lMax{};
-  Int _mMax{};
-  Int _n{};
+  Int lMax_{};
+  Int mMax_{};
+  Int n_{};
 };
 
 }  // namespace GSHTrans

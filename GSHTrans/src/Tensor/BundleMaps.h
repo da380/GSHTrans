@@ -64,10 +64,10 @@ class EmbedNode {
 
   /** @brief Wraps a tangential operand to be seen in the general bundle. */
   explicit EmbedNode(Operand&& operand)
-      : _operand{std::forward<Operand>(operand)} {}
+      : operand_{std::forward<Operand>(operand)} {}
 
   /** @brief The angular grid this is defined on. */
-  const GridType& Grid() const { return _operand.Grid(); }
+  const GridType& Grid() const { return operand_.Grid(); }
 
   /** @brief Backs Represents; see there. */
   template <Int... Alphas>
@@ -92,11 +92,11 @@ class EmbedNode {
   template <Int... Alphas>
   requires Represents<Alphas...>
   auto Component() const {
-    return _operand.template Component<Alphas...>();
+    return operand_.template Component<Alphas...>();
   }
 
  private:
-  OperandStorage<Operand> _operand;
+  OperandStorage<Operand> operand_;
 };
 
 template <typename T>
@@ -135,10 +135,10 @@ class TangentialNode {
 
   /** @brief Wraps a general operand, dropping its radial components. */
   explicit TangentialNode(Operand&& operand)
-      : _operand{std::forward<Operand>(operand)} {}
+      : operand_{std::forward<Operand>(operand)} {}
 
   /** @brief The angular grid this is defined on. */
-  const GridType& Grid() const { return _operand.Grid(); }
+  const GridType& Grid() const { return operand_.Grid(); }
 
   /** @brief Backs Represents; see there. */
   template <Int... Alphas>
@@ -160,11 +160,11 @@ class TangentialNode {
   template <Int... Alphas>
   requires Represents<Alphas...>
   auto Component() const {
-    return _operand.template Component<Alphas...>();
+    return operand_.template Component<Alphas...>();
   }
 
  private:
-  OperandStorage<Operand> _operand;
+  OperandStorage<Operand> operand_;
 };
 
 template <typename T>

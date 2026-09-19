@@ -288,7 +288,7 @@ double TimePerCall(Action&& action, double target = 0.15, int windows = 5) {
 // ceiling is not one number on a multi-socket machine.
 //
 // The `touch` argument is the point. Pages are placed on the NUMA node of the
-// thread that first writes them, and `Wigner::_data` is a std::vector<Real>
+// thread that first writes them, and `Wigner::data_` is a std::vector<Real>
 // built by its size constructor (Wigner.h:131), so the whole table is
 // zero-filled by the single constructing thread and lives on one node however
 // many nodes the machine has. Touching with one thread reproduces that;

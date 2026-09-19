@@ -58,16 +58,16 @@ enum class ComponentConstraint { None, Zero, Real, Imaginary };
  * @brief For every component of a tensor: which component is actually stored
  * for it, how the two are related, and what its orbit pins it to.
  *
- * @tparam _Rank The tensor rank.
- * @tparam _Slots The alphabet the slots are drawn from.
+ * @tparam Rank_ The tensor rank.
+ * @tparam Slots_ The alphabet the slots are drawn from.
  */
-template <std::ptrdiff_t _Rank, SlotAlphabet _Slots = AllSlots>
+template <std::ptrdiff_t Rank_, SlotAlphabet Slots_ = AllSlots>
 struct OrbitTable {
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
-  using SlotSet = _Slots;      ///< The alphabet the slots are drawn from.
+  using SlotSet = Slots_;      ///< The alphabet the slots are drawn from.
 
   /** @brief The tensor rank. */
-  static constexpr Int Rank = _Rank;
+  static constexpr Int Rank = Rank_;
   /** @brief How many components there are, stored or not. */
   static constexpr Int Size = MultiIndex<Rank, SlotSet>::Size;
 

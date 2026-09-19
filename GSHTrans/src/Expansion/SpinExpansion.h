@@ -47,18 +47,18 @@ namespace GSHTrans {
 ///
 /// The degrees start at |N| because d^l_{mN} vanishes identically below it, so
 /// there is no coefficient there to hold.
-template <std::ptrdiff_t _N, AngularGrid _Grid,
-          RealOrComplexValued _Value = ComplexValued,
-          typename _Element = std::complex<typename _Grid::Real>>
+template <std::ptrdiff_t N_, AngularGrid Grid_,
+          RealOrComplexValued Value_ = ComplexValued,
+          typename Element_ = std::complex<typename Grid_::Real>>
 class SpinExpansionBase {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /** @brief The upper index N of what this evaluates to. */
-  static constexpr Int UpperIndex = _N;
-  using Value = _Value;    ///< Whether the samples are real-valued or complex.
-  using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Real = typename _Grid::Real;   ///< The precision.
+  static constexpr Int UpperIndex = N_;
+  using Value = Value_;    ///< Whether the samples are real-valued or complex.
+  using GridType = Grid_;  ///< The angular grid this is defined on.
+  using Real = typename Grid_::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
 
   /// Coefficients are complex whatever the field is; what a real field
@@ -83,57 +83,57 @@ class SpinExpansionBase {
    * @throws std::invalid_argument if @p lMax is below the upper index, since
    * the harmonics there do not exist.
    */
-  SpinExpansionBase(GridType grid, Int lMax, std::span<_Element> data)
-      : _grid{std::move(grid)}, _indices{lMax, lMax, UpperIndex}, _data{data} {
+  SpinExpansionBase(GridType grid, Int lMax, std::span<Element_> data)
+      : grid_{std::move(grid)}, indices_{lMax, lMax, UpperIndex}, data_{data} {
     if (lMax < std::abs(UpperIndex)) {
       throw std::invalid_argument(
           "An expansion's degree cannot be below its upper index, since the "
           "harmonics there do not exist");
     }
-    if (_data.size() != static_cast<std::size_t>(_indices.Size())) {
+    if (data_.size() != static_cast<std::size_t>(indices_.Size())) {
       throw std::invalid_argument(
-          "An expansion over " + std::to_string(_data.size()) +
-          " coefficients does not hold the " + std::to_string(_indices.Size()) +
+          "An expansion over " + std::to_string(data_.size()) +
+          " coefficients does not hold the " + std::to_string(indices_.Size()) +
           " this degree and upper index need");
     }
   }
 
   /** @brief The angular grid this is defined on. */
-  const GridType& Grid() const { return _grid; }
+  const GridType& Grid() const { return grid_; }
 
   /** @brief The largest degree stored. */
-  auto MaxDegree() const { return _indices.MaxDegree(); }
+  auto MaxDegree() const { return indices_.MaxDegree(); }
   /** @brief The smallest degree stored. */
-  auto MinDegree() const { return _indices.MinDegree(); }
+  auto MinDegree() const { return indices_.MinDegree(); }
   /** @brief Every degree stored. */
-  auto Degrees() const { return _indices.Degrees(); }
+  auto Degrees() const { return indices_.Degrees(); }
   /** @brief Every order stored at degree @p l. */
   auto Orders(Int l) const {
     return GSHSubIndices<MRange>(l, MaxDegree()).Orders();
   }
   /** @brief How many elements are stored. */
-  auto Size() const { return static_cast<Int>(_data.size()); }
+  auto Size() const { return static_cast<Int>(data_.size()); }
   /** @brief The underlying buffer. */
-  auto Data() const { return _data; }
+  auto Data() const { return data_; }
 
   /** @brief The coefficient at degree @p l and order @p m. */
-  Complex operator[](Int l, Int m) const { return _data[Index(l, m)]; }
+  Complex operator[](Int l, Int m) const { return data_[Index(l, m)]; }
 
   /// The same, writable. Present only on a view over mutable storage.
-  _Element& operator[](Int l, Int m)
-  requires(not std::is_const_v<_Element>)
+  Element_& operator[](Int l, Int m)
+  requires(not std::is_const_v<Element_>)
   {
-    return _data[Index(l, m)];
+    return data_[Index(l, m)];
   }
 
  private:
-  GridType _grid;
-  GSHIndices<MRange> _indices;
-  std::span<_Element> _data;
+  GridType grid_;
+  GSHIndices<MRange> indices_;
+  std::span<Element_> data_;
 
   std::size_t Index(Int l, Int m) const {
     assert(l >= MinDegree() && l <= MaxDegree());
-    return static_cast<std::size_t>(_indices.Index(l, m));
+    return static_cast<std::size_t>(indices_.Index(l, m));
   }
 };
 
@@ -149,27 +149,27 @@ using ConstSpinExpansionView =
     SpinExpansionBase<N, Grid, Value, const std::complex<typename Grid::Real>>;
 
 /// The owning expansion: the same interface over storage it holds itself.
-template <std::ptrdiff_t _N, AngularGrid _Grid,
-          RealOrComplexValued _Value = ComplexValued>
+template <std::ptrdiff_t N_, AngularGrid Grid_,
+          RealOrComplexValued Value_ = ComplexValued>
 class SpinExpansion {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
 
   /** @brief The upper index N of what this evaluates to. */
-  static constexpr Int UpperIndex = _N;
-  using Value = _Value;    ///< Whether the samples are real-valued or complex.
-  using GridType = _Grid;  ///< The angular grid this is defined on.
-  using Real = typename _Grid::Real;   ///< The precision.
+  static constexpr Int UpperIndex = N_;
+  using Value = Value_;    ///< Whether the samples are real-valued or complex.
+  using GridType = Grid_;  ///< The angular grid this is defined on.
+  using Real = typename Grid_::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
   /// A writable view over this object.
-  using ViewType = SpinExpansionView<_N, _Grid, _Value>;
+  using ViewType = SpinExpansionView<N_, Grid_, Value_>;
   /// A read-only view over this object.
-  using ConstViewType = ConstSpinExpansionView<_N, _Grid, _Value>;
+  using ConstViewType = ConstSpinExpansionView<N_, Grid_, Value_>;
   using MRange =
-      std::conditional_t<std::same_as<_Value, RealValued>, NonNegative,
+      std::conditional_t<std::same_as<Value_, RealValued>, NonNegative,
                          All>;  ///< Which orders are stored.
 
-  static_assert(std::same_as<_Value, ComplexValued> or UpperIndex == 0);
+  static_assert(std::same_as<Value_, ComplexValued> or UpperIndex == 0);
 
   SpinExpansion() = delete;
 
@@ -179,43 +179,43 @@ class SpinExpansion {
    * @param lMax The largest degree stored.
    */
   SpinExpansion(GridType grid, Int lMax)
-      : _grid{std::move(grid)},
-        _indices{Checked(lMax), lMax, UpperIndex},
-        _data(static_cast<std::size_t>(_indices.Size())) {}
+      : grid_{std::move(grid)},
+        indices_{Checked(lMax), lMax, UpperIndex},
+        data_(static_cast<std::size_t>(indices_.Size())) {}
 
   /** @brief The angular grid this is defined on. */
-  const GridType& Grid() const { return _grid; }
+  const GridType& Grid() const { return grid_; }
   /** @brief The largest degree stored. */
-  auto MaxDegree() const { return _indices.MaxDegree(); }
+  auto MaxDegree() const { return indices_.MaxDegree(); }
   /** @brief The smallest degree stored. */
-  auto MinDegree() const { return _indices.MinDegree(); }
+  auto MinDegree() const { return indices_.MinDegree(); }
   /** @brief Every degree stored. */
-  auto Degrees() const { return _indices.Degrees(); }
+  auto Degrees() const { return indices_.Degrees(); }
   /** @brief Every order stored at degree @p l. */
   auto Orders(Int l) const {
     return GSHSubIndices<MRange>(l, MaxDegree()).Orders();
   }
   /** @brief How many elements are stored. */
-  auto Size() const { return static_cast<Int>(_data.size()); }
+  auto Size() const { return static_cast<Int>(data_.size()); }
   /** @brief The underlying buffer. */
-  auto Data() { return std::span<Complex>(_data); }
+  auto Data() { return std::span<Complex>(data_); }
   /** @brief The underlying buffer. */
-  auto Data() const { return std::span<const Complex>(_data); }
+  auto Data() const { return std::span<const Complex>(data_); }
 
   /** @brief A writable view over this expansion's storage. */
-  auto View() { return ViewType(_grid, MaxDegree(), Data()); }
+  auto View() { return ViewType(grid_, MaxDegree(), Data()); }
   /** @brief A read-only view over this expansion's storage. */
-  auto View() const { return ConstViewType(_grid, MaxDegree(), Data()); }
+  auto View() const { return ConstViewType(grid_, MaxDegree(), Data()); }
 
   /** @brief The coefficient at degree @p l and order @p m. */
-  Complex operator[](Int l, Int m) const { return _data[Index(l, m)]; }
+  Complex operator[](Int l, Int m) const { return data_[Index(l, m)]; }
   /// The same, writable.
-  Complex& operator[](Int l, Int m) { return _data[Index(l, m)]; }
+  Complex& operator[](Int l, Int m) { return data_[Index(l, m)]; }
 
  private:
-  GridType _grid;
-  GSHIndices<MRange> _indices;
-  FFTWpp::vector<Complex> _data;
+  GridType grid_;
+  GSHIndices<MRange> indices_;
+  FFTWpp::vector<Complex> data_;
 
   static Int Checked(Int lMax) {
     if (lMax < std::abs(UpperIndex)) {
@@ -228,7 +228,7 @@ class SpinExpansion {
 
   std::size_t Index(Int l, Int m) const {
     assert(l >= MinDegree() && l <= MaxDegree());
-    return static_cast<std::size_t>(_indices.Index(l, m));
+    return static_cast<std::size_t>(indices_.Index(l, m));
   }
 };
 

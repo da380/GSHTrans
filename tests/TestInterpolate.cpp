@@ -31,14 +31,14 @@ constexpr auto pi = std::numbers::pi_v<Real>;
 // happens to be what the hardware does.
 class Values {
  public:
-  explicit Values(std::uint_fast32_t seed) : _engine{seed} {}
+  explicit Values(std::uint_fast32_t seed) : engine_{seed} {}
 
-  Real operator()() { return _distribution(_engine); }
+  Real operator()() { return distribution_(engine_); }
   Complex Pair() { return Complex((*this)(), (*this)()); }
 
  private:
-  std::mt19937 _engine;
-  std::uniform_real_distribution<Real> _distribution{0, 1};
+  std::mt19937 engine_;
+  std::uniform_real_distribution<Real> distribution_{0, 1};
 };
 
 // A field's worth of them.
