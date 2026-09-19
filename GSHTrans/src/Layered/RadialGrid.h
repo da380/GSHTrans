@@ -2,6 +2,7 @@
 #define GSH_TRANS_RADIAL_GRID_GUARD_H
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <memory>
 #include <ranges>
@@ -132,11 +133,24 @@ class RadialGrid {
 
   /// Which element a radius index belongs to. Exactly one does, the blocks
   /// being disjoint, which is the whole point of the element structure.
+  ///
+  /// @throws std::invalid_argument if the grid has no elements, or if @p i is
+  /// not the index of one of its radii -- there is then no element to name,
+  /// and naming the nearest would be answering a different question.
   Int ElementOf(Int i) const {
-    for (auto k = Int{0}; k < ElementCount(); k++) {
-      if (i < ElementEnd(k)) return k;
+    if (!HasElements()) {
+      throw std::invalid_argument(
+          "This radial grid was not given its elements, so no radius of it "
+          "belongs to one");
     }
-    return ElementCount() - 1;
+    if (i < 0 || i >= NumberOfRadii()) {
+      throw std::invalid_argument(
+          "Radius index " + std::to_string(i) + " is outside the " +
+          std::to_string(NumberOfRadii()) + " radii of this grid");
+    }
+    auto k = Int{0};
+    while (i >= ElementEnd(k)) k++;
+    return k;
   }
 
   /// The breakpoints, of which there are ElementCount() + 1. Read off the
@@ -164,6 +178,13 @@ class RadialGrid {
         throw std::invalid_argument(
             "A radial grid has " + std::to_string(radii.size()) +
             " radii but " + std::to_string(weights.size()) + " weights");
+      }
+      // First, because a NaN compares false with everything and so passes
+      // the two checks below: it is neither out of order nor negative.
+      for (auto r : radii) {
+        if (!std::isfinite(r)) {
+          throw std::invalid_argument("Radii must be finite numbers");
+        }
       }
       if (!std::ranges::is_sorted(radii)) {
         throw std::invalid_argument("Radii must be in increasing order");

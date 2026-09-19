@@ -89,16 +89,12 @@ class TensorExpansion {
    * @param grid The angular grid the coefficients belong to.
    * @param lMax The largest degree stored, which must be at least Rank since
    * a rank-p tensor has components at upper index p.
+   * @throws std::invalid_argument if it is not.
    */
   TensorExpansion(GridType grid, Int lMax)
-      : grid_{std::move(grid)}, lMax_{lMax}, data_(BlockTotal(grid_, lMax)) {
-    if (lMax < Rank) {
-      throw std::invalid_argument(
-          "A rank-" + std::to_string(Rank) +
-          " tensor has components at upper index " + std::to_string(Rank) +
-          ", so its expansion needs at least that degree");
-    }
-  }
+      : grid_{std::move(grid)},
+        lMax_{Checked(lMax)},
+        data_(BlockTotal(grid_, lMax_)) {}
 
   /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return grid_; }
@@ -255,6 +251,18 @@ class TensorExpansion {
     }
     return static_cast<std::size_t>(
         grid.CoefficientSize(lMax, ComponentLayout.upperIndexOfSlot[slot]));
+  }
+
+  // Checked before the storage is sized by it, since sizing a block below its
+  // own upper index is what the index classes assert against.
+  static Int Checked(Int lMax) {
+    if (lMax < Rank) {
+      throw std::invalid_argument(
+          "A rank-" + std::to_string(Rank) +
+          " tensor has components at upper index " + std::to_string(Rank) +
+          ", so its expansion needs at least that degree");
+    }
+    return lMax;
   }
 
   static std::size_t BlockTotal(const GridType& grid, Int lMax) {

@@ -45,6 +45,8 @@
 #include <numbers>
 #include <ranges>
 #include <span>
+#include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -247,7 +249,9 @@ template <RealFloatingPoint Real>
 auto PreComputeTables(std::ptrdiff_t lMax, std::ptrdiff_t mMax,
                       std::ptrdiff_t nMax) {
   using Int = std::ptrdiff_t;
-  const auto size = lMax + std::max(mMax, nMax) + 1;
+  // |nMax| and not nMax: a table holding one upper index may hold a negative
+  // one, and the recursion indexes at l - n as well as at l + n.
+  const auto size = lMax + std::max(mMax, nMax < 0 ? -nMax : nMax) + 1;
   auto sqrtInt = std::vector<Real>();
   auto sqrtIntInv = std::vector<Real>();
   sqrtInt.reserve(size);
@@ -510,12 +514,19 @@ class Wigner {
    * @param lMax The largest degree.
    * @param mMax The largest order; blocks stop widening beyond it.
    * @param nMax The largest upper index.
-   * @param theta The colatitudes, in @f$(0, \pi)@f$.
+   * @param theta The colatitudes, in @f$[0, \pi]@f$.
+   * @throws std::invalid_argument if the degree or the largest order is
+   * negative, if the upper index exceeds the degree or is negative in a table
+   * holding more than one, or if a colatitude lies outside @f$[0, \pi]@f$.
    */
-  template <std::ranges::range Range>
-  requires RealFloatingPoint<std::ranges::range_value_t<Range>>
+  template <std::ranges::random_access_range Range>
+  requires std::ranges::sized_range<Range> &&
+               RealFloatingPoint<std::ranges::range_value_t<Range>>
   Wigner(Int lMax, Int mMax, Int nMax, Range &&theta)
-      : lMax_{lMax}, mMax_{mMax}, nMax_{nMax}, nTheta_(theta.size()) {
+      : lMax_{Checked(lMax, mMax, nMax)},
+        mMax_{mMax},
+        nMax_{nMax},
+        nTheta_(static_cast<Int>(std::ranges::size(theta))) {
     // Compute the offsets and allocate memory.
     {
       offset_.reserve(NumberOfUpperIndices() * NumberOfAngles());
@@ -547,10 +558,17 @@ class Wigner {
    * @brief Recomputes the table at new colatitudes, reusing its storage.
    * @param theta The new colatitudes; there must be as many as before.
    */
-  template <std::ranges::range Range>
-  requires RealFloatingPoint<std::ranges::range_value_t<Range>>
+  template <std::ranges::random_access_range Range>
+  requires std::ranges::sized_range<Range> &&
+           RealFloatingPoint<std::ranges::range_value_t<Range>>
   void ReCompute(Range &&theta) {
-    assert(theta.size() == NumberOfAngles());
+    if (static_cast<Int>(std::ranges::size(theta)) != nTheta_) {
+      throw std::invalid_argument(
+          "A Wigner table is recomputed in the storage it has, so at as many "
+          "colatitudes as it was built with: " +
+          std::to_string(nTheta_) + ", and not " +
+          std::to_string(std::ranges::size(theta)));
+    }
     ComputeAll(theta);
   }
 
@@ -682,10 +700,41 @@ class Wigner {
   }
 
  private:
-  Int lMax_;    // Maximum degree.
-  Int mMax_;    // Maximum order.
-  Int nMax_;    // Maximum upper index.
-  Int nTheta_;  // Number of colatitudes.
+  // Zero, so that a default-constructed table is an empty one and not one
+  // whose shape is whatever was in memory.
+  Int lMax_{};    // Maximum degree.
+  Int mMax_{};    // Maximum order.
+  Int nMax_{};    // Maximum upper index.
+  Int nTheta_{};  // Number of colatitudes.
+
+  // The shape, checked before anything is sized by it. This is a public class
+  // and these are a caller's numbers; left to the index classes' asserts they
+  // were unchecked in a Release build, where an upper index above the degree
+  // made a block's size negative and the table was written through anyway.
+  static Int Checked(Int lMax, Int mMax, Int nMax) {
+    if (lMax < 0) {
+      throw std::invalid_argument(
+          "A Wigner table's maximum degree must be at least zero");
+    }
+    if (mMax < 0) {
+      throw std::invalid_argument(
+          "A Wigner table's maximum order must be at least zero");
+    }
+    if (nMax > lMax || -nMax > lMax) {
+      throw std::invalid_argument(
+          "A Wigner table's upper index cannot exceed its maximum degree, "
+          "since d^l_{nm} needs l >= |n|");
+    }
+    if constexpr (not std::same_as<NRange, Single>) {
+      if (nMax < 0) {
+        throw std::invalid_argument(
+            "A Wigner table over a range of upper indices is given the "
+            "largest of them, which cannot be negative. One negative upper "
+            "index is NRange = Single");
+      }
+    }
+    return lMax;
+  }
 
   // Vector storing the values.
   std::vector<Real> data_;
@@ -698,9 +747,19 @@ class Wigner {
     return offset_[NumberOfAngles() * (n - MinUpperIndex()) + iTheta];
   }
 
-  template <std::ranges::range Range>
-  requires RealFloatingPoint<std::ranges::range_value_t<Range>>
+  template <std::ranges::random_access_range Range>
+  requires std::ranges::sized_range<Range> &&
+           RealFloatingPoint<std::ranges::range_value_t<Range>>
   void ComputeAll(Range &&thetaRange) {
+    // Here, and so for ReCompute as well as construction. Written to refuse a
+    // NaN, which a pair of comparisons the other way round would admit.
+    for (auto theta : thetaRange) {
+      if (!(theta >= 0 && theta <= std::numbers::pi_v<Real>)) {
+        throw std::invalid_argument("A colatitude must lie in [0, pi], and " +
+                                    std::to_string(theta) + " does not");
+      }
+    }
+
     const auto [sqrtInt, sqrtIntInv] = WignerDetails::PreComputeTables<Real>(
         MaxDegree(), MaxOrder(), MaxUpperIndex());
     const auto sqrtIntView = std::span<const Real>(sqrtInt);

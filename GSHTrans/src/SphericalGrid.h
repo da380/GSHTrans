@@ -109,9 +109,7 @@ class SphericalGrid {
             lMax, nMax, std::move(coLatitudes), std::move(coLatitudeWeights),
             nPhi > 0 ? nPhi : FastFFTSize(2 * lMax + 1), values, kernel)},
         chunking_{chunking},
-        flag_{flag} {
-    assert(flag != FFTWpp::WisdomOnly);
-  }
+        flag_{CheckedFlag(flag)} {}
 
  public:
   /** @brief Copy constructor. */
@@ -160,9 +158,8 @@ class SphericalGrid {
 
   /// The same grid under a different planner flag, sharing one table.
   auto With(FFTWpp::Flag flag) const {
-    assert(flag != FFTWpp::WisdomOnly);
     auto grid = *this;
-    grid.flag_ = flag;
+    grid.flag_ = CheckedFlag(flag);
     return grid;
   }
 
@@ -365,11 +362,16 @@ class SphericalGrid {
     auto outFirst = std::ranges::begin(out);
     auto inFirst = std::ranges::begin(in);
 
-    // A one-point grid needs no FFT.
-    if (impl_->lMax == 0) {
+    // A one-point grid needs no FFT: the one coefficient is the one sample
+    // times its weight, over 2 pi, against Y_00. The test is on the number of
+    // samples and not on the degree, because a grid of degree zero need not
+    // have one point -- GaussLegendreGrid's does, and the base class does not
+    // require it.
+    if (this->FieldSize() == 1) {
+      const auto weight = impl_->coLatitudeWeights.front();
       for (auto k = Int{0}; k < count; k++) {
         outFirst[outBatch.Offset(0, k)] = inFirst[inBatch.Offset(0, k)] *
-                                          static_cast<Real>(2) /
+                                          weight /
                                           std::numbers::inv_sqrtpi_v<Real>;
       }
       return;
@@ -489,8 +491,9 @@ class SphericalGrid {
     auto inFirst = std::ranges::begin(in);
     auto outFirst = std::ranges::begin(out);
 
-    // A one-point grid needs no FFT.
-    if (impl_->lMax == 0) {
+    // A one-point grid needs no FFT, and as in the forward direction it is
+    // the number of samples that says so.
+    if (this->FieldSize() == 1) {
       for (auto k = Int{0}; k < count; k++) {
         const auto value = inFirst[inBatch.Offset(0, k)] *
                            std::numbers::inv_sqrtpi_v<Real> /
@@ -780,6 +783,21 @@ class SphericalGrid {
   // pragmas below are written in terms of: whether to open a team at all, and
   // how large a team to ask for when one is opened.
   static bool RunInParallel(Execution policy) { return policy.TeamSize() > 1; }
+
+  // WisdomOnly tells FFTW to return no plan unless wisdom for it is already
+  // loaded. The plans here are made lazily, inside the first transform that
+  // needs one and possibly inside a parallel region, which is the worst place
+  // to discover there is none -- so it is refused where it is asked for.
+  static FFTWpp::Flag CheckedFlag(FFTWpp::Flag flag) {
+    if (flag == FFTWpp::WisdomOnly) {
+      throw std::invalid_argument(
+          "A grid plans its transforms when they are first needed, so it "
+          "cannot be given FFTWpp::WisdomOnly, which forbids planning. Load "
+          "the wisdom and use FFTWpp::Measure: a plan that wisdom covers "
+          "costs nothing to make");
+    }
+    return flag;
+  }
 
   static int ThreadCount(Execution policy) {
     return policy.Threads() > 0 ? policy.Threads() : omp_get_max_threads();
@@ -1484,10 +1502,14 @@ class SphericalGrid {
         auto* rhs = scratch + rows * c;
         const auto* minus = stage.data() + (nPhi - m) * nTheta * c;
         for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
-          const auto w =
-              impl_->coLatitudeWeights[static_cast<std::size_t>(iTheta)] *
-              scaleFactor;
+          // The weight belongs to the sample, which is the mirrored one. On a
+          // grid whose weights are symmetric -- every grid the reflection is
+          // offered on -- the two are equal and this is a matter of saying
+          // what is meant.
           const auto mirror = nTheta - 1 - iTheta;
+          const auto w =
+              impl_->coLatitudeWeights[static_cast<std::size_t>(mirror)] *
+              scaleFactor;
           for (auto k = Int{0}; k < c; k++) {
             rhs[iTheta * c + k] = minus[mirror * c + k] * w;
           }
@@ -1812,8 +1834,23 @@ class SphericalGrid {
           coLatitudes{std::move(coLatitudesIn)},
           coLatitudeWeights{std::move(coLatitudeWeightsIn)},
           nPhi{nPhiIn} {
-      assert(lMax >= 0);
-      assert(std::abs(nMax) <= lMax);
+      // Thrown and not asserted. These are a caller's arguments, arriving
+      // through a public constructor, and an assert is gone from exactly the
+      // builds a caller runs: an upper index above the degree then sized the
+      // Wigner table negatively and wrote through it, which showed up as heap
+      // corruption at some later and unrelated free.
+      if (lMax < 0) {
+        throw std::invalid_argument(
+            "A grid's maximum degree must be at least "
+            "zero, and this one is " +
+            std::to_string(lMax));
+      }
+      if (std::abs(nMax) > lMax) {
+        throw std::invalid_argument(
+            "A grid's maximum upper index cannot exceed its maximum degree, "
+            "since no harmonic has l < |N|: this grid has lMax = " +
+            std::to_string(lMax) + " and nMax = " + std::to_string(nMax));
+      }
 
       // The derived grid's contract, checked rather than trusted: a grid
       // that gets the nodes wrong otherwise fails inside the Wigner
@@ -1839,6 +1876,19 @@ class SphericalGrid {
       }
       if (nPhi < 1) {
         throw std::invalid_argument("A grid needs at least one longitude");
+      }
+      // The Fourier stage must resolve every order |m| <= lMax, and both
+      // kernels read its output at all of them. With fewer longitudes than
+      // that the orders alias -- and before they alias, the kernels index past
+      // the end of the FFT's output.
+      if (nPhi < 2 * lMax + 1) {
+        throw std::invalid_argument(
+            "A grid resolving degree " + std::to_string(lMax) +
+            " has orders up to it, and needs at least " +
+            std::to_string(2 * lMax + 1) +
+            " longitudes to tell them apart. "
+            "This one has " +
+            std::to_string(nPhi));
       }
 
       // An MRange = NonNegative grid stores only m >= 0, so it cannot serve a

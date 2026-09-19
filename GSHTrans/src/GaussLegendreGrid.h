@@ -12,6 +12,7 @@
 #include <complex>
 #include <cstddef>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -82,8 +83,8 @@ class GaussLegendreGrid : public SphericalGrid<Real_, MRange_, NRange_> {
                     Chunking chunking = Chunking::Automatic(),
                     WignerValues values = WignerValues::Stored(),
                     TransformKernel kernel = TransformKernel::Loop())
-      : GaussLegendreGrid{Nodes(lMax), lMax,   nMax,  flag,
-                          chunking,    values, kernel} {}
+      : GaussLegendreGrid{
+            Nodes(Checked(lMax)), lMax, nMax, flag, chunking, values, kernel} {}
 
   /**
    * @brief A grid for fields of band @p lBand, with quadrature headroom.
@@ -177,6 +178,18 @@ class GaussLegendreGrid : public SphericalGrid<Real_, MRange_, NRange_> {
   // (0, pi) in increasing order, and the weights are unchanged because the
   // transform's Legendre stage sums against dtheta-free weights -- the
   // Jacobian is already in the definition of the quadrature on the cosine.
+  // The quadrature is built before the base class sees anything, so a
+  // negative degree has to be caught here or it reaches the quadrature as a
+  // request for no points, and what comes back is a complaint about that.
+  static Int Checked(Int lMax) {
+    if (lMax < 0) {
+      throw std::invalid_argument(
+          "A grid's maximum degree must be at least zero, and this one is " +
+          std::to_string(lMax));
+    }
+    return lMax;
+  }
+
   static std::pair<std::vector<Real>, std::vector<Real>> Nodes(Int lMax) {
     // GaussQuadrature returns the nodes and weights as a pair; Quadrature1D
     // is what carries the Transform below, so it is built explicitly rather

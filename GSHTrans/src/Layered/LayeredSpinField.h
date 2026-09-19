@@ -272,6 +272,11 @@ class LayeredSpinExpansion {
   }
 
   std::size_t Offset(Int i) const {
+    if (i < 0 || i >= NumberOfRadii()) {
+      throw std::invalid_argument(
+          "Radius index " + std::to_string(i) + " is outside the " +
+          std::to_string(NumberOfRadii()) + " radii of this grid");
+    }
     return static_cast<std::size_t>(i) *
            static_cast<std::size_t>(indices_.Size());
   }

@@ -82,6 +82,37 @@ Kept current as `fix-plan.md` is worked through. Anything not listed is open.
     `Gradient`); a bare callable is not. `RadialMajor` now keeps the radial
     grid its lines run along, which is what makes the second check possible.
 
+- **C1, W4, W5, W6 and the precondition lows — fixed** (plan Phase 4).
+  `tests/TestPreconditions.cpp` holds them, and passes in Debug and in Release;
+  before the fixes fifteen of its seventeen cases aborted on an assert or
+  failed, and in Release several of those were heap writes.
+  - *C1.* Grid degree, upper index and the longitude count (`nPhi >= 2 lMax +
+    1`, which both kernels rely on) throw. `FFTWpp::WisdomOnly` is refused at
+    construction and in `With`. A negative degree is caught before the
+    quadrature is asked for no points.
+  - The `lMax == 0` shortcut is taken when the grid has one sample, not when
+    its degree is zero, and uses the grid's weight; a degree-zero grid with
+    eight samples now round-trips. The reflected forward kernel takes the
+    weight of the mirrored sample.
+  - *W5.* `Wigner` validates its shape and its colatitudes (a NaN included),
+    `ReCompute` its count; its members are zero-initialised; the square-root
+    tables are sized with |n|; its range parameters are constrained to what
+    the body uses.
+  - *W6.* The 3-j table size and the degrees are checked where every public
+    route passes, so an undersized buffer throws instead of being overrun.
+  - `SpinExpansionBase`, `TensorExpansion` and `LayeredTensorExpansion` check
+    their degree before the member that asserts on it, so Debug throws what
+    Release throws. `SurfaceGradient` and `IntrinsicDerivative` of an
+    expansion too short to have a gradient return zero at the lowest degree
+    that can hold it. *The layered `Gradient` still refuses such an operand*,
+    cleanly: its radial half maps operand stacks onto result stacks of the
+    same shape, so it cannot change the degree.
+  - `RadialGrid` refuses non-finite radii; `ElementOf` throws out of range and
+    on a grid without elements; `LayeredSpinExpansion` bounds-checks its radius
+    index as `LayeredSpinField` does.
+  - *W4.* `GSHIndices::Indices()` captures by value and may outlive its block.
+    `GSHSubIndices::Index` asserts against the orders the row holds.
+
 ## Summary
 
 The numerical core is in good shape. The loop and matrix kernels, the batching

@@ -1,6 +1,7 @@
 #ifndef GSH_TRANS_INTRINSIC_DERIVATIVE_GUARD_H
 #define GSH_TRANS_INTRINSIC_DERIVATIVE_GUARD_H
 
+#include <algorithm>
 #include <cstddef>
 #include <utility>
 
@@ -106,7 +107,13 @@ auto IntrinsicDerivative(const TensorExpansion<Rank, Symmetry, Reality, Grid,
   using Result = TensorExpansion<Rank + 1, NoSymmetry<Rank + 1>, Reality, Grid,
                                  TangentialSlots>;
 
-  auto result = Result(operand.Grid(), operand.MaxDegree());
+  // At the operand's degree, or at the lowest degree the result can exist at
+  // if that is higher: a rank-(q+1) tensor has components at upper index
+  // q + 1. The gradient of an expansion too short to have any is zero, which
+  // is an answer and not an error -- the coefficients the operand does not
+  // have read as zero, so the extra degree fills with zeros by itself.
+  auto result = Result(operand.Grid(),
+                       std::max<std::ptrdiff_t>(operand.MaxDegree(), Rank + 1));
   [&]<std::size_t... Slot>(std::index_sequence<Slot...>) {
     (
         [&] {

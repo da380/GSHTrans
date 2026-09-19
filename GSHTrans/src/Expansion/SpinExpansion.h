@@ -84,12 +84,9 @@ class SpinExpansionBase {
    * the harmonics there do not exist.
    */
   SpinExpansionBase(GridType grid, Int lMax, std::span<Element_> data)
-      : grid_{std::move(grid)}, indices_{lMax, lMax, UpperIndex}, data_{data} {
-    if (lMax < std::abs(UpperIndex)) {
-      throw std::invalid_argument(
-          "An expansion's degree cannot be below its upper index, since the "
-          "harmonics there do not exist");
-    }
+      : grid_{std::move(grid)},
+        indices_{Checked(lMax), lMax, UpperIndex},
+        data_{data} {
     if (data_.size() != static_cast<std::size_t>(indices_.Size())) {
       throw std::invalid_argument(
           "An expansion over " + std::to_string(data_.size()) +
@@ -127,6 +124,19 @@ class SpinExpansionBase {
   }
 
  private:
+  // Checked on the way into the index block, which asserts the same thing: as
+  // a member it is built before the constructor's body runs, so a check made
+  // there came too late in a Debug build and the documented exception was
+  // never the one thrown.
+  static Int Checked(Int lMax) {
+    if (lMax < std::abs(UpperIndex)) {
+      throw std::invalid_argument(
+          "An expansion's degree cannot be below its upper index, since the "
+          "harmonics there do not exist");
+    }
+    return lMax;
+  }
+
   GridType grid_;
   GSHIndices<MRange> indices_;
   std::span<Element_> data_;

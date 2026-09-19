@@ -304,7 +304,7 @@ class LayeredTensorExpansion {
    * @param lMax The largest degree stored.
    */
   LayeredTensorExpansion(RadialGridType radialGrid, GridType grid, Int lMax)
-      : stacks_{Build(radialGrid, grid, lMax,
+      : stacks_{Build(radialGrid, grid, Checked(lMax),
                       std::make_index_sequence<static_cast<std::size_t>(
                           StoredComponents)>{})},
         radialGrid_{std::move(radialGrid)},
@@ -387,6 +387,17 @@ class LayeredTensorExpansion {
   RadialGridType radialGrid_;
   GridType grid_;
   Int lMax_;
+
+  // As on the flat expansion, and checked before the stacks are built.
+  static Int Checked(Int lMax) {
+    if (lMax < Rank) {
+      throw std::invalid_argument(
+          "A rank-" + std::to_string(Rank) +
+          " tensor has components at upper index " + std::to_string(Rank) +
+          ", so its expansion needs at least that degree");
+    }
+    return lMax;
+  }
 
   // The slot holding a writable component. Writable means "is the stored
   // representative, unchanged", which a permutation image with sign +1 is as

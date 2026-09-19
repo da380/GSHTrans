@@ -97,11 +97,11 @@ class GSHSubIndices {
    * @param m The order, which must be one the row stores.
    */
   constexpr auto Index(Int m) const {
+    // Against the orders the row holds, which stop at mMax and not at l.
+    assert(m >= MinOrder() && m <= MaxOrder());
     if constexpr (std::same_as<MRange, All>) {
-      assert(m >= -l_ && m <= l_);
       return m + mMax_;
     } else {
-      assert(m >= 0 && m <= l_);
       return m;
     }
   }
@@ -152,11 +152,17 @@ class GSHIndices {
   }
 
   /** @brief Every @f$(l, m)@f$ pair stored, in storage order. */
+  ///
+  /// The range owns what it needs and does not refer back to this block, so it
+  /// may outlive it. It has to: blocks and views of them are made, used within
+  /// one expression and let go, and `for (auto [l, m] : view.Indices())` over
+  /// such a temporary is the natural thing to write -- while a range-for keeps
+  /// only the outermost temporary alive on the compilers this is built with.
   constexpr auto Indices() const {
-    return Degrees() | std::ranges::views::transform([this](auto l) {
+    return Degrees() | std::ranges::views::transform([mMax = mMax_](auto l) {
              return std::ranges::views::cartesian_product(
                  std::ranges::views::single(l),
-                 GSHSubIndices<MRange>(l, mMax_).Orders());
+                 GSHSubIndices<MRange>(l, mMax).Orders());
            }) |
            std::ranges::views::join;
   }

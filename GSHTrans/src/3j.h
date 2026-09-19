@@ -450,6 +450,26 @@ void SwapCouplingConvention(const int l1, const int l3, std::span<T> a) {
  */
 template <NumericConcepts::Real T>
 void Wigner3jPlane(int l1, int l2, int l3, std::span<T> table) {
+  // Every public route to a table comes through here, so this is where the
+  // arguments are checked, and they are thrown on rather than asserted: the
+  // rows are scattered into the table by index, so a table that is too small
+  // is a write past the end of the caller's storage.
+  if (l1 < 0 || l2 < 0 || l3 < 0) {
+    throw std::invalid_argument(
+        "The degrees of a Wigner 3-j symbol cannot be negative, and these "
+        "are (" +
+        std::to_string(l1) + ", " + std::to_string(l2) + ", " +
+        std::to_string(l3) + ")");
+  }
+  const auto needed = static_cast<std::size_t>(2 * l1 + 1) *
+                      static_cast<std::size_t>(2 * l3 + 1);
+  if (table.size() < needed) {
+    throw std::invalid_argument(
+        "The table of 3-j symbols for l1 = " + std::to_string(l1) +
+        " and l3 = " + std::to_string(l3) + " has (2 l1 + 1)(2 l3 + 1) = " +
+        std::to_string(needed) + " entries, and the storage given holds " +
+        std::to_string(table.size()));
+  }
   std::fill(table.begin(), table.end(), T{0});
   if (not SatisfiesTriangle(l1, l2, l3)) return;
 
@@ -553,12 +573,7 @@ class Wigner3jMatrix {
    * @param l3 The third degree.
    */
   Wigner3jMatrix(int l1, int l2, int l3)
-      : l1_{l1},
-        l2_{l2},
-        l3_{l3},
-        data_(static_cast<std::size_t>(2 * l1 + 1) *
-              static_cast<std::size_t>(2 * l3 + 1)) {
-    assert(l1 >= 0 and l2 >= 0 and l3 >= 0);
+      : l1_{l1}, l2_{l2}, l3_{l3}, data_(TableSize(l1, l3)) {
     ThreeJDetails::Wigner3jPlane<T>(l1_, l2_, l3_, std::span<T>(data_));
   }
 
@@ -644,6 +659,18 @@ class Wigner3jMatrix {
   int l2_{0};
   int l3_{0};
   std::vector<T> data_;
+
+  // The storage is sized before the table is filled, so a negative degree has
+  // to be met here: cast to a size it is an allocation of nearly everything,
+  // and the complaint would be about memory.
+  static std::size_t TableSize(int l1, int l3) {
+    if (l1 < 0 || l3 < 0) {
+      throw std::invalid_argument(
+          "The degrees of a Wigner 3-j symbol cannot be negative");
+    }
+    return static_cast<std::size_t>(2 * l1 + 1) *
+           static_cast<std::size_t>(2 * l3 + 1);
+  }
 };
 
 /*------------------------------------------------------------------------*/
@@ -687,7 +714,13 @@ class Wigner3jStack {
    */
   Wigner3jStack(int l1, int l3, int l2Min, int l2Max)
       : l1_{l1}, l3_{l3}, l2Axis_{l2Min, l2Max} {
-    assert(l1 >= 0 and l3 >= 0 and l2Min >= 0 and l2Max >= l2Min);
+    if (l1 < 0 || l3 < 0 || l2Min < 0 || l2Max < l2Min) {
+      throw std::invalid_argument(
+          "A stack of 3-j tables needs non-negative degrees and a middle "
+          "degree running upwards, and was given l1 = " +
+          std::to_string(l1) + ", l3 = " + std::to_string(l3) + ", l2 from " +
+          std::to_string(l2Min) + " to " + std::to_string(l2Max));
+    }
     matrices_.reserve(l2Axis_.Size());
     for (auto l2 : l2Axis_) matrices_.emplace_back(l1_, l2, l3_);
   }
