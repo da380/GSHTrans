@@ -272,3 +272,62 @@ TEST(Preconditions, TheIndicesOfATemporaryBlockOutliveIt) {
   EXPECT_EQ(count, GSHIndices<All>(3, 3, 1).Size());
   EXPECT_EQ(sumOfOrders, 0);
 }
+
+//--------------------------------------------------------------------------//
+//                    What a grid keeps, and what it lends                   //
+//--------------------------------------------------------------------------//
+
+namespace {
+
+template <typename G>
+concept LendsItsNodesFromATemporary =
+    requires { std::declval<G>().CoLatitudes(); };
+template <typename G>
+concept LendsItsPointsFromATemporary = requires { std::declval<G>().Points(); };
+
+}  // namespace
+
+TEST(Preconditions, AGridsNodesAreNotLentFromATemporary) {
+  // They are views into storage the grid shares with its other handles and
+  // frees with the last of them, which for a temporary is the end of the
+  // statement. Longitudes are computed and carry what they need.
+  static_assert(!LendsItsNodesFromATemporary<Grid>);
+  static_assert(!LendsItsPointsFromATemporary<Grid>);
+  static_assert(LendsItsNodesFromATemporary<const Grid&>);
+  static_assert(requires { std::declval<Grid>().Longitudes(); });
+
+  const auto grid = Grid(4, 0, FFTWpp::Estimate);
+  EXPECT_EQ(std::ranges::distance(grid.CoLatitudes()), 5);
+}
+
+TEST(Preconditions, AThreadsCachesCanBeGivenBack) {
+  // Plans and buffers are kept per thread for the life of the thread, which
+  // for an OpenMP worker is the life of the process. Without a way to release
+  // them FFTWpp::CleanUp could never be called again after the first
+  // transform, since it refuses while a plan is alive.
+  const auto grid = Grid(8, 0, FFTWpp::Estimate);
+  const auto size = static_cast<std::size_t>(grid.CoefficientSize(8, 0));
+  auto given = std::vector<Complex>(size);
+  for (std::size_t j = 0; j < size; j++) {
+    given[j] = Complex{std::sin(0.3 * static_cast<Real>(j)), 0.25};
+  }
+  auto field = std::vector<Complex>(grid.FieldSize());
+  auto back = std::vector<Complex>(size);
+
+  const auto before = FFTWpp::LivePlanCount();
+  grid.InverseTransformation(8, 0, given, field);
+  grid.ForwardTransformation(8, 0, field, back);
+  const auto during = FFTWpp::LivePlanCount();
+  EXPECT_GT(during, 0);
+
+  Grid::ReleaseThreadCaches();
+  const auto after = FFTWpp::LivePlanCount();
+  EXPECT_LT(after, during);
+  EXPECT_LE(after, before);
+
+  // And the next transform simply makes them again.
+  auto again = std::vector<Complex>(size);
+  grid.InverseTransformation(8, 0, given, field);
+  grid.ForwardTransformation(8, 0, field, again);
+  for (std::size_t j = 0; j < size; j++) EXPECT_EQ(again[j], back[j]);
+}

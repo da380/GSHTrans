@@ -224,6 +224,50 @@ Kept current as `fix-plan.md` is worked through. Anything not listed is open.
     marks optional and the radial operators' standing as conveniences argues
     against.
 
+- **The API-edge and test-repair lows — fixed** (plan Phase 9).
+  - `Raise`, `Lower`, `Evaluate`, `Coefficient` and the spectral `Interpolate`
+    are written against a `SpinCoefficients` concept and not the owning
+    `SpinExpansion`, so a tensor's component can be raised or evaluated as it
+    stands.
+  - `Map` constrains its callable's result type, so a wrong one is an absent
+    overload and not a hard error in a node.
+  - **An integer scales a field** (`2 * f`). Narrower than the plan, on
+    purpose: an existing test pins "one precision per tree" with
+    `!Multipliable<F<2>&, float>`, and that is a decision, not an oversight. An
+    integer is exact in every precision and so is not a second one; a
+    floating-point scalar of another precision is still refused, because
+    `2.0 * floatField` would narrow in silence.
+  - The bicubic interpolant carries three periodic ghost columns beyond each
+    end of [0, 2π], so the spline's end conditions sit away from anything
+    evaluated: the seam cells were 3.7× worse than the interior and are now
+    within 1.5×. Both interpolants refuse a non-finite longitude.
+  - `Tuning.h`: the schedule mirror uses one copy for both directions of a
+    matrix grid (`KernelPolicy()` is new on the grid); `TuneChunking` is
+    constrained to grids that can transform complex fields; the loop-only
+    helper is in `TuningDetails`. *`conclusive` was left as it behaves and
+    documented as what it is* — "the challenger displaced the incumbent" —
+    since a test pins that meaning.
+  - `SphericalGrid::ReleaseThreadCaches()` frees the calling thread's plans,
+    buffers and scratch, after which `FFTWpp::LivePlanCount()` falls and the
+    next transform rebuilds them. `CoLatitudes`, `CoLatitudeWeights`, `Points`,
+    `Weights` and `ProjectFunction` are not offered on a temporary grid.
+  - `TensorSymmetry` requires its generators to be signed permutations, which
+    closes the `GeneratedBy` item left open in Phase 7.
+  - Tests: `CheckLegendre` compares against the degree's scale and not a bool,
+    checks the negative orders it used to skip, and with `CheckAdditionTheorem`
+    is seeded; the header list has the four missing `Layered/` headers and a
+    `file(GLOB)` cross-check that stops the configure on an unlisted one;
+    `-Wall -Wextra -Wpedantic` is on the test targets, PRIVATE, and the tree is
+    clean under it in all three configurations; `TestSinglePrecision.cpp` has
+    a `float` smoke test for each layer and an `NRange = NonNegative` grid
+    through every kernel.
+  - *Not changed:* `Materialise` still defaults to `ComplexTensor`. The
+    comment there explains why — an expression node carries no reality to
+    follow, and complex is the choice that is never wrong.
+  - *Noticed and left:* `FieldSize()` is unsigned where `CoefficientSize()` is
+    signed, which is where every `-Wsign-compare` warning in the tests came
+    from. Recorded under the open questions in `lessons.md`.
+
 ## Summary
 
 The numerical core is in good shape. The loop and matrix kernels, the batching

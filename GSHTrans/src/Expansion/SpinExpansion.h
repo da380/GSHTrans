@@ -248,6 +248,37 @@ class SpinExpansion {
 
 // Transform a field into its expansion, and back.
 //
+/**
+ * @brief Anything that holds the coefficients of one spin-weighted field.
+ *
+ * @details The owning SpinExpansion, and the views a tensor expansion hands
+ * out for its components, which are the same thing over someone else's
+ * storage. The free functions below and in Eth.h are written against this and
+ * not against the owning type, so that a tensor's component can be raised,
+ * lowered, evaluated or interpolated as it stands -- which is most of what one
+ * wants to do with one, and once had no overload.
+ *
+ * A layered expansion is deliberately not one: its coefficients are indexed
+ * by radius as well, and it has free functions of its own.
+ */
+template <typename E>
+concept SpinCoefficients =
+    requires(const E& e, std::ptrdiff_t l, std::ptrdiff_t m) {
+      requires std::same_as<std::remove_cv_t<decltype(E::UpperIndex)>,
+                            std::ptrdiff_t>;
+      typename E::Value;
+      requires RealOrComplexValued<typename E::Value>;
+      typename E::GridType;
+      requires AngularGrid<typename E::GridType>;
+      { e.Grid() } -> std::convertible_to<const typename E::GridType&>;
+      { e.MinDegree() } -> std::convertible_to<std::ptrdiff_t>;
+      { e.MaxDegree() } -> std::convertible_to<std::ptrdiff_t>;
+      {
+        e[l, m]
+      } -> std::convertible_to<std::complex<typename E::GridType::Real>>;
+      e.Data();
+    };
+
 // Free functions rather than members, because they belong to neither type: a
 // transform is the grid's, and these only arrange the call. They are also the
 // point at which a field's Value decides which of the transform's two paths
@@ -268,12 +299,13 @@ auto Expand(const FieldType& field, std::ptrdiff_t lMax,
   return expansion;
 }
 
-template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
-auto Evaluate(const SpinExpansion<N, Grid, Value>& expansion,
-              Execution policy = Execution::Sequential()) {
-  auto field = SpinField<N, Grid, Value>(expansion.Grid());
+template <SpinCoefficients E>
+auto Evaluate(const E& expansion, Execution policy = Execution::Sequential()) {
+  auto field =
+      SpinField<E::UpperIndex, typename E::GridType, typename E::Value>(
+          expansion.Grid());
   auto out = field.Data();
-  expansion.Grid().InverseTransformation(expansion.MaxDegree(), N,
+  expansion.Grid().InverseTransformation(expansion.MaxDegree(), E::UpperIndex,
                                          expansion.Data(), out, policy);
   return field;
 }

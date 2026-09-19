@@ -148,3 +148,9 @@ Deliberately unresolved, each wanting a decision rather than an edit:
   `std::ptrdiff_t`.
 - **`SphericalGrid.h`** is the largest file by a wide margin.
 - **The two layered field types** duplicate a good deal between them.
+- **`FieldSize()` is unsigned and `CoefficientSize()` is signed.** One comes
+  from a product of `size()`s and the other from the index classes, which are
+  `std::ptrdiff_t` throughout. A caller looping over either with the other's
+  type meets `-Wsign-compare`, as thirty-odd loops in the tests did. Settling
+  on the signed one would match the rest of the library and is a change to a
+  public return type.

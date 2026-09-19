@@ -255,7 +255,7 @@ TEST(RealFieldSymmetry, ReducedInverseUsesTheImplicitHermitianPair) {
   grid.InverseTransformation(lMax, 0, reduced, reducedField);
   grid.InverseTransformation(lMax, 0, expanded, expandedField);
 
-  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
     EXPECT_NEAR(expandedField[i].imag(), 0.0, tolerance);
     EXPECT_NEAR(reducedField[i], expandedField[i].real(), tolerance);
   }

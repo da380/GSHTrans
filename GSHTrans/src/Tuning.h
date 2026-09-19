@@ -123,7 +123,11 @@ double TimeRound(const GridType& grid, std::ptrdiff_t lMax, std::ptrdiff_t n,
  */
 struct TunedChunking {
   Chunking chunking = Chunking::Automatic();  ///< The policy chosen.
-  bool conclusive = false;    ///< Whether the winner beat the margin.
+  /// Whether a candidate displaced the default. The default is the incumbent
+  /// and holds unless something beats it by TuningMargin, so false means
+  /// "nothing did" -- which covers both a tie and a default that is clearly
+  /// best, and `Speedup()` does not distinguish them either.
+  bool conclusive = false;
   double seconds = 0;         ///< The chosen candidate's time.
   double defaultSeconds = 0;  ///< The incumbent's time, for comparison.
   int candidates = 0;         ///< Distinct schedules there were to choose from.
@@ -209,6 +213,7 @@ inline std::vector<std::ptrdiff_t> TuningCacheCandidates() {
  * not a correctness requirement.
  */
 template <typename GridType>
+requires std::same_as<typename GridType::MRange, All>
 TunedChunking TuneChunking(const GridType& grid, std::ptrdiff_t lMax,
                            std::ptrdiff_t n, std::ptrdiff_t count,
                            Execution policy = Execution::Sequential(),
@@ -238,16 +243,18 @@ TunedChunking TuneChunking(const GridType& grid, std::ptrdiff_t lMax,
                             fieldBatch, policy);
   };
 
-  // The schedule a policy would actually run, as a pair: the forward's
-  // copies are its threads and the inverse's are one, and a chunk beyond the
-  // batch is the batch.
+  // The schedule a policy would actually run, as a pair: the loop kernel's
+  // forward transform gives every thread an accumulator, so its copies are
+  // its threads, while its inverse -- and *both* directions of the matrix
+  // kernel -- gather one shared block, so theirs is one. A chunk beyond the
+  // batch is the batch. Mirroring the loop kernel's rule on a matrix grid
+  // keyed the de-duplication on a number that grid never uses, so identical
+  // schedules were timed as rivals and noise had two chances at the margin.
   const auto blockBytes = coefficientSize * static_cast<Int>(sizeof(Complex));
-  const auto threads =
-      policy.IsParallel()
-          ? (policy.Threads() > 0 ? policy.Threads() : omp_get_max_threads())
-          : 1;
+  const auto forwardCopies =
+      grid.KernelPolicy().IsMatrix() ? 1 : policy.TeamSize();
   const auto Schedule = [&](const Chunking& chunking) {
-    return std::pair(std::min(chunking.Count(blockBytes, threads), count),
+    return std::pair(std::min(chunking.Count(blockBytes, forwardCopies), count),
                      std::min(chunking.Count(blockBytes, 1), count));
   };
 
@@ -333,7 +340,11 @@ TunedChunking TuneChunking(const GridType& grid, std::ptrdiff_t lMax,
  */
 struct TunedKernel {
   TransformKernel kernel = TransformKernel::Loop();  ///< The kernel chosen.
-  bool conclusive = false;   ///< Whether the winner beat the margin.
+  /// Whether the matrix kernel displaced the loop kernel. The loop kernel is
+  /// the incumbent and holds unless the matrix kernel beats it by
+  /// TuningMargin, so false covers a tie *and* a loop kernel that is clearly
+  /// faster; the two times are both here for a caller who needs to know which.
+  bool conclusive = false;
   bool matrixTried = false;  ///< Whether the matrix kernel was measured at all.
   double loopSeconds = 0;    ///< The loop kernel's time.
   double matrixSeconds = 0;  ///< The matrix kernel's time, zero if not tried.
@@ -356,6 +367,8 @@ struct TunedKernel {
   }
 };
 
+namespace TuningDetails {
+
 /// The matrix kernel was not available, so only the loop is timed. Its number
 /// is still reported, because a caller comparing machines wants it.
 template <typename GridType>
@@ -375,6 +388,8 @@ TunedKernel TuneKernelLoopOnly(TunedKernel result, std::ptrdiff_t lMax,
   result.loopSeconds = best;
   return result;
 }
+
+}  // namespace TuningDetails
 
 /**
  * @brief Builds one grid of each kernel in turn, times the caller's problem
@@ -405,9 +420,10 @@ TunedKernel TuneKernel(std::ptrdiff_t lMax, std::ptrdiff_t nMax,
                        Chunking chunking = Chunking::Automatic(),
                        WignerValues values = WignerValues::Stored(),
                        int rounds = 2) {
-  using Int = std::ptrdiff_t;
-  using Real = typename GridType::Real;
-  using Complex = typename GridType::Complex;
+  // Used only where the matrix kernel is measured, which a build without a
+  // BLAS does not do.
+  using Real [[maybe_unused]] = typename GridType::Real;
+  using Complex [[maybe_unused]] = typename GridType::Complex;
 
   if (count < 1) {
     throw std::invalid_argument("Tuning: the batch count must be positive");
@@ -424,23 +440,25 @@ TunedKernel TuneKernel(std::ptrdiff_t lMax, std::ptrdiff_t nMax,
   result.skipped =
       "this build has no BLAS, so the matrix kernel does not "
       "exist";
-  return TuneKernelLoopOnly<GridType>(std::move(result), lMax, nMax, n, count,
-                                      policy, flag, chunking, values, rounds);
+  return TuningDetails::TuneKernelLoopOnly<GridType>(
+      std::move(result), lMax, nMax, n, count, policy, flag, chunking, values,
+      rounds);
 #else
   if constexpr (!BlasDetails::BlasReal<Real>) {
     result.skipped =
         "BLAS offers single and double precision only, so the "
         "matrix kernel is unavailable at this precision";
-    return TuneKernelLoopOnly<GridType>(std::move(result), lMax, nMax, n, count,
-                                        policy, flag, chunking, values, rounds);
+    return TuningDetails::TuneKernelLoopOnly<GridType>(
+        std::move(result), lMax, nMax, n, count, policy, flag, chunking, values,
+        rounds);
   } else {
     if (!values.AreStored()) {
       result.skipped =
           "the matrix kernel needs a stored table, and generated values were "
           "asked for";
-      return TuneKernelLoopOnly<GridType>(std::move(result), lMax, nMax, n,
-                                          count, policy, flag, chunking, values,
-                                          rounds);
+      return TuningDetails::TuneKernelLoopOnly<GridType>(
+          std::move(result), lMax, nMax, n, count, policy, flag, chunking,
+          values, rounds);
     }
 
     result.matrixTried = true;

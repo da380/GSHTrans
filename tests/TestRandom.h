@@ -58,11 +58,13 @@ requires requires() {
   requires GSHTrans::ComplexFloatingPoint<std::ranges::range_value_t<Range>>;
   requires std::ranges::output_range<Range, std::ranges::range_value_t<Range>>;
 }
-void RandomComplexCoefficient(const Grid& grid, Int lMax, Int n, Range& range,
-                              Generator& gen) {
+void RandomComplexCoefficient([[maybe_unused]] const Grid& grid,
+                              [[maybe_unused]] Int lMax, [[maybe_unused]] Int n,
+                              Range& range, Generator& gen) {
   using Complex = std::ranges::range_value_t<Range>;
   using Real = GSHTrans::RemoveComplex<Complex>;
-  assert(range.size() == grid.CoefficientSize(lMax, n));
+  assert(range.size() ==
+         static_cast<std::size_t>(grid.CoefficientSize(lMax, n)));
 
   auto dist = std::normal_distribution<Real>();
   std::ranges::generate(
@@ -77,11 +79,13 @@ requires requires() {
   requires GSHTrans::ComplexFloatingPoint<std::ranges::range_value_t<Range>>;
   requires std::ranges::output_range<Range, std::ranges::range_value_t<Range>>;
 }
-void RandomRealCoefficient(const Grid& grid, Int lMax, Range& range,
+void RandomRealCoefficient([[maybe_unused]] const Grid& grid,
+                           [[maybe_unused]] Int lMax, Range& range,
                            Generator& gen) {
   using Complex = std::ranges::range_value_t<Range>;
   using Real = GSHTrans::RemoveComplex<Complex>;
-  assert(range.size() == grid.RealCoefficientSize(lMax));
+  assert(range.size() ==
+         static_cast<std::size_t>(grid.RealCoefficientSize(lMax)));
 
   auto dist = std::normal_distribution<Real>();
   std::ranges::generate(

@@ -11,18 +11,18 @@
 #include <numeric>
 #include <random>
 
+#include "TestRandom.h"
+
 template <std::floating_point Real>
 int CheckAdditionTheorem() {
   using namespace GSHTrans;
 
   // Set the degree, order and upper index
   int lMax = 40;
-  int mMax = lMax;
-  int nMax = lMax;
 
-  // Pick a random angle
-  std::random_device rd{};
-  std::mt19937_64 gen{rd()};
+  // A seeded angle, so that a failure can be run again: see TestRandom.h.
+  const auto seed = GSHTransTest::TestSeed();
+  auto gen = GSHTransTest::MakeGenerator(seed);
   std::uniform_real_distribution<Real> dist1{static_cast<Real>(0),
                                              std::numbers::pi_v<Real>};
   auto theta = dist1(gen);

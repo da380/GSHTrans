@@ -92,7 +92,7 @@ TEST(GaussLegendreGrid, DegreeZeroTruncationUsesTheWholeGrid) {
   auto grid = Grid(2, 0, FFTWpp::Estimate);
   auto realField = FFTWpp::vector<Real>(grid.FieldSize());
   auto complexField = FFTWpp::vector<Complex>(grid.FieldSize());
-  for (auto i = std::ptrdiff_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
     const auto value = static_cast<Real>(i + 1);
     realField[i] = value;
     complexField[i] = Complex{value, -0.5 * value};
@@ -126,7 +126,7 @@ TEST(GaussLegendreGrid, DegreeZeroTruncationUsesTheWholeGrid) {
   auto reconstructedComplex = FFTWpp::vector<Complex>(grid.FieldSize());
   grid.InverseTransformation(0, 0, realCoefficient, reconstructedReal);
   grid.InverseTransformation(0, 0, complexCoefficient, reconstructedComplex);
-  for (auto j = std::ptrdiff_t{0}; j < grid.FieldSize(); ++j) {
+  for (auto j = std::size_t{0}; j < grid.FieldSize(); ++j) {
     EXPECT_NEAR(reconstructedReal[j], constant.real(), tolerance);
     EXPECT_NEAR(reconstructedComplex[j].real(), constant.real(), tolerance);
     EXPECT_NEAR(reconstructedComplex[j].imag(), constant.imag(), tolerance);
@@ -836,7 +836,9 @@ TEST(Threading, ARegionOpenedInsideTheSerialisingRegionGetsOneThread) {
     });
     for (auto got : opened) {
       // A thread the runtime declined to supply never ran, and says -1.
-      if (got != -1) EXPECT_EQ(got, 1) << "from a team of " << team;
+      if (got != -1) {
+        EXPECT_EQ(got, 1) << "from a team of " << team;
+      }
     }
     EXPECT_EQ(opened[0], 1) << "from a team of " << team;
   }
@@ -1752,7 +1754,8 @@ TEST(FourierStage, BlockingChangesNothing) {
     std::copy(one.begin(), one.end(), fields.begin() + k * fieldSize);
   }
 
-  const auto size = grid.ForwardFourierStageSize<StageComplex>(count);
+  const auto size = static_cast<std::size_t>(
+      grid.ForwardFourierStageSize<StageComplex>(count));
   auto whole = std::vector<StageComplex>(size);
   grid.ForwardFourierStage(fields, Batch::Contiguous(count, fieldSize), 0,
                            count, std::span<StageComplex>(whole));
@@ -1794,7 +1797,8 @@ TEST(FourierStage, InterleavedBatchMatchesContiguous) {
     }
   }
 
-  const auto size = grid.ForwardFourierStageSize<StageComplex>(count);
+  const auto size = static_cast<std::size_t>(
+      grid.ForwardFourierStageSize<StageComplex>(count));
   auto fromContiguous = std::vector<StageComplex>(size);
   auto fromInterleaved = std::vector<StageComplex>(size);
   grid.ForwardFourierStage(contiguous, Batch::Contiguous(count, fieldSize), 0,
@@ -1829,7 +1833,8 @@ TEST(FourierStage, TransformsASubRangeOfTheBatch) {
   std::copy(fields.begin() + 2 * fieldSize, fields.begin() + 4 * fieldSize,
             pair.begin());
 
-  const auto size = grid.ForwardFourierStageSize<StageComplex>(2);
+  const auto size =
+      static_cast<std::size_t>(grid.ForwardFourierStageSize<StageComplex>(2));
   auto fromSubRange = std::vector<StageComplex>(size);
   auto fromOwnBatch = std::vector<StageComplex>(size);
   grid.ForwardFourierStage(fields, Batch::Contiguous(count, fieldSize), 2, 2,
@@ -1891,7 +1896,8 @@ TEST(FourierStage, TheAliasingGuardChangesNoAnswers) {
     std::copy(one.begin(), one.end(), fields.begin() + k * fieldSize);
   }
   const auto batch = Batch::Contiguous(count, fieldSize);
-  const auto size = grid.ForwardFourierStageSize<StageComplex>(count);
+  const auto size = static_cast<std::size_t>(
+      grid.ForwardFourierStageSize<StageComplex>(count));
 
   auto reference = std::vector<StageComplex>(size);
   grid.ForwardFourierStage(fields, batch, 0, count,

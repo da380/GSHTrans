@@ -180,7 +180,7 @@ TEST(LargeDegree, ASinglePrecisionGridWorksBeyondItsOwnUnderflow) {
   auto generated = Grid(lMax, n, FFTWpp::Estimate, Chunking::Automatic(),
                         WignerValues::Generated());
 
-  const auto size = stored.CoefficientSize(lMax, n);
+  const auto size = static_cast<std::size_t>(stored.CoefficientSize(lMax, n));
   auto given = std::vector<Complex>(size);
   for (std::size_t j = 0; j < size; j++) {
     given[j] =

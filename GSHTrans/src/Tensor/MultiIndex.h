@@ -357,11 +357,37 @@ struct ElasticSymmetry {
   }
 };
 
+namespace SymmetryDetails {
+
+// Whether every generator is a genuine signed permutation: an image that
+// sends the slots to themselves, each once, and a sign of plus or minus one.
+// The orbit walk assumes both. An image that repeats a slot is not a symmetry
+// of anything, and the walk would have built a table from it regardless --
+// merging orbits that are not related, and storing too few components.
+template <typename Generators>
+constexpr bool AreSignedPermutations(const Generators& generators) {
+  for (const auto& generator : generators) {
+    if (generator.sign != 1 && generator.sign != -1) return false;
+    const auto rank = generator.image.size();
+    for (std::size_t i = 0; i < rank; i++) {
+      const auto to = generator.image[i];
+      if (to < 0 || static_cast<std::size_t>(to) >= rank) return false;
+      for (std::size_t j = 0; j < i; j++) {
+        if (generator.image[j] == to) return false;
+      }
+    }
+  }
+  return true;
+}
+
+}  // namespace SymmetryDetails
+
 template <typename S, std::ptrdiff_t Rank>
 concept TensorSymmetry = requires {
   { S::Generators() } -> std::ranges::sized_range;
   requires std::same_as<std::ranges::range_value_t<decltype(S::Generators())>,
                         SlotPermutation<Rank>>;
+  requires SymmetryDetails::AreSignedPermutations(S::Generators());
 };
 
 }  // namespace GSHTrans

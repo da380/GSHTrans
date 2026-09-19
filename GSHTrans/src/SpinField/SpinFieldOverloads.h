@@ -146,8 +146,41 @@ template <typename L, typename R>
 concept SamePrecisionAs =
     std::same_as<typename Node<L>::Real, typename Node<R>::Real>;
 
+// What may scale a field: a real or complex scalar of the field's own
+// precision, or an integer. `2 * f` is what anyone writes first, and an integer
+// is not a second precision -- it is exact in every one -- so taking it does
+// not loosen the rule above. A floating-point scalar of another precision is
+// still refused: `2.0 * f` on a single-precision field would narrow the
+// scalar in silence, and the way to say that is `2.0f * f`. bool is left out,
+// being an integer to the language and a mistake to a reader.
 template <typename S, typename A>
-concept ScalarFor_ = std::same_as<RemoveComplex<S>, typename Node<A>::Real>;
+concept ScalarFor_ = SpinFieldExpr<A> and
+                     ((std::integral<S> and not std::same_as<S, bool>) or
+                      (RealOrComplexFloatingPoint<S> and
+                       std::same_as<RemoveComplex<S>, typename Node<A>::Real>));
+
+// The scalar as the field's own precision: a real one -- an integer included
+// -- as Real, a complex one as std::complex<Real>. Which of the two decides
+// the value kind of the result, exactly as before.
+template <typename S, typename A>
+using ScalarOf = std::conditional_t<ComplexFloatingPoint<S>,
+                                    std::complex<typename Node<A>::Real>,
+                                    typename Node<A>::Real>;
+
+namespace SpinFieldDetails {
+
+template <typename S, typename A>
+constexpr auto AsScalarOf(S s) {
+  using T = ScalarOf<S, A>;
+  if constexpr (ComplexFloatingPoint<S>) {
+    using R = typename Node<A>::Real;
+    return T{static_cast<R>(s.real()), static_cast<R>(s.imag())};
+  } else {
+    return static_cast<T>(s);
+  }
+}
+
+}  // namespace SpinFieldDetails
 
 //--------------------------------------------------------------------------//
 //                                  Binary                                   //
@@ -246,34 +279,41 @@ auto imag(A&& a) {
 
 // A real scalar preserves the value kind; a complex one promotes it. Neither
 // touches the upper index.
-template <SpinFieldExpr A, RealOrComplexFloatingPoint S>
+template <SpinFieldExpr A, typename S>
 requires ScalarFor_<S, A>
 auto operator*(A&& a, S s) {
-  return Unary<SpinFieldOps::TimesScalar<S>, IndexRules::Same, A>(
-      std::forward<A>(a), SpinFieldOps::TimesScalar<S>{s});
+  using T = ScalarOf<S, A>;
+  return Unary<SpinFieldOps::TimesScalar<T>, IndexRules::Same, A>(
+      std::forward<A>(a),
+      SpinFieldOps::TimesScalar<T>{SpinFieldDetails::AsScalarOf<S, A>(s)});
 }
 
-template <RealOrComplexFloatingPoint S, SpinFieldExpr A>
+template <typename S, SpinFieldExpr A>
 requires ScalarFor_<S, A>
 auto operator*(S s, A&& a) {
-  return Unary<SpinFieldOps::TimesScalar<S>, IndexRules::Same, A>(
-      std::forward<A>(a), SpinFieldOps::TimesScalar<S>{s});
+  using T = ScalarOf<S, A>;
+  return Unary<SpinFieldOps::TimesScalar<T>, IndexRules::Same, A>(
+      std::forward<A>(a),
+      SpinFieldOps::TimesScalar<T>{SpinFieldDetails::AsScalarOf<S, A>(s)});
 }
 
-template <SpinFieldExpr A, RealOrComplexFloatingPoint S>
+template <SpinFieldExpr A, typename S>
 requires ScalarFor_<S, A>
 auto operator/(A&& a, S s) {
-  return Unary<SpinFieldOps::OverScalar<S>, IndexRules::Same, A>(
-      std::forward<A>(a), SpinFieldOps::OverScalar<S>{s});
+  using T = ScalarOf<S, A>;
+  return Unary<SpinFieldOps::OverScalar<T>, IndexRules::Same, A>(
+      std::forward<A>(a),
+      SpinFieldOps::OverScalar<T>{SpinFieldDetails::AsScalarOf<S, A>(s)});
 }
 
 // Dividing a scalar by a field needs the field at upper index zero, for the
 // same reason division between fields does.
-template <RealOrComplexFloatingPoint S, SpinFieldExpr A>
+template <typename S, SpinFieldExpr A>
 requires ScalarFor_<S, A> and (Node<A>::UpperIndex == 0)
 auto operator/(S s, A&& a) {
-  return Unary<SpinFieldOps::ScalarOver<S>, IndexRules::Same, A>(
-      std::forward<A>(a), SpinFieldOps::ScalarOver<S>{s});
+  return Unary<SpinFieldOps::ScalarOver<ScalarOf<S, A>>, IndexRules::Same, A>(
+      std::forward<A>(a), SpinFieldOps::ScalarOver<ScalarOf<S, A>>{
+                              SpinFieldDetails::AsScalarOf<S, A>(s)});
 }
 
 //--------------------------------------------------------------------------//
@@ -300,9 +340,20 @@ auto operator/(S s, A&& a) {
 // Invoked as f(value). Point-dependent callables, f(theta, phi, value), are
 // deliberately not offered here; if wanted they are a second overload rather
 // than a change to this one.
+//
+// What the callable returns is part of the constraint and not left to the
+// node's static_assert: it must be a real or complex scalar of the field's own
+// precision. An unlawful use of this layer is meant to be an overload that is
+// not there, which a test can ask about, and not a hard error inside a node,
+// which it cannot.
 template <SpinFieldExpr A, typename F>
 requires(Node<A>::UpperIndex == 0) and
-        std::invocable<std::decay_t<F>, typename Node<A>::Scalar>
+        std::invocable<std::decay_t<F>, typename Node<A>::Scalar> and
+        RealOrComplexFloatingPoint<
+            std::invoke_result_t<std::decay_t<F>, typename Node<A>::Scalar>> and
+        std::same_as<RemoveComplex<std::invoke_result_t<
+                         std::decay_t<F>, typename Node<A>::Scalar>>,
+                     typename Node<A>::Real>
 auto Map(A&& a, F&& f) {
   using Functor = std::decay_t<F>;
   return Unary<Functor, IndexRules::Zero, A>(std::forward<A>(a),

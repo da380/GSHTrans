@@ -131,26 +131,28 @@ Real Omega(Int l, Int s) {
 // It also fills in the negative orders a real field does not store, by
 // f_{l,-m} = (-1)^m conj(f_{lm}), so that raising or lowering a real scalar
 // gives the right thing rather than reading off the end.
-template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
-auto Coefficient(const SpinExpansion<N, Grid, Value>& expansion,
-                 std::ptrdiff_t l, std::ptrdiff_t m) {
-  using Complex = std::complex<typename Grid::Real>;
+template <SpinCoefficients E>
+auto Coefficient(const E& expansion, std::ptrdiff_t l, std::ptrdiff_t m) {
+  using Real = typename E::GridType::Real;
+  using Complex = std::complex<Real>;
   if (l < expansion.MinDegree() || l > expansion.MaxDegree()) return Complex{};
   if (m < -l || m > l) return Complex{};
-  if constexpr (std::same_as<Value, RealValued>) {
+  if constexpr (std::same_as<typename E::Value, RealValued>) {
     if (m < 0) {
-      return static_cast<typename Grid::Real>(MinusOneToPower(m)) *
-             std::conj(expansion[l, -m]);
+      return static_cast<Real>(MinusOneToPower(m)) *
+             std::conj(Complex{expansion[l, -m]});
     }
   }
-  return expansion[l, m];
+  return Complex{expansion[l, m]};
 }
 
 // Raise the upper index by one. The result is an expansion at N + 1 over the
 // same degrees, less the one the raised field cannot carry.
-template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
-auto Raise(const SpinExpansion<N, Grid, Value>& expansion) {
+template <SpinCoefficients E>
+auto Raise(const E& expansion) {
+  using Grid = typename E::GridType;
   using Real = typename Grid::Real;
+  constexpr auto N = E::UpperIndex;
   auto raised = SpinExpansion<N + 1, Grid, ComplexValued>(
       expansion.Grid(), expansion.MaxDegree());
   for (auto l : raised.Degrees()) {
@@ -163,9 +165,11 @@ auto Raise(const SpinExpansion<N, Grid, Value>& expansion) {
 }
 
 // Lower it by one.
-template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
-auto Lower(const SpinExpansion<N, Grid, Value>& expansion) {
+template <SpinCoefficients E>
+auto Lower(const E& expansion) {
+  using Grid = typename E::GridType;
   using Real = typename Grid::Real;
+  constexpr auto N = E::UpperIndex;
   auto lowered = SpinExpansion<N - 1, Grid, ComplexValued>(
       expansion.Grid(), expansion.MaxDegree());
   for (auto l : lowered.Degrees()) {

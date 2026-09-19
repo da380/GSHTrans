@@ -166,7 +166,7 @@ void CheckTransformMajorAgreesWithWigner(std::ptrdiff_t lMax,
   // the transposed triangle really is the same triangle.
   auto tableValues = std::size_t{0};
   for (auto n : table.UpperIndices()) {
-    for (auto iTheta : table.AngleIndices()) {
+    for ([[maybe_unused]] auto iTheta : table.AngleIndices()) {
       tableValues +=
           static_cast<std::size_t>(GSHIndices<MRange>(lMax, mMax, n).Size());
     }

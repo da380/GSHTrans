@@ -479,7 +479,6 @@ class TensorField {
   void ForwardTransformation(Int lMax, std::span<Complex> out,
                              Execution policy = Execution::Sequential()) const {
     CheckCoefficients(out.size(), lMax);
-    const auto fieldSize = FieldSize();
     auto offset = std::size_t{0};
     for (auto n = -Rank; n <= Rank; n++) {
       const auto [first, count] = StoredAtUpperIndex(n);
@@ -520,7 +519,6 @@ class TensorField {
   void InverseTransformation(Int lMax, std::span<const Complex> in,
                              Execution policy = Execution::Sequential()) {
     CheckCoefficients(in.size(), lMax);
-    const auto fieldSize = FieldSize();
     auto offset = std::size_t{0};
     for (auto n = -Rank; n <= Rank; n++) {
       const auto [first, count] = StoredAtUpperIndex(n);

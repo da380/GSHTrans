@@ -165,6 +165,48 @@ class SphericalGrid {
 
   /** @brief How many fields of a batch the inner loop takes at once. */
   auto ChunkingPolicy() const { return chunking_; }
+  /** @brief Which Legendre kernel the transforms use. */
+  auto KernelPolicy() const { return impl_->kernel; }
+
+  /**
+   * @brief Frees what *this thread* keeps between transforms: its FFTW plans,
+   * their aligned buffers, and its scratch.
+   *
+   * @details Plans and buffers are made once per thread per shape and kept,
+   * because making them per call cost more than the transform. They are kept
+   * for the life of the thread, and an OpenMP worker lives as long as the
+   * process -- so without this there is no point after the first transform at
+   * which `FFTWpp::CleanUp()` may be called, since it refuses while any plan
+   * is alive, and no way to give back the memory of a large transform that
+   * will not be repeated.
+   *
+   * It releases the calling thread's caches only, since nothing else can
+   * reach another thread's. To release every thread's, call it from each:
+   *
+   *     #pragma omp parallel
+   *     Grid::ReleaseThreadCaches();
+   *
+   * with the team the transforms used. The caches belong to the grid *type*,
+   * so this covers every grid of that type; and the next transform simply
+   * makes them again, so calling it is never wrong, only sometimes slow.
+   */
+  static void ReleaseThreadCaches() {
+    WorkspaceCache<Real, true>().clear();
+    WorkspaceCache<Real, false>().clear();
+    WorkspaceCache<Complex, true>().clear();
+    WorkspaceCache<Complex, false>().clear();
+
+    const auto release = [](auto& buffer) {
+      std::remove_reference_t<decltype(buffer)>{}.swap(buffer);
+    };
+    release(Accumulator(0));
+    release(WignerScratch(0));
+    release(CoefficientScratch(0));
+#ifdef GSHTRANS_HAVE_BLAS
+    release(MatrixScratch(0));
+    release(OrderScratch(0));
+#endif
+  }
   /** @brief How hard FFTW is asked to work at planning. */
   auto PlannerFlag() const { return flag_; }
 
@@ -177,11 +219,11 @@ class SphericalGrid {
   auto MaxUpperIndex() const { return impl_->nMax; }
 
   /** @brief The colatitudes, strictly increasing in @f$(0,\pi)@f$. */
-  auto CoLatitudes() const {
+  auto CoLatitudes() const& {
     return std::ranges::views::all(impl_->coLatitudes);
   }
   /** @brief The quadrature weights over colatitude. */
-  auto CoLatitudeWeights() const {
+  auto CoLatitudeWeights() const& {
     return std::ranges::views::all(impl_->coLatitudeWeights);
   }
 
@@ -236,7 +278,7 @@ class SphericalGrid {
   }
 
   /** @brief Every @f$(\theta,\phi)@f$ point, in storage order. */
-  auto Points() const {
+  auto Points() const& {
     return std::ranges::views::cartesian_product(CoLatitudes(), Longitudes());
   }
 
@@ -247,7 +289,7 @@ class SphericalGrid {
   }
 
   /** @brief The quadrature weight at every point. */
-  auto Weights() const {
+  auto Weights() const& {
     return std::ranges::views::cartesian_product(CoLatitudeWeights(),
                                                  LongitudeWeights()) |
            std::ranges::views::transform(
@@ -264,12 +306,28 @@ class SphericalGrid {
    * @param f The callable, invoked as `f(theta, phi)`.
    */
   template <typename Function>
-  auto ProjectFunction(Function f) const {
+  auto ProjectFunction(Function f) const& {
     return Points() | std::ranges::views::transform([f](auto pair) {
              auto [theta, phi] = pair;
              return f(theta, phi);
            });
   }
+
+  /// The five accessors above return views into the grid's own storage, which
+  /// is shared between the handles to it and freed with the last of them. On a
+  /// temporary grid that is the end of the statement, so
+  /// `auto theta = Grid(64, 0).CoLatitudes();` was a view of freed memory. They
+  /// are not offered on a temporary: name the grid.
+  void CoLatitudes() const&& = delete;
+  /** @brief Not offered on a temporary; see CoLatitudes. */
+  void CoLatitudeWeights() const&& = delete;
+  /** @brief Not offered on a temporary; see CoLatitudes. */
+  void Points() const&& = delete;
+  /** @brief Not offered on a temporary; see CoLatitudes. */
+  void Weights() const&& = delete;
+  /** @brief Not offered on a temporary; see CoLatitudes. */
+  template <typename Function>
+  void ProjectFunction(Function f) const&& = delete;
 
   /** @brief How many samples one angular field holds. */
   auto FieldSize() const {
@@ -947,12 +1005,21 @@ class SphericalGrid {
   //. They are now made once per thread per shape and kept. Held by
   // pointer so that the plan's reference to its buffers survives any
   // rehashing of the cache.
+  // The cache itself, apart from the lookup so that ReleaseThreadCaches can
+  // reach it.
+  template <RealOrComplexFloatingPoint Scalar, bool IsForward>
+  static auto& WorkspaceCache() {
+    thread_local auto cache =
+        std::map<std::tuple<Int, Int, unsigned>,
+                 std::unique_ptr<Workspace<Scalar, IsForward>>>{};
+    return cache;
+  }
+
   template <RealOrComplexFloatingPoint Scalar, bool IsForward>
   static Workspace<Scalar, IsForward>& GetWorkspace(Int nPhi, Int count,
                                                     FFTWpp::Flag flag) {
     using Entry = Workspace<Scalar, IsForward>;
-    thread_local auto cache =
-        std::map<std::tuple<Int, Int, unsigned>, std::unique_ptr<Entry>>{};
+    auto& cache = WorkspaceCache<Scalar, IsForward>();
     const auto key = std::tuple{nPhi, count, static_cast<unsigned>(flag)};
     auto found = cache.find(key);
     if (found == cache.end()) {

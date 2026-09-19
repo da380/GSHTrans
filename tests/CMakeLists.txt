@@ -37,6 +37,10 @@ add_executable(TestTensorReality
                TestTensorReality.cpp)
 target_link_libraries(TestTensorReality PRIVATE GSHTrans gtest_main)
 
+add_executable(TestSinglePrecision
+               TestSinglePrecision.cpp)
+target_link_libraries(TestSinglePrecision PRIVATE GSHTrans gtest_main)
+
 add_executable(TestLargeDegree
                TestLargeDegree.cpp)
 target_link_libraries(TestLargeDegree PRIVATE GSHTrans gtest_main)
@@ -89,11 +93,13 @@ target_link_libraries(TestRealFieldSymmetry PRIVATE GSHTrans gtest_main)
 # Every core header must compile on its own, and twice.
 # One translation unit per header, generated at configure time.
 #
-# The list is now every header the library ships, plus the umbrella module
-# headers. It used to carry an exemption for the superseded
-# CanonicalComponentField and CanonicalComponentExpansion trees, which were
-# covered only through GSHTrans/All; both are deleted, so there is nothing left
-# to exempt. Add each new header here deliberately.
+# The list is every header the library ships, plus the umbrella module
+# headers, and the check below is what makes that sentence true: the list is
+# compared with what is on disk, and a header that is there and not here stops
+# the configure. It is written out and not globbed because adding a header
+# should be a deliberate act -- but "deliberate" had quietly become
+# "forgotten" for four of them, all in Layered/, and the claim above stood in
+# the README regardless.
 set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/3j.h
   GSHTrans/src/Blas.h
@@ -127,6 +133,10 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/src/Expansion/Interpolate.h
   GSHTrans/src/Layered/RadialGrid.h
   GSHTrans/src/Layered/LayeredSpinField.h
+  GSHTrans/src/Layered/LayeredTensorField.h
+  GSHTrans/src/Layered/LayeredGradient.h
+  GSHTrans/src/Layered/RadialOperator.h
+  GSHTrans/src/Layered/RadialMajor.h
   GSHTrans/src/Layered/RadialDerivatives.h
   GSHTrans/src/Layered/RadialSplineDerivative.h
   GSHTrans/src/Layered/RadialResample.h
@@ -137,6 +147,19 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/Layered
   GSHTrans/All
 )
+
+file(GLOB_RECURSE _shipped_headers
+     RELATIVE "${PROJECT_SOURCE_DIR}"
+     CONFIGURE_DEPENDS
+     "${PROJECT_SOURCE_DIR}/GSHTrans/src/*.h")
+foreach(header IN LISTS _shipped_headers)
+  if(NOT header IN_LIST GSHTRANS_SELF_SUFFICIENT_HEADERS)
+    message(FATAL_ERROR
+      "${header} is shipped but is not in GSHTRANS_SELF_SUFFICIENT_HEADERS, so "
+      "nothing checks that it compiles on its own. Add it to the list in "
+      "tests/CMakeLists.txt.")
+  endif()
+endforeach()
 
 set(GSHTRANS_SELF_SUFFICIENCY_SOURCES)
 foreach(header IN LISTS GSHTRANS_SELF_SUFFICIENT_HEADERS)
@@ -152,6 +175,20 @@ endforeach()
 add_library(HeaderSelfSufficiency OBJECT ${GSHTRANS_SELF_SUFFICIENCY_SOURCES})
 target_link_libraries(HeaderSelfSufficiency PRIVATE GSHTrans)
 
+# Warnings, on the tests and nowhere else. The library is header-only, so its
+# warnings are raised in whatever includes it -- which for a consumer building
+# with -Werror is a build they cannot do. The tests include every header, so
+# compiling them with the usual three is how the library is kept quiet for
+# everyone else. PRIVATE, and on these targets: nothing here reaches the
+# GSHTrans interface target, which must not impose flags on anyone.
+get_property(_test_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(target IN LISTS _test_targets)
+  if(target MATCHES "^Test" OR target STREQUAL "HeaderSelfSufficiency")
+    target_compile_options(${target} PRIVATE
+      $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>)
+  endif()
+endforeach()
+
 include(GoogleTest)
 gtest_discover_tests(TestConcepts)
 gtest_discover_tests(TestSpinField)
@@ -162,6 +199,7 @@ gtest_discover_tests(TestTensorReality)
 gtest_discover_tests(TestTensorOrbitValues)
 gtest_discover_tests(TestPreconditions)
 gtest_discover_tests(TestLargeDegree)
+gtest_discover_tests(TestSinglePrecision)
 gtest_discover_tests(TestExpansion)
 gtest_discover_tests(TestInterpolate)
 gtest_discover_tests(TestTuning)

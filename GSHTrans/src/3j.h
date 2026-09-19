@@ -168,7 +168,7 @@ namespace ThreeJDetails {
  * one step up from the index it is filling and never forms it.
  */
 template <NumericConcepts::Real T>
-T RecurrenceA(int l1, int l2, int l3, int m1, int m2) {
+T RecurrenceA([[maybe_unused]] int l1, int l2, int l3, int m1, int m2) {
   const auto m3 = -m1 - m2;
   return std::sqrt(static_cast<T>(l2 - m2 + 1) * static_cast<T>(l2 + m2) *
                    static_cast<T>(l3 + m3 + 1) * static_cast<T>(l3 - m3));

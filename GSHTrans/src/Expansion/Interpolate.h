@@ -70,14 +70,28 @@ struct Padded {
   using Scalar = Scalar_;
 
   std::vector<Real> theta;     // nTheta + 2, running 0 ... pi
-  std::vector<Real> phi;       // nPhi + 1,   running 0 ... 2 pi
+  std::vector<Real> phi;       // nPhi + 1 + 2 ghosts; see below
   std::vector<Scalar> values;  // Rows() * Columns(), row-major
+
+  // How many columns lie beyond each end of [0, 2 pi]. The longitudes run
+  //
+  //   phi_{n-g} - 2pi, ..., phi_{n-1} - 2pi,  0, ..., phi_{n-1}, 2pi,
+  //   2pi + phi_1, ..., 2pi + phi_g
+  //
+  // and the values repeat with them. The sphere has no edge in longitude but
+  // the spline fitted along this axis does: it ends, with an end condition,
+  // and with the wrap column alone the two cells either side of phi = 0 sat
+  // at its ends and were several times worse than every other cell. The
+  // ghosts move the ends away from anything that is ever evaluated.
+  std::size_t ghosts{0};
 
   auto Rows() const { return theta.size(); }
   auto Columns() const { return phi.size(); }
 
+  // Column j of the *field*, so that 0 is phi = 0 and nPhi is the wrap at
+  // 2 pi, whatever lies beyond them.
   Scalar At(std::size_t i, std::size_t j) const {
-    return values[i * Columns() + j];
+    return values[i * Columns() + j + ghosts];
   }
 };
 
@@ -132,14 +146,35 @@ auto Pad(const GridType& grid, std::span<const Scalar> samples,
 
   padded.theta.insert(padded.theta.begin(), Real{0});
   padded.theta.push_back(pi);
-  padded.phi.push_back(2 * pi);
+
+  // Three, which puts a cubic's end condition three cells from the nearest
+  // point evaluated; fewer only where the grid has fewer longitudes to give.
+  const auto ghosts = std::min<std::size_t>(3, nPhi - 1);
+  padded.ghosts = ghosts;
+  {
+    const auto own = padded.phi;  // the grid's longitudes, 0 ... phi_{n-1}
+    padded.phi.clear();
+    for (auto g = nPhi - ghosts; g < nPhi; g++) {
+      padded.phi.push_back(own[g] - 2 * pi);
+    }
+    padded.phi.insert(padded.phi.end(), own.begin(), own.end());
+    padded.phi.push_back(2 * pi);
+    for (std::size_t g = 1; g <= ghosts; g++) {
+      padded.phi.push_back(2 * pi + own[g]);
+    }
+  }
 
   const auto columns = padded.phi.size();
   padded.values.reserve(padded.theta.size() * columns);
 
-  auto pushRow = [&padded](std::span<const Scalar> row) {
+  // A row and its periodic images. The polar rows close on themselves like
+  // any other, since exp(i N 2 pi) = 1 for integer N, so they are extended in
+  // exactly the same way.
+  auto pushRow = [&padded, ghosts, nPhi](std::span<const Scalar> row) {
+    for (auto g = nPhi - ghosts; g < nPhi; g++) padded.values.push_back(row[g]);
     padded.values.insert(padded.values.end(), row.begin(), row.end());
     padded.values.push_back(row[0]);  // the wrap: phi = 2 pi is phi = 0
+    for (std::size_t g = 1; g <= ghosts; g++) padded.values.push_back(row[g]);
   };
 
   pushRow(north);
@@ -259,6 +294,8 @@ class SpectralInterpolant {
    * @brief The field at @p theta, @p phi, summed from the expansion.
    * @throws std::invalid_argument if @p theta is outside @f$[0, \pi]@f$; a
    * longitude outside @f$[0, 2\pi)@f$ is reduced instead, which is exact.
+   * Also if @p phi is not finite: any finite longitude wraps, and one that
+   * is not has nowhere to wrap to.
    */
   Scalar operator()(Real theta, Real phi) const {
     const auto lMax = state_->lMax;
@@ -271,6 +308,13 @@ class SpectralInterpolant {
     if (!(theta >= 0) || !(theta <= pi)) {
       throw std::invalid_argument(
           "Interpolate: the colatitude must lie in [0, pi]");
+    }
+    // A longitude wraps, so any finite one is admissible -- and one that is
+    // not finite has nowhere to wrap to. fmod would turn it into a NaN and
+    // the interpolant would return one without a word.
+    if (!std::isfinite(phi)) {
+      throw std::invalid_argument(
+          "Interpolate: the longitude must be a finite number");
     }
     phi = std::fmod(phi, 2 * pi);
     if (phi < 0) phi += 2 * pi;
@@ -377,11 +421,11 @@ class SpectralInterpolant {
 /// samples to interpolate, only coefficients to sum. The scheme argument is
 /// accepted so that the spelling matches the field's, and refused if it names
 /// anything else.
-template <std::ptrdiff_t N, typename GridType, typename Value>
-auto Interpolate(const SpinExpansion<N, GridType, Value>& expansion,
-                 Scheme::SpectralTag = Scheme::Spectral()) {
-  return SpectralInterpolant<N, GridType, Value>(expansion.MaxDegree(),
-                                                 expansion.Data());
+template <SpinCoefficients E>
+auto Interpolate(const E& expansion, Scheme::SpectralTag = Scheme::Spectral()) {
+  return SpectralInterpolant<E::UpperIndex, typename E::GridType,
+                             typename E::Value>(expansion.MaxDegree(),
+                                                expansion.Data());
 }
 
 /// A field, spectrally: expand and sum. The degree is the truncation at which
@@ -438,12 +482,21 @@ class LocalInterpolant {
    * @brief The field at @p theta, @p phi, from the padded samples.
    * @throws std::invalid_argument if @p theta is outside @f$[0, \pi]@f$; a
    * longitude outside @f$[0, 2\pi)@f$ is reduced instead, which is exact.
+   * Also if @p phi is not finite: any finite longitude wraps, and one that
+   * is not has nowhere to wrap to.
    */
   Scalar operator()(Real theta, Real phi) const {
     constexpr auto pi = std::numbers::pi_v<Real>;
     if (!(theta >= 0) || !(theta <= pi)) {
       throw std::invalid_argument(
           "Interpolate: the colatitude must lie in [0, pi]");
+    }
+    // A longitude wraps, so any finite one is admissible -- and one that is
+    // not finite has nowhere to wrap to. fmod would turn it into a NaN and
+    // the interpolant would return one without a word.
+    if (!std::isfinite(phi)) {
+      throw std::invalid_argument(
+          "Interpolate: the longitude must be a finite number");
     }
     phi = std::fmod(phi, 2 * pi);
     if (phi < 0) phi += 2 * pi;
