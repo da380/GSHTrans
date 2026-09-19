@@ -132,7 +132,7 @@ class SpinFieldView {
   // The number of samples, which is the grid's point count and not the extent
   // of the storage those samples are spread over.
   /** @brief How many elements are stored. */
-  auto Size() const { return static_cast<Int>(grid_.FieldSize()); }
+  auto Size() const { return grid_.FieldSize(); }
   /** @brief The underlying buffer. */
   auto Data() const { return data_; }
   /** @brief How many elements separate successive samples. */
@@ -144,9 +144,8 @@ class SpinFieldView {
   Int stride_;
 
   Int FlatIndex(Int iTheta, Int iPhi) const {
-    const auto nPhi = static_cast<Int>(grid_.NumberOfLongitudes());
-    assert(iTheta >= 0 &&
-           iTheta < static_cast<Int>(grid_.NumberOfCoLatitudes()));
+    const auto nPhi = grid_.NumberOfLongitudes();
+    assert(iTheta >= 0 && iTheta < grid_.NumberOfCoLatitudes());
     assert(iPhi >= 0 && iPhi < nPhi);
     return (iTheta * nPhi + iPhi) * stride_;
   }

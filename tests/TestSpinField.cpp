@@ -306,7 +306,7 @@ TEST(SpinField, StoresSamplesInTheCanonicalOrder) {
   auto u = SpinField<2, Grid>(grid);
 
   ASSERT_EQ(u.Size(), grid.FieldSize());
-  const auto nPhi = static_cast<Int>(grid.NumberOfLongitudes());
+  const auto nPhi = grid.NumberOfLongitudes();
 
   // A freshly built field is zero.
   for (auto value : u) EXPECT_EQ(value, Complex{});
@@ -715,7 +715,7 @@ TEST(SpinField, ExpressionsOwnRvalueTerminals) {
 
   const auto evaluated = Evaluated(expression);
   const auto reference = MakeField(grid, 1.5);
-  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     ExpectClose(evaluated[i], reference.Data()[i] + v.Data()[i]);
   }
 }
@@ -733,7 +733,7 @@ TEST(SpinField, NamedExpressionsMayDieBeforeWhatIsBuiltFromThem) {
   }();
 
   const auto evaluated = Evaluated(outer);
-  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     ExpectClose(evaluated[i], (u.Data()[i] + u.Data()[i]) * w.Data()[i]);
   }
 }
@@ -757,7 +757,7 @@ TEST(SpinField, ExpressionsSurviveBeingReturnedAndStored) {
 
   for (const auto& node : nodes) {
     const auto evaluated = Evaluated(node);
-    for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+    for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
       ExpectClose(evaluated[i], u.Data()[i] * std::conj(v.Data()[i]));
     }
   }
@@ -826,14 +826,14 @@ TEST(SpinField, ConstructionFromAnExpressionTakesTheExpressionsGrid) {
   SpinField<2, Grid> w = u + v;
   EXPECT_EQ(w.Grid().Identity(), grid.Identity());
   EXPECT_EQ(w.Size(), grid.FieldSize());
-  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     ExpectClose(w.Data()[i], u.Data()[i] + v.Data()[i]);
   }
 
   // And through Materialise, which is the same thing with the type deduced.
   auto m = Materialise(u * conj(v));
   static_assert(std::same_as<decltype(m), SpinField<0, Grid, ComplexValued>>);
-  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     ExpectClose(m.Data()[i], u.Data()[i] * std::conj(v.Data()[i]));
   }
 }
@@ -846,7 +846,7 @@ TEST(SpinField, RealExpressionsWidenIntoComplexFields) {
   auto narrow = Materialise(abs2(u));
   static_assert(std::same_as<decltype(narrow), SpinField<0, Grid, RealValued>>);
 
-  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     EXPECT_NEAR(wide.Data()[i].real(), std::norm(u.Data()[i]), tolerance);
     EXPECT_NEAR(wide.Data()[i].imag(), 0.0, tolerance);
     EXPECT_NEAR(narrow.Data()[i], std::norm(u.Data()[i]), tolerance);
@@ -862,7 +862,7 @@ TEST(SpinField, AssignmentDoesNotRebindTheGrid) {
 
   u = v + v;
   EXPECT_EQ(u.Grid().Identity(), grid.Identity());
-  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     ExpectClose(u.Data()[i], v.Data()[i] + v.Data()[i]);
   }
 
@@ -879,37 +879,37 @@ TEST(SpinField, CompoundAssignmentMatchesItsBinaryForm) {
   const auto u0 = u;
 
   u += v;
-  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     ExpectClose(u.Data()[i], u0.Data()[i] + v.Data()[i]);
   }
 
   u = u0;
   u -= v;
-  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     ExpectClose(u.Data()[i], u0.Data()[i] - v.Data()[i]);
   }
 
   u = u0;
   u *= s;
-  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     ExpectClose(u.Data()[i], u0.Data()[i] * s.Data()[i]);
   }
 
   u = u0;
   u /= s;
-  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     ExpectClose(u.Data()[i], u0.Data()[i] / s.Data()[i]);
   }
 
   u = u0;
   u *= Complex{0.0, 2.0};
-  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     ExpectClose(u.Data()[i], u0.Data()[i] * Complex{0.0, 2.0});
   }
 
   u = u0;
   u /= 4.0;
-  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     ExpectClose(u.Data()[i], u0.Data()[i] / 4.0);
   }
 }
@@ -929,7 +929,7 @@ TEST(SpinField, InPlaceAssignmentIsSafeWhenTheDestinationAppears) {
 
   u = conj(u) * v + u;
 
-  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     const auto expected = std::conj(u0.Data()[i]) * v.Data()[i] + u0.Data()[i];
     ExpectClose(u.Data()[i], expected);
   }
@@ -937,13 +937,13 @@ TEST(SpinField, InPlaceAssignmentIsSafeWhenTheDestinationAppears) {
   // The same for compound assignment, and for a destination appearing twice.
   auto w = u0;
   w += w * v;
-  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     ExpectClose(w.Data()[i], u0.Data()[i] + u0.Data()[i] * v.Data()[i]);
   }
 
   auto x = u0;
   x = x * x - x;
-  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     const auto a = u0.Data()[i];
     ExpectClose(x.Data()[i], a * a - a);
   }
@@ -1256,7 +1256,7 @@ TEST(SpinField, ViewsParticipateInExpressionsLikeOwningFields) {
   auto grid = TestGrid();
   auto u = MakeField(grid, 1.5);
   auto storage = std::vector<Complex>(grid.FieldSize());
-  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     storage[i] = Complex{0.5 * i, -0.25 * i};
   }
 
@@ -1276,7 +1276,7 @@ TEST(SpinField, ViewsParticipateInExpressionsLikeOwningFields) {
   // Mixed expressions, view on either side, and evaluation agrees.
   const auto mixed = Evaluated(u + view);
   const auto mixedOther = Evaluated(constView * conj(u));
-  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = Int{0}; i < grid.FieldSize(); ++i) {
     ExpectClose(mixed[i], u.Data()[i] + storage[i]);
     ExpectClose(mixedOther[i], storage[i] * std::conj(u.Data()[i]));
   }

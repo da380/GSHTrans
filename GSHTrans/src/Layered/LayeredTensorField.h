@@ -178,7 +178,7 @@ class LayeredTensorField {
   /** @brief Indices of the stored radii. */
   auto RadiusIndices() const { return radialGrid_.RadiusIndices(); }
   /** @brief How many samples one angular field holds. */
-  auto FieldSize() const { return static_cast<Int>(grid_.FieldSize()); }
+  auto FieldSize() const { return grid_.FieldSize(); }
 
   /// The whole radial stack of one stored component: a LayeredSpinField, and
   /// therefore something Expand, ApplyRadially and IntegrateRadially already

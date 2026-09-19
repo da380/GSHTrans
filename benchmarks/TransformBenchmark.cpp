@@ -811,7 +811,7 @@ int main(int argc, char** argv) {
           lMax, n, FFTWpp::Measure, Chunking::Automatic(),
           WignerValues::Generated());
 
-      const auto fieldSize = static_cast<Int>(stored.FieldSize());
+      const auto fieldSize = stored.FieldSize();
       const auto coefficientSize =
           static_cast<Int>(stored.CoefficientSize(lMax, n));
 
@@ -938,7 +938,7 @@ int main(int argc, char** argv) {
                          WignerValues::Stored(), TransformKernel::Matrix());
         }
         const auto& any = wantLoop ? *loop : *matrix;
-        const auto fieldSize = static_cast<Int>(any.FieldSize());
+        const auto fieldSize = any.FieldSize();
         const auto coefficientSize =
             static_cast<Int>(any.CoefficientSize(lMax, n));
 
@@ -1119,7 +1119,7 @@ int main(int argc, char** argv) {
     for (auto lMax : {Int{128}, Int{256}}) {
       const auto n = Int{2};
       auto grid = GaussLegendreGrid<Real, All, All>(lMax, n, FFTWpp::Measure);
-      const auto fieldSize = static_cast<Int>(grid.FieldSize());
+      const auto fieldSize = grid.FieldSize();
       const auto coefficientSize =
           static_cast<Int>(grid.CoefficientSize(lMax, n));
       const auto bytesPerField =

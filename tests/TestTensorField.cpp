@@ -58,7 +58,7 @@ TEST(TensorField, StoresOneComponentPerOrbit) {
   static_assert(Elastic::StoredComponents == 21);
 
   auto grid = TestGrid();
-  const auto fieldSize = static_cast<Int>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
 
   auto t = Sym(grid);
   EXPECT_EQ(t.Size(), Sym::StoredComponents * fieldSize);

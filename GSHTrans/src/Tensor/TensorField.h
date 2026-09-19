@@ -325,7 +325,7 @@ class TensorField {
   const GridType& Grid() const { return grid_; }
 
   /** @brief How many samples one angular field holds. */
-  auto FieldSize() const { return static_cast<Int>(grid_.FieldSize()); }
+  auto FieldSize() const { return grid_.FieldSize(); }
 
   // The complex buffer, in [component][iTheta][iPhi] order, and the real one
   // holding the components the reality condition pins to a single real number.

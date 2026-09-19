@@ -85,7 +85,7 @@ class LayeredSpinField {
   /** @brief Indices of the stored radii. */
   auto RadiusIndices() const { return radialGrid_.RadiusIndices(); }
   /** @brief How many samples one angular field holds. */
-  auto FieldSize() const { return static_cast<Int>(grid_.FieldSize()); }
+  auto FieldSize() const { return grid_.FieldSize(); }
   /** @brief How many elements are stored. */
   auto Size() const { return static_cast<Int>(data_.size()); }
 

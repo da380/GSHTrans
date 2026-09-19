@@ -92,7 +92,7 @@ TEST(GaussLegendreGrid, DegreeZeroTruncationUsesTheWholeGrid) {
   auto grid = Grid(2, 0, FFTWpp::Estimate);
   auto realField = FFTWpp::vector<Real>(grid.FieldSize());
   auto complexField = FFTWpp::vector<Complex>(grid.FieldSize());
-  for (auto i = std::size_t{0}; i < grid.FieldSize(); ++i) {
+  for (auto i = std::ptrdiff_t{0}; i < grid.FieldSize(); ++i) {
     const auto value = static_cast<Real>(i + 1);
     realField[i] = value;
     complexField[i] = Complex{value, -0.5 * value};
@@ -126,7 +126,7 @@ TEST(GaussLegendreGrid, DegreeZeroTruncationUsesTheWholeGrid) {
   auto reconstructedComplex = FFTWpp::vector<Complex>(grid.FieldSize());
   grid.InverseTransformation(0, 0, realCoefficient, reconstructedReal);
   grid.InverseTransformation(0, 0, complexCoefficient, reconstructedComplex);
-  for (auto j = std::size_t{0}; j < grid.FieldSize(); ++j) {
+  for (auto j = std::ptrdiff_t{0}; j < grid.FieldSize(); ++j) {
     EXPECT_NEAR(reconstructedReal[j], constant.real(), tolerance);
     EXPECT_NEAR(reconstructedComplex[j].real(), constant.real(), tolerance);
     EXPECT_NEAR(reconstructedComplex[j].imag(), constant.imag(), tolerance);
@@ -186,7 +186,7 @@ TEST(GaussLegendreGrid, LongitudeCountResolvesTheHighestOrders) {
 
   for (auto lMax : {0, 1, 2, 3, 5, 8, 16, 33}) {
     auto grid = Grid(lMax, 0, FFTWpp::Estimate);
-    const auto nPhi = static_cast<std::ptrdiff_t>(grid.NumberOfLongitudes());
+    const auto nPhi = grid.NumberOfLongitudes();
     EXPECT_GE(nPhi, 2 * lMax + 1) << "lMax = " << lMax;
     EXPECT_TRUE(IsFastFFTSize(nPhi))
         << "lMax = " << lMax << ", nPhi = " << nPhi;
@@ -1024,7 +1024,7 @@ TEST(BatchedTransform, ChunkingIsNotObservableInAnyResult) {
   constexpr auto count = std::ptrdiff_t{5};
 
   auto grid = BatchGrid(lMax, n, FFTWpp::Estimate);
-  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
   const auto coefficientSize =
       static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
 
@@ -1082,7 +1082,7 @@ TEST(BatchedTransform, ContiguousBatchMatchesSeparateCalls) {
   constexpr auto count = std::ptrdiff_t{4};
 
   auto grid = BatchGrid(lMax, n, FFTWpp::Estimate);
-  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
   const auto coefficientSize =
       static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
 
@@ -1114,7 +1114,7 @@ TEST(BatchedTransform, InterleavedBatchMatchesSeparateCalls) {
   constexpr auto count = std::ptrdiff_t{3};
 
   auto grid = BatchGrid(lMax, n, FFTWpp::Estimate);
-  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
   const auto coefficientSize =
       static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
 
@@ -1163,7 +1163,7 @@ TEST(BatchedTransform, InverseBatchMatchesSeparateCalls) {
   constexpr auto count = std::ptrdiff_t{3};
 
   auto grid = BatchGrid(lMax, n, FFTWpp::Estimate);
-  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
   const auto coefficientSize =
       static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
 
@@ -1203,7 +1203,7 @@ TEST(BatchedTransform, MixedLayoutsAndParallelAgreeToo) {
   constexpr auto width = std::ptrdiff_t{6};
 
   auto grid = BatchGrid(lMax, n, FFTWpp::Estimate);
-  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
   const auto coefficientSize =
       static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
 
@@ -1249,7 +1249,7 @@ TEST(BatchedTransform, RejectsDescriptorsItCannotHonour) {
   constexpr auto n = std::ptrdiff_t{0};
 
   auto grid = BatchGrid(lMax, n, FFTWpp::Estimate);
-  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
   const auto coefficientSize =
       static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
 
@@ -1282,7 +1282,7 @@ TEST(BatchedTransform, SingleFieldIsTheBatchAtCountOne) {
   constexpr auto n = std::ptrdiff_t{1};
 
   auto grid = BatchGrid(lMax, n, FFTWpp::Estimate);
-  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
   const auto coefficientSize =
       static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
 
@@ -1320,7 +1320,7 @@ TEST(BatchedTransform, ChunkingDoesNotChangeTheAnswer) {
   auto chunked = BatchGrid(lMax, n, FFTWpp::Estimate, Chunking::Fixed(2));
   auto whole = BatchGrid(lMax, n, FFTWpp::Estimate, Chunking::Fixed(count));
 
-  const auto fieldSize = static_cast<std::ptrdiff_t>(chunked.FieldSize());
+  const auto fieldSize = chunked.FieldSize();
   const auto coefficientSize =
       static_cast<std::ptrdiff_t>(chunked.CoefficientSize(lMax, n));
 
@@ -1415,10 +1415,10 @@ TEST(GeneratingGrid, ForwardAgreesWithTheStoredTableExactly) {
     auto generated = GenGrid(lMax, std::abs(n), FFTWpp::Estimate,
                              Chunking::Automatic(), WignerValues::Generated());
 
-    const auto fieldSize = static_cast<std::ptrdiff_t>(stored.FieldSize());
+    const auto fieldSize = stored.FieldSize();
     const auto coefficientSize =
         static_cast<std::ptrdiff_t>(stored.CoefficientSize(lMax, n));
-    ASSERT_EQ(fieldSize, static_cast<std::ptrdiff_t>(generated.FieldSize()));
+    ASSERT_EQ(fieldSize, generated.FieldSize());
 
     const auto field = GenField(fieldSize);
     auto a = std::vector<GenComplex>(coefficientSize);
@@ -1441,7 +1441,7 @@ TEST(GeneratingGrid, InverseAgreesWithTheStoredTableExactly) {
   auto generated = GenGrid(lMax, n, FFTWpp::Estimate, Chunking::Automatic(),
                            WignerValues::Generated());
 
-  const auto fieldSize = static_cast<std::ptrdiff_t>(stored.FieldSize());
+  const auto fieldSize = stored.FieldSize();
   const auto coefficientSize =
       static_cast<std::ptrdiff_t>(stored.CoefficientSize(lMax, n));
 
@@ -1468,7 +1468,7 @@ TEST(GeneratingGrid, TruncatedCallsGenerateOnlyTheDegreesTheyUse) {
   auto generated = GenGrid(gridDegree, n, FFTWpp::Estimate,
                            Chunking::Automatic(), WignerValues::Generated());
 
-  const auto field = GenField(static_cast<std::ptrdiff_t>(stored.FieldSize()));
+  const auto field = GenField(stored.FieldSize());
 
   for (auto lMax = std::abs(n); lMax <= gridDegree; lMax++) {
     const auto coefficientSize =
@@ -1493,7 +1493,7 @@ TEST(GeneratingGrid, RealScalarGridAgreesExactlyToo) {
   auto generated = RealGrid(lMax, 0, FFTWpp::Estimate, Chunking::Automatic(),
                             WignerValues::Generated());
 
-  const auto fieldSize = static_cast<std::ptrdiff_t>(stored.FieldSize());
+  const auto fieldSize = stored.FieldSize();
 
   // The reduced m >= 0 storage, which is the whole point of a real transform
   // and is not what CoefficientSize reports.
@@ -1534,7 +1534,7 @@ TEST(GeneratingGrid, BatchedAndParallelCallsAgreeExactly) {
   auto generated = GenGrid(lMax, n, FFTWpp::Estimate, Chunking::Fixed(2),
                            WignerValues::Generated());
 
-  const auto fieldSize = static_cast<std::ptrdiff_t>(stored.FieldSize());
+  const auto fieldSize = stored.FieldSize();
   const auto coefficientSize =
       static_cast<std::ptrdiff_t>(stored.CoefficientSize(lMax, n));
 
@@ -1583,7 +1583,7 @@ TEST(GeneratingGrid, BuildsNoTableAndForBandCarriesThePolicy) {
   EXPECT_EQ(banded.MaxDegree(), 12);
 
   auto stored = GenGrid(12, 2, FFTWpp::Estimate);
-  const auto fieldSize = static_cast<std::ptrdiff_t>(stored.FieldSize());
+  const auto fieldSize = stored.FieldSize();
   const auto coefficientSize =
       static_cast<std::ptrdiff_t>(stored.CoefficientSize(12, 2));
   const auto field = GenField(fieldSize);
@@ -1673,8 +1673,8 @@ TEST(FourierStage, MatchesADirectTransform) {
   constexpr auto count = std::ptrdiff_t{3};
 
   auto grid = StageGrid(lMax, 2, FFTWpp::Estimate);
-  const auto nTheta = static_cast<std::ptrdiff_t>(grid.NumberOfCoLatitudes());
-  const auto nPhi = static_cast<std::ptrdiff_t>(grid.NumberOfLongitudes());
+  const auto nTheta = grid.NumberOfCoLatitudes();
+  const auto nPhi = grid.NumberOfLongitudes();
   const auto fieldSize = nTheta * nPhi;
 
   auto fields = std::vector<StageComplex>(count * fieldSize);
@@ -1707,8 +1707,8 @@ TEST(FourierStage, MatchesADirectTransformForARealField) {
   constexpr auto count = std::ptrdiff_t{2};
 
   auto grid = StageGrid(lMax, 0, FFTWpp::Estimate);
-  const auto nTheta = static_cast<std::ptrdiff_t>(grid.NumberOfCoLatitudes());
-  const auto nPhi = static_cast<std::ptrdiff_t>(grid.NumberOfLongitudes());
+  const auto nTheta = grid.NumberOfCoLatitudes();
+  const auto nPhi = grid.NumberOfLongitudes();
   const auto fieldSize = nTheta * nPhi;
 
   auto fields = std::vector<StageReal>(count * fieldSize);
@@ -1744,8 +1744,8 @@ TEST(FourierStage, BlockingChangesNothing) {
   constexpr auto count = std::ptrdiff_t{3};
 
   auto grid = StageGrid(lMax, 1, FFTWpp::Estimate);
-  const auto nTheta = static_cast<std::ptrdiff_t>(grid.NumberOfCoLatitudes());
-  const auto nPhi = static_cast<std::ptrdiff_t>(grid.NumberOfLongitudes());
+  const auto nTheta = grid.NumberOfCoLatitudes();
+  const auto nPhi = grid.NumberOfLongitudes();
   const auto fieldSize = nTheta * nPhi;
 
   auto fields = std::vector<StageComplex>(count * fieldSize);
@@ -1783,8 +1783,8 @@ TEST(FourierStage, InterleavedBatchMatchesContiguous) {
   constexpr auto width = std::ptrdiff_t{5};
 
   auto grid = StageGrid(lMax, 1, FFTWpp::Estimate);
-  const auto nTheta = static_cast<std::ptrdiff_t>(grid.NumberOfCoLatitudes());
-  const auto nPhi = static_cast<std::ptrdiff_t>(grid.NumberOfLongitudes());
+  const auto nTheta = grid.NumberOfCoLatitudes();
+  const auto nPhi = grid.NumberOfLongitudes();
   const auto fieldSize = nTheta * nPhi;
 
   auto contiguous = std::vector<StageComplex>(count * fieldSize);
@@ -1818,8 +1818,8 @@ TEST(FourierStage, TransformsASubRangeOfTheBatch) {
   constexpr auto count = std::ptrdiff_t{4};
 
   auto grid = StageGrid(lMax, 1, FFTWpp::Estimate);
-  const auto nTheta = static_cast<std::ptrdiff_t>(grid.NumberOfCoLatitudes());
-  const auto nPhi = static_cast<std::ptrdiff_t>(grid.NumberOfLongitudes());
+  const auto nTheta = grid.NumberOfCoLatitudes();
+  const auto nPhi = grid.NumberOfLongitudes();
   const auto fieldSize = nTheta * nPhi;
 
   auto fields = std::vector<StageComplex>(count * fieldSize);
@@ -1850,7 +1850,7 @@ TEST(FourierStage, TransformsASubRangeOfTheBatch) {
 TEST(FourierStage, RejectsBadRequests) {
   constexpr auto lMax = std::ptrdiff_t{4};
   auto grid = StageGrid(lMax, 1, FFTWpp::Estimate);
-  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
 
   auto fields = std::vector<StageComplex>(2 * fieldSize);
   auto out =
@@ -1886,8 +1886,8 @@ TEST(FourierStage, TheAliasingGuardChangesNoAnswers) {
   constexpr auto count = std::ptrdiff_t{8};
 
   auto grid = StageGrid(lMax, 1, FFTWpp::Estimate);
-  const auto nTheta = static_cast<std::ptrdiff_t>(grid.NumberOfCoLatitudes());
-  const auto nPhi = static_cast<std::ptrdiff_t>(grid.NumberOfLongitudes());
+  const auto nTheta = grid.NumberOfCoLatitudes();
+  const auto nPhi = grid.NumberOfLongitudes();
   const auto fieldSize = nTheta * nPhi;
 
   auto fields = std::vector<StageComplex>(count * fieldSize);
@@ -1947,7 +1947,7 @@ void CheckKernelsAgreeForward(std::ptrdiff_t lMax, std::ptrdiff_t gridDegree,
       Grid(gridDegree, std::abs(n), FFTWpp::Estimate, Chunking::Automatic(),
            WignerValues::Stored(), TransformKernel::Matrix());
 
-  const auto fieldSize = static_cast<std::ptrdiff_t>(loop.FieldSize());
+  const auto fieldSize = loop.FieldSize();
   const auto coefficientSize = static_cast<std::ptrdiff_t>(
       std::is_same_v<Scalar, double> ? loop.RealCoefficientSize(lMax)
                                      : loop.CoefficientSize(lMax, n));
@@ -2063,7 +2063,7 @@ void CheckKernelsAgreeInverse(std::ptrdiff_t lMax, std::ptrdiff_t gridDegree,
       Grid(gridDegree, std::abs(n), FFTWpp::Estimate, Chunking::Automatic(),
            WignerValues::Stored(), TransformKernel::Matrix());
 
-  const auto fieldSize = static_cast<std::ptrdiff_t>(loop.FieldSize());
+  const auto fieldSize = loop.FieldSize();
   const auto coefficientSize = static_cast<std::ptrdiff_t>(
       std::is_same_v<Scalar, double> ? loop.RealCoefficientSize(lMax)
                                      : loop.CoefficientSize(lMax, n));
@@ -2154,7 +2154,7 @@ TEST(MatrixKernel, RoundTripsOnItsOwn) {
 
   auto grid = Grid(lMax, std::abs(n), FFTWpp::Estimate, Chunking::Automatic(),
                    WignerValues::Stored(), TransformKernel::Matrix());
-  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
   const auto coefficientSize =
       static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
 
@@ -2197,7 +2197,7 @@ TEST(MatrixKernel, ThreadingChangesNothing) {
 
   auto grid = Grid(lMax, n, FFTWpp::Estimate, Chunking::Automatic(),
                    WignerValues::Stored(), TransformKernel::Matrix());
-  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
   const auto coefficientSize =
       static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
 
@@ -2241,7 +2241,7 @@ TEST(MatrixKernel, DoesNotNestItsThreading) {
 
   auto grid = Grid(lMax, n, FFTWpp::Estimate, Chunking::Automatic(),
                    WignerValues::Stored(), TransformKernel::Matrix());
-  const auto fieldSize = static_cast<std::ptrdiff_t>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
   const auto coefficientSize =
       static_cast<std::ptrdiff_t>(grid.CoefficientSize(lMax, n));
 

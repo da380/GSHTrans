@@ -261,20 +261,30 @@ class SphericalGrid {
     return std::ranges::views::iota(MinUpperIndex(), MaxUpperIndex() + 1);
   }
 
-  /** @brief How many colatitudes the grid has. */
-  auto NumberOfCoLatitudes() const { return CoLatitudes().size(); }
+  /**
+   * @brief How many colatitudes the grid has.
+   * @details Signed, as every size and index in the library is. A size is
+   * something that is subtracted from, compared with an order that may be
+   * negative, and multiplied into an offset, and in unsigned arithmetic each
+   * of those goes wrong in silence: a difference that should be negative is
+   * instead enormous, and no sanitiser objects, because wrapping is defined.
+   * `std::size_t` appears only where a standard container is indexed or
+   * sized. These three once returned it, having inherited it from a
+   * `.size()`, and every caller cast it back.
+   */
+  Int NumberOfCoLatitudes() const {
+    return static_cast<Int>(impl_->coLatitudes.size());
+  }
   /** @brief Indices of the colatitudes. */
   auto CoLatitudeIndices() const {
-    return std::ranges::views::iota(Int{0},
-                                    static_cast<Int>(NumberOfCoLatitudes()));
+    return std::ranges::views::iota(Int{0}, NumberOfCoLatitudes());
   }
 
   /** @brief How many longitudes the grid has. */
-  auto NumberOfLongitudes() const { return Longitudes().size(); }
+  Int NumberOfLongitudes() const { return NPhi(); }
   /** @brief Indices of the longitudes. */
   auto LongitudeIndices() const {
-    return std::ranges::views::iota(Int{0},
-                                    static_cast<Int>(NumberOfLongitudes()));
+    return std::ranges::views::iota(Int{0}, NumberOfLongitudes());
   }
 
   /** @brief Every @f$(\theta,\phi)@f$ point, in storage order. */
@@ -330,9 +340,7 @@ class SphericalGrid {
   void ProjectFunction(Function f) const&& = delete;
 
   /** @brief How many samples one angular field holds. */
-  auto FieldSize() const {
-    return NumberOfCoLatitudes() * NumberOfLongitudes();
-  }
+  Int FieldSize() const { return NumberOfCoLatitudes() * NumberOfLongitudes(); }
 
   /// Number of coefficients of a complex-valued field of degree lMax at upper
   /// index n. This is the full (all orders) storage.
@@ -398,7 +406,7 @@ class SphericalGrid {
 
     ValidateTransformRequest<Scalar>(lMax, n);
 
-    const auto fieldSize = static_cast<Int>(this->FieldSize());
+    const auto fieldSize = this->FieldSize();
     const auto coefficientSize =
         static_cast<Int>(CoefficientSizeFor<Scalar>(lMax, n));
 
@@ -435,8 +443,8 @@ class SphericalGrid {
       return;
     }
 
-    const auto nPhi = static_cast<Int>(this->NumberOfLongitudes());
-    const auto nTheta = static_cast<Int>(this->NumberOfCoLatitudes());
+    const auto nPhi = this->NumberOfLongitudes();
+    const auto nTheta = this->NumberOfCoLatitudes();
     const auto scaleFactor = static_cast<Real>(2) * std::numbers::pi_v<Real> /
                              static_cast<Real>(nPhi);
 
@@ -493,7 +501,7 @@ class SphericalGrid {
                              Execution policy = Execution::Sequential()) const {
     using Scalar = std::ranges::range_value_t<InRange>;
     ValidateTransformRequest<Scalar>(lMax, n);
-    const auto fieldSize = static_cast<Int>(this->FieldSize());
+    const auto fieldSize = this->FieldSize();
     const auto coefficientSize =
         static_cast<Int>(CoefficientSizeFor<Scalar>(lMax, n));
     CheckSize(std::ranges::size(in), fieldSize, "field");
@@ -536,7 +544,7 @@ class SphericalGrid {
 
     ValidateTransformRequest<Scalar>(lMax, n);
 
-    const auto fieldSize = static_cast<Int>(this->FieldSize());
+    const auto fieldSize = this->FieldSize();
     const auto coefficientSize =
         static_cast<Int>(CoefficientSizeFor<Scalar>(lMax, n));
 
@@ -565,8 +573,8 @@ class SphericalGrid {
       return;
     }
 
-    const auto nPhi = static_cast<Int>(this->NumberOfLongitudes());
-    const auto nTheta = static_cast<Int>(this->NumberOfCoLatitudes());
+    const auto nPhi = this->NumberOfLongitudes();
+    const auto nTheta = this->NumberOfCoLatitudes();
 
 #ifdef GSHTRANS_HAVE_BLAS
     if constexpr (BlasDetails::BlasReal<Real>)
@@ -606,7 +614,7 @@ class SphericalGrid {
                              Execution policy = Execution::Sequential()) const {
     using Scalar = std::ranges::range_value_t<OutRange>;
     ValidateTransformRequest<Scalar>(lMax, n);
-    const auto fieldSize = static_cast<Int>(this->FieldSize());
+    const auto fieldSize = this->FieldSize();
     const auto coefficientSize =
         static_cast<Int>(CoefficientSizeFor<Scalar>(lMax, n));
     CheckSize(std::ranges::size(in), coefficientSize, "coefficient");
@@ -622,15 +630,14 @@ class SphericalGrid {
   /// negative orders are the conjugates of its positive ones.
   template <RealOrComplexFloatingPoint Scalar>
   auto FourierSize() const {
-    const auto nPhi = static_cast<Int>(this->NumberOfLongitudes());
+    const auto nPhi = this->NumberOfLongitudes();
     return static_cast<Int>(FFTWpp::DataSize<Scalar, Complex>(nPhi).second);
   }
 
   /// The size of buffer ForwardFourierStage fills for `count` fields.
   template <RealOrComplexFloatingPoint Scalar>
   auto ForwardFourierStageSize(Int count) const {
-    return FourierSize<Scalar>() *
-           static_cast<Int>(this->NumberOfCoLatitudes()) * count;
+    return FourierSize<Scalar>() * this->NumberOfCoLatitudes() * count;
   }
 
   /// The longitudinal DFT of `count` fields of a batch, starting at field
@@ -693,8 +700,8 @@ class SphericalGrid {
     using Scalar = std::ranges::range_value_t<InRange>;
     static_assert(RealOrComplexFloatingPoint<Scalar>);
 
-    const auto nPhi = static_cast<Int>(this->NumberOfLongitudes());
-    const auto nTheta = static_cast<Int>(this->NumberOfCoLatitudes());
+    const auto nPhi = this->NumberOfLongitudes();
+    const auto nTheta = this->NumberOfCoLatitudes();
     const auto nFourier = FourierSize<Scalar>();
 
     if (count < 1) {
@@ -703,8 +710,7 @@ class SphericalGrid {
     if (first < 0 || first + count > inBatch.Count()) {
       throw std::invalid_argument("Requested fields lie outside the batch");
     }
-    CheckSpan(std::ranges::size(in),
-              inBatch.Span(static_cast<Int>(this->FieldSize())), "field");
+    CheckSpan(std::ranges::size(in), inBatch.Span(this->FieldSize()), "field");
     if (static_cast<Int>(out.size()) !=
         ForwardFourierStageSize<Scalar>(count)) {
       throw std::invalid_argument("Fourier stage output has the wrong size");
@@ -789,8 +795,8 @@ class SphericalGrid {
     using Scalar = std::ranges::range_value_t<OutRange>;
     static_assert(RealOrComplexFloatingPoint<Scalar>);
 
-    const auto nPhi = static_cast<Int>(this->NumberOfLongitudes());
-    const auto nTheta = static_cast<Int>(this->NumberOfCoLatitudes());
+    const auto nPhi = this->NumberOfLongitudes();
+    const auto nTheta = this->NumberOfCoLatitudes();
     const auto nFourier = FourierSize<Scalar>();
 
     if (count < 1) {
@@ -799,8 +805,8 @@ class SphericalGrid {
     if (first < 0 || first + count > outBatch.Count()) {
       throw std::invalid_argument("Requested fields lie outside the batch");
     }
-    CheckSpan(std::ranges::size(out),
-              outBatch.Span(static_cast<Int>(this->FieldSize())), "field");
+    CheckSpan(std::ranges::size(out), outBatch.Span(this->FieldSize()),
+              "field");
     if (static_cast<Int>(in.size()) != ForwardFourierStageSize<Scalar>(count)) {
       throw std::invalid_argument("Fourier stage input has the wrong size");
     }
@@ -1478,7 +1484,7 @@ class SphericalGrid {
     // widest case is
     // two columns of each, and the right-hand side is nTheta rows deep.
     const auto scratchSize = static_cast<std::size_t>(
-        2 * c * (lMax + 1 + static_cast<Int>(this->NumberOfCoLatitudes())));
+        2 * c * (lMax + 1 + this->NumberOfCoLatitudes()));
     const auto orders = lMax - minOrder + 1;
 
     // **A team is opened even for the sequential case, and that is the point

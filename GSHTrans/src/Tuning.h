@@ -84,7 +84,7 @@ template <typename GridType, typename Complex>
 double TimeRound(const GridType& grid, std::ptrdiff_t lMax, std::ptrdiff_t n,
                  std::ptrdiff_t count, Execution policy, int windows = 3) {
   using Int = std::ptrdiff_t;
-  const auto fieldSize = static_cast<Int>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
   const auto coefficientSize = static_cast<Int>(grid.CoefficientSize(lMax, n));
 
   auto fields = FFTWpp::vector<Complex>(
@@ -225,7 +225,7 @@ TunedChunking TuneChunking(const GridType& grid, std::ptrdiff_t lMax,
     throw std::invalid_argument("Tuning: the batch count must be positive");
   }
 
-  const auto fieldSize = static_cast<Int>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
   const auto coefficientSize = static_cast<Int>(grid.CoefficientSize(lMax, n));
 
   auto fields = FFTWpp::vector<Complex>(

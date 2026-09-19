@@ -259,10 +259,9 @@ class SpinField {
 
   // (iTheta, iPhi) with phi fastest, matching the transform's own layout.
   Int FlatIndex(Int iTheta, Int iPhi) const {
-    assert(iTheta >= 0 &&
-           iTheta < static_cast<Int>(grid_.NumberOfCoLatitudes()));
-    assert(iPhi >= 0 && iPhi < static_cast<Int>(grid_.NumberOfLongitudes()));
-    return iTheta * static_cast<Int>(grid_.NumberOfLongitudes()) + iPhi;
+    assert(iTheta >= 0 && iTheta < grid_.NumberOfCoLatitudes());
+    assert(iPhi >= 0 && iPhi < grid_.NumberOfLongitudes());
+    return iTheta * grid_.NumberOfLongitudes() + iPhi;
   }
 
   // Checked in all build modes: whether this grid carries the field's upper

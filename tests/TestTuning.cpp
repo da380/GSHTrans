@@ -79,7 +79,7 @@ TEST(Tuning, ATunedGridAnswersIdentically) {
   constexpr auto count = Int{4};
 
   auto grid = TestGrid(lMax, n);
-  const auto fieldSize = static_cast<Int>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
   const auto coefficientSize = static_cast<Int>(grid.CoefficientSize(lMax, n));
 
   auto fields =

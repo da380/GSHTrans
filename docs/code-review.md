@@ -264,9 +264,14 @@ Kept current as `fix-plan.md` is worked through. Anything not listed is open.
   - *Not changed:* `Materialise` still defaults to `ComplexTensor`. The
     comment there explains why — an expression node carries no reality to
     follow, and complex is the choice that is never wrong.
-  - *Noticed and left:* `FieldSize()` is unsigned where `CoefficientSize()` is
-    signed, which is where every `-Wsign-compare` warning in the tests came
-    from. Recorded under the open questions in `lessons.md`.
+  - *Noticed, and then settled:* `FieldSize()`, `NumberOfCoLatitudes()` and
+    `NumberOfLongitudes()` returned `size_t` where everything else in the
+    library is `std::ptrdiff_t`, which is where every `-Wsign-compare` warning
+    in the tests came from. They are signed now; 29 repairing casts went from
+    the library and 45 from the tests, examples and benchmarks. The rule is in
+    `lessons.md`. Left unsigned on purpose: private offset helpers that feed a
+    container's index, the interpolation padding struct, which is a wrapper
+    round three vectors, and the container-style `size()` of the 3-j classes.
 
 ## Summary
 

@@ -58,8 +58,8 @@ auto Samples(Int n, std::uint_fast32_t seed) {
 class PaddedGrid : public ::testing::Test {
  protected:
   Grid grid{8, 2};
-  Int nTheta = static_cast<Int>(grid.NumberOfCoLatitudes());
-  Int nPhi = static_cast<Int>(grid.NumberOfLongitudes());
+  Int nTheta = grid.NumberOfCoLatitudes();
+  Int nPhi = grid.NumberOfLongitudes();
 
   auto Build() const {
     const auto values = Samples(nTheta * nPhi, 11);
@@ -573,7 +573,7 @@ TEST(FieldInterpolant, TheLongitudeSeamIsNoWorseThanTheInterior) {
   const auto exact = Interpolate(e);
   const auto bicubic = Interpolate(field, Scheme::Bicubic());
 
-  const auto nPhi = static_cast<Int>(grid.NumberOfLongitudes());
+  const auto nPhi = grid.NumberOfLongitudes();
   const auto width = 2 * pi / static_cast<Real>(nPhi);
   const auto worstInCell = [&](Int cell) {
     auto worst = Real{0};

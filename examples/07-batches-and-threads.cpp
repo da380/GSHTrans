@@ -31,7 +31,7 @@ int main() {
   // figure and does better.
   auto grid = Grid(lMax, n, FFTWpp::Measure, Chunking::ForCache(Int{16} << 20));
 
-  const auto fieldSize = static_cast<Int>(grid.FieldSize());
+  const auto fieldSize = grid.FieldSize();
   const auto coefficientSize = static_cast<Int>(grid.CoefficientSize(lMax, n));
 
   auto fields = std::vector<Complex>(count * fieldSize);

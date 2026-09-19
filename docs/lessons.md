@@ -108,6 +108,18 @@ realised gain is lower still.
 
 ## C++
 
+**Sizes and indices are signed.** `std::ptrdiff_t` throughout, and
+`std::size_t` only at the point where a standard container is indexed or
+sized. A size here is something subtracted from, compared with an order that
+may be negative, and multiplied into an offset, and unsigned arithmetic gets
+each of those wrong in silence: the difference that should be negative is
+enormous instead, and no sanitiser objects, because wrapping is defined
+behaviour. Three accessors — `NumberOfCoLatitudes`, `NumberOfLongitudes`,
+`FieldSize` — had inherited `size_t` from a `.size()`, and the price was
+seventy-odd `static_cast<Int>` at their call sites, each a place where a
+negative value would have become a large one. Found by turning
+`-Wsign-compare` on in the tests.
+
 **A letter outside a `MultiIndex` alphabet is a hard error**, thrown inside a
 constant expression, not a SFINAE-friendly constraint failure. Over
 `TangentialSlots`, `requires { Flat<0, 1>; }` is **true** and the use then
@@ -148,9 +160,4 @@ Deliberately unresolved, each wanting a decision rather than an edit:
   `std::ptrdiff_t`.
 - **`SphericalGrid.h`** is the largest file by a wide margin.
 - **The two layered field types** duplicate a good deal between them.
-- **`FieldSize()` is unsigned and `CoefficientSize()` is signed.** One comes
-  from a product of `size()`s and the other from the index classes, which are
-  `std::ptrdiff_t` throughout. A caller looping over either with the other's
-  type meets `-Wsign-compare`, as thirty-odd loops in the tests did. Settling
-  on the signed one would match the rest of the library and is a change to a
-  public return type.
+
