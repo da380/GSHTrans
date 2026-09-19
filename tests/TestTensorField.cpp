@@ -535,7 +535,8 @@ TEST(TensorField, ComponentViewsAreStridedInPointMajor) {
   EXPECT_EQ(u.Stride(), PointMajorTensor::StoredComponents);
   EXPECT_EQ(u.Size(), t.FieldSize());
 
-  auto v = ComponentMajorTensor(grid).Component<0, 1>();
+  auto major = ComponentMajorTensor(grid);
+  auto v = major.Component<0, 1>();
   EXPECT_EQ(v.Stride(), 1);
 
   // A strided view is a node like any other: it evaluates, and it composes.

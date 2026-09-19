@@ -1123,13 +1123,18 @@ static_assert(!Integrable<SpinField<-1, Grid>&>);
 static_assert(Integrable<Mul<decltype(conj(std::declval<F2&>())), F2&>>);
 static_assert(Integrable<decltype(abs2(std::declval<F2&>()))>);
 
-// A view is a node, and a terminal.
+// A view is a node, and *not* a terminal: it names storage without owning it,
+// so an expression holds it by value, as it holds another expression, and an
+// expression built from named views may outlive them.
 using View = SpinFieldView<2, Grid>;
 using ConstView = ConstSpinFieldView<2, Grid>;
 static_assert(SpinWeighted<View>);
 static_assert(SpinWeighted<ConstView>);
-static_assert(IsTerminal<View>);
-static_assert(IsTerminal<ConstView>);
+static_assert(!IsTerminal<View>);
+static_assert(!IsTerminal<ConstView>);
+static_assert(std::same_as<OperandStorage<View&>, View>);
+static_assert(std::same_as<OperandStorage<const ConstView&>, ConstView>);
+static_assert(std::same_as<OperandStorage<F2&>, const F2&>);
 static_assert(std::same_as<View::Scalar, Complex>);
 static_assert(std::same_as<ConstView::Scalar, Complex>);
 

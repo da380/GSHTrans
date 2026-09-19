@@ -206,10 +206,12 @@ void EvaluateNodeInto(const NodeType& node, std::span<S> target) {
 //                          Terminals versus expressions                     //
 //--------------------------------------------------------------------------//
 
-// Specialised by the owning field and the view types. Deliberately a trait
-// rather than a property inferred from the interface: whether a node owns
-// storage is not something its accessors reveal, and guessing it wrong decides
-// whether an expression stores a reference or a copy.
+// Specialised by the types that *own* storage: the field, and the tensor
+// field. Deliberately a trait rather than a property inferred from the
+// interface: whether a node owns storage is not something its accessors
+// reveal, and guessing it wrong decides whether an expression stores a
+// reference or a copy. A view is not one of them -- it names storage it does
+// not own, and copying it is cheap -- so it is held as an expression is.
 template <typename T>
 struct IsTerminalTrait : std::false_type {};
 
@@ -221,20 +223,25 @@ inline constexpr bool IsTerminal =
 // passed with. T is the deduced type of a forwarding reference, so it carries
 // the category: an lvalue arrives as U&, an rvalue as U.
 //
-//   terminal or view, lvalue    ->  const U&    (cheap; caller owns it)
-//   terminal or view, rvalue    ->  U           (moved in; nothing else owns
-//   it) expression node,  either    ->  U           (small; copying is cheap)
+//   owning field, lvalue        ->  const U&   (copying is the whole field)
+//   owning field, rvalue        ->  U          (moved in; nothing else owns it)
+//   view or expression, either  ->  U          (a handle; copying is cheap)
 //
-// The rvalue-terminal row is the one a plain IsTerminal test gets wrong:
+// The rvalue-field row is the one a plain IsTerminal test gets wrong:
 // `auto e = MakeField(...) + v;` would bind a reference to a temporary that
-// dies at the end of the full expression. Expression nodes are always held by
-// value so that `auto f = e * w;` stays valid when the named expression `e`
-// goes out of scope first.
+// dies at the end of the full expression. Views and expression nodes are
+// always held by value, so that `auto f = e * w;` stays valid when the named
+// expression `e`, or a named view inside it, goes out of scope first.
 //
-// Residual hazard, and it is not removable in C++: an lvalue terminal
-// destroyed while an expression referring to it is still alive. Eigen has the
-// same one. Owning terminals through a shared_ptr would fix it and would
-// change the cost model of every field, so it is documented instead.
+// "Cheap" has one exception worth knowing: an expression that has taken
+// ownership of an rvalue field carries that field, so copying *it* copies the
+// field. `auto e = MakeField() * w; auto f = e + e;` copies it twice. Name the
+// field and the expression holds a reference instead.
+//
+// Residual hazard, and it is not removable in C++: an lvalue field destroyed
+// while an expression referring to it is still alive. Eigen has the same one.
+// Owning fields through a shared_ptr would fix it and would change the cost
+// model of every field, so it is documented instead.
 template <typename T>
 using OperandStorage =
     std::conditional_t<IsTerminal<T> and std::is_lvalue_reference_v<T>,

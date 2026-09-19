@@ -68,16 +68,53 @@ concept TensorExpr =
     // a field is not.
     and not requires(const T& tensor) { tensor.MaxDegree(); };
 
-template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
-          TensorReality Reality, AngularGrid Grid, TensorLayout Layout,
-          SlotAlphabet Slots>
-struct IsTerminalTrait<
-    TensorField<Rank, Symmetry, Reality, Grid, Layout, Slots>>
-    : std::true_type {};
-
 namespace TensorDetails {
 
 using Int = std::ptrdiff_t;
+
+// Whether a node built from an operand passed as T keeps a tensor field alive
+// *inside itself*: an rvalue field is moved in, and so is whatever a node
+// passed by value already held.
+//
+// It matters because a component is a view into a field's storage. Over named
+// fields a node's components name storage that outlives the node, and taking
+// one from a temporary node is as safe as it is natural --
+// `Transpose(t).Component<0, 1>()`. Over a field the node owns, the same line
+// names storage that dies with the node at the end of the statement. The
+// accessors are deleted on rvalues in exactly that case and no other.
+template <typename T>
+constexpr bool HoldsStorageFn() {
+  if constexpr (IsTerminal<T>) {
+    return !std::is_lvalue_reference_v<T>;
+  } else {
+    return std::remove_cvref_t<T>::HoldsStorage;
+  }
+}
+
+template <typename T>
+inline constexpr bool HoldsStorage = HoldsStorageFn<T>();
+
+// Whether an image is a permutation of 0 .. N-1, which is what makes a
+// relabelling of slots a tensor operation and not an arbitrary gather.
+template <typename I, std::size_t N>
+constexpr bool IsPermutation(const std::array<I, N>& image) {
+  auto seen = std::array<bool, N>{};
+  for (auto to : image) {
+    if (to < 0 || static_cast<std::size_t>(to) >= N) return false;
+    if (seen[static_cast<std::size_t>(to)]) return false;
+    seen[static_cast<std::size_t>(to)] = true;
+  }
+  return true;
+}
+
+// An image as the index type the multi-index uses, so that it can be written
+// with plain ints -- `std::array{1, 0}` -- as the documentation writes it.
+template <typename I, std::size_t N>
+constexpr auto AsIndexArray(const std::array<I, N>& image) {
+  auto converted = std::array<Int, N>{};
+  for (std::size_t i = 0; i < N; i++) converted[i] = static_cast<Int>(image[i]);
+  return converted;
+}
 
 // Ask an operand for the component named by a compile-time array, by
 // expanding it back into a template pack.
@@ -220,6 +257,12 @@ class PermuteNode {
 
   static_assert(Image.size() == static_cast<std::size_t>(Rank),
                 "A slot permutation needs one image per tensor slot");
+  static_assert(TensorDetails::IsPermutation(Image),
+                "A slot permutation must send the slots 0 .. Rank-1 to "
+                "themselves, each once");
+
+  /** @brief Whether this node keeps a tensor field alive inside itself. */
+  static constexpr bool HoldsStorage = TensorDetails::HoldsStorage<Operand>;
 
   /** @brief Wraps an operand whose slots are to be relabelled. */
   explicit PermuteNode(Operand&& operand)
@@ -228,12 +271,19 @@ class PermuteNode {
   /** @brief The angular grid this is defined on. */
   const GridType& Grid() const { return operand_.Grid(); }
 
-  /// Slot i of this tensor is slot Image[i] of the operand, which is the same
-  /// convention MultiIndex::Permuted uses.
+  /// The operand's multi-index for this tensor's alpha: its slot i carries
+  /// alpha's slot Image[i], which is MultiIndex::Permuted. So
+  ///
+  ///     Permute<Image>(T)^{a_0 a_1 ...} = T^{a_Image[0] a_Image[1] ...},
+  ///
+  /// and with Image = {1, 2, 0} the result R has R^{abc} = T^{bca}. For a
+  /// transposition, or any product of disjoint ones, this and the inverse
+  /// convention are the same thing, which is how the prose here once came to
+  /// state the inverse without any test noticing.
   template <Int... Alphas>
   static constexpr auto Source =
       MultiIndex<Rank, SlotSet>(std::array<Int, Rank>{Alphas...})
-          .Permuted(Image)
+          .Permuted(TensorDetails::AsIndexArray(Image))
           .Slots();
 
   /// The two checks come before the multi-index is formed rather than beside
@@ -259,18 +309,31 @@ class PermuteNode {
   /** @brief The component at those slot letters, as a spin-weighted node. */
   template <Int... Alphas>
   requires Represents<Alphas...>
-  auto Component() const {
+  auto Component() const& {
     return TensorDetails::ComponentOf<Source<Alphas...>>(operand_);
   }
+
+  /// Not offered on a temporary node that owns a tensor field, where the view
+  /// returned would name storage gone by the end of the statement: see
+  /// TensorDetails::HoldsStorage. Over named fields it is offered as ever.
+  template <Int... Alphas>
+  requires HoldsStorage
+  void Component() const&& = delete;
 
  private:
   OperandStorage<Operand> operand_;
 };
 
-// Relabel a tensor's slots. The image is given as a std::array, so that
-// Permute<std::array{1, 0}>(t) reads as "slot 0 of the result is slot 1 of t".
+// Relabel a tensor's slots: Permute<Image>(T)^{a_0 a_1 ...} is
+// T^{a_Image[0] a_Image[1] ...}. The image is a std::array and may be written
+// with plain ints, so Permute<std::array{1, 0}>(t) is the transpose and
+// Permute<std::array{1, 2, 0}>(t)^{abc} is t^{bca}. An image that is not a
+// permutation of the slots is not an overload.
 template <auto Image, typename T>
-requires TensorExpr<std::remove_cvref_t<T>>
+requires TensorExpr<std::remove_cvref_t<T>> &&
+         (Image.size() ==
+          static_cast<std::size_t>(std::remove_cvref_t<T>::Rank)) &&
+         (TensorDetails::IsPermutation(Image))
 auto Permute(T&& tensor) {
   return PermuteNode<Image, T>(std::forward<T>(tensor));
 }
@@ -323,6 +386,11 @@ class TensorProductNode {
                 "A tensor product needs both operands drawn from the same "
                 "slot alphabet; embed one of them first");
 
+  /** @brief Whether this node keeps a tensor field alive inside itself. */
+  static constexpr bool HoldsStorage =
+      TensorDetails::HoldsStorage<LeftOperand> or
+      TensorDetails::HoldsStorage<RightOperand>;
+
   /**
    * @brief Wraps the two operands of a tensor product.
    * @throws std::invalid_argument if they are not on the same grid.
@@ -374,10 +442,17 @@ class TensorProductNode {
   /** @brief The component at those slot letters, as a spin-weighted node. */
   template <Int... Alphas>
   requires Represents<Alphas...>
-  auto Component() const {
+  auto Component() const& {
     return TensorDetails::ComponentOf<LeftIndices<Alphas...>>(left_) *
            TensorDetails::ComponentOf<RightIndices<Alphas...>>(right_);
   }
+
+  /// Not offered on a temporary node that owns a tensor field, where the view
+  /// returned would name storage gone by the end of the statement: see
+  /// TensorDetails::HoldsStorage. Over named fields it is offered as ever.
+  template <Int... Alphas>
+  requires HoldsStorage
+  void Component() const&& = delete;
 
  private:
   OperandStorage<LeftOperand> left_;
@@ -454,6 +529,14 @@ class ContractionNode {
   static constexpr auto Source = TensorDetails::Insert<J, K, OperandType::Rank>(
       std::array<Int, Rank>{Alphas...}, Alpha);
 
+  /** @brief Whether the term of the sum at letter number @p A exists. */
+  template <std::size_t A, Int... Alphas>
+  static constexpr bool TermExists =
+      TensorDetails::Represents<Source<Alphabet[A], Alphas...>, OperandType>();
+
+  /** @brief Whether this node keeps a tensor field alive inside itself. */
+  static constexpr bool HoldsStorage = TensorDetails::HoldsStorage<Operand>;
+
   /** @brief Backs Represents; see there. */
   template <Int... Alphas>
   static constexpr bool RepresentsFn() {
@@ -462,13 +545,14 @@ class ContractionNode {
     } else if constexpr (!AreSlotLetters<SlotSet, Alphas...>()) {
       return false;
     } else {
-      // Every term of the sum has to exist, since they are added. A tensor
-      // with a vanishing component in the middle of a contraction is not
-      // something this layer tries to be clever about.
+      // A term the operand does not represent is identically zero -- the
+      // diagonal of an antisymmetric tensor, a radial component of an
+      // embedded tangential one -- so it is a term to leave out of the sum,
+      // and the sum exists if any term does. It was once required that every
+      // term exist, which made A.v for an antisymmetric A wholly
+      // unrepresented, and Materialise wrote nothing for it.
       return [&]<std::size_t... A>(std::index_sequence<A...>) {
-        return (TensorDetails::Represents<Source<Alphabet[A], Alphas...>,
-                                          OperandType>() and
-                ...);
+        return (TermExists<A, Alphas...> or ...);
       }(std::make_index_sequence<Letters>{});
     }
   }
@@ -480,22 +564,53 @@ class ContractionNode {
   /** @brief The component at those slot letters, as a spin-weighted node. */
   template <Int... Alphas>
   requires Represents<Alphas...>
-  auto Component() const {
-    return Sum<Alphas...>(std::make_index_sequence<Letters>{});
+  auto Component() const& {
+    return SumFrom<0, Alphas...>();
   }
+
+  /// Not offered on a temporary node that owns a tensor field, where the view
+  /// returned would name storage gone by the end of the statement: see
+  /// TensorDetails::HoldsStorage. Over named fields it is offered as ever.
+  template <Int... Alphas>
+  requires HoldsStorage
+  void Component() const&& = delete;
 
  private:
   OperandStorage<Operand> operand_;
 
-  // The metric's (-1)^a, folded over the alphabet. Written as a scalar
-  // multiplication rather than as unary minus so that one expression covers
-  // both alphabets; the factor is exactly +-1, so no arithmetic is added.
-  template <Int... Alphas, std::size_t... A>
-  auto Sum(std::index_sequence<A...>) const {
-    return (
-        (MinusOneToPower<Real>(Alphabet[A]) *
-         TensorDetails::ComponentOf<Source<Alphabet[A], Alphas...>>(operand_)) +
-        ...);
+  // One term: the metric's (-1)^a times the operand's component. Written as a
+  // scalar multiplication rather than as unary minus so that one expression
+  // covers both alphabets; the factor is exactly +-1, so no arithmetic is
+  // added.
+  template <std::size_t A, Int... Alphas>
+  auto Term() const {
+    return MinusOneToPower<Real>(Alphabet[A]) *
+           TensorDetails::ComponentOf<Source<Alphabet[A], Alphas...>>(operand_);
+  }
+
+  template <std::size_t A, Int... Alphas>
+  static constexpr bool AnyTermExistsFrom() {
+    const auto exists = [&]<std::size_t... All>(std::index_sequence<All...>) {
+      return std::array<bool, Letters>{TermExists<All, Alphas...>...};
+    }(std::make_index_sequence<Letters>{});
+    for (auto a = A; a < Letters; a++) {
+      if (exists[a]) return true;
+    }
+    return false;
+  }
+
+  // The terms that exist, from letter number A on, summed from the right --
+  // t_A + (t_B + t_C) -- which is the association a fold over the alphabet
+  // gives, so where every term exists the value is what it always was.
+  template <std::size_t A, Int... Alphas>
+  auto SumFrom() const {
+    if constexpr (!TermExists<A, Alphas...>) {
+      return SumFrom<A + 1, Alphas...>();
+    } else if constexpr (!AnyTermExistsFrom<A + 1, Alphas...>()) {
+      return Term<A, Alphas...>();
+    } else {
+      return Term<A, Alphas...>() + SumFrom<A + 1, Alphas...>();
+    }
   }
 };
 
@@ -506,11 +621,20 @@ auto Contract(T&& tensor) {
 }
 
 // The trace of a rank-2 tensor, which is the contraction with a name.
+//
+// It returns a spin-weighted field and not a tensor, and that field is an
+// expression over views into the argument's storage. So the argument has to
+// outlive it, and a temporary tensor field -- or an expression that has taken
+// ownership of one -- does not: the contraction would own the field, hand out
+// views into it, and die on the way out of this function. That case is not an
+// overload. Name the tensor first.
 template <typename T>
 requires TensorExpr<std::remove_cvref_t<T>> &&
-         (std::remove_cvref_t<T>::Rank == 2)
+         (std::remove_cvref_t<T>::Rank == 2) &&
+         (!TensorDetails::HoldsStorage<T>)
 auto Trace(T&& tensor) {
-  return Contract<0, 1>(std::forward<T>(tensor)).template Component<>();
+  const auto contracted = Contract<0, 1>(std::forward<T>(tensor));
+  return contracted.template Component<>();
 }
 
 //--------------------------------------------------------------------------//
@@ -560,6 +684,14 @@ class SymmetriseNode {
           .Permuted(Group.first[Element].image)
           .Slots();
 
+  /** @brief Whether the term of the sum at group element @p Element exists. */
+  template <std::size_t Element, Int... Alphas>
+  static constexpr bool TermExists =
+      TensorDetails::Represents<Source<Element, Alphas...>, OperandType>();
+
+  /** @brief Whether this node keeps a tensor field alive inside itself. */
+  static constexpr bool HoldsStorage = TensorDetails::HoldsStorage<Operand>;
+
   /** @brief Backs Represents; see there. */
   template <Int... Alphas>
   static constexpr bool RepresentsFn() {
@@ -568,10 +700,10 @@ class SymmetriseNode {
     } else if constexpr (!AreSlotLetters<SlotSet, Alphas...>()) {
       return false;
     } else {
+      // Any and not all, as for a contraction and for the same reason: a
+      // term the operand does not represent is zero, and is left out.
       return [&]<std::size_t... E>(std::index_sequence<E...>) {
-        return (
-            TensorDetails::Represents<Source<E, Alphas...>, OperandType>() and
-            ...);
+        return (TermExists<E, Alphas...> or ...);
       }(std::make_index_sequence<GroupSize>{});
     }
   }
@@ -583,23 +715,55 @@ class SymmetriseNode {
   /** @brief The component at those slot letters, as a spin-weighted node. */
   template <Int... Alphas>
   requires Represents<Alphas...>
-  auto Component() const {
-    return Sum<Alphas...>(std::make_index_sequence<GroupSize>{}) /
-           static_cast<Real>(GroupSize);
+  auto Component() const& {
+    // Divided by the order of the group whatever is left out: a term that
+    // does not exist is a zero in the average, not a smaller average.
+    return SumFrom<0, Alphas...>() / static_cast<Real>(GroupSize);
   }
+
+  /// Not offered on a temporary node that owns a tensor field, where the view
+  /// returned would name storage gone by the end of the statement: see
+  /// TensorDetails::HoldsStorage. Over named fields it is offered as ever.
+  template <Int... Alphas>
+  requires HoldsStorage
+  void Component() const&& = delete;
 
  private:
   OperandStorage<Operand> operand_;
 
-  // A fold over the group. Each term is the operand's component under one
-  // element, scaled by that element's sign; the terms need not have the same
-  // type, since a component may come back as a view from one element and as an
-  // expression from another, and the binary node does not care.
-  template <Int... Alphas, std::size_t... E>
-  auto Sum(std::index_sequence<E...>) const {
-    return ((static_cast<Real>(Group.first[E].sign) *
-             TensorDetails::ComponentOf<Source<E, Alphas...>>(operand_)) +
-            ...);
+  // One term: the operand's component under one element of the group, scaled
+  // by that element's sign. The terms need not have the same type, since a
+  // component may come back as a view from one element and as an expression
+  // from another, and the binary node does not care.
+  template <std::size_t E, Int... Alphas>
+  auto Term() const {
+    return static_cast<Real>(Group.first[E].sign) *
+           TensorDetails::ComponentOf<Source<E, Alphas...>>(operand_);
+  }
+
+  template <std::size_t E, Int... Alphas>
+  static constexpr bool AnyTermExistsFrom() {
+    const auto exists = [&]<std::size_t... All>(std::index_sequence<All...>) {
+      return std::array<bool, static_cast<std::size_t>(GroupSize)>{
+          TermExists<All, Alphas...>...};
+    }(std::make_index_sequence<GroupSize>{});
+    for (auto e = E; e < static_cast<std::size_t>(GroupSize); e++) {
+      if (exists[e]) return true;
+    }
+    return false;
+  }
+
+  // The terms that exist, summed from the right as a fold over the group
+  // would sum them, so that where every term exists nothing has changed.
+  template <std::size_t E, Int... Alphas>
+  auto SumFrom() const {
+    if constexpr (!TermExists<E, Alphas...>) {
+      return SumFrom<E + 1, Alphas...>();
+    } else if constexpr (!AnyTermExistsFrom<E + 1, Alphas...>()) {
+      return Term<E, Alphas...>();
+    } else {
+      return Term<E, Alphas...>() + SumFrom<E + 1, Alphas...>();
+    }
   }
 };
 

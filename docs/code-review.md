@@ -174,6 +174,37 @@ Kept current as `fix-plan.md` is worked through. Anything not listed is open.
     double) and from logarithms above, so n = 600 at lMax = 700 is finite and
     unitary where two thirds of it was not.
 
+- **T3, T4, E2 and the `Permute` items — fixed** (plan Phase 7).
+  - *T3.* A contraction or a symmetrisation now sums the terms its operand
+    represents and is itself represented if any of them is. A·v for an
+    antisymmetric A, any contraction of an `Embed`ded tensor, and
+    `Trace(Embed(T))` all used to be wholly unrepresented — silently zero once
+    materialised, or not compilable — and are tested against explicit
+    components. Where every term exists the association of the sum is
+    unchanged, so existing values are too.
+  - *E2.* `SpinFieldView` is no longer a terminal, so an expression holds a
+    view by value as it holds another expression. A product of two named views
+    returned from a function was a stack-use-after-return under the address
+    sanitiser and is now a tested case.
+  - *T4.* `Component()` is `const&`-qualified and deleted on rvalues —
+    unconditionally on `TensorField`, which always owns, and on a node only
+    when it has taken ownership of a field (`TensorDetails::HoldsStorage`), so
+    `Transpose(t).Component<0,1>()` over a named `t` is as available as ever.
+    `Trace` is not an overload for an argument that owns storage. The deletion
+    found one instance in the existing suite, `TestTensorField.cpp:538`.
+  - *Permute.* The documented convention now matches the code,
+    `Permute<Image>(T)^{a0 a1 …} = T^{a_Image[0] a_Image[1] …}`, and is tested
+    with a three-cycle, which — unlike the involution the old test used —
+    distinguishes a permutation from its inverse. An image that is not a
+    permutation is not an overload, and an image may be written with plain
+    `int`s as the documentation always did.
+  - `IsTerminalTrait<TensorField>` moved from `TensorExpr.h` to beside the
+    class.
+  - Not done here: `Materialise`'s default reality (`ComplexTensor`), which the
+    plan lists under Phase 9; and `GeneratedBy` still accepts a non-bijective
+    generator, since it is a type and not a call, and wants its check in
+    `MakeOrbitTable`.
+
 ## Summary
 
 The numerical core is in good shape. The loop and matrix kernels, the batching

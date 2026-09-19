@@ -27,8 +27,17 @@ namespace GSHTrans {
 /// admissible wherever an owning field is, which is why operator[] returns by
 /// value on every node and why the grid is a handle rather than a reference.
 ///
-/// Views are terminals: they name storage, so an expression may hold an lvalue
-/// one by reference.
+/// A view is a handle and not storage: a grid handle, a span and a stride. An
+/// expression therefore holds one **by value**, whatever value category it
+/// arrived with, exactly as it holds another expression. It used to hold an
+/// lvalue view by reference, as it does an owning field, on the argument that
+/// a view "names storage" -- but the storage a view names is not the view, and
+/// a view is what one naturally binds to a local, so
+///
+///     auto u = t.Component<1>();  auto w = t.Component<-1>();  return u * w;
+///
+/// returned an expression referring to two dead locals. The copy that avoids
+/// it is a shared_ptr and a span, once per expression and never per element.
 template <std::ptrdiff_t N_, AngularGrid Grid_,
           RealOrComplexValued Value_ = ComplexValued,
           typename Element_ = ScalarFor<typename Grid_::Real, Value_>>
@@ -148,11 +157,6 @@ template <std::ptrdiff_t N, AngularGrid Grid,
           RealOrComplexValued Value = ComplexValued>
 using ConstSpinFieldView =
     SpinFieldView<N, Grid, Value, const ScalarFor<typename Grid::Real, Value>>;
-
-template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value,
-          typename Element>
-struct IsTerminalTrait<SpinFieldView<N, Grid, Value, Element>>
-    : std::true_type {};
 
 }  // namespace GSHTrans
 

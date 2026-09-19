@@ -372,7 +372,7 @@ class TensorField {
   /// views alone for exactly this case.
   template <Int... Alphas>
   requires Represents<Alphas...>
-  auto Component() const {
+  auto Component() const& {
     constexpr auto flat = FlatOf<Alphas...>;
     constexpr auto relation = Orbits.RelationOf(flat);
 
@@ -408,7 +408,7 @@ class TensorField {
   /// sensible reading and is why the accessor's value kind says RealValued.
   template <Int... Alphas>
   requires Writable<Alphas...>
-  auto Component() {
+  auto Component() & {
     constexpr auto flat = FlatOf<Alphas...>;
     constexpr auto N = UpperIndexOf<Alphas...>;
     constexpr auto constraint = Orbits.constraint[flat];
@@ -420,6 +420,13 @@ class TensorField {
           grid_, RealStoredSpan<flat>(), RealComponentStride);
     }
   }
+
+  /// Not offered on a temporary. A component is a view into this field's
+  /// storage, so one taken from a temporary names storage that is gone by the
+  /// end of the statement: `MakeField().Component<0, 0>()` was always a
+  /// dangling view, and now does not compile. Name the field.
+  template <Int... Alphas>
+  void Component() const&& = delete;
 
   //------------------------------------------------------------------------//
   //                    What the transform layer will need                   //
@@ -697,6 +704,19 @@ class TensorField {
 //--------------------------------------------------------------------------//
 //                          The objects that recur                          //
 //--------------------------------------------------------------------------//
+
+// A tensor field owns its storage, so an expression holds an lvalue one by
+// reference. Said here, beside the class, and not in the header of the
+// expression layer where it once was: a specialisation has to be seen before
+// the first use that would otherwise pick the primary template, and a
+// translation unit that includes this header alone -- the layered types and
+// the expansions do -- would have had OperandStorage copy the whole field.
+template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
+          TensorReality Reality, AngularGrid Grid, TensorLayout Layout,
+          SlotAlphabet Slots>
+struct IsTerminalTrait<
+    TensorField<Rank, Symmetry, Reality, Grid, Layout, Slots>>
+    : std::true_type {};
 
 // Names for what applications actually hold, so that a call site says what
 // the object is rather than how it is parameterised.

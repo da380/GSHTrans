@@ -30,9 +30,10 @@ namespace GSHTrans {
 // cost a node rather than a buffer: Embed allocates nothing and writes no
 // zeros, because a component with a radial slot is one it declines to
 // represent -- the same signal an antisymmetric tensor's diagonal already
-// emits, which every compile-time traversal, Contract and Materialise already
-// handle. See Expansion/BundleMaps.h for why the spectral pair is not built
-// this way.
+// emits. Every compile-time traversal reads that signal as "zero": Materialise
+// writes nothing there, a product with it is absent, and a contraction or a
+// symmetrisation leaves the term out of its sum. See Expansion/BundleMaps.h
+// for why the spectral pair is not built this way.
 
 //--------------------------------------------------------------------------//
 //                        Tangential into the general                        //
@@ -61,6 +62,9 @@ class EmbedNode {
   static_assert(std::same_as<typename OperandType::SlotSet, TangentialSlots>,
                 "Embed widens a tangential tensor; a general one is already "
                 "where it is going");
+
+  /** @brief Whether this node keeps a tensor field alive inside itself. */
+  static constexpr bool HoldsStorage = TensorDetails::HoldsStorage<Operand>;
 
   /** @brief Wraps a tangential operand to be seen in the general bundle. */
   explicit EmbedNode(Operand&& operand)
@@ -91,9 +95,16 @@ class EmbedNode {
   /** @brief The component at those slot letters, as a spin-weighted node. */
   template <Int... Alphas>
   requires Represents<Alphas...>
-  auto Component() const {
+  auto Component() const& {
     return operand_.template Component<Alphas...>();
   }
+
+  /// Not offered on a temporary node that owns a tensor field, where the view
+  /// returned would name storage gone by the end of the statement: see
+  /// TensorDetails::HoldsStorage. Over named fields it is offered as ever.
+  template <Int... Alphas>
+  requires HoldsStorage
+  void Component() const&& = delete;
 
  private:
   OperandStorage<Operand> operand_;
@@ -133,6 +144,9 @@ class TangentialNode {
                 "Tangential projects a general tensor; a tangential one is "
                 "already where it is going");
 
+  /** @brief Whether this node keeps a tensor field alive inside itself. */
+  static constexpr bool HoldsStorage = TensorDetails::HoldsStorage<Operand>;
+
   /** @brief Wraps a general operand, dropping its radial components. */
   explicit TangentialNode(Operand&& operand)
       : operand_{std::forward<Operand>(operand)} {}
@@ -159,9 +173,16 @@ class TangentialNode {
   /** @brief The component at those slot letters, as a spin-weighted node. */
   template <Int... Alphas>
   requires Represents<Alphas...>
-  auto Component() const {
+  auto Component() const& {
     return operand_.template Component<Alphas...>();
   }
+
+  /// Not offered on a temporary node that owns a tensor field, where the view
+  /// returned would name storage gone by the end of the statement: see
+  /// TensorDetails::HoldsStorage. Over named fields it is offered as ever.
+  template <Int... Alphas>
+  requires HoldsStorage
+  void Component() const&& = delete;
 
  private:
   OperandStorage<Operand> operand_;
