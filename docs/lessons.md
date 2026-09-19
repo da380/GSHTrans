@@ -172,14 +172,38 @@ function.** Four transform entry points were "documented" for a while by a
 stray comment on a function-local type alias, and the warning log was clean
 throughout.
 
+**`#pragma once`, and no guards.** A guard is a name that has to be unique and
+is chosen by hand; this tree has two files called `BundleMaps.hpp`, and only
+the care taken over forty macro names kept them apart. The pragma fails only
+when one file is reached by two paths, which a header-only library included
+through one root does not do.
+
+**To make OpenMP optional, ask the compiler and leave the pragmas alone.**
+`_OPENMP` is defined exactly when the flag is given, so a macro of the
+library's own could only ever disagree with it. Two things were learned on the
+way to `OpenMP.hpp`. Serial stand-ins *named* `omp_get_max_threads` and so on
+collide, because GCC ships `<omp.h>` whether or not OpenMP is on and a caller
+may include it: the wrappers need names of their own. And hiding the pragmas
+behind a macro works and cannot be kept, because no formatter can lay out a
+macro whose argument says `for` and `if`; an ignored pragma with
+`-Wunknown-pragmas` silenced for the length of the header, and only when
+`_OPENMP` is undefined, costs the caller nothing.
+
 ## Build and CI
 
+**`cmake --build --parallel` with no number is `make -j`, which is no limit.**
+Under the Makefile generator every translation unit starts at once, and these
+are heavy ones. The development laptop reached its critical temperature and
+powered itself off in the middle of a gate run at sixteen jobs, straight after
+two other full builds; six jobs still touched 88 °C. Give the number, and on
+the laptop give a small one.
+
 **Build the no-dependency configuration before pushing anything that touches
-`SphericalGrid.h`.** A private member added inside its
+`SphericalGrid.hpp`.** A private member added inside its
 `#ifdef GSHTRANS_HAVE_BLAS` block compiles in the default tree and fails only
 where BLAS is absent.
 
-**`Blas.h` assumes a 32-bit-integer BLAS.** An ILP64 build — MKL's, for
+**`Blas.hpp` assumes a 32-bit-integer BLAS.** An ILP64 build — MKL's, for
 instance — uses the same symbol names, so linking one would not fail to link:
 it would pass the wrong thing. There is no portable way to detect it from
 inside the header.
@@ -209,6 +233,6 @@ Deliberately unresolved, each wanting a decision rather than an edit:
   overload resolution. Either rename it or accept the exception.
 - **`Chunking::Count`** takes `int copies` where everything around it uses
   `std::ptrdiff_t`.
-- **`SphericalGrid.h`** is the largest file by a wide margin.
+- **`SphericalGrid.hpp`** is the largest file by a wide margin.
 - **The two layered field types** duplicate a good deal between them.
 

@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include <omp.h>
 
 #include <algorithm>
 #include <cmath>
@@ -16,7 +15,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "CheckCoeff2Coeff.h"
+#include "CheckCoeff2Coeff.hpp"
 
 TEST(GaussLegendreGrid, DegreeZeroGeometryAndWeights) {
   using Grid = GaussLegendreGrid<double, All, All>;
@@ -795,17 +794,17 @@ TEST(GaussLegendreGrid, ParallelAgreesWithSequential) {
 // nested region under the default of one active level runs on one thread and
 // computes the same numbers.
 TEST(Threading, TeamSizeIsOneInsideAnActiveRegion) {
-  if (omp_get_max_threads() < 2) GTEST_SKIP() << "needs two threads";
+  if (OpenMP::MaxThreads() < 2) GTEST_SKIP() << "needs two threads";
 
   EXPECT_EQ(Execution::Sequential().TeamSize(), 1);
   EXPECT_EQ(Execution::Parallel(3).TeamSize(), 3);
-  EXPECT_EQ(Execution::Parallel().TeamSize(), omp_get_max_threads());
+  EXPECT_EQ(Execution::Parallel().TeamSize(), OpenMP::MaxThreads());
 
   auto inside = std::vector<int>(2, -1);
   auto insideDefault = std::vector<int>(2, -1);
 #pragma omp parallel num_threads(2)
   {
-    const auto t = static_cast<std::size_t>(omp_get_thread_num());
+    const auto t = static_cast<std::size_t>(OpenMP::ThreadNumber());
     inside[t] = Execution::Parallel(3).TeamSize();
     insideDefault[t] = Execution::Parallel().TeamSize();
   }
@@ -820,7 +819,7 @@ TEST(Threading, TeamSizeIsOneInsideAnActiveRegion) {
 // that failed: it is an inactive region, so nothing about it is nested, and a
 // region opened from it took the whole machine.
 TEST(Threading, ARegionOpenedInsideTheSerialisingRegionGetsOneThread) {
-  const auto available = omp_get_max_threads();
+  const auto available = OpenMP::MaxThreads();
   if (available < 2) GTEST_SKIP() << "needs two threads";
 
   for (auto team : {1, 2, available}) {
@@ -830,9 +829,9 @@ TEST(Threading, ARegionOpenedInsideTheSerialisingRegionGetsOneThread) {
 #pragma omp parallel
       {
 #pragma omp single
-        got = omp_get_num_threads();
+        got = OpenMP::TeamThreads();
       }
-      opened[static_cast<std::size_t>(omp_get_thread_num())] = got;
+      opened[static_cast<std::size_t>(OpenMP::ThreadNumber())] = got;
     });
     for (auto got : opened) {
       // A thread the runtime declined to supply never ran, and says -1.
@@ -844,7 +843,7 @@ TEST(Threading, ARegionOpenedInsideTheSerialisingRegionGetsOneThread) {
   }
 
   // And the caller's own setting is untouched.
-  EXPECT_EQ(omp_get_max_threads(), available);
+  EXPECT_EQ(OpenMP::MaxThreads(), available);
 }
 
 // An exception must not leave a parallel region -- the program is terminated

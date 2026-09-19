@@ -87,12 +87,12 @@ The single most useful statement for reading the code:
   $P^N_{lm} = d^l_{Nm}$ --- \emph{upper index first}.
 \end{quote}
 
-This is verified rather than assumed.  \code{tests/CheckWignerConvention.h}
+This is verified rather than assumed.  \code{tests/CheckWignerConvention.hpp}
 compares all nine $l=1$ values against D\&T (C.115); the check
 discriminates, because the four entries with $N-m$ odd distinguish
 $d^l_{Nm}$ from $d^l_{mN}$, which differ by $(-1)^{N-m}$.  Two further
 facts corroborate it: the recursion seed evaluates to D\&T (C.125), and
-\code{tests/CheckLegendre.h} pins the $N=0$ row against
+\code{tests/CheckLegendre.hpp} pins the $N=0$ row against
 \code{std::sph\_legendre}, fixing the orthonormal scaling and the
 Condon--Shortley phase.
 
@@ -319,7 +319,7 @@ D\&T (C.127),
   \label{eq:addition}
 \end{equation}
 This is the strongest available check on a computed table, and
-\code{tests/CheckAdditionTheorem.h} is it.  Because the library stores
+\code{tests/CheckAdditionTheorem.hpp} is it.  Because the library stores
 $X^N_{lm}$ rather than $P^N_{lm}$, the right-hand side there is
 $\delta_{NN'}(2l+1)/4\pi$.
 
@@ -1545,7 +1545,7 @@ scattered points the composite of the two beats either alone.
 \section{The 3-j symbols}
 \label{sec:threej}
 
-\code{3j.h} tabulates the whole $(m_1,m_3)$ plane at fixed degrees, with
+\code{3j.hpp} tabulates the whole $(m_1,m_3)$ plane at fixed degrees, with
 $m_2=-(m_1+m_3)$ fixed by the selection rule.  The table is the primitive: a
 single symbol costs one.
 
@@ -1617,7 +1617,7 @@ difference in its arithmetic and no memory.
 \label{sec:tuning}
 
 Several of the library's choices are properties of the machine rather than of
-the mathematics, and cannot be settled by reasoning.  \code{Tuning.h} times
+the mathematics, and cannot be settled by reasoning.  \code{Tuning.hpp} times
 the alternatives on the caller's
 own problem and returns \emph{values} --- never a configured grid, so nothing
 is substituted silently, which matters most for the piece of machinery most

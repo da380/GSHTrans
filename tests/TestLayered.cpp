@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <cstddef>
@@ -999,7 +999,7 @@ TEST(RadialDerivatives, ActOnComplexLinesAsReadilyAsRealOnes) {
   }
 }
 
-// The contract of RadialOperator.h: one operator, shared const, called from
+// The contract of RadialOperator.hpp: one operator, shared const, called from
 // every thread, with whatever scratch it needs in thread_local storage. This
 // is the pattern the pre-built operators are written to and that a caller
 // writing their own has to follow, so it is pinned rather than described.

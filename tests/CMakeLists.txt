@@ -97,65 +97,64 @@ target_link_libraries(TestRealFieldSymmetry PRIVATE GSHTrans gtest_main)
 # Every core header must compile on its own, and twice.
 # One translation unit per header, generated at configure time.
 #
-# The list is every header the library ships, plus the umbrella module
-# headers, and the check below is what makes that sentence true: the list is
+# The list is every header the library ships, plus the two forwarding
+# headers kept for the old include names, and the check below is what makes that sentence true: the list is
 # compared with what is on disk, and a header that is there and not here stops
 # the configure. It is written out and not globbed because adding a header
 # should be a deliberate act -- but "deliberate" had quietly become
 # "forgotten" for four of them, all in Layered/, and the claim above stood in
 # the README regardless.
 set(GSHTRANS_SELF_SUFFICIENT_HEADERS
-  GSHTrans/src/3j.h
-  GSHTrans/src/Blas.h
-  GSHTrans/src/Concepts.h
-  GSHTrans/src/GaussLegendreGrid.h
-  GSHTrans/src/SphericalGrid.h
-  GSHTrans/src/Indexing.h
-  GSHTrans/src/Policies.h
-  GSHTrans/src/Tuning.h
-  GSHTrans/src/Utility.h
-  GSHTrans/src/Version.h
-  GSHTrans/src/Views.h
-  GSHTrans/src/Wigner.h
-  GSHTrans/src/WignerMatrices.h
-  GSHTrans/src/SpinField/SpinWeighted.h
-  GSHTrans/src/SpinField/SpinField.h
-  GSHTrans/src/SpinField/SpinFieldNodes.h
-  GSHTrans/src/SpinField/SpinFieldOverloads.h
-  GSHTrans/src/SpinField/SpinFieldView.h
-  GSHTrans/src/Tensor/MultiIndex.h
-  GSHTrans/src/Tensor/Orbits.h
-  GSHTrans/src/Tensor/TensorField.h
-  GSHTrans/src/Tensor/TensorExpr.h
-  GSHTrans/src/Tensor/BundleMaps.h
-  GSHTrans/src/Expansion/SpinExpansion.h
-  GSHTrans/src/Expansion/Eth.h
-  GSHTrans/src/Expansion/TensorExpansion.h
-  GSHTrans/src/Expansion/ContravariantDerivative.h
-  GSHTrans/src/Expansion/IntrinsicDerivative.h
-  GSHTrans/src/Expansion/BundleMaps.h
-  GSHTrans/src/Expansion/Interpolate.h
-  GSHTrans/src/Layered/RadialGrid.h
-  GSHTrans/src/Layered/LayeredSpinField.h
-  GSHTrans/src/Layered/LayeredTensorField.h
-  GSHTrans/src/Layered/LayeredGradient.h
-  GSHTrans/src/Layered/RadialOperator.h
-  GSHTrans/src/Layered/RadialMajor.h
-  GSHTrans/src/Layered/RadialDerivatives.h
-  GSHTrans/src/Layered/RadialSplineDerivative.h
-  GSHTrans/src/Layered/RadialResample.h
+  GSHTrans/3j.hpp
+  GSHTrans/Blas.hpp
+  GSHTrans/Concepts.hpp
+  GSHTrans/Core.hpp
+  GSHTrans/Expansion/BundleMaps.hpp
+  GSHTrans/Expansion/ContravariantDerivative.hpp
+  GSHTrans/Expansion/Eth.hpp
+  GSHTrans/Expansion/Interpolate.hpp
+  GSHTrans/Expansion/IntrinsicDerivative.hpp
+  GSHTrans/Expansion/SpinExpansion.hpp
+  GSHTrans/Expansion/TensorExpansion.hpp
+  GSHTrans/GSHTrans.hpp
+  GSHTrans/GaussLegendreGrid.hpp
+  GSHTrans/Indexing.hpp
+  GSHTrans/Layered/LayeredGradient.hpp
+  GSHTrans/Layered/LayeredSpinField.hpp
+  GSHTrans/Layered/LayeredTensorField.hpp
+  GSHTrans/Layered/RadialDerivatives.hpp
+  GSHTrans/Layered/RadialGrid.hpp
+  GSHTrans/Layered/RadialMajor.hpp
+  GSHTrans/Layered/RadialOperator.hpp
+  GSHTrans/Layered/RadialResample.hpp
+  GSHTrans/Layered/RadialSplineDerivative.hpp
+  GSHTrans/OpenMP.hpp
+  GSHTrans/Policies.hpp
+  GSHTrans/SphericalGrid.hpp
+  GSHTrans/SpinField/SpinField.hpp
+  GSHTrans/SpinField/SpinFieldNodes.hpp
+  GSHTrans/SpinField/SpinFieldOverloads.hpp
+  GSHTrans/SpinField/SpinFieldView.hpp
+  GSHTrans/SpinField/SpinWeighted.hpp
+  GSHTrans/Tensor/BundleMaps.hpp
+  GSHTrans/Tensor/MultiIndex.hpp
+  GSHTrans/Tensor/Orbits.hpp
+  GSHTrans/Tensor/TensorExpr.hpp
+  GSHTrans/Tensor/TensorField.hpp
+  GSHTrans/Tuning.hpp
+  GSHTrans/Utility.hpp
+  GSHTrans/Version.hpp
+  GSHTrans/Views.hpp
+  GSHTrans/Wigner.hpp
+  GSHTrans/WignerMatrices.hpp
   GSHTrans/Core
-  GSHTrans/Field
-  GSHTrans/Tensor
-  GSHTrans/Expansion
-  GSHTrans/Layered
   GSHTrans/All
 )
 
 file(GLOB_RECURSE _shipped_headers
      RELATIVE "${PROJECT_SOURCE_DIR}"
      CONFIGURE_DEPENDS
-     "${PROJECT_SOURCE_DIR}/GSHTrans/src/*.h")
+     "${PROJECT_SOURCE_DIR}/GSHTrans/*.hpp")
 foreach(header IN LISTS _shipped_headers)
   if(NOT header IN_LIST GSHTRANS_SELF_SUFFICIENT_HEADERS)
     message(FATAL_ERROR
@@ -190,6 +189,13 @@ foreach(target IN LISTS _test_targets)
   if(target MATCHES "^Test" OR target STREQUAL "HeaderSelfSufficiency")
     target_compile_options(${target} PRIVATE
       $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>)
+    # A few tests open regions of their own. Without OpenMP those pragmas are
+    # ignored, as they should be, and -Wall would say so; the library's own are
+    # silenced in its headers, which is the case that matters and is left on.
+    if(NOT GSHTRANS_WITH_OPENMP)
+      target_compile_options(${target} PRIVATE
+        $<$<CXX_COMPILER_ID:GNU>:-Wno-unknown-pragmas>)
+    endif()
   endif()
 endforeach()
 

@@ -1,0 +1,422 @@
+#pragma once
+
+#include <cmath>
+#include <complex>
+#include <concepts>
+#include <cstddef>
+#include <ranges>
+#include <type_traits>
+#include <utility>
+
+#include "../Concepts.hpp"
+#include "SpinField.hpp"
+#include "SpinFieldNodes.hpp"
+#include "SpinWeighted.hpp"
+
+namespace GSHTrans {
+
+// Anything usable as an operand: a node, however it was passed. The parameter
+// is deduced from a forwarding reference, so it may be a reference type.
+template <typename T>
+concept SpinFieldExpr = SpinWeighted<std::remove_cvref_t<T>>;
+
+namespace SpinFieldOps {
+
+// The functors. Each returns whatever the arithmetic gives, and the node
+// derives its scalar and value kind from that -- so the reality constraint
+// holds by construction rather than by a separate rule.
+
+struct Plus {
+  template <typename A, typename B>
+  auto operator()(A a, B b) const {
+    return a + b;
+  }
+};
+
+struct Minus {
+  template <typename A, typename B>
+  auto operator()(A a, B b) const {
+    return a - b;
+  }
+};
+
+struct Times {
+  template <typename A, typename B>
+  auto operator()(A a, B b) const {
+    return a * b;
+  }
+};
+
+struct DividedBy {
+  template <typename A, typename B>
+  auto operator()(A a, B b) const {
+    return a / b;
+  }
+};
+
+struct Negated {
+  template <typename A>
+  auto operator()(A a) const {
+    return -a;
+  }
+};
+
+// Identity on a real scalar. std::conj would return a complex there and
+// promote a real-valued field for no reason; conjugation at N = 0 on a real
+// operand is the identity, permitted and not special-cased.
+struct Conjugated {
+  template <typename A>
+  auto operator()(A a) const {
+    if constexpr (ComplexFloatingPoint<A>) {
+      return std::conj(a);
+    } else {
+      return a;
+    }
+  }
+};
+
+struct Modulus {
+  template <typename A>
+  auto operator()(A a) const {
+    return std::abs(a);
+  }
+};
+
+// |f|^2 in its own right, not real(conj(f) * f), which would cost a complex
+// multiply per point and a complex accumulator for a quantity known to be
+// real.
+struct SquaredModulus {
+  template <typename A>
+  auto operator()(A a) const {
+    if constexpr (ComplexFloatingPoint<A>) {
+      return std::norm(a);
+    } else {
+      return a * a;
+    }
+  }
+};
+
+struct RealPart {
+  template <typename A>
+  auto operator()(A a) const {
+    return std::real(a);
+  }
+};
+
+struct ImaginaryPart {
+  template <typename A>
+  auto operator()(A a) const {
+    return std::imag(a);
+  }
+};
+
+// Scalars are captured by value.
+template <RealOrComplexFloatingPoint S>
+struct TimesScalar {
+  S s;
+  template <typename A>
+  auto operator()(A a) const {
+    return s * a;
+  }
+};
+
+template <RealOrComplexFloatingPoint S>
+struct OverScalar {
+  S s;
+  template <typename A>
+  auto operator()(A a) const {
+    return a / s;
+  }
+};
+
+template <RealOrComplexFloatingPoint S>
+struct ScalarOver {
+  S s;
+  template <typename A>
+  auto operator()(A a) const {
+    return s / a;
+  }
+};
+
+}  // namespace SpinFieldOps
+
+// One precision per expression tree; no mixed-precision promotion.
+template <typename L, typename R>
+concept SamePrecisionAs =
+    std::same_as<typename Node<L>::Real, typename Node<R>::Real>;
+
+// What may scale a field: a real or complex scalar of the field's own
+// precision, or an integer. `2 * f` is what anyone writes first, and an integer
+// is not a second precision -- it is exact in every one -- so taking it does
+// not loosen the rule above. A floating-point scalar of another precision is
+// still refused: `2.0 * f` on a single-precision field would narrow the
+// scalar in silence, and the way to say that is `2.0f * f`. bool is left out,
+// being an integer to the language and a mistake to a reader.
+template <typename S, typename A>
+concept ScalarFor_ = SpinFieldExpr<A> and
+                     ((std::integral<S> and not std::same_as<S, bool>) or
+                      (RealOrComplexFloatingPoint<S> and
+                       std::same_as<RemoveComplex<S>, typename Node<A>::Real>));
+
+// The scalar as the field's own precision: a real one -- an integer included
+// -- as Real, a complex one as std::complex<Real>. Which of the two decides
+// the value kind of the result, exactly as before.
+template <typename S, typename A>
+using ScalarOf = std::conditional_t<ComplexFloatingPoint<S>,
+                                    std::complex<typename Node<A>::Real>,
+                                    typename Node<A>::Real>;
+
+namespace SpinFieldDetails {
+
+template <typename S, typename A>
+constexpr auto AsScalarOf(S s) {
+  using T = ScalarOf<S, A>;
+  if constexpr (ComplexFloatingPoint<S>) {
+    using R = typename Node<A>::Real;
+    return T{static_cast<R>(s.real()), static_cast<R>(s.imag())};
+  } else {
+    return static_cast<T>(s);
+  }
+}
+
+}  // namespace SpinFieldDetails
+
+//--------------------------------------------------------------------------//
+//                                  Binary                                   //
+//--------------------------------------------------------------------------//
+
+// Addition and subtraction: equal upper indices.
+template <SpinFieldExpr L, SpinFieldExpr R>
+requires SamePrecisionAs<L, R> and
+         IndexRules::Equal::Admissible<Node<L>::UpperIndex, Node<R>::UpperIndex>
+auto operator+(L&& l, R&& r) {
+  return Binary<SpinFieldOps::Plus, IndexRules::Equal, L, R>(
+      std::forward<L>(l), std::forward<R>(r));
+}
+
+template <SpinFieldExpr L, SpinFieldExpr R>
+requires SamePrecisionAs<L, R> and
+         IndexRules::Equal::Admissible<Node<L>::UpperIndex, Node<R>::UpperIndex>
+auto operator-(L&& l, R&& r) {
+  return Binary<SpinFieldOps::Minus, IndexRules::Equal, L, R>(
+      std::forward<L>(l), std::forward<R>(r));
+}
+
+// Multiplication: upper indices add. The product of two band-limited fields
+// exceeds the grid's truncation; the type system permits it, as it must, and
+// the dealiasing question belongs to the grid -- see
+// GaussLegendreGrid::ForBand.
+template <SpinFieldExpr L, SpinFieldExpr R>
+requires SamePrecisionAs<L, R> and
+         IndexRules::Sum::Admissible<Node<L>::UpperIndex, Node<R>::UpperIndex>
+auto operator*(L&& l, R&& r) {
+  return Binary<SpinFieldOps::Times, IndexRules::Sum, L, R>(std::forward<L>(l),
+                                                            std::forward<R>(r));
+}
+
+// Division: by a scalar field only. Zeros of the divisor are the caller's
+// problem and are not checked.
+template <SpinFieldExpr L, SpinFieldExpr R>
+requires SamePrecisionAs<L, R> and
+         IndexRules::FirstOnly::Admissible<Node<L>::UpperIndex,
+                                           Node<R>::UpperIndex>
+auto operator/(L&& l, R&& r) {
+  return Binary<SpinFieldOps::DividedBy, IndexRules::FirstOnly, L, R>(
+      std::forward<L>(l), std::forward<R>(r));
+}
+
+//--------------------------------------------------------------------------//
+//                                   Unary                                   //
+//--------------------------------------------------------------------------//
+
+template <SpinFieldExpr A>
+auto operator-(A&& a) {
+  return Unary<SpinFieldOps::Negated, IndexRules::Same, A>(std::forward<A>(a));
+}
+
+// Conjugation reverses the upper index; see section 5 of the theory note,
+// docs/canonical-components.tex.
+template <SpinFieldExpr A>
+auto conj(A&& a) {
+  return Unary<SpinFieldOps::Conjugated, IndexRules::Negate, A>(
+      std::forward<A>(a));
+}
+
+// |f| is admissible at every upper index, and is real. Note that it is neither
+// band-limited nor smooth at zeros of f, so the spectral layer must not assume
+// an upper-index-zero expression is truncatable at the grid's lMax.
+template <SpinFieldExpr A>
+auto abs(A&& a) {
+  return Unary<SpinFieldOps::Modulus, IndexRules::Zero, A>(std::forward<A>(a));
+}
+
+template <SpinFieldExpr A>
+auto abs2(A&& a) {
+  return Unary<SpinFieldOps::SquaredModulus, IndexRules::Zero, A>(
+      std::forward<A>(a));
+}
+
+// real and imag are covariant only at upper index zero, so they exist only
+// there. Offering them at every upper index is the natural mistake: the
+// real part of a component is not a component of anything.
+template <SpinFieldExpr A>
+requires(Node<A>::UpperIndex == 0)
+auto real(A&& a) {
+  return Unary<SpinFieldOps::RealPart, IndexRules::Zero, A>(std::forward<A>(a));
+}
+
+template <SpinFieldExpr A>
+requires(Node<A>::UpperIndex == 0)
+auto imag(A&& a) {
+  return Unary<SpinFieldOps::ImaginaryPart, IndexRules::Zero, A>(
+      std::forward<A>(a));
+}
+
+//--------------------------------------------------------------------------//
+//                             Scalar arithmetic                             //
+//--------------------------------------------------------------------------//
+
+// A real scalar preserves the value kind; a complex one promotes it. Neither
+// touches the upper index.
+template <SpinFieldExpr A, typename S>
+requires ScalarFor_<S, A>
+auto operator*(A&& a, S s) {
+  using T = ScalarOf<S, A>;
+  return Unary<SpinFieldOps::TimesScalar<T>, IndexRules::Same, A>(
+      std::forward<A>(a),
+      SpinFieldOps::TimesScalar<T>{SpinFieldDetails::AsScalarOf<S, A>(s)});
+}
+
+template <typename S, SpinFieldExpr A>
+requires ScalarFor_<S, A>
+auto operator*(S s, A&& a) {
+  using T = ScalarOf<S, A>;
+  return Unary<SpinFieldOps::TimesScalar<T>, IndexRules::Same, A>(
+      std::forward<A>(a),
+      SpinFieldOps::TimesScalar<T>{SpinFieldDetails::AsScalarOf<S, A>(s)});
+}
+
+template <SpinFieldExpr A, typename S>
+requires ScalarFor_<S, A>
+auto operator/(A&& a, S s) {
+  using T = ScalarOf<S, A>;
+  return Unary<SpinFieldOps::OverScalar<T>, IndexRules::Same, A>(
+      std::forward<A>(a),
+      SpinFieldOps::OverScalar<T>{SpinFieldDetails::AsScalarOf<S, A>(s)});
+}
+
+// Dividing a scalar by a field needs the field at upper index zero, for the
+// same reason division between fields does.
+template <typename S, SpinFieldExpr A>
+requires ScalarFor_<S, A> and (Node<A>::UpperIndex == 0)
+auto operator/(S s, A&& a) {
+  return Unary<SpinFieldOps::ScalarOver<ScalarOf<S, A>>, IndexRules::Same, A>(
+      std::forward<A>(a), SpinFieldOps::ScalarOver<ScalarOf<S, A>>{
+                              SpinFieldDetails::AsScalarOf<S, A>(s)});
+}
+
+//--------------------------------------------------------------------------//
+//                              Callable nodes                               //
+//--------------------------------------------------------------------------//
+
+// Apply an arbitrary callable pointwise. This is where pow, exp, log and
+// anything else of that kind live: they are all Map at upper index zero, and
+// naming each of them would be sugar over one node.
+//
+// Called Map rather than Transform, which would collide with
+// ForwardTransformation and InverseTransformation and with "spherical harmonic
+// transform" throughout this codebase's vocabulary.
+//
+// Restricted to upper index zero, like real and imag: a function applied to a
+// component's value is a statement about that value, and only at N = 0 is the
+// value frame-independent enough for the statement to mean anything.
+//
+// The callable is decayed and stored by value, so the node owns it and an
+// expression outlives the caller's lambda. Its result determines the node's
+// scalar and hence its value kind -- a trait on the return type rather than a
+// guess.
+//
+// Invoked as f(value). Point-dependent callables, f(theta, phi, value), are
+// deliberately not offered here; if wanted they are a second overload rather
+// than a change to this one.
+//
+// What the callable returns is part of the constraint and not left to the
+// node's static_assert: it must be a real or complex scalar of the field's own
+// precision. An unlawful use of this layer is meant to be an overload that is
+// not there, which a test can ask about, and not a hard error inside a node,
+// which it cannot.
+template <SpinFieldExpr A, typename F>
+requires(Node<A>::UpperIndex == 0) and
+        std::invocable<std::decay_t<F>, typename Node<A>::Scalar> and
+        RealOrComplexFloatingPoint<
+            std::invoke_result_t<std::decay_t<F>, typename Node<A>::Scalar>> and
+        std::same_as<RemoveComplex<std::invoke_result_t<
+                         std::decay_t<F>, typename Node<A>::Scalar>>,
+                     typename Node<A>::Real>
+auto Map(A&& a, F&& f) {
+  using Functor = std::decay_t<F>;
+  return Unary<Functor, IndexRules::Zero, A>(std::forward<A>(a),
+                                             Functor(std::forward<F>(f)));
+}
+
+//--------------------------------------------------------------------------//
+//                               Integration                                 //
+//--------------------------------------------------------------------------//
+
+// The integral over the sphere. The only reduction this layer ships.
+//
+// Restricted to upper index zero because the integral vanishes identically
+// otherwise (theory note section 5): there is nothing to compute, so offering
+// it would only invite the mistake.
+//
+// There is deliberately no InnerProduct and no Norm here. The pairing that
+// matters is the metric one of theory note eq:metric, which carries the
+// (-1)^alpha factors and is a duality product between a tensor and its dual
+// rather than an L2 inner product on one component; naming the level-0 L2 form
+// InnerProduct would claim a name the tensor layer wants. What survives is the
+// fact that made it attractive: Integrate(conj(f) * g) type-checks for any
+// common N, because conj(f) carries -N and the product lands at zero. That is
+// a test, not an API.
+//
+// The quadrature is taken factored. The longitude weights are uniform, so the
+// integral is dPhi * sum_theta w_theta (sum_phi f) -- nTheta multiplications
+// rather than nTheta * nPhi, and no cartesian_product view to iterate.
+template <SpinFieldExpr A>
+requires(Node<A>::UpperIndex == 0)
+auto Integrate(A&& a) {
+  using Scalar = typename Node<A>::Scalar;
+  const auto& grid = a.Grid();
+
+  // Named rather than used as temporaries: the longitude weights are a
+  // repeat_view, which is not a borrowed range, so ranges::begin on the
+  // prvalue is ill-formed.
+  auto longitudeWeights = grid.LongitudeWeights();
+  auto coLatitudeWeights = grid.CoLatitudeWeights();
+  const auto dPhi = *std::ranges::begin(longitudeWeights);
+
+  auto total = Scalar{};
+  auto weight = std::ranges::begin(coLatitudeWeights);
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    auto row = Scalar{};
+    for (auto iPhi : grid.LongitudeIndices()) {
+      row += a[iTheta, iPhi];
+    }
+    total += *weight++ * row;
+  }
+  return total * dPhi;
+}
+
+//--------------------------------------------------------------------------//
+//                             Materialisation                               //
+//--------------------------------------------------------------------------//
+
+// Break a lazy chain deliberately -- before feeding a product into a transform
+// twice, say, or before a loop that would otherwise re-evaluate it.
+template <SpinFieldExpr Expr>
+auto Materialise(Expr&& expr) {
+  using E = Node<Expr>;
+  return SpinField<E::UpperIndex, typename E::GridType, typename E::Value>(
+      expr);
+}
+
+}  // namespace GSHTrans

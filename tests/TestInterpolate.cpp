@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <complex>
 #include <cstddef>
 #include <cstdint>
@@ -10,7 +10,7 @@
 #include <span>
 #include <vector>
 
-#include "TestRandom.h"
+#include "TestRandom.hpp"
 
 namespace {
 

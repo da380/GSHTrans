@@ -32,7 +32,7 @@
 // depends on the azimuth of approach.
 //
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <iomanip>

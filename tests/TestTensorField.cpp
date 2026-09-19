@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <array>
 #include <complex>
 #include <cstddef>
@@ -663,7 +663,7 @@ TEST(TensorField, ATangentialTensorHasTwoLettersPerSlot) {
 // tangential tensor for a radial component is a hard error inside the
 // multi-index constructor rather than an unsatisfied constraint -- and every
 // assertion below would be vacuous, because a requires-expression cannot see
-// a throw in a constant expression (see IsSlotLetter in MultiIndex.h).
+// a throw in a constant expression (see IsSlotLetter in MultiIndex.hpp).
 TEST(TensorField, ARadialComponentOfATangentialTensorIsNotAComponent) {
   static_assert(Tangential2::Represents<-1, 1>);
   static_assert(!Tangential2::Represents<0, 1>);

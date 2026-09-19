@@ -9,7 +9,13 @@ include(CMakeFindDependencyMacro)
 find_dependency(NumericConcepts)
 find_dependency(GaussQuad)
 find_dependency(FFTWpp)
-find_dependency(OpenMP)
+
+# OpenMP only when this build had it, for the reason given for the two below:
+# the exported target names OpenMP::OpenMP_CXX in that case and no other.
+set(GSHTRANS_WITH_OPENMP @GSHTRANS_WITH_OPENMP@)
+if(GSHTRANS_WITH_OPENMP)
+  find_dependency(OpenMP)
+endif()
 
 # Optional, and only when this build had it: the exported target names
 # Interpolation::Interpolation only in that case, so looking for it

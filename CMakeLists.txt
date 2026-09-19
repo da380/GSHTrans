@@ -13,11 +13,11 @@ project(GSHTrans
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# The version in GSHTrans/src/Version.h is written by hand, so that copying
+# The version in GSHTrans/Version.hpp is written by hand, so that copying
 # the GSHTrans directory into another project is a complete way to vendor the
 # library. Check it against the version declared above, so that the two cannot
 # drift apart.
-file(READ ${CMAKE_CURRENT_SOURCE_DIR}/GSHTrans/src/Version.h _version_header)
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/GSHTrans/Version.hpp _version_header)
 set(_header_version)
 foreach(_part MAJOR MINOR PATCH)
   string(REGEX MATCH "define GSHTRANS_VERSION_${_part} ([0-9]+)"
@@ -28,7 +28,7 @@ list(JOIN _header_version "." _header_version)
 if(NOT _header_version STREQUAL PROJECT_VERSION)
   message(FATAL_ERROR
     "Version mismatch: CMakeLists.txt declares ${PROJECT_VERSION} but "
-    "GSHTrans/src/Version.h declares ${_header_version}. Update both, "
+    "GSHTrans/Version.hpp declares ${_header_version}. Update both, "
     "including GSHTRANS_VERSION_STRING.")
 endif()
 if(NOT _version_header MATCHES "GSHTRANS_VERSION_STRING \"${PROJECT_VERSION}\"")
@@ -238,7 +238,23 @@ if(GSHTRANS_INSTALL)
   endforeach()
 endif()
 
-find_package(OpenMP REQUIRED)
+# OpenMP, which the library threads with and does not need.
+#
+# On by default, and then required: a build that asked for threads and did not
+# get them should say so at configure time and not by running on one core.
+# Off, every parallel region is a serial loop and every policy that asks for
+# threads gets one, with the same answers. That is a supported configuration,
+# and CI runs the suite in it: it is what makes a bare copy of the GSHTrans
+# directory usable with nothing but a compiler and FFTW, it builds where
+# OpenMP is awkward to come by, and it is the build to take to a debugger.
+#
+# Nothing is defined for the headers either way. They ask the compiler, through
+# _OPENMP, which is set exactly when the flag that enables OpenMP is given --
+# so there is no macro of ours to get out of step with it.
+option(GSHTRANS_WITH_OPENMP "Thread with OpenMP" ON)
+if(GSHTRANS_WITH_OPENMP)
+  find_package(OpenMP REQUIRED)
+endif()
 
 # The library itself: headers only.
 add_library(GSHTrans INTERFACE)
@@ -253,11 +269,14 @@ add_library(GSHTrans::GSHTrans ALIAS GSHTrans)
 target_link_libraries(GSHTrans INTERFACE
   NumericConcepts::NumericConcepts
   FFTWpp::FFTWpp
-  GaussQuad::GaussQuad
-  OpenMP::OpenMP_CXX)
+  GaussQuad::GaussQuad)
+
+if(GSHTRANS_WITH_OPENMP)
+  target_link_libraries(GSHTrans INTERFACE OpenMP::OpenMP_CXX)
+endif()
 
 # The optional half, and the macro that guards the headers using it. Carried
-# on the target rather than generated into a header, because Version.h is
+# on the target rather than generated into a header, because Version.hpp is
 # written by hand so that copying the GSHTrans directory remains a complete
 # way to vendor the library -- and a build-tree-generated header would break
 # exactly that. An INTERFACE definition is exported with the target, so an
@@ -295,20 +314,16 @@ if(GSHTRANS_INSTALL)
 
   install(TARGETS GSHTrans EXPORT GSHTransTargets)
 
-  # The public headers are included as <GSHTrans/Core>, so the whole GSHTrans
-  # directory goes to the include prefix as it stands. The extensionless
-  # umbrella headers have to be named one by one: FILES_MATCHING takes
-  # patterns, and there is no extension to match on.
+  # The public headers are included as <GSHTrans/GSHTrans.hpp>, so the whole
+  # GSHTrans directory goes to the include prefix as it stands. All and Core
+  # are the two forwarding headers kept for code written against the old
+  # layout; they have no extension, so they are named.
   install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/GSHTrans
           DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
           FILES_MATCHING
-            PATTERN "*.h"
+            PATTERN "*.hpp"
             PATTERN "All"
-            PATTERN "Core"
-            PATTERN "Field"
-            PATTERN "Tensor"
-            PATTERN "Expansion"
-            PATTERN "Layered")
+            PATTERN "Core")
 
   install(EXPORT GSHTransTargets
           FILE GSHTransTargets.cmake
@@ -346,7 +361,9 @@ if(PROJECT_IS_TOP_LEVEL)
   if(GSHTRANS_BUILD_EXAMPLES)
     add_subdirectory(examples)
   endif()
-  if(GSHTRANS_BUILD_BENCHMARKS)
+  # The benchmark measures threading and calls the OpenMP runtime directly, so
+  # without OpenMP there is nothing for it to be.
+  if(GSHTRANS_BUILD_BENCHMARKS AND GSHTRANS_WITH_OPENMP)
     add_subdirectory(benchmarks)
   endif()
   if(GSHTRANS_BUILD_TESTS)

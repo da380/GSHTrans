@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <cstddef>
@@ -11,7 +11,7 @@
 
 // Preconditions, in every build mode.
 //
-// Indexing.h sets the policy: the index classes assert, because they sit in
+// Indexing.hpp sets the policy: the index classes assert, because they sit in
 // inner loops, and "the layers above validate and throw in every build mode".
 // This file is where that second half is held to. Each case here once did
 // something other than throw -- an assert that a Release build compiles out,

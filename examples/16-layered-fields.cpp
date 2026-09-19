@@ -10,7 +10,7 @@
 // library stops: the radial derivative belongs to the application's
 // discretisation and arrives as a callable.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <iomanip>

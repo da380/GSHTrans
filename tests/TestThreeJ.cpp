@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <GSHTrans/Core>
+#include <GSHTrans/Core.hpp>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -9,11 +9,11 @@
 #include <string>
 #include <vector>
 
-#include "RacahReference.h"
+#include "RacahReference.hpp"
 
-// The test family for 3j.h.
+// The test family for 3j.hpp.
 //
-// `3j.h` had no coverage at all although it is public API, and the reason
+// `3j.hpp` had no coverage at all although it is public API, and the reason
 // this file can be written without a reference implementation is the
 // completeness relation:
 //

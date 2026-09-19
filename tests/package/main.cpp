@@ -1,7 +1,7 @@
 // Consume an installed GSHTrans through find_package, exercising enough of it
 // that a package which resolves but does not work would still fail here.
 //
-// It reaches through the umbrella header, uses all four dependencies
+// It reaches through the library's one entry header, uses all four dependencies
 // indirectly -- the quadrature from GaussQuad, the FFT from FFTWpp, the
 // concepts from NumericConcepts, the threading from OpenMP -- and checks a
 // round trip, because a transform that returns the wrong numbers is a broken
@@ -14,7 +14,7 @@
 // only if something asks for it. The BLAS was forgotten once, and this file
 // did not notice because it never asked.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <algorithm>
 #include <cmath>
 #include <complex>

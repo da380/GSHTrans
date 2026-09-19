@@ -16,7 +16,7 @@
 // Chebyshev, say, which would sit behind this same seam as a transform, a
 // multiply and a transform back. These are conveniences.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <iomanip>

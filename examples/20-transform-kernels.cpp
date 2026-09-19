@@ -19,7 +19,7 @@
 //      verified against the loop path on identical inputs.
 //
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <chrono>
 #include <cmath>
 #include <complex>

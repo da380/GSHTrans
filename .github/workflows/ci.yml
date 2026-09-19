@@ -75,7 +75,7 @@ jobs:
   # therefore one that has to be run rather than asserted. The library
   # *withdraws* facilities there rather than disabling them -- no
   # Scheme::Bicubic(), no TransformKernel::Matrix(), no
-  # RadialSplineDerivative.h -- so a mistake shows up as a build failure in
+  # RadialSplineDerivative.hpp -- so a mistake shows up as a build failure in
   # code that should not have been compiled, which the default build cannot
   # see. It is also the cheapest job here: nothing is fetched and no BLAS is
   # linked.
@@ -97,6 +97,36 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DGSHTRANS_WITH_INTERPOLATION=OFF \
             -DGSHTRANS_WITH_BLAS=OFF
+          cmake --build build --parallel
+          ctest --test-dir build --output-on-failure
+
+  # Without OpenMP, which is a supported configuration for the same reason:
+  # the pragmas are then unknown to the compiler and everything the library
+  # asks of the runtime goes through GSHTrans/OpenMP.hpp, so what this leg
+  # catches is an omp_* call or an <omp.h> that went around the shim. (A
+  # variable used only inside a pragma is an unused-variable warning in this
+  # log and in no other.) The BLAS stays on: a serial library over a BLAS is
+  # a combination somebody will build, and the benchmark, which measures
+  # threading, is what this configuration leaves out.
+  serial:
+    name: no OpenMP
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfftw3-dev ninja-build g++-14 \
+            libopenblas-openmp-dev
+
+      - name: Configure, build and test
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DGSHTRANS_WITH_OPENMP=OFF \
+            -DGSHTRANS_WITH_BLAS=ON
           cmake --build build --parallel
           ctest --test-dir build --output-on-failure
 
@@ -143,8 +173,7 @@ jobs:
 
   # The tree is clang-format clean against the checked-in .clang-format, and
   # this is what keeps it so. A one-off run decays the moment the next commit
-  # lands; the check is what makes it a property. The umbrella headers have no
-  # extension, so clang-format has to be told what language they are.
+  # lands; the check is what makes it a property.
   format:
     name: clang-format
     runs-on: ubuntu-24.04
@@ -158,13 +187,8 @@ jobs:
 
       - name: Check the formatting
         run: |
-          git ls-files '*.h' '*.cpp' \
+          git ls-files '*.hpp' '*.cpp' \
             | xargs clang-format-18 --dry-run --Werror
-          for f in GSHTrans/All GSHTrans/Core GSHTrans/Expansion \
-                   GSHTrans/Field GSHTrans/Layered GSHTrans/Tensor; do
-            clang-format-18 --dry-run --Werror \
-              -assume-filename=umbrella.h < "$f"
-          done
 
   # The documentation is written rather than inferred: EXTRACT_ALL is off and
   # WARN_IF_UNDOCUMENTED is on, so an undocumented public entity is a doxygen

@@ -1,0 +1,315 @@
+#pragma once
+
+#include <FFTWpp/Core>
+#include <array>
+#include <cmath>
+#include <complex>
+#include <cstddef>
+#include <span>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <utility>
+
+#include "../Concepts.hpp"
+#include "../Policies.hpp"
+#include "../Tensor/MultiIndex.hpp"
+#include "../Tensor/Orbits.hpp"
+#include "../Tensor/TensorField.hpp"
+#include "../Utility.hpp"
+#include "SpinExpansion.hpp"
+
+namespace GSHTrans {
+
+/// A tensor field in the spectral domain: one buffer, handing out its
+/// components as spin expansions.
+///
+/// The mirror of TensorField, and deliberately so -- same component addressing,
+/// same stored set, same grouping by upper index. What it does *not* mirror is
+/// the reality reduction's second buffer. A pinned component is a real field,
+/// but its coefficients are complex numbers in the reduced m >= 0 storage, so
+/// the spectral side is one complex buffer throughout. What varies is the block
+/// length: a component's block is sized by its own upper index, and a pinned
+/// one by the reduced storage, which is why the total is computed rather than
+/// being a product.
+///
+/// The saving carries across. A real rank-2 tensor stores five components
+/// rather than nine here too, and each pinned one costs about half what a
+/// complex one of the same degree would.
+template <std::ptrdiff_t Rank_, TensorSymmetry<Rank_> Symmetry_,
+          TensorReality Reality_, AngularGrid Grid_,
+          SlotAlphabet Slots_ = AllSlots>
+class TensorExpansion {
+ public:
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
+
+  /** @brief The tensor rank. */
+  static constexpr Int Rank = Rank_;
+  using Symmetry = Symmetry_;  ///< The permutation symmetry of the slots.
+  using Reality = Reality_;    ///< Whether the tensor is real or complex.
+  using GridType = Grid_;      ///< The angular grid this is defined on.
+  using Real = typename Grid_::Real;   ///< The precision.
+  using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
+
+  // The alphabet the slots are drawn from, appended last and defaulted as it
+  // is on the field. The mirror holds here too: which components exist is the
+  // field's question, and this side takes the answer rather than deciding it
+  // again.
+  using SlotSet = Slots_;  ///< The alphabet the slots are drawn from.
+
+  /** @brief The spatial tensor this expands, which owns the combinatorics. */
+  using FieldType =
+      TensorField<Rank, Symmetry, Reality, GridType, ComponentMajor, SlotSet>;
+
+  /** @brief The orbits of the symmetry group, and what each pins. */
+  static constexpr auto& Orbits = FieldType::Orbits;
+  /** @brief Where each stored component sits. */
+  static constexpr auto& ComponentLayout = FieldType::ComponentLayout;
+  /** @brief How many components the tensor has, stored or not. */
+  static constexpr Int Components = FieldType::Components;
+  /** @brief How many are actually stored, one per orbit. */
+  static constexpr Int StoredComponents = FieldType::StoredComponents;
+  /** @brief How many of those are complex fields. */
+  static constexpr Int ComplexComponents = FieldType::ComplexComponents;
+  /** @brief How many are pinned to a single real number. */
+  static constexpr Int RealComponents = FieldType::RealComponents;
+
+  /** @brief Whether this holds a component at those slot letters. */
+  template <Int... Alphas>
+  static constexpr bool Represents = FieldType::template Represents<Alphas...>;
+
+  /** @brief Whether that component may be written through. */
+  template <Int... Alphas>
+  static constexpr bool Writable = FieldType::template Writable<Alphas...>;
+
+  TensorExpansion() = delete;
+
+  /**
+   * @brief A zero expansion on @p grid.
+   * @param grid The angular grid the coefficients belong to.
+   * @param lMax The largest degree stored, which must be at least Rank since
+   * a rank-p tensor has components at upper index p.
+   * @throws std::invalid_argument if it is not.
+   */
+  TensorExpansion(GridType grid, Int lMax)
+      : grid_{std::move(grid)},
+        lMax_{Checked(lMax)},
+        blockStart_{BlockStarts(grid_, lMax_)},
+        data_(blockStart_.back()) {}
+
+  /** @brief The angular grid this is defined on. */
+  const GridType& Grid() const { return grid_; }
+  /** @brief The largest degree stored. */
+  auto MaxDegree() const { return lMax_; }
+  /** @brief How many elements are stored. */
+  auto Size() const { return static_cast<Int>(data_.size()); }
+  /** @brief The underlying buffer. */
+  auto Data() { return std::span<Complex>(data_); }
+  /** @brief The underlying buffer. */
+  auto Data() const { return std::span<const Complex>(data_); }
+
+  // The component with this multi-index, as a spin expansion over the block
+  // holding it.
+  //
+  // Only the *stored* components have blocks. A derived one is determined by
+  // its representative, and deriving it in the spectral domain means applying
+  // eq:complevel, T^{-N}_{l,-m} = (-1)^m conj(T^N_{lm}) -- an index reversal
+  // rather than the pointwise relation the spatial side uses. That is not a
+  // view over anything, so it is not offered here: derive in the spatial
+  // domain, or ask the representative and apply the relation.
+  /// A stored component's coefficient block, as a writable spin expansion.
+  template <Int... Alphas>
+  requires Writable<Alphas...>
+  auto Component() {
+    constexpr auto flat = FieldType::template FlatOf<Alphas...>;
+    constexpr auto slot = FieldType::SlotOfFlat(Orbits.representative[flat]);
+    constexpr auto n = ComponentLayout.upperIndexOfSlot[slot];
+    constexpr auto real = ComponentLayout.realOfSlot[slot];
+    using Value = std::conditional_t<real, RealValued, ComplexValued>;
+    return SpinExpansionView<n, GridType, Value>(grid_, lMax_, BlockOf(slot));
+  }
+
+  /// The same, read-only.
+  template <Int... Alphas>
+  requires Writable<Alphas...>
+  auto Component() const {
+    constexpr auto flat = FieldType::template FlatOf<Alphas...>;
+    constexpr auto slot = FieldType::SlotOfFlat(Orbits.representative[flat]);
+    constexpr auto n = ComponentLayout.upperIndexOfSlot[slot];
+    constexpr auto real = ComponentLayout.realOfSlot[slot];
+    using Value = std::conditional_t<real, RealValued, ComplexValued>;
+    return ConstSpinExpansionView<n, GridType, Value>(grid_, lMax_,
+                                                      BlockOf(slot));
+  }
+
+  /// The coefficient of *any* representable component at (l, m).
+  ///
+  /// The block accessors above reach only stored components, because a block
+  /// is what a view can be taken over. A derived component has no block: on the
+  /// spectral side deriving one is eq:complevel,
+  ///
+  ///   T^{-N}_{l,-m} = (-1)^m conj(T^{N}_{lm}),
+  ///
+  /// which reverses the order index rather than acting at fixed (l, m), so it
+  /// is a computation and not a view. This is that computation, and with it
+  /// every component of the tensor is readable in either domain.
+  ///
+  /// Four things have to be resolved, and the orbit table says which applies:
+  ///
+  ///   stored                  read it
+  ///   permutation relative    the representative's, with a sign
+  ///   reality relative        the representative's at -m, conjugated
+  ///   vanishing orbit         zero
+  ///
+  /// and two more come from how the block itself is stored: a pinned component
+  /// is a real field, so its block holds only m >= 0 and the negative orders
+  /// follow from f_{l,-m} = (-1)^m conj(f_{lm}); and one pinned as imaginary
+  /// holds the real field whose i-multiple the component is.
+  ///
+  /// Degrees below the component's own |N| return zero rather than reading off
+  /// the end: a component at upper index N has no content there, which is not
+  /// a missing value but an absent one. So does a component whose orbit
+  /// vanishes -- unlike the spatial accessor, which refuses those because a
+  /// node must have a type and there is nothing to give it. Here the answer is
+  /// a value, and zero is the right one; the surface gradient reads shifted
+  /// components that may vanish and would otherwise have to special-case them.
+  /// A letter the alphabet does not have is refused rather than answered with
+  /// zero, which is the one place this accessor's permissiveness stops. A
+  /// vanishing orbit is a component the tensor *has* and that is identically
+  /// zero, so zero is the right answer; a radial index on a tangential tensor
+  /// is not a component at all, and saying zero would be answering a question
+  /// about a different bundle. The check is also what stops the multi-index
+  /// being formed from a letter that
+  /// would make its constructor throw.
+  template <Int... Alphas>
+  requires(sizeof...(Alphas) == Rank and AreSlotLetters<Slots_, Alphas...>())
+  Complex Coefficient(Int l, Int m) const {
+    constexpr auto flat = FieldType::template FlatOf<Alphas...>;
+    constexpr auto n = FieldType::template UpperIndexOf<Alphas...>;
+    constexpr auto constraint = Orbits.constraint[flat];
+
+    if constexpr (constraint == ComponentConstraint::Zero) {
+      return Complex{};
+    } else {
+      if (l < (n < 0 ? -n : n) || l > lMax_ || m < -l || m > l) {
+        return Complex{};
+      }
+
+      constexpr auto rep = Orbits.representative[flat];
+      constexpr auto slot = FieldType::SlotOfFlat(rep);
+      constexpr auto repN = ComponentLayout.upperIndexOfSlot[slot];
+      constexpr auto real = ComponentLayout.realOfSlot[slot];
+
+      // The representative's own coefficient, at whichever order this term
+      // needs, allowing for a real block's reduced storage.
+      //
+      // Read straight out of the buffer, by the index arithmetic a view of
+      // the block would use, and **without making the view**. A view holds a
+      // grid handle, which is a shared_ptr, and this is called once per
+      // (l, m) per term by every spectral operator: the copy was a contended
+      // atomic on a count every thread shares, and it made eight surface
+      // gradients on eight threads four times *slower* than the same eight on
+      // one -- 8 ns a call alone, 380 ns in company. The index block is three
+      // integers and its arithmetic is closed-form.
+      using Orders = std::conditional_t<real, NonNegative, All>;
+      const auto indices = GSHIndices<Orders>(lMax_, lMax_, repN);
+      const auto* block =
+          data_.data() + blockStart_[static_cast<std::size_t>(slot)];
+      const auto stored = [&](Int order) {
+        if constexpr (real) {
+          if (order < 0) {
+            return static_cast<Real>(MinusOneToPower(order)) *
+                   std::conj(block[indices.Index(l, -order)]);
+          }
+        }
+        return Complex{block[indices.Index(l, order)]};
+      };
+
+      return DerivedCoefficient<Orbits.RelationOf(flat), Real>(m, repN, stored);
+    }
+  }
+
+  /// The block a stored component occupies, by slot.
+  std::span<Complex> BlockOf(Int slot) {
+    const auto k = static_cast<std::size_t>(slot);
+    return Data().subspan(blockStart_[k], blockStart_[k + 1] - blockStart_[k]);
+  }
+
+  /// The same, read-only.
+  std::span<const Complex> BlockOf(Int slot) const {
+    const auto k = static_cast<std::size_t>(slot);
+    return Data().subspan(blockStart_[k], blockStart_[k + 1] - blockStart_[k]);
+  }
+
+ private:
+  GridType grid_;
+  Int lMax_;
+  // Where each slot's block starts, with the total at the end. Worked out
+  // once: the blocks follow the component order, which is the order the
+  // transform writes them in, and summing the sizes of the blocks before a
+  // slot on every read was a loop inside the innermost one.
+  std::array<std::size_t, static_cast<std::size_t>(StoredComponents) + 1>
+      blockStart_;
+  FFTWpp::vector<Complex> data_;
+
+  static auto BlockStarts(const GridType& grid, Int lMax) {
+    auto starts = std::array<std::size_t,
+                             static_cast<std::size_t>(StoredComponents) + 1>{};
+    for (auto slot = Int{0}; slot < StoredComponents; slot++) {
+      const auto k = static_cast<std::size_t>(slot);
+      starts[k + 1] = starts[k] + BlockSize(grid, lMax, slot);
+    }
+    return starts;
+  }
+
+  static std::size_t BlockSize(const GridType& grid, Int lMax, Int slot) {
+    if (ComponentLayout.realOfSlot[slot]) {
+      return static_cast<std::size_t>(grid.RealCoefficientSize(lMax));
+    }
+    return static_cast<std::size_t>(
+        grid.CoefficientSize(lMax, ComponentLayout.upperIndexOfSlot[slot]));
+  }
+
+  // Checked before the storage is sized by it, since sizing a block below its
+  // own upper index is what the index classes assert against.
+  static Int Checked(Int lMax) {
+    if (lMax < Rank) {
+      throw std::invalid_argument(
+          "A rank-" + std::to_string(Rank) +
+          " tensor has components at upper index " + std::to_string(Rank) +
+          ", so its expansion needs at least that degree");
+    }
+    return lMax;
+  }
+};
+
+// Between the two domains, arranging the batched transform the tensor field
+// already knows how to make.
+template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
+          TensorReality Reality, AngularGrid Grid, TensorLayout Layout,
+          SlotAlphabet Slots>
+auto Expand(
+    const TensorField<Rank, Symmetry, Reality, Grid, Layout, Slots>& tensor,
+    std::ptrdiff_t lMax, Execution policy = Execution::Sequential()) {
+  auto expansion = TensorExpansion<Rank, Symmetry, Reality, Grid, Slots>(
+      tensor.Grid(), lMax);
+  tensor.ForwardTransformation(lMax, expansion.Data(), policy);
+  return expansion;
+}
+
+// Slots is deduced from the expansion and Layout is not, so Layout keeps its
+// old position and its default: naming a point-major result still takes the
+// same five arguments it always did.
+template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
+          TensorReality Reality, AngularGrid Grid,
+          TensorLayout Layout = ComponentMajor, SlotAlphabet Slots = AllSlots>
+auto Evaluate(
+    const TensorExpansion<Rank, Symmetry, Reality, Grid, Slots>& expansion,
+    Execution policy = Execution::Sequential()) {
+  auto tensor = TensorField<Rank, Symmetry, Reality, Grid, Layout, Slots>(
+      expansion.Grid());
+  tensor.InverseTransformation(expansion.MaxDegree(), expansion.Data(), policy);
+  return tensor;
+}
+
+}  // namespace GSHTrans

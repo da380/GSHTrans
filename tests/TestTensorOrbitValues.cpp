@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <array>
 #include <complex>
 #include <cstddef>
@@ -8,12 +8,12 @@
 #include <utility>
 #include <vector>
 
-#include "TestRandom.h"
+#include "TestRandom.hpp"
 
 // The values a tensor hands back for its derived components.
 //
 // A tensor stores one representative per orbit and derives the rest, and the
-// derivation is written once, in Orbits.h. What is checked here is not that
+// derivation is written once, in Orbits.hpp. What is checked here is not that
 // helper against a second copy of itself but the *defining relations*, which
 // are independent of how any component is obtained:
 //

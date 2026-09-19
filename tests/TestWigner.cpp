@@ -6,10 +6,10 @@
 #include <numbers>
 #include <vector>
 
-#include "CheckAdditionTheorem.h"
-#include "CheckLegendre.h"
-#include "CheckWignerBoundary.h"
-#include "CheckWignerConvention.h"
+#include "CheckAdditionTheorem.hpp"
+#include "CheckLegendre.hpp"
+#include "CheckWignerBoundary.hpp"
+#include "CheckWignerConvention.hpp"
 
 namespace {
 

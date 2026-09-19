@@ -11,7 +11,7 @@
 // not the saving but the derivative: on tangential tensors the intrinsic
 // covariant derivative is closed, and the ambient one is not.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <iomanip>

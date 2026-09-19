@@ -20,7 +20,7 @@ The library is complete through the layers below.
   Legendre kernels are carried permanently, `TransformKernel::Loop()` and,
   where a BLAS is present, `TransformKernel::Matrix()` — the second worth 3–6×
   where it is worth anything and storing half the table, with the first kept
-  as its oracle. `Tuning.h` chooses between them by measuring the caller's own
+  as its oracle. `Tuning.hpp` chooses between them by measuring the caller's own
   problem.
 * **The field layer** — spin fields, tensor storage and algebra, the reality
   reduction, and the spectral side; the contravariant derivative, which is
@@ -243,7 +243,7 @@ differently.
 ## Choosing a policy by measuring it
 
 Some of the library's choices cannot be settled by reasoning and vary by
-machine. `Tuning.h` times the alternatives on the caller's own problem and
+machine. `Tuning.hpp` times the alternatives on the caller's own problem and
 hands back **values**, never a configured grid — so nothing is substituted
 behind your back, which matters most for the thing most likely to substitute
 silently.
@@ -275,8 +275,8 @@ difference is picking noise.
 
 where `d^l_{Nm} = P^N_{lm}(cos θ)` is the generalised Legendre function of
 **Dahlen & Tromp (1998) eq. (C.115)** — **upper index first**. This is pinned
-by `tests/CheckWignerConvention.h` against the `l = 1` table, and corroborated
-by `tests/CheckLegendre.h`, which fixes the `N = 0` row against
+by `tests/CheckWignerConvention.hpp` against the `l = 1` table, and corroborated
+by `tests/CheckLegendre.hpp`, which fixes the `N = 0` row against
 `std::sph_legendre`.
 
 Values come from stable recurrence relations, computed in parallel over
@@ -285,7 +285,7 @@ Values come from stable recurrence relations, computed in parallel over
 
 ## Wigner 3-j symbols
 
-`3j.h` gives the coupling coefficients, which is what Gaunt integrals and
+`3j.hpp` gives the coupling coefficients, which is what Gaunt integrals and
 mode coupling need. The table is the primitive — a single symbol costs a whole
 table, so ask for the table:
 
@@ -330,8 +330,8 @@ cd build && ctest
 ```
 
 Requires a C++23 compiler (GCC 13+ or Clang 18+), CMake 3.24+, and a local
-FFTW. OpenMP is
-used for the parallel paths. `GaussQuad`, `FFTWpp`, `NumericConcepts` and
+FFTW. OpenMP is used for the parallel paths and is optional: without it the
+library is the same library on one thread. `GaussQuad`, `FFTWpp`, `NumericConcepts` and
 `Interpolation` are looked for on the system and fetched by `FetchContent`
 only if they are not there. All four are header-only, and none of them brings
 Eigen: GaussQuad used to, and no longer does.
@@ -343,11 +343,12 @@ Eigen: GaussQuad used to, and no longer does.
 | `GSHTRANS_BUILD_BENCHMARKS` | `ON` | build `benchmarks/TransformBenchmark` |
 | `GSHTRANS_INSTALL` | `ON` when top level | generate the install and export rules |
 | `GSHTRANS_WITH_INTERPOLATION` | `ON` | radial resampling, spline derivatives, and the local interpolation schemes |
+| `GSHTRANS_WITH_OPENMP` | `ON` | thread with OpenMP. `OFF` builds the same library serially, and skips the benchmark, which measures threading |
 | `GSHTRANS_WITH_BLAS` | `AUTO` | the matrix transform kernel. `ON` fails the configure without a BLAS; `OFF` never looks |
 
 **Both optional dependencies are absent rather than disabled.** Without
 `Interpolation` there is no `Scheme::Bicubic()` to call and no
-`RadialSplineDerivative.h` to include; without a BLAS there is no
+`RadialSplineDerivative.hpp` to include; without a BLAS there is no
 `TransformKernel::Matrix()`. Asking for one is a compile error at the call
 site rather than a throw at run time, and CI builds with both off so that the
 claim is run rather than asserted: the suite there is the same suite, less
@@ -361,12 +362,14 @@ target_link_libraries(your_target PRIVATE GSHTrans::GSHTrans)
 ```
 
 `add_subdirectory` and `FetchContent` work too, and give the same target name.
-`GSHTrans/src/Version.h` defines `GSHTRANS_VERSION` for feature tests against
+`GSHTrans/Version.hpp` defines `GSHTRANS_VERSION` for feature tests against
 a particular release.
 
 Copying the `GSHTrans/` directory into a project is a third way, and a
-complete one, with two things to say by hand since no build system is saying
-them. The library needs OpenMP, so compile with `-fopenmp` or its equivalent.
+complete one, with two things to know since no build system is saying them.
+Threading follows the compiler: with `-fopenmp` or its equivalent the library
+is threaded, and without it the same code runs on one thread, silently and
+with no macro to set -- `GSHTrans::OpenMP::Available` says which was built.
 And the optional halves are switched on by macros that the CMake target
 defines and a bare copy does not: `GSHTRANS_HAVE_BLAS`, with a BLAS to link,
 for `TransformKernel::Matrix()`; and `GSHTRANS_HAVE_INTERPOLATION`, with
@@ -427,13 +430,14 @@ without `NDEBUG`.
 ## Layout
 
 ```
-GSHTrans/Core          umbrella: grid, Wigner, indexing, policies, tuning, 3j
-GSHTrans/Field         umbrella: the spin-field algebra
-GSHTrans/Tensor        umbrella: tensor fields and their algebra
-GSHTrans/Expansion     umbrella: the spectral side
-GSHTrans/Layered       umbrella: three-dimensional fields
-GSHTrans/All           all of them
-GSHTrans/src/          the headers themselves
+GSHTrans/GSHTrans.hpp  the whole library; the header to include
+GSHTrans/Core.hpp      the core alone: grid, Wigner, indexing, policies, tuning, 3j
+GSHTrans/*.hpp         the core headers themselves
+GSHTrans/SpinField/    the spin-field algebra
+GSHTrans/Tensor/       tensor fields and their algebra
+GSHTrans/Expansion/    the spectral side
+GSHTrans/Layered/      three-dimensional fields
+GSHTrans/All, Core     forwarding headers, kept so that older code still builds
 docs/                  the theory note, the reference, the lessons
 tests/  examples/  benchmarks/  scripts/
 ```

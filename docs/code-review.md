@@ -341,6 +341,34 @@ Kept current as `fix-plan.md` is worked through. Anything not listed is open.
   section measures. `examples/18-radial-operators` shows it and checks itself
   against the gathering route.
 
+- **Layout and build housekeeping, after the plan.** Not findings; four
+  routine changes made together so that include paths moved once. The paths
+  cited in the findings below are the ones that were current when they were
+  written.
+  - *`#pragma once` in all 42 headers*, the test helpers included. The guards
+    went, and with them forty hand-chosen macro names, two of which belonged
+    to files both called `BundleMaps`. This reverses the Phase 10 edit that
+    gave `3j.h` a guard to match the rest.
+  - *`.h` → `.hpp`, and `GSHTrans/src/` is gone*: the headers sit in
+    `GSHTrans/` and its four subdirectories and are includable by their own
+    names. `GSHTrans/GSHTrans.hpp` is the entry point and `Core.hpp` the core
+    alone. Of the six extensionless umbrellas only `All` and `Core` were ever
+    included by anything, and those two stay as forwarding headers, so code
+    written against the old layout builds unchanged; `Field`, `Tensor`,
+    `Expansion` and `Layered` are dropped. The Doxyfile, the install rule and
+    the CI format job each lose the special case the extensionless files
+    needed.
+  - *OpenMP is optional.* `GSHTrans/OpenMP.hpp` wraps the six runtime calls
+    and is the only file that names `<omp.h>`; the pragmas stay pragmas, and
+    each of the eight headers that has one silences `-Wunknown-pragmas` for
+    its own length, only when `_OPENMP` is undefined. The headers ask the
+    compiler through `_OPENMP`, so the library has no macro of its own to get
+    out of step. `GSHTRANS_WITH_OPENMP` (default `ON`, and then required)
+    is the CMake side; `OFF` also skips the benchmark, and the installed
+    package looks for OpenMP only if the build had it. A `serial` CI job runs
+    the suite without OpenMP and with the BLAS: 499 tests, two threading
+    tests skipping themselves.
+
 **What is left of the review:** nothing in its High, Medium or Low lists is
 open except the items marked above as deliberately left. Phase 11 of the plan,
 general batching, was new work and not a finding, and is also done: the plan is

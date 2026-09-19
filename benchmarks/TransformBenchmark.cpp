@@ -16,7 +16,7 @@
 
 #include <omp.h>
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <algorithm>
 #include <array>
 #include <chrono>

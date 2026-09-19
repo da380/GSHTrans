@@ -5,7 +5,7 @@
 // is -- which is what makes a tensor able to hold one buffer and hand out its
 // components, and what makes a 3D field able to hand out radial slices.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <iostream>

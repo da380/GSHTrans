@@ -24,7 +24,7 @@
 // handed back, so a table that has gone wrong is refused rather than returned.
 //
 
-#include <GSHTrans/Core>
+#include <GSHTrans/Core.hpp>
 #include <cmath>
 #include <iomanip>
 #include <iostream>

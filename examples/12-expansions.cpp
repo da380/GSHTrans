@@ -5,7 +5,7 @@
 // and lowering operators live, because they are local in (l, m) and not in
 // position.
 
-#include <GSHTrans/All>
+#include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
 #include <complex>
 #include <iostream>
