@@ -29,7 +29,7 @@ namespace GSHTrans {
 /// is a SpinFieldView, an ordinary spin-weighted node, so the index algebra,
 /// the evaluation and the aliasing theorem all lift unchanged and there is no
 /// second expression system to keep consistent with the first. That is what
-/// views are admissible everywhere an owning field is.
+/// a view being admissible everywhere an owning field is was for.
 ///
 /// The layout is radius-major because that is what the applications this exists
 /// for already use, and because it makes the radial axis a batch: the stack of
@@ -156,7 +156,7 @@ class LayeredSpinField {
 /// layout matches the field it came from and the angular transform sees a
 /// contiguous batch on both sides.
 ///
-/// This is the [r][(l,m)] of the two layouts the plan names. The other,
+/// This is the [r][(l,m)] of the two layouts a layered code needs. The other,
 /// [(l,m)][r], is what a radial solve at fixed degree and order wants, and the
 /// repack between them is a separate step.
 template <std::ptrdiff_t N_, AngularGrid Grid_,

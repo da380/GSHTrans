@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GSH_TRANS_THREE_J_GUARD_H
+#define GSH_TRANS_THREE_J_GUARD_H
 
 #include <algorithm>
 #include <array>
@@ -878,3 +879,5 @@ static_assert(NumericConcepts::RealRange<Wigner3jMatrix<double>>);
 static_assert(NumericConcepts::RealRange<Wigner3jMatrix<float>>);
 
 }  // namespace GSHTrans
+
+#endif  // GSH_TRANS_THREE_J_GUARD_H

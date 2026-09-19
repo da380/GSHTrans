@@ -3,8 +3,9 @@
 
 // Resampling a layered field onto a different set of radii.
 //
-// The whole of this header is conditional on GSHTRANS_WITH_INTERPOLATION,
-// which is on by default. Including it without the dependency is not an error
+// The whole of this header is conditional on GSHTRANS_HAVE_INTERPOLATION,
+// which the build defines when GSHTRANS_WITH_INTERPOLATION is on, as it is by
+// default. Including it without the dependency is not an error
 // and gives nothing: the option is what decides whether the facility exists,
 // and a caller who has turned it off has said they do not want it.
 //

@@ -138,8 +138,9 @@ class Arguments {
   constexpr auto LogCosHalf() const { return logCosHalf_; }
 
   // The linear values are kept as well as their logarithms. The closed forms
-  // below need the logarithms, because they form sqrt((2l)!/...) which is of
-  // order 4^l; the recursions need the values themselves, and they stay
+  // below, and the seed row at a large upper index, need the logarithms,
+  // because they form sqrt((2l)!/...) which is of order 4^l; the recursions
+  // need the values themselves, and they stay
   // bounded because each step multiplies by about 2 sin(theta/2) cos(theta/2),
   // which is sin(theta).
   constexpr auto SinHalf() const { return sinHalf_; }
@@ -185,17 +186,17 @@ constexpr auto WignerMinOrder(Int l, Int n, const Arguments<Real> &arg) {
 }
 
 template <std::integral Int, RealFloatingPoint Real>
-constexpr auto WignerMaxOrder(Int l, Int n, Arguments<Real> &arg) {
+constexpr auto WignerMaxOrder(Int l, Int n, const Arguments<Real> &arg) {
   return MinusOneToPower(n + l) * WignerMinOrder(l, -n, arg);
 }
 
 template <std::integral Int, RealFloatingPoint Real>
-constexpr auto WignerMinUpperIndex(Int l, Int m, Arguments<Real> &arg) {
+constexpr auto WignerMinUpperIndex(Int l, Int m, const Arguments<Real> &arg) {
   return WignerMaxOrder(l, -m, arg);
 }
 
 template <std::integral Int, RealFloatingPoint Real>
-constexpr auto WignerMaxUpperIndex(Int l, Int m, Arguments<Real> &arg) {
+constexpr auto WignerMaxUpperIndex(Int l, Int m, const Arguments<Real> &arg) {
   return WignerMinOrder(l, -m, arg);
 }
 
@@ -406,18 +407,24 @@ constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
             std::log(static_cast<Real>(2 * l - k + 1) / static_cast<Real>(k));
       }
 
-      // x^k from ln x, where x may be zero: at a pole one of the two is, its
-      // logarithm is minus infinity, and the power zero must still be one.
-      const auto power = [](Real logX, Int k) {
-        return k == 0 ? static_cast<Real>(0) : static_cast<Real>(k) * logX;
+      // ln(x^k) from ln x. At a pole one of the two half-angle functions is
+      // zero, and Arguments does not store its logarithm as minus infinity:
+      // it stores zero and raises a flag. So the flag is asked, and a positive
+      // power of a vanishing base is sent to minus infinity here, whose
+      // exponential is the zero it should be. The power zero is one whatever
+      // the base.
+      constexpr auto minusInfinity = -std::numeric_limits<Real>::infinity();
+      const auto power = [](Real logX, bool vanishes, Int k) {
+        if (k == 0) return static_cast<Real>(0);
+        return vanishes ? minusInfinity : static_cast<Real>(k) * logX;
       };
 
       while (iter != finish) {
         const auto sPower = n >= 0 ? l - m : l + m;
         const auto cPower = n >= 0 ? l + m : l - m;
-        const auto value =
-            std::exp(logBinomial / 2 + power(arg.LogSinHalf(), sPower) +
-                     power(arg.LogCosHalf(), cPower));
+        const auto value = std::exp(
+            logBinomial / 2 + power(arg.LogSinHalf(), arg.AtLeft(), sPower) +
+            power(arg.LogCosHalf(), arg.AtRight(), cPower));
         *iter++ = n >= 0 ? value : MinusOneToPower<Real>(l - m) * value;
         if (m < l) {
           logBinomial +=

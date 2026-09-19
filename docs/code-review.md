@@ -273,6 +273,55 @@ Kept current as `fix-plan.md` is worked through. Anything not listed is open.
     container's index, the interpolation padding struct, which is a wrapper
     round three vectors, and the container-style `size()` of the 3-j classes.
 
+- **The prose — swept** (plan Phase 10).
+  - Every citation of a numbered section of the deleted plans, or of a section
+    of the reference note by a number it no longer has, is gone from the
+    library, the tests and the benchmark; what remain cite sections *by
+    title*, which does not rot when a section is inserted.
+  - The matrix kernel's comments describe the code: two GEMMs of width 2c
+    against one matrix, not one of width 4c, and why. Its per-thread scratch
+    was sized for the design the old comment described and was twice what
+    either direction uses; it is now exact, which the sanitiser run checks.
+    A non-symmetric grid is said to be refused the matrix kernel, as it is.
+  - Garbled sentences repaired in `SphericalGrid.h`, `LayeredSpinField.h`,
+    `RadialGrid.h`, `WignerMatrices.h`, `TensorField.h` and
+    `Expansion/BundleMaps.h`; the miscounts of the radial operators corrected;
+    `RadialResample.h` names the macro that is tested; remarks about "the
+    layer this replaces" rewritten as reasons. The doc block in
+    `TensorField.h` that described one thing and was attached to another is
+    split, and the paragraph there that implied a real tensor could live on an
+    `NRange = NonNegative` grid now says why it cannot.
+  - Small code: `3j.h` has an include guard like every other header; the
+    Fornberg weights lose a dead `min` and an unused capture; three Wigner
+    helpers take their argument by const reference; `NonNegativeOrders` yields
+    `Int`.
+  - **Found while correcting a comment:** the logarithmic seed row added in
+    Phase 6b was wrong *at the pole* for |n| > 508, because `Arguments` stores
+    the logarithm of a vanishing half-angle sine as zero and flags the pole
+    instead. Fixed, with a test of d^l_{nm}(0) = δ_{nm} at n = 600.
+  - `README.md`: the example it named does not exist; `Batch{…}` does not
+    compile; CMake 3.24, not 3.20; test counts removed rather than updated;
+    the clang jobs described as the required jobs they are. Added: the degree
+    ceiling and single precision, signed sizes, `ReleaseThreadCaches`, the
+    feature macros and `-fopenmp` for a vendored copy, and dependency pinning.
+  - `run-server-benchmark.sh`: the "suite must pass" step is a gate and stops
+    the run; the option it set was another project's; the configure hint no
+    longer blames an SSH fetch that is gone; the harness revision it expects
+    is the harness's. **The benchmark's `huge` section ran at lMax = 2048,
+    above `MaxSafeDegree`** — it had been timing a silently wrong table — and
+    is now 1800.
+  - `gshtrans-reference.tex` and its PDF: the Wigner ceiling with its
+    derivation and measurements, single precision recursed in double, and the
+    3-j stopping rule, join, measured tolerance and double-precision rows.
+  - `lessons.md`: the ceiling, "watch the quantity, not a proxy", single
+    precision is for storage, a rule written four times drifts three ways, a
+    test that cannot fail is worse than none, and look for the test that pins
+    an oddity before fixing it.
+
+**What is left of the review:** nothing in its High, Medium or Low lists is
+open except the items marked above as deliberately left. Phase 11 of the plan,
+general batching, is new work and not a finding.
+
 ## Summary
 
 The numerical core is in good shape. The loop and matrix kernels, the batching

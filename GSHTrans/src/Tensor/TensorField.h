@@ -223,17 +223,19 @@ class TensorField {
   static constexpr Int UpperIndexOf =
       Index(std::array<Int, Rank>{Alphas...}).UpperIndex();
 
-  /// Whether a component vanishes identically, which happens when a
-  /// permutation maps it to itself with a sign of -1. Exposed so that a
-  /// compile-time traversal can skip those rather than failing on them.
-  ///
-  /// Whether a component can be read at all, and whether it can be written.
-  /// These are the conditions on the accessors below, named so that a
-  /// compile-time traversal can ask before it asks for the component, and so
-  /// that the negative cases can be tested. static_assert(!requires { ... })
-  /// is the idiom the field layer uses, and it works only when the constraint
-  /// is a requires-clause: an assertion inside the body is a hard error that no
-  /// requires-expression can see, which makes the negative test vacuous.
+  // The three questions that can be asked of a multi-index before asking for
+  // the component: whether it vanishes identically -- which happens when a
+  // permutation maps it to itself with a sign of -1 -- whether it can be read
+  // at all, and whether it can be written. They are the conditions on the
+  // accessors below, named so that a compile-time traversal can ask first and
+  // skip what is not there, and so that the negative cases can be tested.
+  // static_assert(!requires { ... }) is the idiom the field layer uses, and it
+  // works only when the constraint is a requires-clause: an assertion inside
+  // the body is a hard error that no requires-expression can see, which makes
+  // the negative test vacuous.
+
+  /// Whether the pack is one a multi-index can be formed from: the right
+  /// number of indices, each a letter of the alphabet.
   ///
   /// Neither the wrong number of indices nor a letter outside the alphabet may
   /// reach the multi-index, or the failure is a hard error -- inside std::array
@@ -361,15 +363,15 @@ class TensorField {
   ///
   /// The reality case is the one the field layer was made to accommodate. The
   /// relation is T^{-alpha} = (-1)^N conj(T^{alpha}) (eq:reality), and conj
-  /// reverses the upper index -- which is why getting that wrong was one of the
-  /// three reason conj must reverse the upper index. The (-1)^N is already
-  /// folded into the orbit table's sign.
+  /// reverses the upper index, so the view taken is at the *stored*
+  /// component's upper index and the expression built from it is at this
+  /// one's. The (-1)^N is already folded into the orbit table's sign.
   ///
-  /// Note what this means for a grid: the derived partner of a stored
-  /// component at N has upper index -N, so on a grid carrying only
-  /// non-negative upper indices half of these could not be *terminals*. They
-  /// are expressions, and the grid's N-support check is on terminals and
-  /// views alone for exactly this case.
+  /// Note what this means for a grid. The stored representative of an orbit
+  /// is its smallest multi-index, which is the one of most *negative* upper
+  /// index, so a real tensor needs a grid that carries negative upper indices
+  /// to hold its terminals at all: one over NRange = NonNegative cannot. The
+  /// derived partners, at +N, are expressions and need nothing of the grid.
   template <Int... Alphas>
   requires Represents<Alphas...>
   auto Component() const& {

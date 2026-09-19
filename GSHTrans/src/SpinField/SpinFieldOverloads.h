@@ -63,8 +63,8 @@ struct Negated {
 };
 
 // Identity on a real scalar. std::conj would return a complex there and
-// promote a real-valued field for no reason; the plan asks for conjugation at
-// N = 0 on a real operand to be the identity, permitted and not special-cased.
+// promote a real-valued field for no reason; conjugation at N = 0 on a real
+// operand is the identity, permitted and not special-cased.
 struct Conjugated {
   template <typename A>
   auto operator()(A a) const {
@@ -258,8 +258,8 @@ auto abs2(A&& a) {
 }
 
 // real and imag are covariant only at upper index zero, so they exist only
-// there. This was the third of the structural defects in the layer being
-// replaced, which offered them at every upper index.
+// there. Offering them at every upper index is the natural mistake: the
+// real part of a component is not a component of anything.
 template <SpinFieldExpr A>
 requires(Node<A>::UpperIndex == 0)
 auto real(A&& a) {

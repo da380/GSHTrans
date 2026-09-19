@@ -86,7 +86,7 @@ class GSHSubIndices {
 
   /** @brief The orders from zero upwards. */
   constexpr auto NonNegativeOrders() const {
-    return std::ranges::views::iota(0, MaxOrder() + 1);
+    return std::ranges::views::iota(Int{0}, MaxOrder() + 1);
   }
 
   /** @brief How many coefficients the row holds. */

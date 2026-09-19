@@ -84,8 +84,8 @@ class Binary {
       : l_{std::forward<L>(l)}, r_{std::forward<R>(r)}, op_{std::move(op)} {
     // Handle identity, in all build modes. Two separately built grids with
     // equal parameters are not the same grid: their samples are different
-    // arrays and pairing them elementwise is meaningless. Before this rewrite
-    // the grid was taken from the left operand alone and a mismatch was
+    // arrays and pairing them elementwise is meaningless. Taking the grid from
+    // the left operand alone, which is the obvious thing, makes a mismatch
     // silent.
     if (l_.Grid().Identity() != r_.Grid().Identity()) {
       throw std::invalid_argument(

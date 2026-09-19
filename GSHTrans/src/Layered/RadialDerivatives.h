@@ -26,17 +26,19 @@ namespace GSHTrans {
 // worked example rather than a framework -- and in particular has an example
 // of the two obligations RadialOperator.h states. Every one of these does all
 // of its node-dependent work in the constructor and allocates nothing in the
-// call, and every one keeps its per-line scratch in thread_local storage so
-// that one operator can serve every thread.
+// call, and none of them holds anything a call writes to, so one operator can
+// serve every thread. (An operator that *does* need scratch per line keeps it
+// thread_local: SplineDerivative is the example.)
 //
 // All of them are linear maps that depend on the radii alone, which is what
 // makes that possible: what varies from line to line is the data, and what
 // costs anything to compute does not.
 //
-// The two here need nothing outside the standard library. SplineDerivative is
-// the third and lives in RadialSplineDerivative.h, because it is built on
-// Interpolation's factorised spline system and so exists only when that
-// dependency does.
+// The three here -- finite differences, the global polynomial and the
+// element-wise polynomial -- need nothing outside the standard library.
+// SplineDerivative is the fourth and lives in RadialSplineDerivative.h, because
+// it is built on Interpolation's factorised spline system and so exists only
+// when that dependency does.
 
 namespace RadialDetails {
 
@@ -55,7 +57,7 @@ template <RealFloatingPoint Real>
 auto FirstDerivativeWeights(Real z, std::span<const Real> nodes) {
   const auto n = static_cast<Int>(nodes.size());
   auto c = std::vector<Real>(static_cast<std::size_t>(2 * n), Real{0});
-  const auto at = [n](Int i, Int k) {
+  const auto at = [](Int i, Int k) {
     return static_cast<std::size_t>(i * 2 + k);
   };
 
@@ -64,7 +66,9 @@ auto FirstDerivativeWeights(Real z, std::span<const Real> nodes) {
   c[at(0, 0)] = 1;
 
   for (auto i = Int{1}; i < n; i++) {
-    const auto mn = i < 1 ? i : Int{1};
+    // Fornberg's min(i, M) for derivatives up to order M. Here M = 1 and the
+    // loop starts at i = 1, so it is one throughout.
+    constexpr auto mn = Int{1};
     auto c2 = Real{1};
     const auto c5 = c4;
     c4 = nodes[static_cast<std::size_t>(i)] - z;

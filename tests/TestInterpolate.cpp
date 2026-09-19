@@ -218,7 +218,7 @@ static_assert(
     std::copy_constructible<SpectralInterpolant<0, Grid, RealValued>>);
 
 // The decisive agreement: the same numbers as the transform, at every point
-// the transform produces. This is what says the direct sum of section 22.1 is
+// the transform produces. This is what says the interpolant's direct sum is
 // the synthesis rather than something like it.
 TEST(SpectralInterpolant, MatchesEvaluateAtEveryGridPoint) {
   constexpr Int N = 2;
@@ -302,7 +302,8 @@ TEST(SpectralInterpolant, IsExactOnALowDegreeHarmonic) {
 }
 
 // The poles are inside the domain and are where the whole padding question
-// comes from, so the reference must answer there. Section 22.1's rule:
+// comes from, so the reference must answer there. The rule, from the
+// reference note's section on interpolation:
 // the order m = +N survives at the north and m = -N at the south, the latter
 // with a sign alternating in the degree.
 TEST(SpectralInterpolant, AnswersAtThePolesByTheStatedRule) {

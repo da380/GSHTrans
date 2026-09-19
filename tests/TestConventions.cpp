@@ -1,6 +1,7 @@
 // The conventions, pinned to things a user can check.
 //
-// docs/gshtrans-reference.tex §2.4 used to list two statements the library
+// docs/gshtrans-reference.tex, under "What remains a convention", used to
+// list two statements the library
 // could not settle from the inside: the sign in
 //
 //     e_{+-} = -+ (1/sqrt2)(theta-hat +- i phi-hat),   e_0 = r-hat        (*)

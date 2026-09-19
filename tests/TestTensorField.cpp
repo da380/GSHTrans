@@ -354,8 +354,9 @@ TEST(TensorField, TheAliasesPutTheGridFirst) {
 //--------------------------------------------------------------------------//
 
 // Components sharing an upper index have to be contiguous in the buffer, or
-// no (count, stride, dist) descriptor covers them and the batching step F
-// exists for is unreachable. This is the property the layout is chosen for.
+// no (count, stride, dist) descriptor covers them and the batching the
+// layout exists for is unreachable. This is the property the layout is chosen
+// for.
 TEST(TensorField, ComponentsSharingAnUpperIndexAreContiguous) {
   constexpr auto contiguousByUpperIndex = []<typename T>() {
     auto seen = std::ptrdiff_t{0};

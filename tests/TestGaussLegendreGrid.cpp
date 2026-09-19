@@ -1628,8 +1628,8 @@ TEST(BatchedTransform, ChunkRuleCountsCopiesNotThreads) {
 
 // -- The matrix kernel's Fourier stage.
 //
-// Section 11 asked for this to be checked against the loop kernel's own FFT
-// stage. It is checked against a naive DFT written out here instead, which is
+// The obvious check is against the loop kernel's own FFT stage. It is
+// checked against a naive DFT written out here instead, which is
 // strictly stronger: comparing two paths through the same FFTW plan would
 // agree even if the plan were the wrong transform, and would say nothing at
 // all about the sign of the exponent, the normalisation, or where negative

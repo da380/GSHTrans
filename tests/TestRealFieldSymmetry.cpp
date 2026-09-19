@@ -178,8 +178,8 @@ TEST(RealFieldSymmetry, RealFieldIsSelfConjugateAtUpperIndexZero) {
 
 // The orders m = +-lMax are separate discrete modes now that nPhi exceeds
 // 2 * lMax. Both carry the amplitude the sample field
-// puts into cos(lMax * phi), and neither is zeroed. Before step D the complex
-// transform zeroed (lMax, lMax) outright and the reduced storage held the sum
+// puts into cos(lMax * phi), and neither is zeroed. The complex transform once
+// zeroed (lMax, lMax) outright and the reduced storage held the sum
 // of the two, so this test replaces one that asserted the opposite.
 TEST(RealFieldSymmetry, HighestOrdersAreResolvedSeparately) {
   auto grid = Grid(lMax, nSpin, FFTWpp::Estimate);

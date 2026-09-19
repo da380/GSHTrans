@@ -214,7 +214,8 @@ static_assert(R::Negate::Apply<R::Negate::Apply<3>> == 3);
 
 // Every rule preserves "real-valued implies upper index zero", so the concept
 // checks it once and no node has to re-derive it. Each line below is one row
-// of the closure table in plan section 3.4: given operands that satisfy the
+// of the closure table -- the theory note's section on admissible
+// operations -- namely: given operands that satisfy the
 // constraint, the result does too.
 template <typename Value, Int N>
 inline constexpr bool Lawful = std::same_as<Value, ComplexValued> or N == 0;

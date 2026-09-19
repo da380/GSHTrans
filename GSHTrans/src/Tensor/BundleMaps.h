@@ -92,7 +92,6 @@ class EmbedNode {
   static constexpr bool Represents = RepresentsFn<Alphas...>();
 
   /** @brief The component at those slot letters, as a spin-weighted node. */
-  /** @brief The component at those slot letters, as a spin-weighted node. */
   template <Int... Alphas>
   requires Represents<Alphas...>
   auto Component() const& {

@@ -106,6 +106,32 @@ against the 1.5–2× assumed. Do not re-propose it without measuring again: it
 shrinks the GEMM's inner dimension and efficiency falls with it, so the
 realised gain is lower still.
 
+**The Wigner recursion has a ceiling, and it is a formula.** The seed of the
+column at order `m` is about `(sin θ)^m`, and the column recovers only once
+`l sin θ` reaches `m`, so a seed that underflows *and* matters needs
+`lMax · s|ln s| > |ln min|`, and `s|ln s|` peaks at `1/e`: the recursion is
+sound iff `lMax < e·|ln min|` — 1926 in double, 237 in single, and measured to
+be so within a per cent. Above it columns come back zero where the truth is
+order one, with no sign of trouble: the benchmark's `huge` section ran at 2048
+for months. `MaxSafeDegree` enforces it, a little low so the seed stays out of
+the denormals. The cure, an exponent carried per column, is known and unbuilt.
+
+**Watch the quantity, not a proxy for it.** Schulten–Gordon recurses inward
+from both ends and must stop each half where its values stop growing. SLATEC
+stops where the recurrence coefficient `|c1|` first rises, and so did this
+library. That coincides with the values' behaviour when a row has an allowed
+region and not when it is near-stretched, and there one half ran downhill:
+four digits lost where it cost least, and 44 of 77 `(l, 2l, l)` tables to
+`l = 1000` that could not be built at all. Stopping at the first fall of `|g|`
+itself fixed both at no cost, and was better on fat triangles too.
+
+**Single precision is for storage.** A recursion's range is the range of its
+arithmetic, and a three-term recurrence loses about `n²ε` along a row however
+good the algorithm. So `float` Wigner tables and `float` 3-j tables are
+computed in double and rounded. It costs construction time and buys the whole
+of double's range and accuracy; single precision then pays where it should, in
+what is stored and moved.
+
 ## C++
 
 **Sizes and indices are signed.** `std::ptrdiff_t` throughout, and
@@ -119,6 +145,16 @@ behaviour. Three accessors — `NumberOfCoLatitudes`, `NumberOfLongitudes`,
 seventy-odd `static_cast<Int>` at their call sites, each a place where a
 negative value would have become a large one. Found by turning
 `-Wsign-compare` on in the tests.
+
+**A rule written four times drifts three ways.** "Component α from its orbit
+representative" was written out in the flat and layered tensor types and in
+both their expansions, and each copy came to be wrong differently: a sign on
+real orbits, the conjugate of `i` on imaginary ones, a dropped `i`, a
+dangling view. None showed at rank 2, where no pinned member is reached by
+conjugating, so every test passed while a real elastic tensor read back with
+the wrong sign. It is one pair of functions now, beside the table they
+interpret. If a rule has to exist in two places, the test belongs on the
+*relation it implements*, over every case, and not on either copy.
 
 **A letter outside a `MultiIndex` alphabet is a hard error**, thrown inside a
 constant expression, not a SFINAE-friendly constraint failure. Over
@@ -147,6 +183,21 @@ where BLAS is absent.
 instance — uses the same symbol names, so linking one would not fail to link:
 it would pass the wrong thing. There is no portable way to detect it from
 inside the header.
+
+**A test that cannot fail is worse than none**, because it is counted. The
+2026-09 review found five: a nesting check evaluated after the calls it was
+about had returned; a "relative" error divided by a `bool`; an elastic-tensor
+test comparing an expression with itself; a residual tolerance a row wrong by
+a third could pass; and a CI matrix in which the BLAS kernel's tests compiled
+to nothing in every job, all green. The habit that catches them is to watch a
+new test fail before trusting it to pass — two written during that work passed
+on the broken code at first, and had to be sharpened.
+
+**Before "fixing" an API oddity, look for the test that pins it.** Three
+low-severity findings of the same review were decisions and not oversights,
+and each had a `static_assert` saying so: no floating-point scalar of another
+precision, `Materialise` defaulting to complex, and `conclusive` meaning that
+the incumbent was displaced.
 
 ## Open questions
 

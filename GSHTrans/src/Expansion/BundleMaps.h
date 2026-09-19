@@ -22,13 +22,12 @@ namespace GSHTrans {
 // rather than an oversight.** Three things make it the right one. There are
 // no lazy nodes on this side at all, and by design: a derived component is
 // not offered spectrally, because deriving one reverses the order index.
-// Making Embed lazy
-// would mean re-signing SurfaceGradient against a concept that could not carry
-// the one member distinguishing this type from the layered one, since
-// Coefficient is a template whose pack depends on the rank and a concept
-// cannot require it. And the saving would be small: SurfaceGradient allocates
-// a rank-(q+1) result whatever its operand is, which is larger than the
-// embedded operand it would have avoided.
+// Making Embed lazy would mean re-signing SurfaceGradient against a concept
+// that could not carry the one member distinguishing this type from the layered
+// one, since Coefficient is a template whose pack depends on the rank and a
+// concept cannot require it. And the saving would be small: SurfaceGradient
+// allocates a rank-(q+1) result whatever its operand is, which is larger than
+// the embedded operand it would have avoided.
 //
 // What the pair is for is the identity that closes the split:
 //

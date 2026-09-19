@@ -21,7 +21,7 @@
 //
 // exactly, for any triple satisfying the triangle rule. That is one loop over
 // a table that has just been built, it needs nothing to compare against, and
-// it is what the rest of the plan is built on.
+// it is what the rest of this file is built on.
 //
 // Completeness cannot see everything -- Schulten-Gordon normalises each row
 // by it, so it holds by construction -- and the tests further down say what

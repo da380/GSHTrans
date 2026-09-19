@@ -44,7 +44,8 @@ namespace GSHTrans {
 // That fixes the sign here against the sign in e_{+-}: flipping either alone
 // fails by an O(1) amount, flipping both together is a relabelling of which
 // component is called +1. tests/TestConventions.cpp is where it is observed,
-// and section 2.4 of docs/gshtrans-reference.tex states it.
+// and docs/gshtrans-reference.tex states it, under "What remains a
+// convention".
 //
 // The degree ranges look after themselves. Raising a field at N >= 0 gives a
 // field starting at l = N + 1, and the factor at l = N is sqrt(0) = 0, so the
@@ -63,8 +64,9 @@ namespace GSHTrans {
 //
 // So applying Raise or Lower to each component of a tensor expansion does not
 // give grad T. Nothing in the types says so, because a tensor's components are
-// ordinary spin expansions. Use SurfaceGradient, which is d^sigma; section 7
-// of docs/gshtrans-reference.tex gives it in full.
+// ordinary spin expansions. Use SurfaceGradient, which is d^sigma;
+// docs/gshtrans-reference.tex gives it in full, in its section on the
+// contravariant derivative.
 //
 // **But there is a case where component-wise eth is exactly right**, and it
 // would be a mistake to read the paragraph above as forbidding it. There are

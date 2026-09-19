@@ -400,8 +400,9 @@ TEST(MultiIndex, TangentialNegationHasNoFixedPoint) {
 //                    What the orbit walk finds unaided                      //
 //--------------------------------------------------------------------------//
 
-// The claim of section 18: the orbit machinery reaches the right answers for
-// a tangential tensor without being told anything about tangentiality.
+// The claim the tangential tensors rest on: the orbit machinery reaches the
+// right answers for a tangential tensor without being told anything about
+// tangentiality.
 //
 // With no permutation symmetry, negation is fixed-point-free, so every orbit
 // has size two: 2^{Rank-1} stored components, none of them pinned. That last

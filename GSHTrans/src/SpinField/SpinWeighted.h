@@ -314,8 +314,9 @@ struct Same {
   static constexpr Int Apply = N;
 };
 
-// Conjugation reverses the upper index (theory note section 5). Getting this
-// wrong was one of the three structural defects in the layer this replaces.
+// Conjugation reverses the upper index (theory note section 5). It is the
+// rule most easily got wrong, since nothing about conj on a scalar hints at
+// it.
 struct Negate {
   template <Int N>
   static constexpr bool Admissible = true;

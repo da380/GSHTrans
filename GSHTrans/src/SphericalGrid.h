@@ -666,17 +666,17 @@ class SphericalGrid {
   /// zero asks the library to choose. It is a hint in the sense Chunking is:
   /// the library rounds it to something it will not regret.
   ///
-  /// Section 12 of the reference note says the transpose is free, on the
-  /// grounds that one plan_many with output stride howMany and output distance
-  /// 1 lands the data in the order above at no cost, exactly as tier-1
-  /// batching landed it in [m][k] order. **Measured, that is true only
-  /// away from one specific hazard, and false at it.** The output write has
-  /// stride `howMany` complex doubles, so when `howMany * 16` is a power of two
-  /// the writes for successive orders collide in the same cache sets, and the
-  /// FFT costs four to eight times what it costs at howMany plus or minus two.
-  /// Measured directly at nPhi = 520, per transform: 0.80 at howMany = 62,
-  /// 2.96 at 64, 0.83 at 66; 0.90 at 254, 7.32 at 256, 0.88 at 258; 1.76 at
-  /// 2046, 8.53 at 2048, 1.65 at 2050.
+  /// The reference note, in its section on the GEMM restructure, says the
+  /// transpose is free, on the grounds that one plan_many with output stride
+  /// howMany and output distance 1 lands the data in the order above at no
+  /// cost, exactly as tier-1 batching landed it in [m][k] order. **Measured,
+  /// that is true only away from one specific hazard, and false at it.** The
+  /// output write has stride `howMany` complex doubles, so when `howMany * 16`
+  /// is a power of two the writes for successive orders collide in the same
+  /// cache sets, and the FFT costs four to eight times what it costs at howMany
+  /// plus or minus two. Measured directly at nPhi = 520, per transform: 0.80 at
+  /// howMany = 62, 2.96 at 64, 0.83 at 66; 0.90 at 254, 7.32 at 256, 0.88 at
+  /// 258; 1.76 at 2046, 8.53 at 2048, 1.65 at 2050.
   ///
   /// This is the hypothesis raised for RadialMajor and **rejected** there,
   /// because its tiling already handled it. Here
@@ -686,9 +686,9 @@ class SphericalGrid {
   ///
   /// Blocking also bounds the FFT buffers, which `out` does not: at
   /// lMax = 256 with eight fields a full-height call wants two of about 16 MB
-  /// each, per thread, while a block of three wants 0.4 MB. Section 11.3
-  /// priced the intermediate at 17 MB and missed that there is a second buffer
-  /// of the same size on the input side.
+  /// each, per thread, while a block of three wants 0.4 MB. The
+  /// estimate made before this was built priced the intermediate at 17 MB and
+  /// missed that there is a second buffer of the same size on the input side.
   ///
   /// The cost of blocking is one contiguous copy per order per block -- a
   /// memcpy, not a gather, since both sides are contiguous in (theta, k) -- and
@@ -913,8 +913,8 @@ class SphericalGrid {
 
   // A per-thread accumulator for the forward transform's partial sums, kept
   // between calls for the same reason the work buffers are: this is the size
-  // of the coefficient array, and allocating it per call would put back the
-  // an allocation back into every call. It only ever grows.
+  // of the coefficient array, and allocating it per call would put an
+  // allocation back into every call. It only ever grows.
   static std::vector<Complex>& Accumulator(std::size_t size) {
     thread_local auto buffer = std::vector<Complex>{};
     if (buffer.size() < size) buffer.resize(size);
@@ -1458,15 +1458,15 @@ class SphericalGrid {
   // not.
   //
   // **schedule(dynamic), and the reason is that the obvious static split is
-  // wrong twice over.** Section 12 of the reference note warns once: the work
-  // per order is not constant, since n_L(m) falls linearly in |m|, so counting
-  // orders is about twice as unbalanced as it looks and the schedule has to
-  // divide work instead. M3b found the second and sharper reason. A static
-  // split weighted by n_L would assume time proportional to n_L -- but the
-  // inverse's inner dimension *is* n_L, and a GEMM's efficiency falls with its
-  // inner dimension, so time is superlinear in n_L and a linear model
-  // mis-splits in the same direction it was correcting. Dynamic needs no model
-  // and so cannot hold a wrong one.
+  // wrong twice over.** The reference note, under what the restructure does
+  // to threading, warns once: the work per order is not constant, since n_L(m)
+  // falls linearly in |m|, so counting orders is about twice as unbalanced as
+  // it looks and the schedule has to divide work instead. Building it found the
+  // second and sharper reason. A static split weighted by n_L would assume time
+  // proportional to n_L -- but the inverse's inner dimension *is* n_L, and a
+  // GEMM's efficiency falls with its inner dimension, so time is superlinear in
+  // n_L and a linear model mis-splits in the same direction it was correcting.
+  // Dynamic needs no model and so cannot hold a wrong one.
   //
   // Determinism is unaffected: the orders write disjoint output, so the answer
   // does not depend on which thread took which or in what sequence.
@@ -1479,12 +1479,14 @@ class SphericalGrid {
   template <typename Body>
   void OverOrders(Int minOrder, Int lMax, Int c, Execution policy,
                   Body&& body) const {
-    // Room for a paired product and a paired right-hand side at once: step
-    // The reflection puts the orders +m and -m through one GEMM, so the
-    // widest case is
-    // two columns of each, and the right-hand side is nTheta rows deep.
-    const auto scratchSize = static_cast<std::size_t>(
-        2 * c * (lMax + 1 + this->NumberOfCoLatitudes()));
+    // Room for one order's product and, beside it, one right-hand side. The
+    // product is at most lMax + 1 rows of c fields. The right-hand side is
+    // needed only for the order -m, whose Fourier data has to be copied out in
+    // reversed colatitude order before a BLAS can be given it, and is nTheta
+    // rows of c. The +m product is scattered before the -m one is formed, so
+    // the two never coexist and the buffer holds one of each.
+    const auto scratchSize =
+        static_cast<std::size_t>(c * (lMax + 1 + this->NumberOfCoLatitudes()));
     const auto orders = lMax - minOrder + 1;
 
     // **A team is opened even for the sequential case, and that is the point
@@ -1588,13 +1590,15 @@ class SphericalGrid {
       // data in reversed colatitude order, with a sign on the output rows.
       // Two consequences, and the second is the one that pays.
       //
-      // The table halves, because only m >= 0 is stored. And the two
-      // right-hand sides go into **one** GEMM rather than two, which doubles
-      // N from 2c to 4c -- N being the skinniest dimension in the problem and
-      // the one measured as limiting, at 55 to 95 Gflop/s against peak.
-      //
-      // The arithmetic does *not* halve: the same products are still done,
-      // of the same shapes.
+      // What this buys is the table, which halves, because only m >= 0 is
+      // stored. The arithmetic does *not* halve: the same two products are
+      // still done, of the same shapes, one after the other against the one
+      // matrix. They are not merged into a single GEMM of twice the width --
+      // N = 2c stays the skinniest dimension in the problem and the one
+      // measured as limiting, at 55 to 95 Gflop/s against peak -- because the
+      // -m right-hand side has to be copied into reversed order first, and
+      // packing the +m side beside it would be a second copy of data that can
+      // otherwise be multiplied where it lies.
       auto DoOrder = [&](Int m, Complex* scratch) {
         const auto lMin = std::max(std::abs(n), std::abs(m));
         const auto rows = lMax - lMin + 1;
@@ -2096,7 +2100,8 @@ class SphericalGrid {
         // lMax = 256 with nMax = 2. What makes it available is that the nodes
         // are symmetric about the equator, and WignerMatrices checks that
         // rather than taking it on trust -- so a grid whose nodes are not
-        // symmetric simply does not get the halved table. That is a
+        // symmetric is *refused* the matrix kernel, with a message saying
+        // so, since both directions of it assume the reflection. That is a
         // property of the node set and not of Gauss-Legendre, which is why
         // the check lives here.
         wignerMatrices = WignerMatrices<Real, MRange_, NRange_>::Reflected(

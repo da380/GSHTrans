@@ -7,8 +7,8 @@
  *
  * @details The whole of this header is conditional on the interpolation
  * dependency, which is on by default. Without it a caller has
- * FiniteDifferenceDerivative and LagrangeDerivative, which are the two that
- * need nothing outside the standard library.
+ * FiniteDifferenceDerivative, LagrangeDerivative and ElementDerivative, which
+ * are the three that need nothing outside the standard library.
  *
  * **This is deliberately not self-contained.** The spline system comes from
  * that dependency rather than being written here: `CubicSplineSystem` is the
@@ -38,10 +38,10 @@ namespace GSHTrans {
 // that there is one vocabulary for them and not two.
 using Interpolation::BoundaryCondition;
 
-/// The middle ground between the two operators of RadialDerivatives.h: global
-/// like the differentiation matrix, but linear in the number of radii rather
-/// than quadratic, and unlike a global polynomial it does not fall apart as the
-/// nodes multiply.
+/// The middle ground between the finite-difference rule and the global
+/// polynomial of RadialDerivatives.h: global like the differentiation matrix,
+/// but linear in the number of radii rather than quadratic, and unlike a global
+/// polynomial it does not fall apart as the nodes multiply.
 ///
 /// A convenience rather than a workhorse. The discretisations these codes
 /// actually run on are finite differences, a finite-element basis, or a radial

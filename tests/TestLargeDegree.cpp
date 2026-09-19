@@ -123,6 +123,21 @@ TEST(LargeDegree, ALargeUpperIndexHasAFiniteSeedRow) {
   }
   EXPECT_LT(UnitarityDefect(table, n), 1e-11);
   EXPECT_LT(UnitarityDefect(table, lMax), 1e-11);
+
+  // And at the pole, where d^l_{nm}(0) is the identity: the one entry at
+  // m = n, and zero everywhere else. The logarithms cannot say this -- the
+  // logarithm of the vanishing half-angle sine is not stored as minus
+  // infinity -- so the seed row has to ask whether it is at a pole.
+  const auto atPole = Wigner<double, All, Single, Single>(lMax, lMax, n, 0.0);
+  for (auto l : {n, lMax}) {
+    for (auto m = -l; m <= l; m++) {
+      const auto wanted =
+          m == n ? std::sqrt((2 * l + 1) / (4 * std::numbers::pi)) : 0.0;
+      // The seed here comes from logarithms and a hundred degrees of
+      // recursion follow it, so this is rounding and not exactness.
+      ASSERT_NEAR(atPole[l][m], wanted, 1e-10) << "l = " << l << ", m = " << m;
+    }
+  }
 }
 
 TEST(LargeDegree, ASinglePrecisionTableIsTheDoubleOneRounded) {

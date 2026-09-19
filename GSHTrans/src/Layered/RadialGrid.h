@@ -59,8 +59,8 @@ class RadialGrid {
   /// The blocks are disjoint and given by their `nElements + 1` starts, so
   /// every node belongs to exactly one element and two elements meet at a
   /// *repeated radius*. That is what makes a derivative well defined at an
-  /// interface without anyone having to
-  /// choose between averaging the two sides and picking one: both exist, and
+  /// interface without anyone having to choose between averaging the two
+  /// sides and picking one: both exist, and
   /// they are the pair `Interpolation::Piecewise::Limits` returns on the other
   /// side of the join.
   ///

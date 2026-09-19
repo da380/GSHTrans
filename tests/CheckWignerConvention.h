@@ -58,8 +58,11 @@ int CheckWignerConvention() {
     return half * (1 + c);
   };
 
-  // Include the two boundaries, which take the special-cased branches of
-  // WignerDetails::Arguments, and a value either side of pi/2.
+  // Include the two boundaries and a value either side of pi/2. The two are
+  // not alike: at zero the half-angle sine is exactly zero and
+  // WignerDetails::Arguments flags the pole, while at pi the half-angle
+  // cosine is 6e-17 and not zero, so nothing is flagged and the general path
+  // has to be right there unaided.
   const auto angles =
       std::array<Real, 6>{static_cast<Real>(0),   static_cast<Real>(0.3),
                           static_cast<Real>(0.7), std::numbers::pi_v<Real> / 2,

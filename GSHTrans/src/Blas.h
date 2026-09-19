@@ -51,7 +51,7 @@ namespace BlasDetails {
 // The precisions a BLAS has. There are four routines -- s, d, c and z -- and
 // no wider one: `long double` is not part of the interface and never has
 // been, so a grid over it cannot use the matrix kernel however it is built.
-// GaussLegendreGrid refuses that combination at construction, where Real is
+// SphericalGrid refuses that combination at construction, where Real is
 // known, rather than failing to compile inside a call.
 template <typename T>
 concept BlasReal = std::same_as<T, float> || std::same_as<T, double>;

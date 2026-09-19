@@ -1067,9 +1067,10 @@ TEST(IntrinsicDerivative, IsClosedOnTheTangentialBundle) {
 //                    The bundle maps, in the spectral domain                //
 //--------------------------------------------------------------------------//
 
-// The identity the pair exists for, and the one that closes §1's split: the
-// intrinsic derivative *is* the tangential block of the ambient one. Written
-// as a single line of code, which is what having both maps buys.
+// The identity the pair exists for, and the one that closes the split between
+// the two derivatives: the intrinsic derivative *is* the tangential block of
+// the ambient one. Written as a single line of code, which is what having both
+// maps buys.
 TEST(BundleMaps, TheIntrinsicDerivativeIsTheTangentialAmbientOne) {
   constexpr auto lMax = Int{6};
   auto grid = Grid(lMax, 2, FFTWpp::Estimate);

@@ -66,7 +66,7 @@ long ResidentMegabytes() {
 //--------------------------------------------------------------------------//
 //
 // Printed at the top of every run. The numbers below are unreadable without
-// them -- step H already found that cores and hardware threads are different
+// them -- cores and hardware threads have already been found to be different
 // answers, and on a multi-socket machine the node count is a third. All of
 // this is Linux sysfs; elsewhere the fields come back unknown and the
 // benchmark still runs.
@@ -226,7 +226,7 @@ void PrintMachineFacts() {
 }
 
 // Powers of two up to the hardware thread count, with the physical core count
-// inserted -- step H found that the last doubling, from cores to threads, goes
+// inserted -- the last doubling, from cores to threads, was measured to go
 // the wrong way, so the ladder has to contain both to show it.
 std::vector<int> ThreadLadder() {
   const auto threads = HardwareThreads();
@@ -342,7 +342,7 @@ double ScanBandwidthGBs(double bytes, int threads, int touch, int windows = 5) {
   // thread this measured add latency and not memory at all: 12.7 GB/s against
   // a triad of 36.2 on the same machine, a threefold understatement. It came
   // right at four threads and above, where several chains overlap, which is
-  // why the figures section 10 quotes -- all taken at eight threads -- stand.
+  // why the published figures -- all taken at eight threads -- stand.
   // Any single-thread comparison made against the old column was wrong.
   const auto seconds = TimePerCall(
       [&] {
@@ -425,8 +425,8 @@ double TableMegabytes(Int lMax, Int nMax) {
 
 // The thread-scaling table, with both directions side by side.
 //
-// Side by side is the design, not the presentation. Step H left the lMax = 256
-// shortfall with two unseparated candidates -- thread-private accumulators
+// Side by side is the design, not the presentation. Threading left the lMax =
+// 256 shortfall with two unseparated candidates -- thread-private accumulators
 // competing for last-level cache, and a serialised reduction -- and later work
 // removed the second without being able to measure the first. The inverse
 // transform's colatitudes write disjoint rows of the field and share only
@@ -491,9 +491,11 @@ void RunScaling(Int lMax, Int nMax, int windows) {
 // The degrees the `server` section walks, chosen against the machine rather
 // than hard-coded. 128 to 512 everywhere; 1024 whenever there is room for its
 // 43 GB table, because that is the first point far enough past any last-level
-// cache to speak to step F'. lMax = 2048 is the `huge` section instead, named
-// explicitly: a 344 GB table takes half a minute just to zero, and its
-// single-threaded rows are minutes each.
+// cache to speak to whether generating the values beats storing them.
+// lMax = 1800 is the `huge` section instead, named explicitly: a 233 GB table
+// takes a good while just to zero, and its single-threaded rows are minutes
+// each. It was 2048, which is above MaxSafeDegree -- the table it timed was
+// silently wrong, and is now refused.
 std::vector<Int> ScalingDegrees() {
   auto degrees = std::vector<Int>{128, 256, 512};
   const auto available = MemAvailableMegabytes();
@@ -532,7 +534,7 @@ int main(int argc, char** argv) {
   // server runs were lost to exactly that: the source reached the machine with
   // an old timestamp, make saw nothing to do, and the log looked plausible
   // while being produced by the previous harness.
-  constexpr auto revision = 9;
+  constexpr auto revision = 10;
 
   if (argc == 2 && std::string(argv[1]) == "--check") {
     std::printf("harness revision %d\n", revision);
@@ -747,7 +749,7 @@ int main(int argc, char** argv) {
   //------------------------------------------------------------------------//
 
   if (Want("generated")) {
-    PrintHeader("Generated Wigner values against the stored table (step F')");
+    PrintHeader("Generated Wigner values against the stored table");
     std::printf(
         "The same recursion, the same order, the same values -- run inside "
         "the\n"
@@ -878,7 +880,7 @@ int main(int argc, char** argv) {
 
 #ifdef GSHTRANS_HAVE_BLAS
   // Three requirements, each guarding a way this measurement can mislead, and
-  // section 11.4 states them as part of the step rather than as presentation.
+  // they are part of the measurement rather than of its presentation.
   //
   // -- Two tables, batched and unbatched, and not one with k as a row. The
   // restructure is predicted to buy nothing unbatched at high degree on many
@@ -912,7 +914,7 @@ int main(int argc, char** argv) {
                             "nothing at the roof");
       if (!batched) {
         std::printf(
-            "Section 12 predicts no gain here at high degree and many\n"
+            "The reference note predicts no gain here at high degree and many\n"
             "threads, because the loop kernel is already at the memory\n"
             "roof. The GB/s and roof columns are how to check that rather\n"
             "than take it on trust.\n\n");
@@ -1086,7 +1088,8 @@ int main(int argc, char** argv) {
   if (Want("server")) {
     PrintHeader("Thread scaling to the full machine");
     std::printf(
-        "Step H's decomposition -- colatitudes, with a private accumulator "
+        "The loop kernel's decomposition -- colatitudes, with a private "
+        "accumulator "
         "per\n"
         "thread for the forward direction -- was measured to eight threads "
         "and\n"
@@ -1177,14 +1180,18 @@ int main(int argc, char** argv) {
         "is what fixes it.\n");
   }
 
-  // Named explicitly or not run. A 344 GB table needs a machine that has it
+  // Named explicitly or not run. A 233 GB table needs a machine that has it
   // spare and nothing else running, and the single-threaded rows are minutes
   // each. Worth one run on a large server: it is far enough past last-level
   // cache that the stored path has no cache left to lose, which is the regime
-  // step F' argues from.
+  // the case for generating the values argues from. Just under MaxSafeDegree,
+  // which is 1827 in double precision.
   if (WantNamed("huge")) {
-    PrintHeader("Thread scaling at lMax = 2048");
-    if (AffordableAt(2048, 2)) RunScaling(2048, 2, Windows(2048));
+    constexpr auto hugeDegree = Int{1800};
+    PrintHeader("Thread scaling at lMax = 1800");
+    if (AffordableAt(hugeDegree, 2)) {
+      RunScaling(hugeDegree, 2, Windows(hugeDegree));
+    }
   }
 
   //------------------------------------------------------------------------//
@@ -1438,7 +1445,7 @@ int main(int argc, char** argv) {
         "\nBoth are the same measurement a caller would make at start-up, on\n"
         "their own problem shape. The point of the section is that the answer\n"
         "differs by machine, so it is worth re-running here rather than\n"
-        "reading the figures the plan quotes for a laptop.\n");
+        "reading the figures the reference note quotes for a laptop.\n");
   }
 
   if (Want("transforms")) {

@@ -65,9 +65,10 @@ namespace GSHTrans {
 ///
 /// A block computed for one (n, theta) scatters across every matrix, at stride
 /// NumberOfAngles() in the degree. That is one cache line per value written in
-/// the worst case. It is paid once, at construction, in parallel, and section
-/// the loop kernel's; blocking over colatitudes would fix it
-/// and is not done until something says it needs fixing.
+/// the worst case. It is paid once, at construction and in parallel, where
+/// the loop kernel's table is written in the order it is computed; blocking
+/// over colatitudes would fix it and is not done until something says it
+/// needs fixing.
 template <RealFloatingPoint Real_, OrderIndexRange MRange_ = All,
           IndexRange NRange_ = All>
 class WignerMatrices {
