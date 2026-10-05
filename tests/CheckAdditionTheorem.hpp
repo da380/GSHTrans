@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <concepts>
+#include <iostream>
 #include <limits>
 #include <memory>
 #include <numbers>
@@ -14,7 +15,7 @@
 
 // The addition theorem at one seeded angle: for every pair of upper indices
 // n, n' and every degree, sum_m d^l_{nm} d^l_{n'm} = delta_{nn'}. Returns
-// nonzero on failure.
+// nonzero on failure, having printed the entry and the seed.
 template <std::floating_point Real>
 int CheckAdditionTheorem() {
   using namespace GSHTrans;
@@ -49,7 +50,12 @@ int CheckAdditionTheorem() {
             normalisation * std::inner_product(d1[l].begin(), d1[l].end(),
                                                d2[l].begin(), Real{0});
         if (n == np) --sum;
-        if (std::abs(sum) > eps) return 1;
+        if (std::abs(sum) > eps) {
+          std::cerr << "CheckAdditionTheorem: n = " << n << ", n' = " << np
+                    << ", l = " << l << ", theta = " << theta << ": defect "
+                    << sum << " against " << eps << "; seed " << seed << "\n";
+          return 1;
+        }
       }
     }
   }

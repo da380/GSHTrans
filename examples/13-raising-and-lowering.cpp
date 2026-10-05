@@ -108,14 +108,15 @@ int main() {
       g[l, m] = Complex{std::cos(0.3 * l + m), std::sin(0.2 * l - m)};
     }
   }
+  // Each Raise or Lower builds a whole new expansion, so the two composites
+  // are computed once, outside the loop that reads them.
+  const auto raisedLowered = Raise(Lower(g));
+  const auto loweredRaised = Lower(Raise(g));
   worst = 0;
   for (auto l : g.Degrees()) {
     for (auto m : g.Orders(l)) {
-      // Each Raise or Lower builds a whole new expansion, so this inner loop
-      // is quadratic in the number of coefficients. That is fine for a check
-      // at lMax = 12; in real code compute each composite once.
       const auto commutator =
-          Complex{Raise(Lower(g))[l, m]} - Complex{Lower(Raise(g))[l, m]};
+          Complex{raisedLowered[l, m]} - Complex{loweredRaised[l, m]};
       worst = std::max(worst, std::abs(commutator + 2.0 * Complex{g[l, m]}));
     }
   }

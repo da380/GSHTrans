@@ -36,7 +36,9 @@ cmake -S "${root}" -B "${build}" \
   -DGSHTRANS_INSTALL=OFF \
   "$@"
 
-cmake --build "${build}" --parallel
+# A bare --parallel starts every translation unit at once, and these are
+# heavy; four by default, CMAKE_BUILD_PARALLEL_LEVEL to choose.
+cmake --build "${build}" --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-4}"
 
 # halt_on_error keeps the first report from being buried under later ones, and
 # a sanitizer diagnostic must fail the run rather than be printed and ignored.

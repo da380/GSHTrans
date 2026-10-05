@@ -83,17 +83,17 @@ int main() {
   const auto in = Batch::Contiguous(count, fieldSize);
   const auto out = Batch::Contiguous(count, coefficientSize);
 
+  // Each action is run once untimed first. FFTW plans are made on first use,
+  // once per thread and per shape, and that cost belongs to no comparison
+  // below.
   const auto time = [](auto&& action) {
+    action();
     const auto start = std::chrono::steady_clock::now();
     action();
     return std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                          start)
         .count();
   };
-
-  // Each timing below begins with the first call of its kind, so it also
-  // pays for FFTW planning of that shape on each thread involved. That is
-  // part of what a first call costs; a careful benchmark would warm up first.
 
   // One field at a time, through the k = 1 overload, which takes one field's
   // samples and one field's coefficients and no descriptors.

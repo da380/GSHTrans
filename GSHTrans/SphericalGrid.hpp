@@ -939,8 +939,7 @@ class SphericalGrid {
     // single-field case is count = 1 and plans a single plain transform: with
     // howMany = 1 the stride and dist below are unreachable.
     Workspace(Int nPhi, Int count, FFTWpp::Flag flag)
-        : count{count},
-          in(count * FFTWpp::DataSize<In, Out>(nPhi).first),
+        : in(count * FFTWpp::DataSize<In, Out>(nPhi).first),
           out(count * FFTWpp::DataSize<In, Out>(nPhi).second),
           plan(MakePlan(in, out, nPhi, count, flag)) {}
 
@@ -992,12 +991,6 @@ class SphericalGrid {
       }
     }
 
-    // How many rows the plan transforms at once. On the coefficient side this
-    // is also the distance between successive orders; the same order of
-    // successive rows sits one apart.
-    Int Count() const { return count; }
-
-    Int count;
     FFTWpp::vector<In> in;
     FFTWpp::vector<Out> out;
     decltype(MakePlan(std::declval<FFTWpp::vector<In>&>(),

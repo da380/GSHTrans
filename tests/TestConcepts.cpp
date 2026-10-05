@@ -318,10 +318,9 @@ struct WithAxes : WithoutAxes {
 };
 
 static_assert(!GSHTrans::AngularGrid<WithoutAxes>,
-              "a grid that cannot hand over its two axes separately is no "
-              "longer an AngularGrid");
+              "an AngularGrid must hand over its two axes separately");
 static_assert(GSHTrans::AngularGrid<WithAxes>,
-              "and adding them is the only thing that was missing");
+              "a grid with both axes is an AngularGrid");
 static_assert(
     GSHTrans::AngularGrid<
         GSHTrans::GaussLegendreGrid<double, GSHTrans::All, GSHTrans::All>>);

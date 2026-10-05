@@ -115,8 +115,12 @@ class TensorExpansion {
   // its representative, and deriving it in the spectral domain means applying
   // eq:complevel, T^{-N}_{l,-m} = (-1)^m conj(T^N_{lm}) -- an index reversal
   // rather than the pointwise relation the spatial side uses. That is not a
-  // view over anything, so it is not offered here: derive in the spatial
-  // domain, or ask the representative and apply the relation.
+  // view over anything, so it is not offered here; Coefficient below answers
+  // for every component, derived ones included.
+  //
+  // Both overloads are constrained on Writable, which says that the stored
+  // block *is* the component -- no sign, no conjugation -- and so is what a
+  // view needs whether or not it will be written through.
   /// A stored component's coefficient block, as a writable spin expansion.
   template <Int... Alphas>
   requires Writable<Alphas...>

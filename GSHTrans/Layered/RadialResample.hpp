@@ -27,6 +27,7 @@
 #include <cstddef>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -198,6 +199,41 @@ auto Resample(const Stack& in, RadialGrid<Real> onto,
         "reach outside the ones the field is given on");
   }
 
+  // What every interpolant needs of its nodes, checked here so that the error
+  // names the element and arrives before any line is started, rather than
+  // from inside the interpolation library, once per line.
+  {
+    const auto needed = scheme.IsAkima() ? Int{3} : Int{2};
+    const auto refuse = [&](const std::string& where, Int count) {
+      throw std::invalid_argument(
+          "Resampling fits one interpolant per piece, and " + where + " has " +
+          std::to_string(count) + " node(s) where this scheme needs at least " +
+          std::to_string(needed));
+    };
+    if (in.Radial().HasElements()) {
+      for (auto k : in.Radial().ElementIndices()) {
+        if (in.Radial().ElementSize(k) < needed) {
+          refuse("element " + std::to_string(k), in.Radial().ElementSize(k));
+        }
+      }
+    } else {
+      if (static_cast<Int>(from.size()) < needed) {
+        refuse("the radial grid", static_cast<Int>(from.size()));
+      }
+      for (std::size_t i = 0; i + 1 < from.size(); i++) {
+        if (!(from[i] < from[i + 1])) {
+          throw std::invalid_argument(
+              "Resampling needs strictly increasing radii, and this grid "
+              "repeats the radius " +
+              std::to_string(from[i]) + " at indices " + std::to_string(i) +
+              " and " + std::to_string(i + 1) +
+              " without saying what it means -- which is what "
+              "RadialGrid::WithElements is for");
+        }
+      }
+    }
+  }
+
   // Where each target radius is answered from, computed once for all lines
   // since it depends on the two grids and not on the data. Empty when the
   // source grid does not know its elements, which is the one-piece case.
@@ -306,8 +342,8 @@ auto Resample(const Stack& in, RadialGrid<Real> onto,
 
 }  // namespace GSHTrans
 
-#endif  // GSHTRANS_HAVE_INTERPOLATION
-
 #ifndef _OPENMP
 #pragma GCC diagnostic pop
 #endif
+
+#endif  // GSHTRANS_HAVE_INTERPOLATION

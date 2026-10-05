@@ -202,7 +202,7 @@ if(NOT _with_blas STREQUAL "OFF")
   else()
     message(STATUS
       "GSHTrans: no BLAS found, so the matrix transform kernel is not built. "
-      "The loop kernel is unaffected and is what the library has always used. "
+      "The loop kernel, the default, is unaffected. "
       "Configure with -DGSHTRANS_WITH_BLAS=ON to make this an error instead.")
   endif()
 endif()

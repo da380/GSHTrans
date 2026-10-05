@@ -135,7 +135,7 @@ TEST(MultiIndex, NegationIsAnInvolutionWithOneFixedPoint) {
 // (docs/gshtrans-reference.tex, "Which components must be stored"): one
 // stored component per negation orbit, which is the saving the reduction is
 // claimed to achieve.
-TEST(Orbits, ReproducesTheStorageTableOfTheTheoryNote) {
+TEST(Orbits, ReproducesTheRealTensorStorageTable) {
   static_assert((StoredCount<0, NoSymmetry<0>, true>()) == 1);
   static_assert((StoredCount<1, NoSymmetry<1>, true>()) == 2);
   static_assert((StoredCount<2, NoSymmetry<2>, true>()) == 5);

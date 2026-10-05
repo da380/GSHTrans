@@ -134,7 +134,7 @@ TEST(TensorAlgebra, HigherRankSlotsPermuteAsAsked) {
 
 // A component of a tensor expression is a spin-weighted expression, so it
 // composes with the scalar SpinField algebra like any other operand.
-TEST(TensorAlgebra, ExpressionsComposeWithThePhaseOneAlgebra) {
+TEST(TensorAlgebra, ComponentsComposeWithTheSpinFieldAlgebra) {
   using T = TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>;
   auto grid = TestGrid();
   auto t = T(grid);
@@ -869,11 +869,11 @@ auto MakeStrain(const Grid& grid) {
 // Whether Component<0, 0>() and Trace are offered on std::declval<T>(): a
 // temporary when T is a value type, a named object when T is a reference.
 template <typename T>
-concept ComponentOfATemporary =
+concept ComponentOffered =
     requires { std::declval<T>().template Component<0, 0>(); };
 
 template <typename T>
-concept TraceOfATemporary = requires { Trace(std::declval<T>()); };
+concept TraceOffered = requires { Trace(std::declval<T>()); };
 
 }  // namespace
 
@@ -900,14 +900,14 @@ TEST(TensorAlgebra, AComponentCannotOutliveTheStorageItNames) {
   // storage that is gone by the end of the statement -- so it is not
   // offered. Taken from an expression over *named* tensors it names their
   // storage, which is still there, so it is offered.
-  static_assert(!ComponentOfATemporary<SymmetricComplex2>);
-  static_assert(!ComponentOfATemporary<decltype(Transpose(
+  static_assert(!ComponentOffered<SymmetricComplex2>);
+  static_assert(!ComponentOffered<decltype(Transpose(
                     std::declval<SymmetricComplex2>()))>);
-  static_assert(ComponentOfATemporary<decltype(Transpose(
+  static_assert(ComponentOffered<decltype(Transpose(
                     std::declval<const SymmetricComplex2&>()))>);
 
-  static_assert(!TraceOfATemporary<SymmetricComplex2>);
-  static_assert(TraceOfATemporary<const SymmetricComplex2&>);
+  static_assert(!TraceOffered<SymmetricComplex2>);
+  static_assert(TraceOffered<const SymmetricComplex2&>);
 
   // Named, it is fine, and that is the whole of the remedy.
   auto grid = TestGrid();

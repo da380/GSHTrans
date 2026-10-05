@@ -25,6 +25,7 @@
 #include <cstddef>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -65,8 +66,9 @@ class SplineDerivative {
    * bottom of each element, interfaces included, and not only at the grid's
    * innermost radius.
    * @param right The condition at the last node of every piece.
-   * @throws std::invalid_argument if either condition is Clamped, or if a
-   * radius is repeated on a grid without elements.
+   * @throws std::invalid_argument if either condition is Clamped, if a
+   * radius is repeated on a grid without elements, or if a piece has fewer
+   * nodes than the end conditions need (two, or four with NotAKnot).
    */
   explicit SplineDerivative(
       RadialGrid<Real> radial,
@@ -102,6 +104,23 @@ class SplineDerivative {
         }
       }
       block_.emplace_back(Int{0}, static_cast<Int>(radii.size()));
+    }
+
+    // Checked here so that the error names the element; the spline library
+    // would refuse too, but without saying which piece.
+    const auto needed = (left == BoundaryCondition::NotAKnot ||
+                         right == BoundaryCondition::NotAKnot)
+                            ? Int{4}
+                            : Int{2};
+    for (std::size_t k = 0; k < block_.size(); k++) {
+      const auto count = block_[k].second;
+      if (count < needed) {
+        throw std::invalid_argument(
+            "A spline derivative fits one spline per piece, and piece " +
+            std::to_string(k) + " has " + std::to_string(count) +
+            " node(s) where these end conditions need at least " +
+            std::to_string(needed));
+      }
     }
 
     for (const auto& [first, count] : block_) {

@@ -11,11 +11,11 @@
 //   TransformBenchmark --check        print the harness revision and exit
 //
 // Default sections: stream (also accepted as `roof`), grid, transforms,
-// threading, generated, kernels (only in a build with a BLAS), server,
-// batching, interpolation, tuning. Run only when named: kernels-loop,
-// kernels-matrix, lines, huge. `server` builds tables of several GB -- 43 GB
-// at lMax = 1024, which it adds only when MemAvailable allows -- so on a small
-// machine it is better to name the sections wanted.
+// threading, generated, kernels (only in a build with a BLAS), batching,
+// interpolation, tuning. Run only when named, because they build tables of
+// several GB: server (43 GB at lMax = 1024, which it adds only when
+// MemAvailable allows), lines and huge; also kernels-loop and kernels-matrix,
+// which are halves of `kernels`.
 //
 // Build with -DCMAKE_BUILD_TYPE=Release; an unoptimised build says so at the
 // top of its output and its figures are meaningless. run-server-benchmark.sh
@@ -600,7 +600,7 @@ int main(int argc, char** argv) {
   // file, make then sees nothing to do, and the previous harness produces a
   // log that looks entirely plausible. The script's `expected` must be bumped
   // with this.
-  constexpr auto revision = 11;
+  constexpr auto revision = 12;
 
   if (argc == 2 && std::string(argv[1]) == "--check") {
     std::printf("harness revision %d\n", revision);
@@ -615,9 +615,10 @@ int main(int argc, char** argv) {
       revision);
   std::printf("double precision, single field per call (k = 1)\n");
   std::printf(
-      "sections: stream grid transforms threading batching generated "
-      "kernels kernels-loop kernels-matrix interpolation tuning server huge "
-      "(all, if none named)\n");
+      "sections run by default: stream (or roof) grid transforms threading "
+      "batching generated kernels interpolation tuning\n"
+      "sections run only when named: kernels-loop kernels-matrix server "
+      "lines huge\n");
 
   // An unoptimised build measures nothing, and the default build directory is
   // one: `cmake -S . -B build` leaves CMAKE_BUILD_TYPE empty, which is fine
@@ -788,10 +789,9 @@ int main(int argc, char** argv) {
   //------------------------------------------------------------------------//
   //
   // A quick scaling check at laptop size: complex fields, n = 2, one field
-  // per call, at a fixed 1, 2, 4, 8 and 16 threads whatever the machine has
-  // (counts above the hardware's oversubscribe it). Speedup is against the
-  // one-thread row of the same direction; GB/s is WignerBytes over the time.
-  // The `server` section is the full-machine version, on the thread ladder.
+  // per call, on the thread ladder. Speedup is against the one-thread row of
+  // the same direction; GB/s is WignerBytes over the time. The `server`
+  // section is the full-machine version, at larger degree.
 
   if (Want("threading")) {
     PrintHeader("Threading");
@@ -810,7 +810,7 @@ int main(int argc, char** argv) {
 
       for (const char* direction : {"forward", "inverse"}) {
         auto base = 0.0;
-        for (auto threads : {1, 2, 4, 8, 16}) {
+        for (auto threads : ThreadLadder()) {
           const auto policy = threads == 1 ? Execution::Sequential()
                                            : Execution::Parallel(threads);
           const auto seconds = TimePerCall([&] {
@@ -1010,7 +1010,7 @@ int main(int argc, char** argv) {
                             "nothing at the roof");
       if (!batched) {
         std::printf(
-            "The reference note predicts no gain here at high degree and many\n"
+            "No gain is expected here at high degree and many\n"
             "threads, because the loop kernel is already at the memory\n"
             "roof. The GB/s and roof columns are how to check that rather\n"
             "than take it on trust.\n\n");
@@ -1135,7 +1135,7 @@ int main(int argc, char** argv) {
   if (Want("kernels")) {
     PrintHeader("Per-order products: Gflop/s against the inner dimension");
     std::printf(
-        "M3b attributed the inverse's smaller gain to its inner dimension.\n"
+        "Does the inverse gain less because of its inner dimension?\n"
         "The two directions do the same arithmetic on the same matrices:\n"
         "\n"
         "    forward:  (nL x nTheta)(nTheta x 2k)   K = nTheta, a few hundred\n"
@@ -1197,15 +1197,14 @@ int main(int argc, char** argv) {
   // table would not fit in memory. Runs by default, so a bare invocation on a
   // large machine builds tables of several GB.
 
-  if (Want("server")) {
+  if (WantNamed("server")) {
     PrintHeader("Thread scaling to the full machine");
     std::printf(
         "The loop kernel's decomposition -- colatitudes, with a private "
         "accumulator "
         "per\n"
-        "thread for the forward direction -- was measured to eight threads "
-        "and\n"
-        "is predicted not to survive 64-128: the accumulators become the\n"
+        "thread for the forward direction -- is expected not to scale\n"
+        "to 64-128 threads: the accumulators become the\n"
         "dominant traffic and the colatitude axis is only lMax + 1 long. "
         "These\n"
         "rows are what decides that, and nothing on a laptop can.\n");
@@ -1231,11 +1230,9 @@ int main(int argc, char** argv) {
     PrintHeader("Batching");
     std::printf(
         "Each row transforms k fields in one call, with the chunk pinned to k\n"
-        "so that the row measures one chunk of that width. Measured 2.3x "
-        "at\n"
-        "an optimum near k = 8 on a 16 MiB laptop, and *worse than no "
-        "batching*\n"
-        "beyond it. The `auto` column is what Chunking::Automatic would pick\n"
+        "so that the row measures one chunk of that width. Expect a gain\n"
+        "up to an optimum that depends on the cache, and a loss beyond it.\n"
+        "The `auto` column is what Chunking::Automatic would pick\n"
         "here, and the point of these rows is whether it picks near the "
         "peak.\n");
 
@@ -1266,16 +1263,6 @@ int main(int argc, char** argv) {
             lMax, n, FFTWpp::Measure, Chunking::Fixed(k));
         const auto inBatch = Batch::Contiguous(k, fieldSize);
         const auto outBatch = Batch::Contiguous(k, coefficientSize);
-
-        // Neither of the next two grids is timed in this section: they are
-        // built and discarded, and only add to its running time. Their timed
-        // counterparts are the whole-chunk columns of the `generated` section.
-        auto wholeChunk = GaussLegendreGrid<Real, All, All>(
-            lMax, n, FFTWpp::Measure, Chunking::Fixed(k),
-            WignerValues::Generated());
-
-        auto storedWhole = GaussLegendreGrid<Real, All, All>(
-            lMax, n, FFTWpp::Measure, Chunking::Fixed(k));
 
         const auto seconds = TimePerCall([&] {
           pinned.ForwardTransformation(lMax, n, fields, inBatch, coefficients,
@@ -1558,8 +1545,8 @@ int main(int argc, char** argv) {
         "the largest sampled value. The oversampling column is the answer to\n"
         "\"how fine a grid does a cheap scheme need\"; the first row is the\n"
         "band limit, where the samples barely resolve the field at all.\n"
-        "\nThe polar column is what the two extra rows were added for and the\n"
-        "last-phi column is what the wrap column was added for; either being\n"
+        "\nThe polar column tests the two padded polar rows and the\n"
+        "last-phi column the wrap column; either being\n"
         "far worse than the interior would mean the padding is not doing its\n"
         "job. A bicubic across the wrap is still not a *periodic* spline,\n"
         "which is the one thing the last column can show and an argument\n"
@@ -1698,7 +1685,7 @@ int main(int argc, char** argv) {
         "\nBoth are the same measurement a caller would make at start-up, on\n"
         "their own problem shape. The point of the section is that the answer\n"
         "differs by machine, so it is worth re-running here rather than\n"
-        "reading the figures the reference note quotes for a laptop.\n");
+        "reading figures measured on another machine.\n");
   }
 
   if (Want("transforms")) {

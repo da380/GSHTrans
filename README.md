@@ -417,12 +417,12 @@ section names so that an A/B costs one section rather than the whole run:
 
 ```
 default:     stream grid transforms threading batching generated
-             kernels interpolation tuning server
-named only:  kernels-loop kernels-matrix lines huge
+             kernels interpolation tuning
+named only:  kernels-loop kernels-matrix server lines huge
 ```
 
-`server` builds tables of several GB and `huge` larger still, so on a small
-machine name the sections wanted. The header of `TransformBenchmark.cpp`
+`server`, `lines` and `huge` build tables of several GB, which is why they
+run only when named. The header of `TransformBenchmark.cpp`
 explains how each figure is timed and how to read the output.
 
 `benchmarks/run-server-benchmark.sh` drives it on a target machine. **Build it

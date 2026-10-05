@@ -322,8 +322,9 @@ data race under threads.
 
 A recursion's range and accuracy are those of its arithmetic, and a three-term
 recurrence loses about `n²ε` along a row however good the algorithm. So
-`float` Wigner tables (stored, transform-major and generated alike) and `float`
-3-j rows are computed in double and rounded on store
+`float` Wigner values (stored, transform-major, generated and in the spectral
+interpolant alike) and `float` 3-j rows are computed in double and rounded on
+store
 (`WignerRecursionReal`). `float` then shares double's ceiling and accuracy and
 pays off where it should, in memory and bandwidth. The generated path narrows
 from the same double values as the stored one, which is what keeps them
@@ -383,7 +384,11 @@ wrong number in silence — and no more:
 - Barycentric weights are formed on nodes rescaled to an interval of length
   four, so physically scaled radii (metres) do not overflow.
 - An operator that exposes `Radial()` is checked against the stack's grid by
-  identity; a bare callable cannot be.
+  identity; a bare callable cannot be. An argument and a result on different
+  radial grids are refused.
+- `Resample` and `SplineDerivative` check every piece's node count against
+  what the scheme needs before any work starts, so the error names the
+  element.
 - `ApplyToLines` never hands an operator aliasing input and output spans; it
   supplies a scratch line when the caller's two buffers are one.
 

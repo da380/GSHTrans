@@ -29,10 +29,12 @@
 // contract; ExpandToLines, ApplyToLines, EvaluateLines.
 //
 // The output. Errors in d/dr of r^3 for each operator on an uneven grid;
-// the Laplacian of r^2 Y_3^1 from two applications of Gradient; and the
-// lines route agreeing exactly with the gather route.
+// the Laplacian of r^2 Y_3^1 from two applications of Gradient; a
+// hand-written operator applied through ApplyRadially, exact to rounding; and
+// the lines route agreeing exactly with the gather route.
 
 #include <GSHTrans/GSHTrans.hpp>
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <iomanip>
@@ -154,7 +156,7 @@ int main() {
   // Here is one that obeys both: the exact derivative of c * r^a, which is
   // what a test wants when it needs no truncation error. It is example 16's
   // lambda written as a type, with the radii copied in at construction. It
-  // is shown and not used below.
+  // is applied below, once there is a field to apply it to.
   struct PowerDerivative {
     Real power;
     std::vector<Real> r;
@@ -212,6 +214,22 @@ int main() {
   }
   std::cout << "  (r^2 is degree two, so a five-point rule is exact on it and\n"
                "   the error is rounding rather than truncation)\n";
+
+  // The hand-written operator goes through the same seam as the ready-made
+  // ones. Applied to r^a Y_l^1 it gives a r^(a-1) Y_l^1, exactly.
+  auto power = LayeredSpinExpansion<0, Grid>(radial, grid, lMax);
+  for (auto i : radial.RadiusIndices()) {
+    power[i, l, 1] = std::pow(radial.Radius(i), a);
+  }
+  const auto exact = ApplyRadially(power, PowerDerivative{a, radii});
+  auto worstPower = Real{0};
+  for (auto i : radial.RadiusIndices()) {
+    const auto expected = a * std::pow(radial.Radius(i), a - 1);
+    worstPower =
+        std::max(worstPower, std::abs(Complex{exact[i, l, 1]} - expected));
+  }
+  std::cout << "\nPowerDerivative through ApplyRadially, worst error "
+            << worstPower << '\n';
 
   //------------------------------------------------------------------------//
   // The same, with a radial line contiguous

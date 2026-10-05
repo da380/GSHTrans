@@ -9,6 +9,7 @@
 #include <ranges>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 // Layered fields: a stack of angular fields over a radial grid.
@@ -78,6 +79,17 @@ struct CentredDifference {
 //--------------------------------------------------------------------------//
 //                              The radial grid                              //
 //--------------------------------------------------------------------------//
+
+// The message a call throws, or empty if it does not throw.
+template <typename F>
+std::string MessageOf(F&& call) {
+  try {
+    call();
+  } catch (const std::exception& e) {
+    return e.what();
+  }
+  return {};
+}
 
 TEST(RadialGrid, CarriesNodesWeightsAndIdentity) {
   auto r = std::vector<Real>{1.0, 2.0, 3.0};
@@ -1460,7 +1472,7 @@ TEST(RadialGrid, ElementsAndWeightsAreIndependent) {
 // fourth order right up to the ends where natural costs an order -- and the
 // ends are where a boundary condition is applied and where a spline
 // derivative is least trustworthy.
-TEST(RadialDerivatives, TheSplineOffersTheEndConditionsItUsedToLack) {
+TEST(RadialDerivatives, TheSplineOffersNaturalAndNotAKnotEnds) {
   auto radial = RadialGrid<Real>(UnevenRadii);
   const auto natural = SplineDerivative<Real>(radial);
   const auto notAKnot = SplineDerivative<Real>(
@@ -1717,13 +1729,14 @@ TEST(RadialDerivatives, TheSplineIsOnePieceWithoutAPartition) {
 }
 
 // Not-a-knot constrains the whole system and needs four nodes, so it is not
-// available on elements of three. Upstream refuses it and the message is
-// upstream's, which is right: the constraint is the spline's, not ours.
+// available on elements of three. Refused at construction, naming the piece.
 TEST(RadialDerivatives, NotAKnotNeedsEnoughNodesInEveryElement) {
   const auto mesh = RadialGrid<Real>::WithElements(LayeredRadii, LayeredStarts);
-  EXPECT_THROW((SplineDerivative<Real>(mesh, BoundaryCondition::NotAKnot,
-                                       BoundaryCondition::NotAKnot)),
-               std::invalid_argument);
+  const auto message = MessageOf([&] {
+    SplineDerivative<Real>(mesh, BoundaryCondition::NotAKnot,
+                           BoundaryCondition::NotAKnot);
+  });
+  EXPECT_NE(message.find("piece"), std::string::npos) << message;
 
   const auto wider = RadialGrid<Real>::WithElements(
       std::vector<Real>{0.4, 0.5, 0.6, 0.8, 0.8, 1.0, 1.1, 1.2}, {0, 4, 8});
@@ -1930,6 +1943,13 @@ TEST(RadialOperator, AnOperatorBuiltOnAnotherGridIsRefused) {
       ApplyToLines(major, out, FiniteDifferenceDerivative<Real>(other, 2)),
       std::invalid_argument);
 
+  // The result's lines run along a grid too, and one of the same shape on
+  // another grid would keep the wrong Radial() -- as ApplyRadially refuses.
+  auto elsewhere = decltype(major)::OfShape(other, major.NumberOfLines());
+  EXPECT_THROW(
+      ApplyToLines(major, elsewhere, FiniteDifferenceDerivative<Real>(one, 2)),
+      std::invalid_argument);
+
   // A bare callable says nothing about a grid and is taken at its word.
   EXPECT_NO_THROW(ApplyRadially(e, CentredDifference<Complex>{0.0625}));
 }
@@ -2022,9 +2042,10 @@ TEST(RadialResample, OntoTheSameLayeredMeshIsTheIdentity) {
   }
 }
 
-TEST(RadialResample, ASchemeThatRefusesALineThrowsTheSameUnderThreads) {
-  // Akima's scheme needs more nodes than a two-node element has, and says so
-  // from inside the loop over lines.
+TEST(RadialResample, AnElementTooSmallForTheSchemeIsRefusedUpFront) {
+  // Akima's scheme needs three nodes and the first element has two. Refused
+  // before any line is started, so the same under threads; and a plain grid
+  // that repeats a radius is refused as the derivatives refuse it.
   constexpr auto lMax = Int{4};
   auto grid = Grid(lMax, 2, FFTWpp::Estimate);
   const auto source = RadialGrid<Real>::WithElements(
@@ -2032,11 +2053,19 @@ TEST(RadialResample, ASchemeThatRefusesALineThrowsTheSameUnderThreads) {
   const auto target = RadialGrid<Real>(std::vector<Real>{0.5, 0.9, 1.25});
   auto f = LayeredSpinField<0, Grid, ComplexValued>(source, grid);
 
-  EXPECT_THROW(Resample(f, target, RadialInterpolation::Akima()),
-               std::exception);
-  EXPECT_THROW(
-      Resample(f, target, RadialInterpolation::Akima(), Execution::Parallel(4)),
-      std::exception);
+  for (auto policy : {Execution::Sequential(), Execution::Parallel(4)}) {
+    const auto message = MessageOf(
+        [&] { Resample(f, target, RadialInterpolation::Akima(), policy); });
+    EXPECT_NE(message.find("element 0"), std::string::npos) << message;
+  }
+  EXPECT_NO_THROW(Resample(f, target, RadialInterpolation::Linear()));
+
+  const auto repeated =
+      RadialGrid<Real>(std::vector<Real>{0.4, 0.8, 0.8, 1.0, 1.2, 1.4});
+  auto g = LayeredSpinField<0, Grid, ComplexValued>(repeated, grid);
+  const auto message =
+      MessageOf([&] { Resample(g, target, RadialInterpolation::Linear()); });
+  EXPECT_NE(message.find("repeats the radius"), std::string::npos) << message;
 }
 
 TEST(RadialResample, ATargetInterfaceInsideASourcePieceStaysContinuous) {

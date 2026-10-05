@@ -9,6 +9,7 @@
 #include <ranges>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "Concepts.hpp"
@@ -112,9 +113,14 @@ class WignerMatrices {
    * @param theta The colatitudes.
    * @param reflected Whether only the non-negative orders are stored, the
    * rest being reached through Sign(); see Reflected().
+   * @throws std::invalid_argument if the degree is negative or above
+   * MaxSafeDegree, if the order or upper index exceeds the degree, if a
+   * colatitude lies outside @f$[0, \pi]@f$, or if @p reflected is asked of
+   * colatitudes not symmetric about @f$\pi/2@f$.
    */
-  template <std::ranges::range Range>
-  requires RealFloatingPoint<std::ranges::range_value_t<Range>>
+  template <std::ranges::random_access_range Range>
+  requires std::ranges::sized_range<Range> &&
+               RealFloatingPoint<std::ranges::range_value_t<Range>>
   WignerMatrices(Int lMax, Int mMax, Int nMax, Range &&theta,
                  bool reflected = false)
       : lMax_{lMax},
@@ -123,7 +129,7 @@ class WignerMatrices {
         nTheta_(static_cast<Int>(std::ranges::size(theta))),
         reflected_{reflected} {
     if (lMax < 0)
-      throw std::invalid_argument("Maximum degree must be positive");
+      throw std::invalid_argument("Maximum degree must not be negative");
     WignerDetails::CheckSafeDegree<Real>(lMax);
     if (mMax < 0 || mMax > lMax) {
       throw std::invalid_argument(
@@ -132,6 +138,13 @@ class WignerMatrices {
     if (std::abs(nMax) > lMax) {
       throw std::invalid_argument(
           "Maximum upper index must not exceed the maximum degree");
+    }
+
+    for (auto angle : theta) {
+      if (!(angle >= 0 && angle <= std::numbers::pi_v<Real>)) {
+        throw std::invalid_argument("A colatitude must lie in [0, pi], and " +
+                                    std::to_string(angle) + " does not");
+      }
     }
 
     // The reflection is a statement about theta and pi - theta both being

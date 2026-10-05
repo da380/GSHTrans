@@ -527,7 +527,7 @@ void Wigner3jPlane(int l1, int l2, int l3, std::span<T> table) {
     if (not RowSatisfiesRecurrence<Work>(
             l1, l2, l3, m1, std::span<const Work>(row.data(), n), n)) {
       throw std::runtime_error(
-          "Wigner3jMatrix: the recurrence is not satisfied for degrees (" +
+          "Wigner 3-j symbols: the recurrence is not satisfied for degrees (" +
           std::to_string(l1) + ", " + std::to_string(l2) + ", " +
           std::to_string(l3) + ") at m1 = " + std::to_string(m1) +
           ". The values are not to be trusted.");
@@ -572,8 +572,10 @@ void FillWigner3jMatrix(int l1, int l2, int l3, Range&& table) {
  * (-1)^m (l1 l2 l3; -m, m-mp, mp) in row-major order, m being the row axis
  * and mp the column axis: the first order negated, with an alternating phase.
  * This is the arrangement the symbols appear in within normal-mode coupling
- * matrices, and it is exactly the array a(m+l1+1, mp+l3+1) returned by the
- * Fortran routine wig2(l1, l2, l3, a, id1). Allocates nothing but one row of
+ * matrices, and element for element it is the array a(m+l1+1, mp+l3+1)
+ * returned by the Fortran routine wig2(l1, l2, l3, a, id1) -- the memory
+ * order differs, Fortran being column-major, so a buffer exchanged with
+ * Fortran directly is the transpose. Allocates nothing but one row of
  * scratch.
  * @tparam Range A contiguous, sized, readable and writable range of reals.
  * @param l1 The first degree.

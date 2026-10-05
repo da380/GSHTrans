@@ -6,121 +6,17 @@ what it does and why — is in `design.md`, `gshtrans-reference.tex` and
 `README.md`. When an item is resolved, delete it here and, if the resolution
 is a design decision, record the reason in `design.md`.
 
-Each item says what it is and where. Line numbers drift; search for the named
-symbol.
+Each item says what it is and where; search for the named symbol.
 
 ---
 
-## 1. Suspected bugs
+## 1. Optional clean-up
 
-Checked by reading the code; none has a failing test yet. Each should start
-with one.
-
-- **Spectral interpolation in `float` runs the recursion in `float`.**
-  `Expansion/Interpolate.hpp`, `SpectralInterpolant::operator()` and `State`:
-  calls `WignerDetails::ComputeBlock` and `PreComputeTables<Real>` directly
-  rather than the double-precision route (`WignerRecursionReal`, `FillBlock`)
-  every other single-precision path uses. A `float` interpolant between
-  lMax ≈ 194 (float's own ceiling) and 1827 (the grid's) returns wrong values
-  silently; below that it agrees with the transform to rounding rather than
-  to the bit. Separately, `State` never calls `CheckSafeDegree`, so a directly
-  constructed interpolant can exceed the ceiling at any precision.
-  *Fix:* recurse in `WignerRecursionReal<Real>` and add the degree check.
-- **Unbalanced diagnostic pragma.** `Layered/RadialResample.hpp`: the
-  `#pragma GCC diagnostic push` is inside `#ifdef GSHTRANS_HAVE_INTERPOLATION`
-  and the matching `pop` after its `#endif`. With interpolation and OpenMP both
-  off, the header pops a state it never pushed (Clang warns; GCC may discard a
-  caller's pushed state). *Fix:* move the pop inside the guard.
-- **`ApplyToLines` does not check the output's radial grid.**
-  `Layered/RadialMajor.hpp`: compares shapes only, where `ApplyRadially`
-  refuses an input and output on different radial grids by identity. An
-  output of the same length on another grid is accepted and keeps the wrong
-  `Radial()`. *Fix:* the same identity check.
-
-## 2. Simple clean-ups
-
-Code changes that are small and need no decision.
-
-**Library**
-
-- `SphericalGrid.hpp`: `Workspace::Count()` is never called — delete it, or use
-  it where the Legendre stage recomputes the stride from `work.out.size()`.
-- `WignerMatrices.hpp`: does not reject colatitudes outside [0, π] (or NaN) as
-  `Wigner` does; constrains its range argument on `std::ranges::range` while
-  using random access and size (use `Wigner`'s constraint); the `lMax < 0`
-  message says "positive".
-- `3j.hpp`: the self-check's `runtime_error` names `Wigner3jMatrix` on every
-  route into it.
-- `Layered/LayeredTensorField.hpp`: uses `std::invalid_argument` and
-  `std::to_string` without including `<stdexcept>` and `<string>`.
-- `Layered/RadialResample.hpp`, `RadialSplineDerivative.hpp`: an interpolant's
-  minimum node count per element (Akima 3, not-a-knot 4) and distinct radii on
-  a plain grid are not checked up front, so the error comes from
-  `Interpolation` — in `Resample`, from inside the per-line loop — and does not
-  name the element.
-- `TensorField` accepts a grid with `NRange = NonNegative` for a tensor that
-  stores components at negative N (every real tensor; a complex one with no
-  symmetry); the failure is a `static_assert` deep in `SpinFieldView` when a
-  component is first requested. A `static_assert` in `TensorField` would say
-  it at the declaration.
-- `Expansion/TensorExpansion.hpp`: the read-only `Component() const` is
-  constrained on `Writable<…>`, which here means "stored"; a `Stored` alias
-  would read straighter.
 - `Wigner.hpp`: the closed-form boundary functions (`WignerMinOrder` and
-  siblings) are used only by `tests/CheckWignerBoundary.hpp`; they could live in
-  the test tree. Optional.
-- `CMakeLists.txt`: a `message()` string still says the loop kernel "is what the
-  library has always used".
+  siblings) are used only by `tests/CheckWignerBoundary.hpp`; they could live
+  in the test tree.
 
-**Benchmark** (`benchmarks/TransformBenchmark.cpp`; bump the harness
-`revision`, and `expected` in `run-server-benchmark.sh`, if output changes)
-
-- The `batching` section builds two grids per batch size (`wholeChunk`,
-  `storedWhole`) that it never times: a table build and FFTW planning each,
-  for nothing.
-- `server` runs by default and can build a 43 GB table; `huge` and `lines`
-  are already named-only for that reason.
-- `threading` uses fixed counts {1, 2, 4, 8, 16}; on a smaller machine the top
-  rows oversubscribe. Use `ThreadLadder()`.
-- The printed section list omits `lines` and the alias `roof`, and lists
-  named-only sections as part of a default run.
-- Printed strings still carry plan labels and history ("M3b attributed…",
-  "the reference note predicts…", "was measured to eight threads…").
-- `scripts/test_sanitized.sh` builds with a bare `--parallel` (all cores).
-
-**Tests**
-
-- Test names that describe history rather than behaviour:
-  `ExpressionsComposeWithThePhaseOneAlgebra` (TestTensorAlgebra),
-  `AnswersEverythingTheOldSchemesCouldNot` (TestThreeJ),
-  `TheSplineOffersTheEndConditionsItUsedToLack` (TestLayered),
-  `ReproducesTheStorageTableOfTheTheoryNote` (TestTensorIndices),
-  `TheVectorCaseIsTheOneTheTheoryNoteSpellsOut` (TestTensorReality).
-- `TestConcepts.cpp`: two `static_assert` messages say "is no longer an
-  AngularGrid" and "the only thing that was missing".
-- `TestThreeJ.cpp`, `CompletenessHoldsAtTheStretchedEdgeForModestDegrees`:
-  tolerance 1e-6 at l = 22, 25, set for an earlier algorithm; the next test
-  holds the same edge to 1e-12. Tighten or fold in.
-- `CheckAdditionTheorem.hpp`: draws from the test seed but does not print the
-  seed or failing entry, so a failure under `GSHTRANS_TEST_SEED=random` cannot
-  be reproduced (`CheckLegendre` does print them).
-- `TestGaussLegendreGrid.cpp`: `ChunkingIsNotObservableInAnyResult` and
-  `ChunkingDoesNotChangeTheAnswer` overlap; fold the short-chunk case into one.
-- `TestTensorAlgebra.cpp`: the concepts `ComponentOfATemporary` and
-  `TraceOfATemporary` are true for `const T&`; the names mislead.
-- `TestLayered.cpp`: exact agreement of a batched layered transform with a
-  loop over radii is tested only sequentially under `Estimate`.
-
-**Examples**
-
-- 07: the three timed actions include first-use FFTW planning (plans are made
-  lazily per thread and shape, with `Measure`); time each once untimed first.
-- 13: the commutator check rebuilds four expansions per (l, m); hoist them out
-  of the loop.
-- 18: `PowerDerivative` is defined as the model of a user operator and never
-  used; apply it, or drop it.
-
-## 3. Documentation to check
+## 2. Documentation to check
 
 Statements that may be wrong and need the owner's judgement or a measurement.
 
@@ -129,9 +25,6 @@ Statements that may be wrong and need the owner's judgement or a measurement.
   for oversampling. A grid at lMax = L already integrates it exactly
   (L + 1 Gauss nodes are exact to degree 2L + 1; nPhi ≥ 2L + 1). Headroom is
   needed to *represent or transform* a product, which has band 2L.
-- **Spin-weighted harmonics.** Whether `Y^N_lm` corresponds to `sY_lm` with
-  s = N or s = −N varies between sources; the reference does not say. Worth
-  stating once checked.
 - **Two timings for one configuration** in the reference: lMax = 256, n = 2,
   one thread, forward is ~19 ms in "The transform" and 12.16 ms in "Batching,
   chunking and threading". Re-measure in one run.
@@ -144,15 +37,8 @@ Statements that may be wrong and need the owner's judgement or a measurement.
 - **Radial lines with the loop kernel**: `run-server-benchmark.sh` says the
   direct route lost everywhere with the threaded loop kernel; the benchmark's
   `lines` comment says the routes were close. One is out of date.
-- **`FillCouplingMatrix` and `wig2`** (`3j.hpp`): the buffer is described as
-  "exactly the array a(m+l1+1, mp+l3+1)". As an element map that holds; in
-  memory a Fortran array is column-major, so a buffer exchanged with Fortran
-  directly would be transposed. Say "element for element".
-- **"Terminal held by reference"** (reference, "Laziness, and the aliasing
-  theorem"): true of owning fields only; views are held by value. Say "an
-  owning field".
 
-## 4. Known limitations (by decision)
+## 3. Known limitations (by decision)
 
 Deliberate. Listed so that they are not rediscovered as bugs, and so the
 decision can be revisited if the use changes.
@@ -213,7 +99,7 @@ decision can be revisited if the use changes.
   The timing difference depends on `nR` (power-of-two strides) and threads in
   a way no simple rule captures.
 
-## 5. Open questions for the 64-core target
+## 4. Open questions for the 64-core target
 
 These need measurements on the production machine (dual-socket, 64 cores)
 rather than the development laptop.
@@ -234,7 +120,7 @@ rather than the development laptop.
   to a cache line per value; blocking over colatitudes would remove that if
   table construction time matters at large lMax.
 
-## 6. Open design questions
+## 5. Open design questions
 
 Each wants a decision rather than an edit.
 
@@ -253,17 +139,16 @@ Each wants a decision rather than an edit.
   parallel region, carry tuning results). Not built because it cuts across
   keeping policies on the grid with `With()`. Revisit if `Batch::At` grows.
 
-## 7. Possible work
+## 6. Possible work
 
 - **Race-checking the threaded paths.** ThreadSanitizer is unusable with GCC's
   `libgomp`; a Clang build against `libomp` built with `LIBOMP_TSAN_SUPPORT`
   would make it possible.
-- **Hoist Akima's minimum-element-size check** out of `Resample`'s loop (see
-  §2); not needed for correctness, since the scheme's own exception arrives
-  intact through `ExceptionCapture`.
-- **A test that throws inside a transform kernel's OpenMP region.** The kernels
-  have no natural way to throw once `FFTWpp::WisdomOnly` is refused, so their
-  `ExceptionCapture` wrapping is covered only by the utility's own tests.
+- **A test that throws inside a transform kernel's or `Resample`'s OpenMP
+  region.** Neither has a natural way to throw any more: the kernels since
+  `FFTWpp::WisdomOnly` is refused, and `Resample` since it checks its pieces
+  before the loop. Their `ExceptionCapture` wrapping is covered by the
+  utility's own tests, and by `ApplyRadially` with a throwing operator.
 - **Release pinning.** A release commit should set the four sibling
   dependencies (`GSHTRANS_FFTWPP_TAG` and siblings) to fixed revisions;
   development tracks their `main`. googletest is pinned to a release.

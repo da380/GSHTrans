@@ -330,15 +330,16 @@ class SpectralInterpolant {
     if (phase.size() < phases) phase.resize(phases);
 
     // The same recursion WignerValues::Generated() runs, into our own
-    // scratch. Sharing it is what stops a second convention arising: a
-    // disagreement here would be a disagreement with the transform. It is
-    // called directly in Real, not through FillBlock, so at single precision
-    // the recursion runs in float rather than in the transform's double and
-    // agrees with it to rounding rather than to the bit.
+    // scratch, and through FillBlock as the transform's is: at single
+    // precision it runs in double and is rounded, so it reaches double's
+    // degree limit and gives the transform's d-functions to the bit. Sharing it
+    // is what stops a second convention arising: a disagreement here would be a
+    // disagreement with the transform.
+    using Work = WignerRecursionReal<Real>;
     auto d = GSHView<Real, All>(lMax, lMax, UpperIndex, block.data());
-    WignerDetails::ComputeBlock(d, UpperIndex, theta,
-                                std::span<const Real>(state_->sqrtInt),
-                                std::span<const Real>(state_->sqrtIntInv));
+    WignerDetails::FillBlock(d, UpperIndex, static_cast<Work>(theta),
+                             std::span<const Work>(state_->sqrtInt),
+                             std::span<const Work>(state_->sqrtIntInv));
 
     // exp(i m phi) for every order at once. Built with polar rather than by
     // repeated multiplication: it is O(lMax) against the sum's O(lMax^2), so
@@ -375,8 +376,9 @@ class SpectralInterpolant {
   struct State {
     Int lMax;
     std::vector<Complex> data;
-    std::vector<Real> sqrtInt;
-    std::vector<Real> sqrtIntInv;
+    // In the precision the recursion runs in, which for float is double.
+    std::vector<WignerRecursionReal<Real>> sqrtInt;
+    std::vector<WignerRecursionReal<Real>> sqrtIntInv;
 
     State(Int lMaxIn, std::span<const Complex> coefficients)
         : lMax{lMaxIn}, data(coefficients.begin(), coefficients.end()) {
@@ -384,6 +386,7 @@ class SpectralInterpolant {
         throw std::invalid_argument(
             "Interpolate: the degree is below the upper index");
       }
+      WignerDetails::CheckSafeDegree<Real>(lMax);
       const auto indices = GSHIndices<MRange>(lMax, lMax, UpperIndex);
       if (data.size() != static_cast<std::size_t>(indices.Size())) {
         throw std::invalid_argument(
@@ -391,8 +394,8 @@ class SpectralInterpolant {
             std::to_string(indices.Size()) + " coefficients of a degree-" +
             std::to_string(lMax) + " expansion");
       }
-      auto tables = WignerDetails::PreComputeTables<Real>(lMax, lMax,
-                                                          std::abs(UpperIndex));
+      auto tables = WignerDetails::PreComputeRecursionTables<Real>(
+          lMax, lMax, std::abs(UpperIndex));
       sqrtInt = std::move(tables.first);
       sqrtIntInv = std::move(tables.second);
     }

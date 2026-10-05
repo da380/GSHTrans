@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 
 #include <GSHTrans/GSHTrans.hpp>
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <cstddef>
+#include <span>
 #include <vector>
 
 // Single precision, one test a layer, and a grid covering only the
@@ -109,6 +111,48 @@ TEST(SinglePrecision, ALayeredFieldTransformsAndDifferentiates) {
   for (auto i : radial.RadiusIndices()) {
     EXPECT_NEAR(std::abs((back[i, 2, 1]) - (e[i, 2, 1])), 0, tolerance);
   }
+}
+
+// Above the degree float's own arithmetic can recurse to (MaxSafeDegree
+// computed in float is 194), the spectral interpolant must still agree with
+// the transform: both recurse in double and round. Generated values keep the
+// grid small; the interpolant is compared on every colatitude, where the
+// columns that a float recursion loses are.
+TEST(SinglePrecision, TheSpectralInterpolantRecursesInDoubleAboveFloatsLimit) {
+  constexpr Int degree = 320;
+  const auto grid = Grid(degree, 0, FFTWpp::Estimate, Chunking::Automatic(),
+                         WignerValues::Generated());
+  auto e = SpinExpansion<0, Grid>(grid, degree);
+  for (auto l : e.Degrees()) {
+    for (auto m : e.Orders(l)) {
+      e[l, m] = Complex{std::sin(0.3f * static_cast<Real>(l + 2 * m)),
+                        std::cos(0.7f * static_cast<Real>(l - m))} /
+                static_cast<Real>(l + 1);
+    }
+  }
+  const auto field = Evaluate(e);
+  const auto at = Interpolate(e);
+
+  auto scale = Real{0};
+  for (auto x : field.Data()) scale = std::max(scale, std::abs(x));
+  const auto iPhi = grid.NumberOfLongitudes() / 3;
+  const auto phi = grid.Longitudes()[iPhi];
+  auto worst = Real{0};
+  for (auto iTheta : grid.CoLatitudeIndices()) {
+    const auto theta = grid.CoLatitudes()[iTheta];
+    worst = std::max(worst, std::abs(at(theta, phi) - (field[iTheta, iPhi])));
+  }
+  EXPECT_LT(worst, 1e-3f * scale);
+}
+
+TEST(SinglePrecision, TheSpectralInterpolantRefusesAnUnsafeDegree) {
+  using Interpolant = SpectralInterpolant<0, Grid>;
+  const auto tooHigh = MaxSafeDegree<Real>() + 1;
+  // Correctly sized, so that the degree is the only thing wrong.
+  const auto coefficients = std::vector<Complex>(
+      static_cast<std::size_t>(GSHIndices<All>(tooHigh, tooHigh, 0).Size()));
+  EXPECT_THROW(Interpolant(tooHigh, std::span<const Complex>(coefficients)),
+               std::invalid_argument);
 }
 
 //--------------------------------------------------------------------------//

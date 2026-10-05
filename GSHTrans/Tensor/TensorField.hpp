@@ -198,6 +198,23 @@ class TensorField {
   /** @brief How many are pinned to a single real number. */
   static constexpr Int RealComponents = ComponentLayout.realCount;
 
+  /// Whether some stored component sits at a negative upper index, which a
+  /// grid with NRange = NonNegative cannot carry. Every real tensor has one,
+  /// and so does almost every complex one, the representative of an orbit
+  /// being its member of smallest flat index.
+  static constexpr bool StoresNegativeUpperIndex = [] {
+    for (auto n : ComponentLayout.upperIndexOfSlot) {
+      if (n < 0) return true;
+    }
+    return false;
+  }();
+
+  static_assert(!(StoresNegativeUpperIndex &&
+                  std::same_as<typename Grid_::NRange, NonNegative>),
+                "This tensor stores components at negative upper indices, "
+                "and a grid with NRange = NonNegative does not carry them: "
+                "use NRange = All");
+
   /// The real numbers one grid point of this tensor costs.
   static constexpr Int RealsPerPoint = 2 * ComplexComponents + RealComponents;
 
@@ -303,9 +320,8 @@ class TensorField {
   /**
    * @brief A zero tensor field on @p grid.
    * @throws std::invalid_argument if the grid's largest upper index is less
-   * than Rank. Whether it carries the negative ones is not checked here: over
-   * a grid with NRange = NonNegative, asking for a component stored at a
-   * negative upper index is a compile error in the view, not a throw here.
+   * than Rank. A grid with NRange = NonNegative, which cannot carry the
+   * negative upper indices a tensor stores, is refused at compile time.
    */
   explicit TensorField(GridType grid)
       : grid_{std::move(grid)},

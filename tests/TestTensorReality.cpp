@@ -156,7 +156,7 @@ TEST(TensorReality, EveryComponentSatisfiesTheRealityCondition) {
   ExpectRealityCondition<T, 1, 1>(tensor, 2, 3);
 }
 
-TEST(TensorReality, TheVectorCaseIsTheOneTheTheoryNoteSpellsOut) {
+TEST(TensorReality, AVectorHasARealRadialComponentAndPairedTransverseOnes) {
   // For a vector the reality condition reads u^0 = conj(u^0) and
   // u^- = -conj(u^+): the radial component is a real field, and the two
   // transverse components are not independent.

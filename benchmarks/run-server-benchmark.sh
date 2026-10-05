@@ -148,7 +148,7 @@ cmake --build "$build" --target TransformBenchmark -j "$(nproc)" || exit 1
 # target" without compiling anything, and the previous harness produces a log
 # that looks entirely plausible. `expected` must match `revision` in
 # TransformBenchmark.cpp and is bumped with it.
-expected=11
+expected=12
 got="$("$binary" --check 2>/dev/null | awk '/harness revision/ {print $3}')"
 if [ "${got:-0}" -lt "$expected" ]; then
   echo

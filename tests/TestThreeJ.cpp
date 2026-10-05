@@ -68,17 +68,12 @@ TEST(ThreeJ, CompletenessHoldsAwayFromStretched) {
   }
 }
 
-// The degenerate edge of the triangle rule, l3 = l1 + l2, at modest degree.
-// The looser tolerance on the second loop is looser than it needs to be: the
-// next test holds the same edge to 1e-12 from l = 35 to 128.
+// The degenerate edge of the triangle rule, l3 = l1 + l2, at modest degree;
+// the next test continues it from l = 35 to 128.
 TEST(ThreeJ, CompletenessHoldsAtTheStretchedEdgeForModestDegrees) {
-  for (auto l : {1, 2, 4, 8, 12, 16, 20}) {
+  for (auto l : {1, 2, 4, 8, 12, 16, 20, 22, 25, 30}) {
     EXPECT_NEAR(Completeness<double>(l, l, 2 * l), 1.0, 1e-12)
         << "(l, l, 2l), l = " << l;
-  }
-  for (auto l : {22, 25}) {
-    EXPECT_NEAR(Completeness<double>(l, l, 2 * l), 1.0, 1e-6)
-        << "(l, l, 2l), l = " << l << " is degrading but still usable";
   }
 }
 
@@ -91,7 +86,7 @@ TEST(ThreeJ, CompletenessHoldsAtTheStretchedEdgeForModestDegrees) {
 // only loses the table past about l = 30 -- and the band at moderately large
 // degree where Racah's closed form cancels badly are answered like anywhere
 // else.
-TEST(ThreeJ, AnswersEverythingTheOldSchemesCouldNot) {
+TEST(ThreeJ, AnswersStretchedAndLargeTriangles) {
   // Stretched: lost by a one-directional recursion past l = 30.
   for (auto l : {35, 40, 50, 64, 100, 128}) {
     ASSERT_NO_THROW(Wigner3jMatrix<double>(l, l, 2 * l)) << "l = " << l;

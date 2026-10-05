@@ -249,6 +249,12 @@ void ApplyToLines(const RadialMajor<Stack>& in, RadialMajor<Stack>& out,
         "A radial operator acts along the radial axis alone, so its argument "
         "and its result must have the same shape");
   }
+  if (in.Radial().Identity() != out.Radial().Identity()) {
+    throw std::invalid_argument(
+        "A radial operator's argument and result must be on the same radial "
+        "grid: the result's lines would otherwise claim radii they were not "
+        "computed on");
+  }
 
   RadialDetails::CheckOperatorGrid(op, in.Radial());
 
