@@ -25,7 +25,7 @@ namespace GSHTrans {
 /// component" belongs to the tensor layer, where a component is identified by a
 /// multi-index and not by an upper index -- for rank >= 2 the two are different
 /// things, and a collection labelled only by N does not determine a tensor.
-/// See section 2 of the theory note, docs/canonical-components.tex.
+/// See "Canonical components" in docs/gshtrans-reference.tex.
 template <std::ptrdiff_t N_, AngularGrid Grid_,
           RealOrComplexValued Value_ = ComplexValued>
 class SpinField {
@@ -94,9 +94,9 @@ class SpinField {
 
   /// What may be evaluated into a field of this type. The condition itself is
   /// SpinWeighted.hpp's EvaluatesInto, which is a concept rather than a
-  /// constexpr bool for a reason recorded there: a chain of `and`s does not
-  /// stop the later terms naming members that a non-spin-weighted operand does
-  /// not have, and clang rejects what GCC accepted.
+  /// constexpr bool for a reason given there: a chain of `and`s does not stop
+  /// the later terms naming members that a non-spin-weighted operand does not
+  /// have, and clang rejects that where GCC accepts it.
   template <typename Expr>
   static constexpr bool Compatible =
       EvaluatesInto<Expr, UpperIndex, Real, Scalar>;
@@ -121,10 +121,10 @@ class SpinField {
   /// pointwise and index-preserving, so writing element (iTheta, iPhi) of the
   /// destination happens after reading element (iTheta, iPhi) -- and only that
   /// element -- of every operand, including the destination itself. So
-  /// `u = conj(u) * v + u` is safe as written. If a re-indexing node ever
-  /// enters this layer the argument fails, which is why the invariant is stated
-  /// as "pointwise *and index-preserving*" and why there is a regression test
-  /// for exactly this shape.
+  /// `u = conj(u) * v + u` is safe as written. A re-indexing node in this layer
+  /// would break the argument, which is why the invariant is stated as
+  /// "pointwise *and index-preserving*" and why there is a regression test for
+  /// exactly this shape.
   template <typename Expr>
   requires Compatible<Expr> and (not std::same_as<Node<Expr>, SpinField>)
   SpinField& operator=(const Expr& expr) {

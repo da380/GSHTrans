@@ -27,9 +27,9 @@
 //
 // the second because conj of a field of upper index N has coefficients
 // (-1)^{m+N} conj(f_{l,-m}). Every component of every type is read, so a sign
-// that is wrong on one member of one orbit -- which is what this file was
-// written after -- has nowhere to hide. Rank 2 cannot show such an error: no
-// pinned member there is reached through a conjugating step. Rank 3 and the
+// that is wrong on one member of one orbit has nowhere to hide. Rank 2 cannot
+// show such an error: no pinned member there is reached through a conjugating
+// step. Rank 3 and the
 // elastic tensor can, which is why they are here and with values in them.
 
 using namespace GSHTrans;
@@ -422,8 +422,9 @@ TYPED_TEST(LayeredOrbitValues, EveryCoefficientObeysEveryRelation) {
 // the component accessor -- and that is what the tests above pin.
 //
 // This is here rather than beside the algebra tests because it is the case
-// that went wrong: most of the components this sum reads from a real elastic
-// tensor are derived ones, and the ones on real orbits came back negated.
+// that exercises derivation hardest: most of the components this sum reads
+// from a real elastic tensor are derived ones, and a sign error on the real
+// orbits would come back as negated components.
 TEST(RealElasticTensor, AppliedToAStrainIsTheDoubleSum) {
   using C = TensorField<4, ElasticSymmetry, RealTensor, Grid>;
   using E = TensorField<2, Symmetric<2>, RealTensor, Grid>;

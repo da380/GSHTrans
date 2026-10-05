@@ -116,14 +116,13 @@ namespace Details {
  * scoped to the team's implicit tasks and the caller's own setting is as it
  * was when this returns.
  *
- * Opening the team is not enough by itself, though it was once thought to be.
- * The argument was that a region opened inside a region is nested, and that
- * the default of one active level makes a nested region serial. That holds
- * for a team of two or more. A team of **one** is an *inactive* region: it
- * does not count as a level, `omp_in_parallel()` is false inside it, and a
- * region opened from it gets the whole machine -- so the sequential case,
- * which is the one that was measured and the one most callers run, was
- * exactly the case in which the BLAS was not being held back.
+ * Opening the team is not enough by itself. A region opened inside a team of
+ * two or more is nested, and the default of one active level makes it serial.
+ * A team of **one**, though, is an *inactive* region: it does not count as a
+ * level, `omp_in_parallel()` is false inside it, and a region opened from it
+ * gets the whole machine -- so without the explicit setting, the sequential
+ * case, which is the one most callers run, would be exactly the case in which
+ * the BLAS is not held back.
  *
  * A BLAS with its own pthread pool is untouched by any of this and needs
  * `OPENBLAS_NUM_THREADS=1` or its equivalent from the caller.
@@ -224,9 +223,9 @@ class Batch {
    * apart, so element @f$j@f$ of it is at `offsets[k] + j * stride`. The
    * offsets need be in no particular order.
    *
-   * It costs the transform nothing to admit this, and no kernel changed to do
-   * it. A layout is reached only through Count(), Stride(), Offset(), Span()
-   * and Disjoint(), and every field is gathered into the library's own
+   * It costs the transform nothing to admit this, and no kernel needs to know
+   * about it. A layout is reached only through Count(), Stride(), Offset(),
+   * Span() and Disjoint(), and every field is gathered into the library's own
    * scratch before FFTW or a BLAS is given anything, so neither ever meets the
    * caller's layout.
    *
@@ -356,7 +355,7 @@ class Batch {
     if (count_ <= 1 || size <= 0) return true;
     if (offsets_) {
       // Settled when the batch was made, for fields up to the size it was
-      // made for; a longer field is a question nobody has asked yet.
+      // made for; a longer field is checked afresh.
       return size <= builtFor_ || OffsetsAreDisjoint(*offsets_, stride_, size);
     }
     return dist_ >= size * stride_ || stride_ >= count_ * dist_;
@@ -444,7 +443,7 @@ class Chunking {
 
   /**
    * @brief A modest desktop's last-level cache, in bytes.
-   * @details At @f$l_{\max} = 256@f$ this gives a chunk of three on one
+   * @details At @f$l_{\max} = 256@f$ this gives a chunk of four on one
    * thread, against the eight measured on a 16 MiB laptop — less gain, and no
    * risk of the reversal beyond the optimum.
    */
@@ -599,16 +598,15 @@ class WignerValues {
  * @f$(n, \theta)@f$. Matrix() is transform-major: all the FFTs first, then one
  * matrix product per order against a table contiguous in @f$(l, \theta)@f$ at
  * fixed @f$(n, m)@f$. Products at different orders write disjoint outputs, so
- * it needs no accumulator and no reduction in either direction — which is the
- * forward transform's weak point at high thread counts, deleted rather than
- * tuned.
+ * it needs no accumulator and no reduction in either direction, and so lacks
+ * the loop kernel's weak point in the forward transform at high thread counts.
  *
- * **Both are kept, permanently.** This is not a migration with a flag day: the
- * point of the two coexisting is measurement. A GEMM sums in whatever order
- * its kernel chooses, so the matrix path cannot be bit-compared against the
- * loop path — but it can be compared to a tolerance, on identical inputs,
- * which is a check of the layout, the indexing, the FFT ordering and the
- * accumulation that no single-kernel library has available. It also means the
+ * **Both are kept, permanently**: the point of the two coexisting is
+ * measurement. A GEMM sums in whatever order its kernel chooses, so the matrix
+ * path cannot be bit-compared against the loop path — but it can be compared
+ * to a tolerance, on identical inputs, which is a check of the layout, the
+ * indexing, the FFT ordering and the accumulation that no single-kernel
+ * library has available. It also means the
  * right kernel for a machine is a question that machine can answer for itself.
  *
  * A property of the grid rather than of the call, for the reason WignerValues

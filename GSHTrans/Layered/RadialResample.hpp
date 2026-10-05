@@ -4,8 +4,8 @@
 //
 // The whole of this header is conditional on GSHTRANS_HAVE_INTERPOLATION,
 // which the build defines when GSHTRANS_WITH_INTERPOLATION is on, as it is by
-// default. Including it without the dependency is not an error
-// and gives nothing: the option is what decides whether the facility exists,
+// default. Including it without the dependency is not an error and gives
+// nothing: the option is what decides whether the facility exists,
 // and a caller who has turned it off has said they do not want it.
 //
 // It constructs an interpolant per radial line, which SplineDerivative goes
@@ -27,6 +27,7 @@
 #include <cstddef>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -117,10 +118,11 @@ void Fit(std::span<const Real> from, std::span<const Scalar> values,
 // that knows its elements writes an interface as a repeated radius, and the
 // two copies are different points: the first is the top of the element below
 // and the second the bottom of the one above. The first is therefore answered
-// from *below*. Without this both copies were answered from above, and
-// resampling a layered model onto its own mesh overwrote the lower side of
-// every discontinuity with the upper. The exception covers the top of the
-// last element as well -- a target that stops at an interface lies below it.
+// from *below*. Under the plain convention both copies would be answered from
+// above, and resampling a layered model onto its own mesh would overwrite the
+// lower side of every discontinuity with the upper. The exception covers the
+// top of the last element as well -- a target that stops at an interface lies
+// below it.
 // Where the source has no breakpoint at that radius there is one piece and no
 // choice to make, so nothing changes.
 //
@@ -197,6 +199,41 @@ auto Resample(const Stack& in, RadialGrid<Real> onto,
         "reach outside the ones the field is given on");
   }
 
+  // What every interpolant needs of its nodes, checked here so that the error
+  // names the element and arrives before any line is started, rather than
+  // from inside the interpolation library, once per line.
+  {
+    const auto needed = scheme.IsAkima() ? Int{3} : Int{2};
+    const auto refuse = [&](const std::string& where, Int count) {
+      throw std::invalid_argument(
+          "Resampling fits one interpolant per piece, and " + where + " has " +
+          std::to_string(count) + " node(s) where this scheme needs at least " +
+          std::to_string(needed));
+    };
+    if (in.Radial().HasElements()) {
+      for (auto k : in.Radial().ElementIndices()) {
+        if (in.Radial().ElementSize(k) < needed) {
+          refuse("element " + std::to_string(k), in.Radial().ElementSize(k));
+        }
+      }
+    } else {
+      if (static_cast<Int>(from.size()) < needed) {
+        refuse("the radial grid", static_cast<Int>(from.size()));
+      }
+      for (std::size_t i = 0; i + 1 < from.size(); i++) {
+        if (!(from[i] < from[i + 1])) {
+          throw std::invalid_argument(
+              "Resampling needs strictly increasing radii, and this grid "
+              "repeats the radius " +
+              std::to_string(from[i]) + " at indices " + std::to_string(i) +
+              " and " + std::to_string(i + 1) +
+              " without saying what it means -- which is what "
+              "RadialGrid::WithElements is for");
+        }
+      }
+    }
+  }
+
   // Where each target radius is answered from, computed once for all lines
   // since it depends on the two grids and not on the data. Empty when the
   // source grid does not know its elements, which is the one-piece case.
@@ -235,8 +272,7 @@ auto Resample(const Stack& in, RadialGrid<Real> onto,
         std::span<Scalar>(applied.data(), static_cast<std::size_t>(nNew));
 
     // One interpolant per piece, so that none of them ever spans an
-    // interface. A grid that does not know its elements is one piece, which
-    // is exactly what this did before the partition existed.
+    // interface. A source grid that does not know its elements is one piece.
     const auto fit = [&](std::span<const Real> nodes,
                          std::span<const Scalar> data, std::span<const Real> at,
                          std::span<Scalar> into) {
@@ -306,8 +342,8 @@ auto Resample(const Stack& in, RadialGrid<Real> onto,
 
 }  // namespace GSHTrans
 
-#endif  // GSHTRANS_HAVE_INTERPOLATION
-
 #ifndef _OPENMP
 #pragma GCC diagnostic pop
 #endif
+
+#endif  // GSHTRANS_HAVE_INTERPOLATION

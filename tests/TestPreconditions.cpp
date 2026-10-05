@@ -13,12 +13,12 @@
 //
 // Indexing.hpp sets the policy: the index classes assert, because they sit in
 // inner loops, and "the layers above validate and throw in every build mode".
-// This file is where that second half is held to. Each case here once did
-// something other than throw -- an assert that a Release build compiles out,
-// leaving a heap overwrite or a table of the wrong values, or an assert that a
-// Debug build reaches before the documented exception. Benchmarks and
-// production both run with NDEBUG, so an assert is not a check that a user of
-// this library ever sees.
+// This file is where that second half is held to. Each case is one where an
+// assert alone would not do -- a Release build compiles it out, leaving a heap
+// overwrite or a table of the wrong values, or a Debug build reaches it
+// before the documented exception. Benchmarks and production both run with
+// NDEBUG, so an assert is not a check that a user of this library ever
+// sees.
 //
 // The suite is built in both modes, and these tests must pass in both: that
 // is the point of them.
@@ -75,9 +75,9 @@ TEST(Preconditions, ADerivedGridNeedsEnoughLongitudesForItsOrders) {
 }
 
 TEST(Preconditions, ADegreeZeroGridNeedNotBeTheOnePointGrid) {
-  // lMax = 0 used to mean "one sample, weight two" to the transform, which is
-  // what GaussLegendreGrid builds and not what the base class requires. Here
-  // there are eight samples, and every one of them counts.
+  // The transform must not take lMax = 0 to mean "one sample, weight two":
+  // that is what GaussLegendreGrid builds, not what the base class requires.
+  // Here there are eight samples, and every one of them counts.
   const auto grid = TwoPointGrid(0, 4);
   ASSERT_EQ(grid.FieldSize(), 8u);
   const auto y00 = std::numbers::inv_sqrtpi_v<Real> / 2;
@@ -124,9 +124,9 @@ TEST(Preconditions, AWignerTableRecomputesOnlyAtAsManyAngles) {
 
 TEST(Preconditions, ANegativeSingleUpperIndexHasItsSquareRoots) {
   // The recursion's square-root tables run to lMax + max(mMax, |n|). Sized
-  // with n rather than |n| they were short whenever mMax < -n, and the
-  // recursion read past the end. The values must agree with a table wide
-  // enough never to have been affected.
+  // with n rather than |n| they would be short whenever mMax < -n, and the
+  // recursion would read past the end. The values must agree with a table
+  // wide enough for the sizing not to matter.
   constexpr auto lMax = Int{10};
   constexpr auto n = Int{-2};
   const auto theta = Real{1.0};
@@ -175,8 +175,8 @@ TEST(Preconditions, ThreeJDegreesAreNonNegative) {
 //--------------------------------------------------------------------------//
 
 TEST(Preconditions, AnExpansionViewThrowsBelowItsUpperIndex) {
-  // The documented exception, which a Debug build used never to reach: the
-  // index block is a member, and its own assert came first.
+  // The documented exception, in Debug too: the index block is a member with
+  // its own assert, so the check has to come before the block is built.
   auto grid = Grid(4, 2, FFTWpp::Estimate);
   auto storage = std::vector<Complex>(64);
   EXPECT_THROW(
@@ -243,7 +243,8 @@ TEST(Preconditions, ElementOfAnswersOnlyForARadiusInAnElement) {
 }
 
 TEST(Preconditions, ALayeredExpansionRefusesARadiusItDoesNotHave) {
-  // The layered field throws for this; its expansion read out of bounds.
+  // The layered field throws for this, and so must its expansion: unchecked,
+  // the radius index reads out of bounds.
   auto grid = Grid(4, 0, FFTWpp::Estimate);
   const auto radial = RadialGrid<Real>(std::vector<Real>{0.5, 1.0});
   auto e = LayeredSpinExpansion<0, Grid>(radial, grid, 4);
@@ -258,9 +259,10 @@ TEST(Preconditions, ALayeredExpansionRefusesARadiusItDoesNotHave) {
 
 TEST(Preconditions, TheIndicesOfATemporaryBlockOutliveIt) {
   // Views are made, used within one expression and let go, so the range of a
-  // temporary block is the natural thing to loop over -- and until range-for
-  // extends the lifetime of such a temporary, the range must not refer to it.
-  // Under the address sanitiser this was a stack-use-after-scope.
+  // temporary block is the natural thing to loop over -- and before C++23
+  // range-for does not extend the lifetime of such a temporary, so the range
+  // must not refer to it. If it did, the address sanitiser would report a
+  // stack-use-after-scope.
   auto count = Int{0};
   auto sumOfOrders = Int{0};
   for (auto [l, m] : GSHIndices<All>(3, 3, 1).Indices()) {

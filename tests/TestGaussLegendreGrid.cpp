@@ -17,6 +17,17 @@
 
 #include "CheckCoeff2Coeff.hpp"
 
+// The grid and its transforms.
+//
+// In order: known answers at degree zero; the longitude count and the orders
+// m = +-lMax it must resolve; preconditions on the transform's ranges and
+// storage; the SphericalGrid base on its own; the grid as a shared,
+// value-semantic, thread-safe handle; threading and the one-level rule;
+// seeded round trips; the batched transform, exact against separate calls in
+// every layout; the generating (table-free) grid, exact against the stored
+// one; and the matrix kernel, its Fourier stage against a direct DFT and its
+// transform against the loop kernel.
+
 TEST(GaussLegendreGrid, DegreeZeroGeometryAndWeights) {
   using Grid = GaussLegendreGrid<double, All, All>;
   auto grid = Grid(0, 0, FFTWpp::Estimate);
@@ -193,10 +204,10 @@ TEST(GaussLegendreGrid, LongitudeCountResolvesTheHighestOrders) {
   }
 }
 
-// The round trip that the old sizing made impossible: a field carrying only
-// the order m = +lMax must come back with that coefficient intact and its
-// m = -lMax partner still zero. At nPhi = 2 * lMax the two were one mode, and
-// the forward transform zeroed the (lMax, lMax) coefficient outright.
+// The round trip that needs nPhi > 2 * lMax: a field carrying only the order
+// m = +lMax must come back with that coefficient intact and its m = -lMax
+// partner still zero. At nPhi = 2 * lMax the two would be one mode, and the
+// (lMax, lMax) coefficient could not be recovered.
 TEST(GaussLegendreGrid, HighestOrdersSurviveARoundTrip) {
   using Real = double;
   using Complex = std::complex<Real>;
@@ -260,9 +271,9 @@ TEST(GaussLegendreGrid, ForBandGivesRequestedHeadroom) {
   EXPECT_NO_THROW(doubled.ForwardTransformation(band, 0, field, coefficients));
 }
 
-// The colatitude loop accumulates, so out had to arrive zeroed -- an unstated,
-// unchecked precondition that every caller met by accident. Transforming twice
-// into one buffer doubled the answer.
+// The colatitude loop accumulates, so the transform must clear its output
+// itself rather than rely on the caller handing over a zeroed buffer.
+// Transforming twice into one buffer must give the answer, not double it.
 TEST(GaussLegendreGrid, ForwardTransformOwnsItsOutputBuffer) {
   using Real = double;
   using Complex = std::complex<Real>;
@@ -304,9 +315,9 @@ TEST(GaussLegendreGrid, ForwardTransformOwnsItsOutputBuffer) {
   }
 }
 
-// Size mismatches were assert-only, so a short output range was a silent heap
-// overflow under NDEBUG. This test is meaningful only
-// because the suite is run in Release as well as Debug.
+// Size mismatches throw in every build mode: an assert alone would leave a
+// short output range as a silent heap overflow under NDEBUG. This test is
+// meaningful only because the suite is run in Release as well as Debug.
 TEST(GaussLegendreGrid, RejectsMismatchedRangeSizes) {
   using Real = double;
   using Complex = std::complex<Real>;
@@ -495,7 +506,7 @@ struct ProbeGrid
 // answers exactly as GaussLegendreGrid does. That is the check that the
 // separation is faithful rather than merely compiling, and it is stronger
 // than a second grid would be, since any difference is attributable to the
-// move alone.
+// base class alone.
 TEST(SphericalGrid, IsCompleteWithoutTheQuadratureThatMadeIt) {
   constexpr auto lMax = std::ptrdiff_t{6};
   constexpr auto n = std::ptrdiff_t{2};
@@ -571,13 +582,12 @@ TEST(GaussLegendreGrid, IsAValueSemanticHandle) {
   static_assert(std::is_copy_assignable_v<Grid>);
   static_assert(std::is_nothrow_move_constructible_v<Grid>);
   // Small and trivially cheap to copy, which is the property that matters:
-  // copying a grid used to copy hundreds of megabytes of Wigner table.
+  // a copy must not copy hundreds of megabytes of Wigner table.
   //
-  // It used to be exactly a shared_ptr, before the chunking policy and
-  // the planner flag beside it -- read per call, deciding nothing about the
-  // table -- so that changing either is a pointer copy rather than a table
-  // rebuild. That grows the handle by a few words and changes nothing about
-  // what the assertion is for, so the bound is stated as a bound.
+  // The handle is a shared_ptr plus the chunking policy and the planner
+  // flag -- read per call, deciding nothing about the table -- so that
+  // changing either is a pointer copy rather than a table rebuild. The size
+  // is therefore stated as a bound rather than as exactly one pointer.
   static_assert(sizeof(Grid) <= 4 * sizeof(std::shared_ptr<void>),
                 "a grid should be a handle and a few scalars, never a table");
 
@@ -787,12 +797,12 @@ TEST(GaussLegendreGrid, ParallelAgreesWithSequential) {
 // Execution::TeamSize. From outside any region it is what was asked for; from
 // inside an active one it is one, whatever was asked for.
 //
-// This is tested on the decision itself because nothing else can see it. The
-// test below once counted `omp_get_level() > 1` in its outer loop body -- but
-// that is evaluated after the inner calls have returned, where the level is
-// one whatever they did, so it could not fail. Nor can the answers tell: a
-// nested region under the default of one active level runs on one thread and
-// computes the same numbers.
+// This is tested on the decision itself because nothing else can see it.
+// Counting `omp_get_level() > 1` in an outer loop body cannot fail -- it is
+// evaluated after the inner calls have returned, where the level is one
+// whatever they did. Nor can the answers tell: a nested region under the
+// default of one active level runs on one thread and computes the same
+// numbers.
 TEST(Threading, TeamSizeIsOneInsideAnActiveRegion) {
   if (OpenMP::MaxThreads() < 2) GTEST_SKIP() << "needs two threads";
 
@@ -815,9 +825,9 @@ TEST(Threading, TeamSizeIsOneInsideAnActiveRegion) {
 // The matrix kernel issues every GEMM from inside this region so that a BLAS
 // on the same OpenMP runtime runs serially. What has to hold is that a region
 // opened from inside it -- which is what such a BLAS does -- gets one thread,
-// for *every* team size. A team of one is the case that matters and the case
-// that failed: it is an inactive region, so nothing about it is nested, and a
-// region opened from it took the whole machine.
+// for *every* team size. A team of one is the case that matters: it is an
+// inactive region, so nothing about it is nested, and unless it is handled
+// explicitly a region opened from it takes the whole machine.
 TEST(Threading, ARegionOpenedInsideTheSerialisingRegionGetsOneThread) {
   const auto available = OpenMP::MaxThreads();
   if (available < 2) GTEST_SKIP() << "needs two threads";
@@ -1009,7 +1019,7 @@ auto BatchField(std::ptrdiff_t size, std::ptrdiff_t k) {
 
 }  // namespace
 
-// the chunking policy and the planner flag live on the handle, not
+// The chunking policy and the planner flag live on the handle, not
 // beside the table, so a grid with a different chunk is a pointer copy and
 // shares one table. Two properties make that safe, and both are asserted
 // rather than argued.
@@ -1051,6 +1061,9 @@ TEST(BatchedTransform, ChunkingIsNotObservableInAnyResult) {
   const auto reference = Forward(grid);
   const auto back = Inverse(grid, reference);
 
+  // Chunks of two over five fields end on a short chunk, so the boundary the
+  // loop has to get right is exercised; at these degrees the automatic policy
+  // would take the whole batch at once.
   for (auto chunk : {std::ptrdiff_t{1}, std::ptrdiff_t{2}, std::ptrdiff_t{5},
                      std::ptrdiff_t{16}}) {
     const auto tuned = grid.With(Chunking::Fixed(chunk));
@@ -1307,52 +1320,6 @@ TEST(BatchedTransform, SingleFieldIsTheBatchAtCountOne) {
                                              Batch::One(coefficientSize)));
 }
 
-TEST(BatchedTransform, ChunkingDoesNotChangeTheAnswer) {
-  constexpr auto lMax = std::ptrdiff_t{6};
-  constexpr auto n = std::ptrdiff_t{2};
-  constexpr auto count = std::ptrdiff_t{5};
-
-  // Five fields in chunks of two: two full chunks and a short one, so the
-  // boundary the loop has to get right is exercised rather than assumed. At
-  // these degrees the automatic policy would take the whole batch at once,
-  // which is why the chunk is pinned instead.
-  auto chunked = BatchGrid(lMax, n, FFTWpp::Estimate, Chunking::Fixed(2));
-  auto whole = BatchGrid(lMax, n, FFTWpp::Estimate, Chunking::Fixed(count));
-
-  const auto fieldSize = chunked.FieldSize();
-  const auto coefficientSize =
-      static_cast<std::ptrdiff_t>(chunked.CoefficientSize(lMax, n));
-
-  auto fields = FFTWpp::vector<BatchComplex>(count * fieldSize);
-  for (auto k = std::ptrdiff_t{0}; k < count; k++) {
-    const auto one = BatchField(fieldSize, k);
-    std::copy(one.begin(), one.end(), fields.begin() + k * fieldSize);
-  }
-
-  const auto inBatch = Batch::Contiguous(count, fieldSize);
-  const auto outBatch = Batch::Contiguous(count, coefficientSize);
-  auto inChunks = FFTWpp::vector<BatchComplex>(count * coefficientSize);
-  auto inOne = FFTWpp::vector<BatchComplex>(count * coefficientSize);
-
-  chunked.ForwardTransformation(lMax, n, fields, inBatch, inChunks, outBatch);
-  whole.ForwardTransformation(lMax, n, fields, inBatch, inOne, outBatch);
-
-  // Chunking partitions the batch; it does not touch the order of any sum.
-  for (auto i = std::ptrdiff_t{0}; i < count * coefficientSize; i++) {
-    EXPECT_EQ(inChunks[i], inOne[i]) << "element " << i;
-  }
-
-  // And the same for the inverse, back to the fields it came from.
-  auto backChunked = FFTWpp::vector<BatchComplex>(count * fieldSize);
-  auto backWhole = FFTWpp::vector<BatchComplex>(count * fieldSize);
-  chunked.InverseTransformation(lMax, n, inChunks, outBatch, backChunked,
-                                inBatch);
-  whole.InverseTransformation(lMax, n, inOne, outBatch, backWhole, inBatch);
-  for (auto i = std::ptrdiff_t{0}; i < count * fieldSize; i++) {
-    EXPECT_EQ(backChunked[i], backWhole[i]) << "element " << i;
-  }
-}
-
 TEST(BatchedTransform, ChunkingPolicyIsCarriedByTheGrid) {
   constexpr auto lMax = std::ptrdiff_t{6};
   constexpr auto n = std::ptrdiff_t{0};
@@ -1600,9 +1567,9 @@ TEST(GeneratingGrid, BuildsNoTableAndForBandCarriesThePolicy) {
 // block that will be live at once: the forward transform gives every thread a
 // private accumulator, the inverse gathers one shared read-only block.
 //
-// Serving both with the thread count starved the inverse -- a chunk of one at
-// lMax = 256 and k = 8 on eight threads, where the whole batch fits, which
-// measured 2.2x slower.
+// Serving both with the thread count would starve the inverse -- a chunk of
+// one at lMax = 256 and k = 8 on eight threads, where the whole batch fits,
+// which measured 2.2x slower.
 TEST(BatchedTransform, ChunkRuleCountsCopiesNotThreads) {
   // One field's coefficients at lMax = 256, n = 2.
   constexpr auto bytesPerField = std::ptrdiff_t{66045} * 16;
@@ -1929,7 +1896,7 @@ TEST(FourierStage, TheAliasingGuardChangesNoAnswers) {
 // whatever order its kernel chooses, so this cannot be a bit comparison the
 // way the batched-against-unbatched tests are -- but to a tolerance it checks
 // the layout, the indexing, the FFT ordering and the accumulation together,
-// which is very nearly everything the restructure can get wrong.
+// which is very nearly everything the matrix arrangement can get wrong.
 //
 // The two are not independent in the d-values themselves: both read the same
 // recursion. That half is pinned separately, by CheckWignerConvention against
@@ -2232,7 +2199,7 @@ TEST(MatrixKernel, ThreadingChangesNothing) {
 // Exactly one level threads: a transform asked to run in parallel from inside
 // an existing parallel region runs sequentially instead. The matrix kernel
 // has to keep that rule like everything else, and it is worth a test because
-// its region is a new one.
+// it opens a region of its own.
 TEST(MatrixKernel, DoesNotNestItsThreading) {
   using Grid = GaussLegendreGrid<double, All, All>;
   constexpr auto lMax = std::ptrdiff_t{12};

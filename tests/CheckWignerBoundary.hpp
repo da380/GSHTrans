@@ -7,15 +7,13 @@
 #include <numbers>
 #include <vector>
 
-// The values Wigner.hpp now generates by recursion, checked against the closed
-// forms they replaced.
+// The values Wigner.hpp generates by recursion, checked against closed forms.
 //
-// Two paths. The seed row at
-// l = |n| comes from an exact binomial row, and the boundary orders m = +-l at
-// every higher degree come from a one-term recursion in l, where both used to
-// be evaluated by WignerMinOrder and WignerMaxOrder. Those closed forms remain
-// in WignerDetails, and this is what they are for: they are the definition the
-// recursions are answerable to.
+// Two paths. The seed row at l = |n| comes from an exact binomial row, and
+// the boundary orders m = +-l at every higher degree come from a one-term
+// recursion in l. The closed forms WignerMinOrder and WignerMaxOrder in
+// WignerDetails are the definition the recursions are answerable to, and
+// this is what they are kept for.
 //
 // Returns the largest relative discrepancy over the table. The comparison is
 // relative above a floor, because the boundary values fall off like

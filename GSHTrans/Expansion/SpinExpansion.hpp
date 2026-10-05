@@ -28,8 +28,7 @@ namespace GSHTrans {
 //--------------------------------------------------------------------------//
 
 /// The coefficients f^N_{lm} of a field of upper index N, for degrees
-/// |N| <= l <= lMax. See eq:expansion of the theory note,
-/// docs/canonical-components.tex.
+/// |N| <= l <= lMax. See eq:expansion in docs/gshtrans-reference.tex.
 ///
 /// This is the spectral counterpart of SpinField, and it exists for the same
 /// reason: a raw coefficient buffer is untyped, so nothing stops a caller
@@ -125,8 +124,8 @@ class SpinExpansionBase {
  private:
   // Checked on the way into the index block, which asserts the same thing: as
   // a member it is built before the constructor's body runs, so a check made
-  // there came too late in a Debug build and the documented exception was
-  // never the one thrown.
+  // there would come too late in a Debug build, and the assert rather than
+  // the documented exception would fire.
   static Int Checked(Int lMax) {
     if (lMax < std::abs(UpperIndex)) {
       throw std::invalid_argument(
@@ -245,8 +244,6 @@ class SpinExpansion {
 //                          Between the two domains                          //
 //--------------------------------------------------------------------------//
 
-// Transform a field into its expansion, and back.
-//
 /**
  * @brief Anything that holds the coefficients of one spin-weighted field.
  *
@@ -255,7 +252,7 @@ class SpinExpansion {
  * storage. The free functions below and in Eth.hpp are written against this and
  * not against the owning type, so that a tensor's component can be raised,
  * lowered, evaluated or interpolated as it stands -- which is most of what one
- * wants to do with one, and once had no overload.
+ * wants to do with one.
  *
  * A layered expansion is deliberately not one: its coefficients are indexed
  * by radius as well, and it has free functions of its own.
@@ -278,6 +275,8 @@ concept SpinCoefficients =
       e.Data();
     };
 
+// Transform a field into its expansion, and back.
+//
 // Free functions rather than members, because they belong to neither type: a
 // transform is the grid's, and these only arrange the call. They are also the
 // point at which a field's Value decides which of the transform's two paths

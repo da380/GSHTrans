@@ -34,11 +34,16 @@ struct All {};
  * @details For orders this is the reduced storage of a real-valued field,
  * whose negative orders follow from
  * @f$f_{l,-m} = (-1)^m \overline{f_{lm}}@f$. For upper indices it is a grid
- * that serves real scalars alone.
+ * covering @f$0 \le n \le n_{\max}@f$ only, on which no field of negative
+ * upper index can be built.
  */
 struct NonNegative {};
 
-/** @brief One value only, the largest in range. */
+/**
+ * @brief One value only.
+ * @details For upper indices, the largest in range, @f$n_{\max}@f$; for
+ * colatitudes, a single angle.
+ */
 struct Single {};
 
 /** @brief More than one value. */

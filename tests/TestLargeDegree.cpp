@@ -22,8 +22,8 @@
 //
 // and a little below that, e * (|ln min| - |ln eps|), if the seed is not to go
 // denormal and lose bits on the way. Measured, the formula puts the onset
-// within a per cent in both precisions. Above it the table was silently wrong
-// by order one; now it is refused.
+// within a per cent in both precisions. Above it the plain recursion is
+// silently wrong by order one, so a table there is refused.
 //
 // Single precision is recursed in double and narrowed, because what single
 // precision is good for is what is stored and moved, and the recursion runs
@@ -110,9 +110,9 @@ TEST(LargeDegree, TheTableIsStillUnitaryAtTheSafeDegree) {
 }
 
 TEST(LargeDegree, ALargeUpperIndexHasAFiniteSeedRow) {
-  // The seed row at l = |n| carries sqrt(C(2|n|, .)), and the binomial was
-  // formed before its root was taken: beyond |n| = 510 or so it overflowed,
-  // and two thirds of this table came back non-finite.
+  // The seed row at l = |n| carries sqrt(C(2|n|, .)). Formed before its root
+  // is taken, the binomial overflows beyond |n| = 510 or so, and two thirds
+  // of this table would come back non-finite.
   constexpr auto lMax = Int{700};
   constexpr auto n = Int{600};
   const auto table = Wigner<double, All, Single, Single>(lMax, lMax, n, 1.0);
@@ -180,7 +180,7 @@ TEST(LargeDegree, ASinglePrecisionTableIsTheDoubleOneRounded) {
 TEST(LargeDegree, ASinglePrecisionGridWorksBeyondItsOwnUnderflow) {
   // A recursion *in* single precision fails from degree 237, and not subtly:
   // whole columns of the table come back zero. Measured on a round trip, the
-  // error was 9e-4 at lMax = 256, where few columns have yet gone, 13 at 288,
+  // error is 9e-4 at lMax = 256, where few columns have yet gone, 13 at 288,
   // and 3e11 at 320. Recursed in double it is 8e-4 at 288, which is single
   // precision's own rounding. Every kernel is run, since each reaches the
   // recursion by its own route, and the stored and generated routes must

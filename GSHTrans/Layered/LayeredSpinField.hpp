@@ -27,8 +27,8 @@ namespace GSHTrans {
 /// angular field is never wrapped and a slice is not a new kind of object: it
 /// is a SpinFieldView, an ordinary spin-weighted node, so the index algebra,
 /// the evaluation and the aliasing theorem all lift unchanged and there is no
-/// second expression system to keep consistent with the first. That is what
-/// a view being admissible everywhere an owning field is was for.
+/// second expression system to keep consistent with the first. That follows
+/// from a view being admissible everywhere an owning field is.
 ///
 /// The layout is radius-major because that is what the applications this exists
 /// for already use, and because it makes the radial axis a batch: the stack of

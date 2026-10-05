@@ -11,6 +11,12 @@
 #include "CheckWignerBoundary.hpp"
 #include "CheckWignerConvention.hpp"
 
+// The Wigner d-function tables: the value convention, the boundary recursions
+// against their closed forms, the upper-index-zero row against
+// std::sph_legendre, the addition theorem, and the transform-major and
+// reflected layouts against the block layout. The checks themselves live in
+// the Check*.hpp headers.
+
 namespace {
 
 void CheckSingleUpperIndexAccess(std::ptrdiff_t n) {
@@ -54,7 +60,7 @@ TEST(Wigner, CheckConventionLongDouble) {
 }
 
 // The seed row and the boundary orders come from recursions; the closed
-// forms they replaced are the definition they answer to.
+// forms in WignerDetails are the definition they answer to.
 TEST(Wigner, CheckBoundaryRecursionDouble) {
   EXPECT_LT(CheckWignerBoundary<double>(),
             CheckWignerBoundaryTolerance<double>());
@@ -139,7 +145,7 @@ void CheckTransformMajorAgreesWithWigner(std::ptrdiff_t lMax,
   ASSERT_EQ(matrices.MaxOrder(), mMax);
 
   // Every value the matrix layout holds is present in the block layout, and
-  // equal. Walked from the matrix side, since that is the new thing.
+  // equal. Walked from the matrix side, since that is the layout under test.
   auto matrixValues = std::size_t{0};
   for (auto n : matrices.UpperIndices()) {
     for (auto m : matrices.Orders()) {
@@ -204,9 +210,8 @@ TEST(WignerMatrices, AgreesForNonNegativeOrders) {
 
 // The matrix at (n, m) starts at degree max(|n|, |m|) and its height falls
 // linearly in |m|. That is the load imbalance a parallel kernel has to
-// divide work for,
-// so it is worth pinning as a property rather than leaving it implied by the
-// agreement test.
+// divide work for, so it is worth pinning as a property rather than leaving
+// it implied by the agreement test.
 TEST(WignerMatrices, MatrixHeightFallsWithOrder) {
   using namespace GSHTrans;
   using Int = std::ptrdiff_t;
@@ -341,6 +346,6 @@ TEST(WignerMatrices, ReflectedRefusesUnsymmetricAngles) {
   const auto skewed = std::vector<double>{0.3, 0.9, 1.4, 2.0};
   EXPECT_THROW((WignerMatrices<double, All, All>::Reflected(6, 6, 1, skewed)),
                std::invalid_argument);
-  // The unreflected layout takes any angles at all, as it always has.
+  // The unreflected layout takes any angles at all.
   EXPECT_NO_THROW((WignerMatrices<double, All, All>::Full(6, 6, 1, skewed)));
 }

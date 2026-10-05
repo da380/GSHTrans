@@ -19,14 +19,13 @@ docs/*.fls
 
 # Local reference material: papers kept in docs/ while the documentation is
 # written. Not ours to redistribute, and not wanted in the history. Papers
-# are ignored by default and our own two documents are opted in, so one
+# are ignored by default and our own document is opted in, so one
 # dropped into docs/ later is caught without anyone remembering to.
 docs/*.pdf
-!docs/canonical-components.pdf
 !docs/gshtrans-reference.pdf
 
-# The same, for reference *source*: Fortran routines read while the 3-j
-# recursion was implemented. Not ours, and the library derives nothing from
+# The same, for reference *source*: Fortran routines consulted for the 3-j
+# recursion. Not ours, and the library derives nothing from
 # them beyond the algorithm, which is the paper's.
 docs/*.f
 docs/*.f90

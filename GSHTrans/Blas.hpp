@@ -5,8 +5,8 @@
 //
 // Present only where GSHTRANS_HAVE_BLAS is defined; the header is conditional
 // in its entirety, so including it without a BLAS is not an error and gives
-// nothing. That is the shape RadialSplineDerivative.hpp and RadialResample.hpp
-// already use for the optional Interpolation dependency.
+// nothing. RadialSplineDerivative.hpp and RadialResample.hpp have the same
+// shape for the optional Interpolation dependency.
 //
 // -- The Fortran interface, declared here rather than through cblas.h.
 // find_package(BLAS) finds a library, not a header, and where cblas.h lives

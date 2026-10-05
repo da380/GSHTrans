@@ -7,9 +7,10 @@
  * @details Some of this library's choices cannot be settled by reasoning and
  * vary by machine: the chunk optimum moves between runs, the batched forward
  * transform gives 2.3x sequentially and 1.12x threaded at
- * @f$l_{\max} = 256@f$, and direction-aware chunking is worth 2.0x and was
- * found only by measuring. A caller on a machine neither of us has will
- * otherwise run with the wrong setting and have no way to know.
+ * @f$l_{\max} = 256@f$, and direction-aware chunking is worth 2.0x, which no
+ * argument from first principles predicts. A caller on a machine that has not
+ * been measured will otherwise run with the wrong setting and have no way to
+ * know.
  *
  * Three things this is not.
  *
@@ -143,8 +144,8 @@ struct TunedChunking {
 
 /**
  * @brief The margin a candidate must beat the incumbent by.
- * @details Ten per cent is a typical measured noise floor, and figures below
- * it have repeatedly meant nothing.
+ * @details Ten per cent is a typical measured noise floor, and differences
+ * below it do not reproduce from one run to the next.
  */
 inline constexpr double TuningMargin = 0.10;
 
@@ -245,9 +246,10 @@ TunedChunking TuneChunking(const GridType& grid, std::ptrdiff_t lMax,
   // forward transform gives every thread an accumulator, so its copies are
   // its threads, while its inverse -- and *both* directions of the matrix
   // kernel -- gather one shared block, so theirs is one. A chunk beyond the
-  // batch is the batch. Mirroring the loop kernel's rule on a matrix grid
-  // keyed the de-duplication on a number that grid never uses, so identical
-  // schedules were timed as rivals and noise had two chances at the margin.
+  // batch is the batch. Applying the loop kernel's rule on a matrix grid
+  // would key the de-duplication on a number that grid never uses, so
+  // identical schedules would be timed as rivals and noise would have two
+  // chances at the margin.
   const auto blockBytes = coefficientSize * static_cast<Int>(sizeof(Complex));
   const auto forwardCopies =
       grid.KernelPolicy().IsMatrix() ? 1 : policy.TeamSize();

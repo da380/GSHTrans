@@ -157,8 +157,7 @@ class GaussLegendreGrid : public SphericalGrid<Real_, MRange_, NRange_> {
 
  private:
   // Delegated to, so that Nodes() is evaluated once rather than once per
-  // argument. The nodes come first because a member initialiser cannot name
-  // a later parameter.
+  // argument.
   GaussLegendreGrid(std::pair<std::vector<Real>, std::vector<Real>> nodes,
                     Int lMax, Int nMax, FFTWpp::Flag flag, Chunking chunking,
                     WignerValues values, TransformKernel kernel)
@@ -171,12 +170,6 @@ class GaussLegendreGrid : public SphericalGrid<Real_, MRange_, NRange_> {
              values,
              kernel} {}
 
-  // The Gauss-Legendre nodes and weights, as colatitudes.
-  //
-  // GaussQuad gives the points on [-1, 1]; theta = acos(-x) maps them to
-  // (0, pi) in increasing order, and the weights are unchanged because the
-  // transform's Legendre stage sums against dtheta-free weights -- the
-  // Jacobian is already in the definition of the quadrature on the cosine.
   // The quadrature is built before the base class sees anything, so a
   // negative degree has to be caught here or it reaches the quadrature as a
   // request for no points, and what comes back is a complaint about that.
@@ -189,6 +182,12 @@ class GaussLegendreGrid : public SphericalGrid<Real_, MRange_, NRange_> {
     return lMax;
   }
 
+  // The Gauss-Legendre nodes and weights, as colatitudes.
+  //
+  // GaussQuad gives the points on [-1, 1]; theta = acos(-x) maps them to
+  // (0, pi) in increasing order, and the weights are unchanged because the
+  // transform's Legendre stage sums against dtheta-free weights -- the
+  // Jacobian is already in the definition of the quadrature on the cosine.
   static std::pair<std::vector<Real>, std::vector<Real>> Nodes(Int lMax) {
     // GaussQuadrature returns the nodes and weights as a pair; Quadrature1D
     // is what carries the Transform below, so it is built explicitly rather

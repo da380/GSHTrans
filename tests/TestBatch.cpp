@@ -10,16 +10,16 @@
 
 // Batches of fields at known offsets.
 //
-// A Batch was a count, a stride and a dist, which is every layout that is
-// affine in the field index. Batch::At is the rest: fields that start wherever
-// a table says they do -- a subset of radii, storage with padding between
-// elements, the same-N components of a tensor in a caller's own array.
+// A count, a stride and a dist describe every layout that is affine in the
+// field index. Batch::At is the rest: fields that start wherever a table says
+// they do -- a subset of radii, storage with padding between elements, the
+// same-N components of a tensor in a caller's own array.
 //
 // The transform reaches a layout only through Count, Stride, Offset, Span and
 // Disjoint, and gathers into its own scratch before FFTW or a BLAS sees
-// anything. So nothing in a kernel changed to admit this, and the first test
-// below is the statement of that: an offset batch describing an affine layout
-// must give the affine answer to the last bit, through every kernel.
+// anything, so no kernel knows which kind of batch it was given. The first
+// test below is the statement of that: an offset batch describing an affine
+// layout must give the affine answer to the last bit, through every kernel.
 
 using namespace GSHTrans;
 

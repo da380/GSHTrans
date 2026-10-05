@@ -94,7 +94,7 @@ EXPAND_ONLY_PREDEF     = NO
 PREDEFINED             = GSHTRANS_HAVE_BLAS \
                          GSHTRANS_HAVE_INTERPOLATION
 
-# Not documentation. The plans and the theory note are prose for a reader of
-# the project rather than of the API, and the reference note is a LaTeX
-# document in its own right.
+# Build trees are never documentation, should one sit under the input
+# directory. (The input is the GSHTrans header directory alone, so the prose
+# in docs/ is never read.)
 EXCLUDE_PATTERNS       = */build/* */build-*/*

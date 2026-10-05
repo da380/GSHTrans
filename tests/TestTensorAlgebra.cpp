@@ -6,6 +6,13 @@
 #include <cstddef>
 #include <type_traits>
 
+// The tensor expression algebra: permuting slots, the tensor product,
+// metric contraction, symmetrisation, materialisation, the maps between the
+// spatial and tangential bundles, and the lifetime rules for views. Values are
+// checked component by component on fields filled with data that identifies
+// each component, so that a permuted or misrouted read is visible; the
+// defining relations on derived components are in TestTensorOrbitValues.cpp.
+
 namespace {
 
 using namespace GSHTrans;
@@ -125,7 +132,9 @@ TEST(TensorAlgebra, HigherRankSlotsPermuteAsAsked) {
             (elastic.Component<1, 0, -1, 0>()[0, 1]));
 }
 
-TEST(TensorAlgebra, ExpressionsComposeWithThePhaseOneAlgebra) {
+// A component of a tensor expression is a spin-weighted expression, so it
+// composes with the scalar SpinField algebra like any other operand.
+TEST(TensorAlgebra, ComponentsComposeWithTheSpinFieldAlgebra) {
   using T = TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>;
   auto grid = TestGrid();
   auto t = T(grid);
@@ -707,10 +716,10 @@ TEST(TensorAlgebra, MaterialisingAProjectionStoresTheTangentialSet) {
 // while composing the wrong Component: a view over coefficients rather than a
 // spin-weighted node.
 //
-// Found the way these things are found. Tangential(SurfaceGradient(Embed(t)))
-// resolved to the *spatial* projection for a spectral operand, because a
-// forwarding reference binds a prvalue better than a const reference does, and
-// the error was that the resulting node had no Coefficient.
+// How it shows up if it goes wrong: Tangential(SurfaceGradient(Embed(t)))
+// resolves to the *spatial* projection for a spectral operand, because a
+// forwarding reference binds a prvalue better than a const reference does,
+// and the error is that the resulting node has no Coefficient.
 TEST(TensorAlgebra, ASpectralTensorIsNotATensorExpression) {
   using Field = TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>;
   using Expansion = TensorExpansion<2, NoSymmetry<2>, ComplexTensor, Grid>;
@@ -731,8 +740,8 @@ TEST(TensorAlgebra, ASpectralTensorIsNotATensorExpression) {
 // tensor, a radial component of an embedded tangential one. A contraction or a
 // symmetrisation is a sum, and a zero term in a sum is a term to leave out --
 // not a reason to declare the whole sum unrepresented, which Materialise then
-// leaves at zero. It used to be exactly that, so a rotation applied to a
-// vector materialised as nothing at all.
+// leaves at zero. Were it treated that way, a rotation applied to a vector
+// would materialise as nothing at all.
 
 namespace {
 
@@ -857,12 +866,14 @@ auto MakeStrain(const Grid& grid) {
   return e;
 }
 
+// Whether Component<0, 0>() and Trace are offered on std::declval<T>(): a
+// temporary when T is a value type, a named object when T is a reference.
 template <typename T>
-concept ComponentOfATemporary =
+concept ComponentOffered =
     requires { std::declval<T>().template Component<0, 0>(); };
 
 template <typename T>
-concept TraceOfATemporary = requires { Trace(std::declval<T>()); };
+concept TraceOffered = requires { Trace(std::declval<T>()); };
 
 }  // namespace
 
@@ -888,15 +899,15 @@ TEST(TensorAlgebra, AComponentCannotOutliveTheStorageItNames) {
   // tensor, or from an expression that has taken ownership of one, it names
   // storage that is gone by the end of the statement -- so it is not
   // offered. Taken from an expression over *named* tensors it names their
-  // storage, which is still there, and is as available as it ever was.
-  static_assert(!ComponentOfATemporary<SymmetricComplex2>);
-  static_assert(!ComponentOfATemporary<decltype(Transpose(
+  // storage, which is still there, so it is offered.
+  static_assert(!ComponentOffered<SymmetricComplex2>);
+  static_assert(!ComponentOffered<decltype(Transpose(
                     std::declval<SymmetricComplex2>()))>);
-  static_assert(ComponentOfATemporary<decltype(Transpose(
+  static_assert(ComponentOffered<decltype(Transpose(
                     std::declval<const SymmetricComplex2&>()))>);
 
-  static_assert(!TraceOfATemporary<SymmetricComplex2>);
-  static_assert(TraceOfATemporary<const SymmetricComplex2&>);
+  static_assert(!TraceOffered<SymmetricComplex2>);
+  static_assert(TraceOffered<const SymmetricComplex2&>);
 
   // Named, it is fine, and that is the whole of the remedy.
   auto grid = TestGrid();

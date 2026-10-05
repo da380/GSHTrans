@@ -97,13 +97,12 @@ target_link_libraries(TestRealFieldSymmetry PRIVATE GSHTrans gtest_main)
 # Every core header must compile on its own, and twice.
 # One translation unit per header, generated at configure time.
 #
-# The list is every header the library ships, plus the two forwarding
-# headers kept for the old include names, and the check below is what makes that sentence true: the list is
-# compared with what is on disk, and a header that is there and not here stops
-# the configure. It is written out and not globbed because adding a header
-# should be a deliberate act -- but "deliberate" had quietly become
-# "forgotten" for four of them, all in Layered/, and the claim above stood in
-# the README regardless.
+# The list is every header the library ships, plus the two extensionless
+# forwarding headers All and Core, and the check below is what makes that
+# sentence true: the list is compared with what is on disk, and a .hpp that is
+# there and not here stops the configure. It is written out and not globbed
+# because adding a header should be a deliberate act, and the check stops a
+# deliberate act from being forgotten.
 set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/3j.hpp
   GSHTrans/Blas.hpp

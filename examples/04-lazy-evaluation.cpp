@@ -3,6 +3,27 @@
 // Operators build expression nodes rather than fields. Nothing is computed
 // until a value is asked for, so an intermediate is never materialised unless
 // you ask for it.
+//
+// What this shows
+//   That an expression is a cheap value which computes on demand, how to
+//   turn one into a stored field, why assigning an expression to a field that
+//   appears in it is safe, and how to apply a nonlinear function pointwise.
+//
+// Assumes
+//   Example 03 (upper indices and the index rules).
+//
+// Introduced
+//   Expression nodes, Materialise, assignment and compound assignment from an
+//   expression, Map.
+//
+// Output
+//   One expression read at a point before and after materialising (equal),
+//   a field updated in place, and a mapped value.
+//
+// The evaluation points -- reading with operator[], assigning to a field,
+// Materialise, Integrate, and the transforms of example 06 -- are the only
+// places work is done. See docs/gshtrans-reference.tex, section "Laziness,
+// and the aliasing theorem".
 
 #include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
@@ -31,7 +52,9 @@ int main() {
   });
 
   // An expression is a value of its own type, cheap to hold and to copy. This
-  // allocates nothing and computes nothing.
+  // allocates nothing and computes nothing. It holds the named fields u and v
+  // by reference, so they must outlive it; a temporary field or a view is
+  // held by value instead.
   auto e = conj(u) * v + 2.0 * abs2(u);
   static_assert(decltype(e)::UpperIndex == 0);
 
@@ -39,7 +62,8 @@ int main() {
   std::cout << "e at one point " << (e[3, 4]) << "\n";
 
   // Materialise breaks the chain when a result is wanted more than once --
-  // otherwise the tree is walked again at every read.
+  // otherwise the tree is walked again at every read. It returns an owning
+  // SpinField with the expression's upper index and value kind.
   auto stored = Materialise(e);
   std::cout << "materialised   " << (stored[3, 4]) << "\n\n";
 
@@ -48,6 +72,8 @@ int main() {
   // reading its operands only at the point it is writing, so evaluating in
   // place needs no temporary. That is a theorem about the node set, not an
   // accident, and it is why no re-indexing view is allowed to sneak in here.
+  // Operations that are not pointwise -- the raising and lowering of example
+  // 13, gradients, radial derivatives -- live on the spectral side instead.
   auto w =
       SpinField<1, Grid>(grid, [](auto, auto) { return Complex{1.0, 0.0}; });
   const auto before = w[3, 4];
@@ -63,7 +89,9 @@ int main() {
 
   // Map applies an arbitrary callable pointwise, and lives at upper index
   // zero because that is the only place a nonlinear function of a component
-  // is again a component. pow, exp and log are all this.
+  // is again a component. pow, exp and log are all this. The callable is
+  // invoked as f(value) and must return a real or complex scalar of the
+  // field's own precision; abs2(u) is real-valued, so x here is a double.
   auto damped = Map(abs2(u), [](auto x) { return std::exp(-x); });
   static_assert(decltype(damped)::UpperIndex == 0);
   std::cout << "exp(-|u|^2)    " << (damped[3, 4]) << "\n";

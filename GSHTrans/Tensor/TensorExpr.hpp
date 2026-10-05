@@ -58,9 +58,9 @@ concept TensorExpr =
     // slot alphabet and a Represents, so without this it satisfies the concept
     // and Permute, the tensor product, Materialise and the bundle maps all
     // accept one. They would then compose the wrong Component -- a view over
-    // coefficients rather than a spin-weighted node -- and the first symptom is
-    // an overload of Tangential resolving to the spatial node for a spectral
-    // operand, which is how this was found.
+    // coefficients rather than a spin-weighted node -- and the first symptom
+    // would be an overload of Tangential resolving to the spatial node for a
+    // spectral operand.
     //
     // The discriminator is the truncation degree, and it is the real difference
     // rather than a convenient one: an expansion is defined up to a degree and
@@ -233,13 +233,14 @@ constexpr auto GroupElements() {
 /// A tensor with its slots relabelled: (Permute T)^{alpha} = T^{pi(alpha)}.
 ///
 /// No arithmetic at all -- the component accessor forwards to the operand with
-/// the indices reordered -- which makes this the step that pins the machinery
-/// the rest of the layer uses.
+/// the indices reordered -- which makes this the plainest use of the machinery
+/// the rest of the layer shares.
 ///
 /// It permutes *tensor slots* and not grid points, so it does not touch the
-/// pointwise-and-index-preserving invariant that the aliasing theorem
-/// rests on. That is worth stating because a re-indexing view is exactly the
-/// thing that would break it, and this is the closest the library comes to one.
+/// pointwise-and-index-preserving invariant that in-place assignment rests on
+/// (see SpinFieldNodes.hpp). That is worth stating because a re-indexing view
+/// is exactly the thing that would break it, and this is the closest the
+/// library comes to one.
 template <auto Image, typename Operand>
 class PermuteNode {
  public:
@@ -277,8 +278,8 @@ class PermuteNode {
   ///
   /// and with Image = {1, 2, 0} the result R has R^{abc} = T^{bca}. For a
   /// transposition, or any product of disjoint ones, this and the inverse
-  /// convention are the same thing, which is how the prose here once came to
-  /// state the inverse without any test noticing.
+  /// convention are the same thing, so only a test with a longer cycle can
+  /// tell them apart.
   template <Int... Alphas>
   static constexpr auto Source =
       MultiIndex<Rank, SlotSet>(std::array<Int, Rank>{Alphas...})
@@ -314,7 +315,7 @@ class PermuteNode {
 
   /// Not offered on a temporary node that owns a tensor field, where the view
   /// returned would name storage gone by the end of the statement: see
-  /// TensorDetails::HoldsStorage. Over named fields it is offered as ever.
+  /// TensorDetails::HoldsStorage. Over named fields it is offered.
   template <Int... Alphas>
   requires HoldsStorage
   void Component() const&& = delete;
@@ -352,10 +353,9 @@ auto Transpose(T&& tensor) {
 /// (S tensor T)^{alpha beta} = S^{alpha} T^{beta}, of rank p + q.
 ///
 /// The component is a spin-weighted product, so its upper index is the sum of
-/// the two operands' -- which is eq:N applied to the concatenated multi-index,
-/// and the theory note, docs/canonical-components.tex, says so in as many
-/// words. Nothing here has to arrange that; it is what "upper indices add under
-/// pointwise multiplication" means.
+/// the two operands' -- which is eq:N of docs/gshtrans-reference.tex applied
+/// to the concatenated multi-index. Nothing here has to arrange that; it is
+/// what "upper indices add under pointwise multiplication" means.
 template <typename LeftOperand, typename RightOperand>
 class TensorProductNode {
  public:
@@ -448,7 +448,7 @@ class TensorProductNode {
 
   /// Not offered on a temporary node that owns a tensor field, where the view
   /// returned would name storage gone by the end of the statement: see
-  /// TensorDetails::HoldsStorage. Over named fields it is offered as ever.
+  /// TensorDetails::HoldsStorage. Over named fields it is offered.
   template <Int... Alphas>
   requires HoldsStorage
   void Component() const&& = delete;
@@ -488,8 +488,8 @@ auto TensorProduct(L&& left, R&& right) {
 ///
 /// The result lands at the right upper index by construction rather than by
 /// arrangement: the contracted pair contributes a + (-a) = 0 whatever a is, so
-/// all three terms carry the same upper index and the Equal rule admits
-/// their sum. A contraction that paired its slots wrongly would not compile.
+/// every term carries the same upper index and the Equal rule admits their
+/// sum. A contraction that paired its slots wrongly would not compile.
 template <std::ptrdiff_t J, std::ptrdiff_t K, typename Operand>
 class ContractionNode {
  public:
@@ -547,9 +547,9 @@ class ContractionNode {
       // A term the operand does not represent is identically zero -- the
       // diagonal of an antisymmetric tensor, a radial component of an
       // embedded tangential one -- so it is a term to leave out of the sum,
-      // and the sum exists if any term does. It was once required that every
-      // term exist, which made A.v for an antisymmetric A wholly
-      // unrepresented, and Materialise wrote nothing for it.
+      // and the sum exists if any term does. Requiring every term to exist
+      // would leave A.v for an antisymmetric A wholly unrepresented, and
+      // Materialise would write nothing for it.
       return [&]<std::size_t... A>(std::index_sequence<A...>) {
         return (TermExists<A, Alphas...> or ...);
       }(std::make_index_sequence<Letters>{});
@@ -569,7 +569,7 @@ class ContractionNode {
 
   /// Not offered on a temporary node that owns a tensor field, where the view
   /// returned would name storage gone by the end of the statement: see
-  /// TensorDetails::HoldsStorage. Over named fields it is offered as ever.
+  /// TensorDetails::HoldsStorage. Over named fields it is offered.
   template <Int... Alphas>
   requires HoldsStorage
   void Component() const&& = delete;
@@ -600,7 +600,7 @@ class ContractionNode {
 
   // The terms that exist, from letter number A on, summed from the right --
   // t_A + (t_B + t_C) -- which is the association a fold over the alphabet
-  // gives, so where every term exists the value is what it always was.
+  // gives.
   template <std::size_t A, Int... Alphas>
   auto SumFrom() const {
     if constexpr (!TermExists<A, Alphas...>) {
@@ -722,7 +722,7 @@ class SymmetriseNode {
 
   /// Not offered on a temporary node that owns a tensor field, where the view
   /// returned would name storage gone by the end of the statement: see
-  /// TensorDetails::HoldsStorage. Over named fields it is offered as ever.
+  /// TensorDetails::HoldsStorage. Over named fields it is offered.
   template <Int... Alphas>
   requires HoldsStorage
   void Component() const&& = delete;
@@ -753,7 +753,7 @@ class SymmetriseNode {
   }
 
   // The terms that exist, summed from the right as a fold over the group
-  // would sum them, so that where every term exists nothing has changed.
+  // would sum them.
   template <std::size_t E, Int... Alphas>
   auto SumFrom() const {
     if constexpr (!TermExists<E, Alphas...>) {
@@ -784,8 +784,8 @@ namespace TensorDetails {
 //
 // Element by element rather than through EvaluateInto, because the target may
 // be strided: a point-major field's component is not contiguous, and
-// EvaluateInto writes a contiguous span. The contiguous case could take the
-// faster path; it is not worth two code paths until something measures it.
+// EvaluateInto writes a contiguous span. The contiguous (component-major)
+// case takes the same element-by-element path.
 template <auto Indices, typename Field, typename Expr, std::size_t... I>
 void AssignComponent(Field& field, const Expr& expr,
                      std::index_sequence<I...>) {
@@ -843,8 +843,9 @@ void AssignSlot(Field& field, const Expr& expr) {
 // inferring either property from an expression tree is a research problem
 // rather than a design -- so asking for one here is an assertion about the
 // value, honoured by storing only the components it keeps. Asking for
-// RealTensor stores half as much and derives the rest, and where a component
-// is pinned to one real number, that number is taken from the expression.
+// RealTensor stores about half as much and derives the rest, and where a
+// component is pinned to one real number, that number is taken from the
+// expression.
 template <typename Symmetry = void, TensorReality Reality = ComplexTensor,
           typename Expr>
 requires TensorExpr<std::remove_cvref_t<Expr>>

@@ -2,6 +2,8 @@
 
 #include <complex>
 #include <cstddef>
+#include <stdexcept>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <utility>

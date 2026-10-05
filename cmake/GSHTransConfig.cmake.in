@@ -4,8 +4,7 @@ include(CMakeFindDependencyMacro)
 
 # Every dependency of the exported target must be findable here, because the
 # target file below refers to them by their imported names and CMake will not
-# invent them. All three of the header-only ones now ship packages of their
-# own; that they did not is what kept this file from existing.
+# invent them. All three required ones ship CMake packages of their own.
 find_dependency(NumericConcepts)
 find_dependency(GaussQuad)
 find_dependency(FFTWpp)
@@ -28,9 +27,9 @@ endif()
 # The same for BLAS, which the exported target names as BLAS::BLAS when this
 # build found one. It was found rather than fetched, so the consumer finds it
 # again -- on the same machine that is the same library, and on another it is
-# whatever that machine has, which is what a system BLAS means. Left out, the
-# package resolved and then failed at generate time with a message about a
-# missing target, on exactly the machines that had a BLAS to offer.
+# whatever that machine has, which is what a system BLAS means. Without this
+# the package would resolve and then fail at generate time with a message
+# about a missing target, on exactly the machines that had a BLAS to offer.
 set(GSHTRANS_BLAS_FOUND @GSHTRANS_BLAS_FOUND@)
 if(GSHTRANS_BLAS_FOUND)
   find_dependency(BLAS)

@@ -79,8 +79,8 @@ struct Padded {
   //
   // and the values repeat with them. The sphere has no edge in longitude but
   // the spline fitted along this axis does: it ends, with an end condition,
-  // and with the wrap column alone the two cells either side of phi = 0 sat
-  // at its ends and were several times worse than every other cell. The
+  // and with the wrap column alone the two cells either side of phi = 0 would
+  // sit at its ends and be several times worse than every other cell. The
   // ghosts move the ends away from anything that is ever evaluated.
   std::size_t ghosts{0};
 
@@ -98,10 +98,9 @@ struct Padded {
 //
 // The polar rows are arguments rather than being computed here, so that the
 // padding can be tested without an expansion. Each is nPhi values at the
-// grid's own
-// longitudes; the wrap column is added to them exactly as it is to every
-// interior row, which is right because exp(i N 2pi) = exp(i N 0) for integer
-// N and so the polar row closes on itself like any other.
+// grid's own longitudes; the wrap column is added to them exactly as it is to
+// every interior row, which is right because exp(i N 2pi) = exp(i N 0) for
+// integer N and so the polar row closes on itself like any other.
 template <AngularGrid GridType, RealOrComplexFloatingPoint Scalar>
 auto Pad(const GridType& grid, std::span<const Scalar> samples,
          std::span<const Scalar> north, std::span<const Scalar> south) {
@@ -129,10 +128,10 @@ auto Pad(const GridType& grid, std::span<const Scalar> samples,
         "Interpolate: a polar row must hold one value per longitude");
   }
 
-  // Checked rather than assumed. Gauss-Legendre nodes are interior to
-  // (0, pi), so this holds -- but if it ever did not, the padded axis would
-  // stop being strictly increasing and upstream would refuse it with a
-  // message about abscissae rather than about poles.
+  // Checked rather than assumed. SphericalGrid's constructor already requires
+  // interior colatitudes, so this holds -- but if it ever did not, the padded
+  // axis would stop being strictly increasing and upstream would refuse it
+  // with a message about abscissae rather than about poles.
   if (!(padded.theta.front() > 0) || !(padded.theta.back() < pi)) {
     throw std::invalid_argument(
         "Interpolate: the grid's colatitudes must lie strictly inside "
@@ -331,12 +330,16 @@ class SpectralInterpolant {
     if (phase.size() < phases) phase.resize(phases);
 
     // The same recursion WignerValues::Generated() runs, into our own
-    // scratch. Sharing it is what stops a second convention arising: a
-    // disagreement here would be a disagreement with the transform.
+    // scratch, and through FillBlock as the transform's is: at single
+    // precision it runs in double and is rounded, so it reaches double's
+    // degree limit and gives the transform's d-functions to the bit. Sharing it
+    // is what stops a second convention arising: a disagreement here would be a
+    // disagreement with the transform.
+    using Work = WignerRecursionReal<Real>;
     auto d = GSHView<Real, All>(lMax, lMax, UpperIndex, block.data());
-    WignerDetails::ComputeBlock(d, UpperIndex, theta,
-                                std::span<const Real>(state_->sqrtInt),
-                                std::span<const Real>(state_->sqrtIntInv));
+    WignerDetails::FillBlock(d, UpperIndex, static_cast<Work>(theta),
+                             std::span<const Work>(state_->sqrtInt),
+                             std::span<const Work>(state_->sqrtIntInv));
 
     // exp(i m phi) for every order at once. Built with polar rather than by
     // repeated multiplication: it is O(lMax) against the sum's O(lMax^2), so
@@ -373,8 +376,9 @@ class SpectralInterpolant {
   struct State {
     Int lMax;
     std::vector<Complex> data;
-    std::vector<Real> sqrtInt;
-    std::vector<Real> sqrtIntInv;
+    // In the precision the recursion runs in, which for float is double.
+    std::vector<WignerRecursionReal<Real>> sqrtInt;
+    std::vector<WignerRecursionReal<Real>> sqrtIntInv;
 
     State(Int lMaxIn, std::span<const Complex> coefficients)
         : lMax{lMaxIn}, data(coefficients.begin(), coefficients.end()) {
@@ -382,6 +386,7 @@ class SpectralInterpolant {
         throw std::invalid_argument(
             "Interpolate: the degree is below the upper index");
       }
+      WignerDetails::CheckSafeDegree<Real>(lMax);
       const auto indices = GSHIndices<MRange>(lMax, lMax, UpperIndex);
       if (data.size() != static_cast<std::size_t>(indices.Size())) {
         throw std::invalid_argument(
@@ -389,8 +394,8 @@ class SpectralInterpolant {
             std::to_string(indices.Size()) + " coefficients of a degree-" +
             std::to_string(lMax) + " expansion");
       }
-      auto tables = WignerDetails::PreComputeTables<Real>(lMax, lMax,
-                                                          std::abs(UpperIndex));
+      auto tables = WignerDetails::PreComputeRecursionTables<Real>(
+          lMax, lMax, std::abs(UpperIndex));
       sqrtInt = std::move(tables.first);
       sqrtIntInv = std::move(tables.second);
     }
@@ -428,8 +433,8 @@ auto Interpolate(const E& expansion, Scheme::SpectralTag = Scheme::Spectral()) {
 }
 
 /// A field, spectrally: expand and sum. The degree is the truncation at which
-/// the expansion is taken, defaulting to the grid's own -- which is what an
-/// oversampled ForBand grid wants to be able to say.
+/// the expansion is taken, defaulting to the grid's own; on an oversampled
+/// ForBand grid, pass the band to sum only the degrees the field has.
 template <SpinWeighted F>
 auto Interpolate(const F& field, Scheme::SpectralTag = Scheme::Spectral(),
                  std::ptrdiff_t lMax = -1) {

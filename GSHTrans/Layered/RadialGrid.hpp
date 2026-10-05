@@ -18,11 +18,12 @@ namespace GSHTrans {
 /// The radial half of a three-dimensional field: a set of radii, and weights
 /// for integrating over them.
 ///
-/// Deliberately thin. It carries nodes, weights and identity and nothing else:
-/// element connectivity, the spectral-element basis, differentiation matrices
-/// and any factorisation belong to the application that built them, and the
-/// library only ever needs to know how many radii there are, what they are, and
-/// how to integrate over them.
+/// Deliberately thin. It carries nodes, weights, identity and, optionally, a
+/// partition of the nodes into elements (WithElements), which is what lets
+/// interfaces be told apart from repeated radii. The spectral-element basis,
+/// differentiation matrices and any factorisation belong to the application
+/// that built them; beyond the partition, the library only needs to know how
+/// many radii there are, what they are, and how to integrate over them.
 ///
 /// What the radii are actually used for is the quadrature over the ball and the
 /// r^{-1} in the gradient. What the *count* is used for is the stack, and that
@@ -52,16 +53,15 @@ class RadialGrid {
   /// because it is the fact more than one thing needs and nothing can infer:
   /// a block-diagonal derivative needs the blocks, and an interpolant must not
   /// cross a material interface. Without it a repeated radius is
-  /// indistinguishable from a caller's mistake -- the grid has always accepted
-  /// one, and has never been able to say what it meant.
+  /// indistinguishable from a caller's mistake: a plain grid accepts one, but
+  /// cannot say what it means.
   ///
   /// The blocks are disjoint and given by their `nElements + 1` starts, so
   /// every node belongs to exactly one element and two elements meet at a
   /// *repeated radius*. That is what makes a derivative well defined at an
   /// interface without anyone having to choose between averaging the two
-  /// sides and picking one: both exist, and
-  /// they are the pair `Interpolation::Piecewise::Limits` returns on the other
-  /// side of the join.
+  /// sides and picking one: both exist, and they are the pair
+  /// `Interpolation::Piecewise::Limits` returns on the other side of the join.
   ///
   /// The price, and it is the caller's: a continuous mesh duplicates its
   /// interior element boundaries and keeps the duplicates equal. That is the
@@ -103,8 +103,8 @@ class RadialGrid {
   //------------------------------------------------------------------------//
 
   /// Whether this grid knows its elements at all. A grid built without them is
-  /// exactly what it was before, and everything that reads them says what it
-  /// does when there are none.
+  /// a plain list of radii, and everything that reads the elements says what
+  /// it does when there are none.
   auto HasElements() const { return !impl_->starts.empty(); }
 
   /** @brief How many elements there are, zero if the grid has none. */

@@ -7,6 +7,14 @@
 #include <type_traits>
 #include <vector>
 
+// The spectral side: SpinExpansion and its round trip, the eth operators,
+// TensorExpansion and its derived components, the contravariant (ambient)
+// and intrinsic derivatives, and the maps between the spatial and tangential
+// bundles. Operator identities are checked where the answer is known
+// independently -- eigenvalues of the surface Laplacian, the commutator, the
+// chain rule on fields -- and reduced real tensors against the same tensor
+// widened to a complex one, where nothing is derived.
+
 namespace {
 
 using namespace GSHTrans;
@@ -55,8 +63,7 @@ TEST(SpinExpansion, RealFieldsUseTheReducedStorage) {
 
   // And it is available only at upper index zero, which is the same
   // constraint the spin-field layer puts on a real-valued field. That one
-  // is a
-  // static_assert in the class body rather than a requires-clause, since
+  // is a static_assert in the class body rather than a requires-clause, since
   // there is no overload to fall through to -- so it is a hard error and not
   // something a negative test can probe.
 }
@@ -120,7 +127,7 @@ TEST(SpinExpansion, ExpandsAnExpressionAsReadilyAsAField) {
   });
 
   // Expand takes any spin-weighted node, so a lazy expression needs no
-  // materialising first -- which is what EvaluateInto was the seam for.
+  // materialising first: it reaches the samples through EvaluateInto.
   const auto& a = u;
   const auto& b = v;
   auto sum = Expand(a + b, lMax);
@@ -215,7 +222,7 @@ TEST(Eth, TheCommutatorIsMinusTwiceTheUpperIndex) {
   }
 }
 
-// The coefficient the raised field cannot carry was zero anyway, because the
+// The coefficient the raised field cannot carry is zero anyway, because the
 // factor vanishes exactly where the target expansion has no room for it.
 TEST(Eth, TheFactorVanishesWhereTheTargetHasNoRoom) {
   constexpr auto lMax = Int{5};
@@ -770,10 +777,10 @@ TEST(TensorExpansion, ATangentialExpansionMirrorsItsField) {
   EXPECT_EQ((e.Component<-1, 1>().MinDegree()), 0);
 }
 
-// The question T2b was written to answer. On the spatial side an empty real
-// buffer needed guarding; here there is only one buffer, so a tensor with no
-// pinned component needs nothing special -- the block total is a sum over
-// whatever is stored, and no term of it is real.
+// A real tangential tensor with no pinned component. On the spatial side an
+// empty real buffer needs guarding; here there is only one buffer, so such a
+// tensor needs nothing special -- the block total is a sum over whatever is
+// stored, and no term of it is real.
 TEST(TensorExpansion, ARealTangentialExpansionHasNoRealBlock) {
   constexpr auto lMax = Int{5};
   auto grid = Grid(lMax, 2, FFTWpp::Estimate);
@@ -1192,11 +1199,11 @@ TEST(BundleMaps, SymmetryAndRealitySurviveTheCrossing) {
 //                  A tensor's component is an expansion too                 //
 //--------------------------------------------------------------------------//
 
-// Raise, Lower, Evaluate, Coefficient and the spectral interpolant took the
-// owning SpinExpansion and nothing else, so the coefficients of a tensor's
-// component -- which are a view over the tensor's storage, and the thing one
-// most often wants to raise -- had no overload. They are taken as anything
-// that holds the coefficients of one spin-weighted field.
+// Raise, Lower, Evaluate, Coefficient and the spectral interpolant take
+// anything that holds the coefficients of one spin-weighted field, not only
+// the owning SpinExpansion -- so they accept the coefficients of a tensor's
+// component, which are a view over the tensor's storage and the thing one
+// most often wants to raise.
 TEST(SpinExpansion, TheFreeFunctionsTakeATensorsComponent) {
   constexpr auto lMax = Int{6};
   auto grid = Grid(lMax, 2, FFTWpp::Estimate);

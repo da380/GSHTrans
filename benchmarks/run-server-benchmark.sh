@@ -5,42 +5,50 @@
 #
 #   ./benchmarks/run-server-benchmark.sh [output-directory]
 #
-# Everything lands in one text file, which is the thing to send back.
+# Everything lands in one text file, which is the thing to send back. The
+# script configures a Release build in build-bench/ (reusing it if it exists),
+# refuses to continue on a stale binary, runs the whole test suite as a gate,
+# and then runs the benchmark sections `stream batching server lines` three
+# times under different thread and page placements. See the top of
+# TransformBenchmark.cpp for how each figure is timed and how to read the
+# tables.
 #
-# What this exists to settle:
+# The questions these runs answer:
 #
 #   threads
 #          The transform threads over colatitudes, with a private accumulator
-#          per thread in the forward direction. That was measured to eight
-#          threads on a laptop and is predicted not to survive 64-128, because
-#          the accumulators become the dominant memory traffic and the
-#          colatitude axis is only lMax + 1 long. The alternatives -- m-block
-#          threading, threading over the batch axis, a two-dimensional split
-#          -- cannot be chosen without these numbers, and choosing on laptop
-#          numbers would repeat an error already made once.
+#          per thread in the forward direction. On a laptop that scales to
+#          eight threads; at 64-128 it may not, because the accumulators become
+#          the dominant memory traffic and the colatitude axis is only lMax + 1
+#          long. The alternatives -- m-block threading, threading over the
+#          batch axis, a two-dimensional split -- should be chosen on numbers
+#          from a machine of that size, not on laptop numbers.
 #
 #   scaling
-#          The lMax = 256 shortfall (2.7x against 4.2x at 128) had two
-#          unseparated candidates. One of them has since gone, below the
-#          laptop's noise floor. The fwd/inv column separates the other.
+#          At lMax = 256 the forward transform scales less well than at 128.
+#          Thread-private accumulators competing for last-level cache are the
+#          candidate cause, and the fwd/inv column in the `server` section
+#          isolates them: the inverse has no accumulator.
 #
 #   chunk  The heuristic sizes a transform's chunk as
-#          perCoreL3 / (2 * 16 * nCoefficients).
-#          The header records this machine's per-core L3, which is the input.
+#          cache / copies / (2 * 16 * nCoefficients), rounded, where copies is
+#          the thread count forward and one inverse, and cache is 8 MiB under
+#          Chunking::Automatic() or the caller's figure under ForCache(). The
+#          `batching` section shows where the optimum is; the header records
+#          this machine's L3, which is the figure to pass to ForCache().
 #
 #   lines  Radial lines made directly by the transform, against transforming
-#          and then transposing. On the laptop the direct route won by twenty
+#          and then transposing. On a laptop the direct route won by twenty
 #          per cent at nR = 100 and 200 and *lost* by as much at 64 and 128,
 #          a power-of-two stride colliding in cache; with the threaded loop
-#          kernel it lost everywhere. Whether any of that holds with 256 MiB of
-#          L3 is what this run is for.
+#          kernel it lost everywhere. Whether any of that holds with a much
+#          larger L3 is what this run is for.
 #
-#   NUMA   Measured nowhere yet, and testable here for the first time. The
-#          Wigner table is a std::vector<Real> built by its size constructor
-#          (in Wigner's own constructor), so it is zero-filled by the single constructing
-#          thread and every page first-touches on that thread's NUMA node.
-#          On a multi-socket machine all threads then stream one node's
-#          memory. Runs 2 and 3 below are the control.
+#   NUMA   The Wigner table is a std::vector<Real> built by its size
+#          constructor (in Wigner's own constructor), so it is zero-filled by
+#          the single constructing thread and every page first-touches on that
+#          thread's NUMA node. On a multi-socket machine all threads then
+#          stream one node's memory. Runs 2 and 3 below are the control.
 
 set -u
 
@@ -86,13 +94,12 @@ echo "Build"
 echo "=============================================================================="
 #
 # Release is -O3 -DNDEBUG. NDEBUG only turns off the point-index asserts; the
-# transform's size checks throw in every build mode, so nothing
-# that guards correctness is being compiled out.
+# transform's size checks throw in every build mode, so nothing that guards
+# correctness is being compiled out.
 #
 # -march=native, because the decisions these numbers feed -- the chunk size,
 # the threading decomposition -- are decisions about this machine, so it
-# should
-# be compiled the way it will be deployed. The one machine where that is not
+# should be compiled the way it will be deployed. The one machine where that is not
 # obviously right is a Skylake-SP or Cascade Lake Xeon, where heavy AVX-512
 # pulls the clock down and buys nothing for load/store-bound work; if lscpu
 # above shows one, run again with GSH_CXX_FLAGS="-g -fno-omit-frame-pointer"
@@ -136,12 +143,12 @@ cmake --build "$build" --target TransformBenchmark -j "$(nproc)" || exit 1
 
 # Refuse to measure with a binary older than this script.
 #
-# Two server runs were lost this way. The source reached the machine carrying
-# an older timestamp than the object file already in the build directory, make
-# reported "Built target" without compiling anything, and the log that came
-# back looked entirely plausible while having been produced by the previous
-# harness. Nothing in the output said so, which is the part worth fixing.
-expected=11
+# A source tree copied to the machine can carry an older timestamp than the
+# object file already in the build directory; make then reports "Built
+# target" without compiling anything, and the previous harness produces a log
+# that looks entirely plausible. `expected` must match `revision` in
+# TransformBenchmark.cpp and is bumped with it.
+expected=12
 got="$("$binary" --check 2>/dev/null | awk '/harness revision/ {print $3}')"
 if [ "${got:-0}" -lt "$expected" ]; then
   echo
@@ -164,9 +171,9 @@ echo
 echo "=============================================================================="
 echo "Correctness first: the suite must pass before any timing means anything"
 echo "=============================================================================="
-# A gate and not a report: the build's status was once thrown away and the
-# suite's hidden behind a pipe into tail, so a failure of either scrolled past
-# and the timing runs went ahead on a binary nobody should have trusted.
+# A gate and not a report: a failed build or a failing test stops the script
+# here, rather than scrolling past while the timing runs go ahead on a binary
+# nobody should trust.
 if ! cmake --build "$build" -j "$(nproc)" >"$build/gate-build.log" 2>&1; then
   tail -40 "$build/gate-build.log"
   echo
@@ -182,9 +189,13 @@ fi
 tail -4 "$build/gate-ctest.log"
 echo
 
-# Cores, not hardware threads: for this library's memory-bound work the second
-# thread on a core measured slower than one thread per core. The ladder inside
-# the benchmark walks past this anyway; binding is about placement, not count.
+# Run 1 binds threads to cores, not hardware threads: for this library's
+# memory-bound work a second thread on a core is slower than one thread per
+# core. The thread ladder inside the benchmark walks past the core count
+# anyway; binding is about placement, not count. Run 2 leaves placement to the
+# OS. Run 3, on a multi-node machine with numactl, interleaves every page
+# across nodes, which removes the single-node placement of the Wigner table;
+# comparing it with run 1 measures what that placement costs.
 run () {
   local title="$1"; shift
   echo

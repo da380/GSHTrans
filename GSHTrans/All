@@ -1,8 +1,6 @@
 #pragma once
 
-// Kept so that code written against the old layout goes on compiling.
-// `#include <GSHTrans/GSHTrans.hpp>` is the spelling to use: this file has no
-// extension, which editors, formatters and documentation tools each needed
-// telling about, and it was one of six such files of which this and Core were
-// the only ones anyone included.
+// A compatibility spelling of `#include <GSHTrans/GSHTrans.hpp>`, which is
+// the one to use: this file has no extension, which editors, formatters and
+// documentation tools each have to be told about.
 #include "GSHTrans.hpp"

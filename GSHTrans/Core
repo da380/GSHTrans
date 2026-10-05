@@ -1,5 +1,5 @@
 #pragma once
 
-// Kept so that code written against the old layout goes on compiling. The
-// spelling to use is `#include <GSHTrans/Core.hpp>`; see GSHTrans/All.
+// A compatibility spelling of `#include <GSHTrans/Core.hpp>`, which is the
+// one to use; see GSHTrans/All.
 #include "Core.hpp"

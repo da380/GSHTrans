@@ -14,8 +14,8 @@ namespace GSHTrans {
 // The two maps between the tangential bundle and the general one.
 //
 // A tangential tensor lives in another bundle, so it is another object. What
-// connects the two is the
-// inclusion of the tangent plane in the ambient space, and its adjoint:
+// connects the two is the inclusion of the tangent plane in the ambient space,
+// and its adjoint:
 //
 //   Embed(T)       tangential -> general, the components with a radial slot
 //                  being ones the embedded tensor does not have
@@ -99,7 +99,7 @@ class EmbedNode {
 
   /// Not offered on a temporary node that owns a tensor field, where the view
   /// returned would name storage gone by the end of the statement: see
-  /// TensorDetails::HoldsStorage. Over named fields it is offered as ever.
+  /// TensorDetails::HoldsStorage. Over named fields it is offered.
   template <Int... Alphas>
   requires HoldsStorage
   void Component() const&& = delete;
@@ -122,8 +122,9 @@ auto Embed(T&& tensor) {
 /// The projection, which is how a caller comes back down: the tangential part
 /// of a three-dimensional strain, or the tangential block of a gradient.
 ///
-/// A pure relabelling like Permute, and for the same reason harmless to phase
-/// 1's aliasing theorem: it selects tensor slots and does not touch grid
+/// A pure relabelling like Permute, and for the same reason harmless to the
+/// in-place aliasing argument (every node pointwise and index-preserving; see
+/// SpinFieldNodes.hpp): it selects tensor slots and does not touch grid
 /// points.
 template <typename Operand>
 class TangentialNode {
@@ -177,7 +178,7 @@ class TangentialNode {
 
   /// Not offered on a temporary node that owns a tensor field, where the view
   /// returned would name storage gone by the end of the statement: see
-  /// TensorDetails::HoldsStorage. Over named fields it is offered as ever.
+  /// TensorDetails::HoldsStorage. Over named fields it is offered.
   template <Int... Alphas>
   requires HoldsStorage
   void Component() const&& = delete;

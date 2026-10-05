@@ -28,15 +28,16 @@ namespace GSHTrans {
 ///
 /// A view is a handle and not storage: a grid handle, a span and a stride. An
 /// expression therefore holds one **by value**, whatever value category it
-/// arrived with, exactly as it holds another expression. It used to hold an
-/// lvalue view by reference, as it does an owning field, on the argument that
-/// a view "names storage" -- but the storage a view names is not the view, and
-/// a view is what one naturally binds to a local, so
+/// arrived with, exactly as it holds another expression. Holding an lvalue view
+/// by reference, as an owning field is held, would be wrong: the storage a
+/// view names is not the view, and a view is what one naturally binds to a
+/// local, so
 ///
 ///     auto u = t.Component<1>();  auto w = t.Component<-1>();  return u * w;
 ///
-/// returned an expression referring to two dead locals. The copy that avoids
-/// it is a shared_ptr and a span, once per expression and never per element.
+/// would return an expression referring to two dead locals. The copy that
+/// avoids it is a shared_ptr and a span, once per expression and never per
+/// element.
 template <std::ptrdiff_t N_, AngularGrid Grid_,
           RealOrComplexValued Value_ = ComplexValued,
           typename Element_ = ScalarFor<typename Grid_::Real, Value_>>
@@ -130,9 +131,9 @@ class SpinFieldView {
 
   // The number of samples, which is the grid's point count and not the extent
   // of the storage those samples are spread over.
-  /** @brief How many elements are stored. */
+  /** @brief How many samples the view has. */
   auto Size() const { return grid_.FieldSize(); }
-  /** @brief The underlying buffer. */
+  /** @brief The storage viewed, including any gaps the stride leaves. */
   auto Data() const { return data_; }
   /** @brief How many elements separate successive samples. */
   auto Stride() const { return stride_; }

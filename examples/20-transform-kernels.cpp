@@ -1,22 +1,39 @@
 // 20 -- Two Legendre kernels, and choosing between them
 //
-// The transform's inner stage can be arranged two ways, and the library keeps
-// both rather than picking one.
+// What this shows. A transform is an FFT in longitude at each colatitude
+// followed by the Legendre stage: a weighted sum over colatitudes against the
+// stored Wigner values, for every (l, m). At production degree the Legendre
+// stage is nearly all of the cost (docs/gshtrans-reference.tex, "The
+// transform"). It can be arranged two ways, and the library keeps both:
 //
-//   Loop   -- a colatitude at a time, an axpy per (l, m). What the library has
-//             always done, and the default.
-//   Matrix -- every FFT first, then one matrix product per order against a
-//             table laid out so that each order's block is contiguous. Needs a
-//             BLAS.
+//   Loop   -- a colatitude at a time, an axpy per (l, m) over the batch,
+//             reading a table contiguous in (l, m). The default, and the only
+//             kernel in a build without a BLAS.
+//   Matrix -- every FFT first, then one matrix product (GEMM) per order
+//             against a table laid out so that each order's block is
+//             contiguous. Needs a BLAS. It stores only non-negative orders,
+//             recovering the rest from d^l_{nm}(pi - theta) =
+//             (-1)^{l+n} d^l_{n,-m}(theta), so its table is half the size.
 //
 // They compute the same sums in different orders, so they agree to rounding
 // rather than exactly. Two reasons both are kept:
 //
 //   -- Which one suits a machine is a question that machine can answer, and
-//      only by being asked. See benchmarks/TransformBenchmark kernels.
+//      only by being asked. See benchmarks/TransformBenchmark kernels, or
+//      TuneKernel in Tuning.hpp, which times both on the caller's problem.
 //   -- Each is the other's check. A GEMM sums in whatever order its kernel
 //      chooses, so the matrix path cannot be verified against itself; it is
 //      verified against the loop path on identical inputs.
+//
+// Read first. 06 (the transform) and 07 (batches, chunking, threading).
+//
+// Introduced. TransformKernel::Loop() and TransformKernel::Matrix(), the full
+// grid constructor (lMax, nMax, planner flag, chunking, Wigner-values
+// policy, kernel), and the combinations the matrix kernel refuses.
+//
+// The output. The relative agreement of the two kernels on a batch of eight
+// fields; a rough timing of each; the two refusals; and a reminder about
+// BLAS threading. In a build without a BLAS, only a note saying so.
 //
 
 #include <GSHTrans/GSHTrans.hpp>
@@ -48,12 +65,16 @@ int main() {
 
   // The kernel is a property of the grid and not of the call, because the two
   // want different Wigner layouts and holding both would double the table.
-  // It comes after the chunking and the Wigner-values policy, and defaults to
-  // Loop, so no existing spelling has to move.
+  // It is the last constructor argument, after the planner flag, the
+  // chunking policy and the Wigner-values policy, and defaults to Loop, so
+  // naming it is needed only to ask for Matrix. FFTWpp::Measure asks FFTW to
+  // time candidate FFT plans rather than estimate them.
   auto loop = Grid(lMax, n, FFTWpp::Measure);
   auto matrix = Grid(lMax, n, FFTWpp::Measure, Chunking::Automatic(),
                      WignerValues::Stored(), TransformKernel::Matrix());
 
+  // Eight fields at upper index n = 2, contiguous one after another, and room
+  // for their coefficients. Batch descriptors as in example 07.
   const auto fieldSize = loop.FieldSize();
   const auto coefficientSize = static_cast<Int>(loop.CoefficientSize(lMax, n));
 
@@ -89,10 +110,11 @@ int main() {
 
   // What it is worth. One size on one machine is an anecdote, not a
   // measurement -- the benchmark's `kernels` section is the measurement, and
-  // it reports both regimes separately because the answer differs between
-  // them. Batched, which is what the field and layered layers always do, the
-  // matrix kernel wins; unbatched at high degree on many threads the loop
-  // kernel is already at the memory roof and there is nothing to win.
+  // it reports batched and unbatched separately because the answer differs
+  // between them. Batched, as the tensor and layered layers transform, the
+  // matrix kernel has measured faster; unbatched at high degree on many
+  // threads the loop kernel is already at the memory roof and there is
+  // little to win. Each timing is one warm-up call and the mean of five.
   auto TimeIt = [&](auto& grid) {
     using Clock = std::chrono::steady_clock;
     auto scratch = std::vector<Complex>(count * coefficientSize);
@@ -115,27 +137,28 @@ int main() {
   // Worth saying rather than letting the reader believe the ratio above.
   // `cmake -S . -B build` leaves CMAKE_BUILD_TYPE empty, and an unoptimised
   // build runs about ten times slow with every figure self-consistent, so
-  // nothing looks wrong -- it flatters whichever kernel does less work in the
-  // interpreter-like regime rather than in the real one. Configure with
-  // -DCMAKE_BUILD_TYPE=Release before believing any of it.
+  // nothing looks wrong -- and the ratio it gives is not the ratio of an
+  // optimised build. Configure with -DCMAKE_BUILD_TYPE=Release before
+  // believing any of it.
   std::cout << "  (unoptimised build: those two numbers mean nothing --\n"
                "   configure with -DCMAKE_BUILD_TYPE=Release)\n";
 #endif
 
-  // The inverse uses the same stored matrices, transposed, so there is no
-  // second table and no second decision.
+  // The inverse uses the same stored matrices, transposed (a BLAS transpose
+  // flag, not a second copy), so there is no second table and no second
+  // decision.
   auto back = std::vector<Complex>(count * fieldSize);
   matrix.InverseTransformation(lMax, n, fromMatrix, coefficientBatch, back,
                                fieldBatch, policy);
 
-  // Two combinations the matrix kernel refuses, and both are facts rather
-  // than gaps.
+  // Two combinations the matrix kernel refuses at grid construction, with
+  // std::invalid_argument, and both are facts rather than gaps.
   //
-  // Generated Wigner values run the recursion inside the transform, and the
-  // recursion produces every order of one colatitude together -- so a single
-  // order's block cannot be had without either keeping the whole table, which
-  // is what generating exists to avoid, or repeating the recursion for every
-  // order.
+  // WignerValues::Generated() runs the recursion inside the transform instead
+  // of storing a table, to save memory. The recursion produces every order of
+  // one colatitude together -- so a single order's block cannot be had
+  // without either keeping the whole table, which is what generating exists
+  // to avoid, or repeating the recursion for every order.
   try {
     auto bad = Grid(lMax, n, FFTWpp::Measure, Chunking::Automatic(),
                     WignerValues::Generated(), TransformKernel::Matrix());
@@ -157,13 +180,14 @@ int main() {
     std::cout << "matrix kernel refuses long double, since BLAS has none\n";
   }
 
-  // One obligation, which no caller can meet without being told. The matrix
-  // kernel threads over orders and issues every product from inside an OpenMP
-  // region, so a BLAS built on the same OpenMP runtime is nested and runs
-  // serial with nothing to configure. A BLAS with a thread pool of its own
-  // cannot see that region, and must be held to one thread by the environment
-  // -- OPENBLAS_NUM_THREADS=1 or the equivalent. These products are skinny,
-  // and threading them loses even when there is no nesting to worry about.
+  // One obligation, which no caller can meet without being told. Under a
+  // parallel policy the matrix kernel threads over orders and issues every
+  // product from inside an OpenMP region, so a BLAS built on the same OpenMP
+  // runtime is nested and runs serial with nothing to configure. A BLAS with
+  // a thread pool of its own cannot see that region, and must be held to one
+  // thread by the environment -- OPENBLAS_NUM_THREADS=1 or the equivalent.
+  // These products are skinny, and threading them loses even when there is
+  // no nesting to worry about.
   std::cout << "\nremember: a pthread-pool BLAS must be held to one thread\n";
 
   return 0;

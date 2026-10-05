@@ -7,6 +7,12 @@
 #include <type_traits>
 #include <vector>
 
+// The tensor field as storage: one component per orbit in one buffer, which
+// components can be read and written, how components group by upper index for
+// a batched transform, the named ranks, the two layout policies, and the
+// tangential alphabet. The algebra on tensors is in TestTensorAlgebra.cpp and
+// real tensors in TestTensorReality.cpp.
+
 namespace {
 
 using namespace GSHTrans;
@@ -74,7 +80,8 @@ TEST(TensorField, ComponentsCarryTheUpperIndexOfTheirMultiIndex) {
   auto grid = TestGrid();
   auto t = T(grid);
 
-  // Theory note table 1, read off the returned nodes' types.
+  // The upper index of each rank-2 component, read off the returned nodes'
+  // types.
   static_assert(decltype(t.Component<-1, -1>())::UpperIndex == -2);
   static_assert(decltype(t.Component<-1, 0>())::UpperIndex == -1);
   static_assert(decltype(t.Component<0, -1>())::UpperIndex == -1);
@@ -174,8 +181,7 @@ TEST(TensorField, AntisymmetricComponentsAreTheNegativeOfTheirRepresentative) {
   t.Component<-1, 0>()[0, 0] = Complex{2.0, -3.0};
 
   // The transposed component is a spin-weighted expression, not a view, and
-  // it
-  // evaluates to the negative.
+  // it evaluates to the negative.
   const auto& constT = t;
   EXPECT_EQ((constT.Component<0, -1>()[0, 0]), (Complex{-2.0, 3.0}));
   static_assert(!std::same_as<decltype(constT.Component<-1, 0>()),
@@ -339,8 +345,9 @@ TEST(TensorField, TheTangentialNamesSayWhichBundle) {
   SUCCEED();
 }
 
-// The grid comes first, so the old spelling is a constraint failure rather
-// than a silent reinterpretation: AngularGrid<ComplexTensor> does not hold.
+// The grid comes first, so naming the reality first is a constraint failure
+// rather than a silent reinterpretation: AngularGrid<ComplexTensor> does not
+// hold.
 // Worth pinning, because the failure mode of getting this wrong would
 // otherwise be a tensor field over the wrong thing entirely.
 TEST(TensorField, TheAliasesPutTheGridFirst) {
@@ -488,8 +495,8 @@ TEST(TensorField, RejectsAGridThatCannotCarryItsUpperIndices) {
 //--------------------------------------------------------------------------//
 //
 // The two layouts must be interchangeable in every respect except where the
-// numbers sit. Nothing above this line asked which one it was using, and the
-// transform did not need a repack for either.
+// numbers sit. Nothing above this line asks which one it is using, and the
+// transform needs no repack for either.
 
 namespace {
 
@@ -556,8 +563,8 @@ TEST(TensorField, ComponentViewsAreStridedInPointMajor) {
 }
 
 // The point of the batch descriptor: a point-major tensor is transformable
-// in place, with the
-// batch descriptor doing the work a repack would otherwise have to.
+// in place, with the batch descriptor doing the work a repack would otherwise
+// have to.
 TEST(TensorField, BothLayoutsTransformToTheSameCoefficients) {
   constexpr auto lMax = Int{5};
   auto grid = Grid(lMax, 2, FFTWpp::Estimate);
@@ -679,8 +686,7 @@ TEST(TensorField, ARadialComponentOfATangentialTensorIsNotAComponent) {
   static_assert(!Readable<Tangential2, 0, 1>);
   static_assert(!Assignable<Tangential2, 0, 1>);
 
-  // The wrong number of indices is rejected as before, and for the same
-  // reason it always was.
+  // The wrong number of indices is rejected too, as for any tensor.
   static_assert(!Readable<Tangential2, -1>);
   static_assert(!Readable<Tangential2, -1, 1, 1>);
   SUCCEED();
@@ -742,9 +748,10 @@ TEST(TensorField, ASymmetricRealTangentialTensorIsARealSymmetricTwoByTwo) {
   EXPECT_EQ((tensor.Component<1, -1>()[1, 2]), 7.0);
 }
 
-// The transform with an empty real buffer, which nothing has exercised before:
-// The reality reduction introduced that buffer, and no tensor until now has
-// had none of it.
+// The transform with an empty real buffer. A real tensor keeps its pinned
+// components in a second, real buffer, and a real tangential tensor without
+// a permutation symmetry has no pinned components, so that buffer is
+// empty.
 TEST(TensorField, ARealTangentialTensorRoundTripsWithNoRealBuffer) {
   constexpr auto lMax = Int{6};
   auto grid = Grid(lMax, 2, FFTWpp::Estimate);

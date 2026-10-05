@@ -30,9 +30,8 @@
  * under `-Wall`, which in a header-only library means warned about in the
  * caller's build. Each header that has one turns `-Wunknown-pragmas` off for
  * its own length, and only when `_OPENMP` is not defined, so a caller's own
- * stray pragma is still reported. (Wrapping them in a macro was tried first.
- * It works, and no formatter can lay out a macro whose argument says `for`
- * and `if`.)
+ * stray pragma is still reported. (They are not wrapped in a macro because
+ * no formatter can lay out a macro whose argument says `for` and `if`.)
  */
 
 #ifdef _OPENMP

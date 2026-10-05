@@ -10,12 +10,16 @@
 #include <type_traits>
 #include <vector>
 
-// Test family 1: the compile-time algebra.
+// The scalar spin-weighted field and its expression algebra.
 //
-// Almost everything here is a static_assert, so the runtime bodies are empty
-// and the value is that the file compiles. It grows through the layer:
-// this instalment covers the node concept and the traits underneath it, before
-// any node exists to use them.
+// The file opens with the compile-time algebra: the node concept, the traits
+// underneath it, the index rules and the closure of the reality constraint.
+// Almost all of that is static_assert, so its runtime body is empty and the
+// value is that the file compiles. Then the terminal SpinField itself, the
+// operator matrix over the upper index N, the values the algebra computes,
+// lifetimes (worth most under the sanitisers), materialisation, assignment
+// and aliasing, callable nodes, integration, views, and the storage layout
+// the transform relies on.
 
 using namespace GSHTrans;
 using Int = std::ptrdiff_t;
@@ -26,7 +30,7 @@ using Int = std::ptrdiff_t;
 
 // Concept satisfaction needs declarations, not definitions, so nothing here is
 // implemented. The point is to exercise SpinWeighted independently of the
-// terminal, which arrives in step 2.
+// terminal SpinField.
 template <Int N, typename ValueTag>
 struct StubNode {
   static constexpr Int UpperIndex = N;
@@ -213,10 +217,9 @@ static_assert(R::Negate::Apply<R::Negate::Apply<3>> == 3);
 //--------------------------------------------------------------------------//
 
 // Every rule preserves "real-valued implies upper index zero", so the concept
-// checks it once and no node has to re-derive it. Each line below is one row
-// of the closure table -- the theory note's section on admissible
-// operations -- namely: given operands that satisfy the
-// constraint, the result does too.
+// checks it once and no node has to re-derive it (docs/gshtrans-reference.tex,
+// "Real-valuedness"). Each line below is one row of the closure table: given
+// operands that satisfy the constraint, the result does too.
 template <typename Value, Int N>
 inline constexpr bool Lawful = std::same_as<Value, ComplexValued> or N == 0;
 
@@ -404,7 +407,7 @@ TEST(SpinField, RejectsAnUpperIndexTheGridDoesNotCarry) {
 }
 
 //--------------------------------------------------------------------------//
-//                  Family 1: the operator matrix over N                     //
+//                         The operator matrix over N                        //
 //--------------------------------------------------------------------------//
 
 namespace {
@@ -553,7 +556,7 @@ static_assert(Mul<decltype(conj(std::declval<F<-1>&>())), F<-1>&>::UpperIndex ==
 }  // namespace
 
 //--------------------------------------------------------------------------//
-//                 Family 3 (part): the algebra computes                     //
+//                            The algebra computes                           //
 //--------------------------------------------------------------------------//
 
 namespace {
@@ -571,7 +574,7 @@ auto MakeScalarField(const Grid& grid, double a) {
 }
 
 // Evaluate a node into a plain vector. Named Evaluated rather than
-// Materialise, which is now the library's own and returns a SpinField.
+// Materialise, which is the library's own and returns a SpinField.
 template <typename NodeType>
 auto Evaluated(const NodeType& node) {
   auto out = std::vector<typename NodeType::Scalar>(node.Grid().FieldSize());
@@ -583,15 +586,14 @@ constexpr double tolerance = 1.0e-14;
 
 // Relative to the magnitude being compared, with a floor at one.
 //
-// A fixed absolute tolerance was wrong here and was failing on other machines.
-// These tests compare values built from the point index -- storage[i] runs to
-// {45, -22.5} on the default test grid -- so a product of two of them reaches
-// a magnitude near 110, where one ulp is 1.4e-14. Against an absolute 1e-14
-// the test was demanding that the expression template and the scalar reference
-// agree to *better than one ulp*, which is to say bit-exactly, and whether
-// they do is a fact about the compiler's contraction and vectorisation rather
-// than about this library. It held on a machine without AVX-512 and failed on
-// one with it.
+// A fixed absolute tolerance would be wrong here. These tests compare values
+// built from the point index -- storage[i] runs to {45, -22.5} on the default
+// test grid -- so a product of two of them reaches a magnitude near 110,
+// where one ulp is 1.4e-14. Against an absolute 1e-14 the test would demand
+// that the expression template and the scalar reference agree to *better
+// than one ulp*, which is to say bit-exactly, and whether they do is a fact
+// about the compiler's contraction and vectorisation rather than about this
+// library: it differs between machines with and without AVX-512.
 void ExpectClose(Complex a, Complex b) {
   const auto scale = [](double x) { return std::max(1.0, std::abs(x)); };
   EXPECT_NEAR(a.real(), b.real(), tolerance * scale(b.real()));
@@ -675,13 +677,13 @@ TEST(SpinField, BinaryNodesRejectOperandsOnDifferentGrids) {
 }
 
 //--------------------------------------------------------------------------//
-//                          Family 2: lifetime                               //
+//                                  Lifetime                                 //
 //--------------------------------------------------------------------------//
 //
-// These are the cases the layer being replaced got wrong: it stored operands
-// as references to a CRTP base, so a nested expression bound to auto dangled.
-// They are worth little in a plain build and everything under the sanitisers,
-// which is where the suite also runs.
+// Operands are held by value or by reference to a named terminal, never as a
+// reference to a base class, so a nested expression bound to auto must not
+// dangle. These tests are worth little in a plain build and everything under
+// the sanitisers, which is where the suite also runs.
 
 TEST(SpinField, NestedExpressionsBoundToAutoStayValid) {
   auto grid = TestGrid();
@@ -765,7 +767,7 @@ TEST(SpinField, ExpressionsSurviveBeingReturnedAndStored) {
 }
 
 //--------------------------------------------------------------------------//
-//              Family 3: materialisation, assignment, aliasing              //
+//                   Materialisation, assignment, aliasing                   //
 //--------------------------------------------------------------------------//
 
 namespace {
@@ -918,8 +920,7 @@ TEST(SpinField, CompoundAssignmentMatchesItsBinaryForm) {
 // The aliasing theorem: every node is pointwise and index-preserving, so an
 // assignment whose right-hand side mentions the destination reads element
 // (iTheta, iPhi) only when writing that same element. No temporary is needed.
-// This is the regression that fails if a re-indexing node ever enters the
-// layer.
+// This is the test that fails if a re-indexing node ever enters the layer.
 TEST(SpinField, InPlaceAssignmentIsSafeWhenTheDestinationAppears) {
   auto grid = TestGrid();
   auto u = SpinField<0, Grid>(grid, [](auto theta, auto phi) {
@@ -995,7 +996,7 @@ TEST(SpinField, LazyAndMaterialisedAgreeAtEveryUpperIndex) {
 }
 
 //--------------------------------------------------------------------------//
-//                        Family 3: callable nodes                           //
+//                               Callable nodes                              //
 //--------------------------------------------------------------------------//
 
 namespace {
@@ -1011,9 +1012,10 @@ static_assert(!Mappable<SpinField<-1, Grid>&, double (*)(Complex)>);
 // A callable that cannot be applied to the field's scalar is not a Map.
 static_assert(!Mappable<F0&, int (*)(const char*)>);
 
-// Nor is one whose result is not a scalar of the field's own precision. This
-// used to pass the constraint and fail a static_assert inside the node, which
-// is a hard error and not an answer -- so it could not be asked about here.
+// Nor is one whose result is not a scalar of the field's own precision. That
+// has to be a constraint rather than a static_assert inside the node, which
+// would be a hard error and not an answer -- so it could not be asked about
+// here.
 static_assert(!Mappable<F0&, int (*)(Complex)>);
 static_assert(!Mappable<F0&, float (*)(Complex)>);
 static_assert(!Mappable<F0&, std::complex<float> (*)(Complex)>);
@@ -1079,8 +1081,8 @@ TEST(SpinField, MapTakesItsValueKindFromTheCallablesReturnType) {
   }
 }
 
-// The ownership regression: an expression must own its callable, so that the
-// caller's lambda may go out of scope first.
+// Ownership: an expression must own its callable, so that the caller's lambda
+// may go out of scope first.
 TEST(SpinField, MapOwnsACopyOfAnLvalueCallable) {
   auto grid = TestGrid();
   auto u = MakeScalarField(grid, 1.25);
@@ -1112,7 +1114,7 @@ TEST(SpinField, MapOwnsACopyOfAnLvalueCallable) {
 }
 
 //--------------------------------------------------------------------------//
-//              Family 3/4: integration, views, and the layout               //
+//                     Integration, views, and the layout                    //
 //--------------------------------------------------------------------------//
 
 namespace {
@@ -1292,10 +1294,9 @@ TEST(SpinField, ViewsParticipateInExpressionsLikeOwningFields) {
                std::invalid_argument);
 }
 
-// Family 4: the field's storage order is the transform's. A round trip at
-// upper index zero through the scalar transform is what pins it, and it now
-// includes the orders m = +-lMax, which the grid could not resolve before the
-// core work.
+// The field's storage order is the transform's. A round trip at upper index
+// zero through the scalar transform is what pins it, and it includes the
+// orders m = +-lMax, which the grid resolves because nPhi exceeds 2 lMax.
 TEST(SpinField, StorageOrderMatchesTheTransform) {
   constexpr Int band = 5;
   auto grid = Grid(band, 0, FFTWpp::Estimate);
@@ -1321,7 +1322,7 @@ TEST(SpinField, StorageOrderMatchesTheTransform) {
     EXPECT_NEAR(recovered[j].imag(), given[j].imag(), 1.0e-12) << "j = " << j;
   }
 
-  // Including the top orders, which is what the sizing fix bought.
+  // Including the top orders, which nPhi > 2 lMax makes distinct modes.
   EXPECT_GT(std::abs(given[indices.Index(band, band)]), 1.0e-12);
   EXPECT_GT(std::abs(given[indices.Index(band, -band)]), 1.0e-12);
 
@@ -1362,11 +1363,10 @@ TEST(SpinField, CopiesDataButSharesTheGrid) {
 //                        Scalars that are just numbers                      //
 //--------------------------------------------------------------------------//
 
-// `2 * f` is what anyone writes first, and it did not compile: a scalar had to
-// be exactly the field's Real or its complex. An integer is now taken as well.
-// It is not a second precision -- it is exact in every one -- so the rule of
-// one precision per tree stands, and a floating-point scalar of another
-// precision is refused as it always was.
+// `2 * f` is what anyone writes first, so an integer scalar is accepted as
+// well as the field's Real and its complex. It is not a second precision --
+// it is exact in every one -- so the rule of one precision per tree stands,
+// and a floating-point scalar of another precision is refused.
 
 namespace {
 

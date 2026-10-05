@@ -5,9 +5,10 @@
 #   scripts/test_sanitized.sh address [extra cmake args...]
 #   scripts/test_sanitized.sh undefined
 #
-# "address" turns on AddressSanitizer and UndefinedBehaviorSanitizer together,
-# which is how this library has always been checked: they compose, and the
-# combined run costs little more than either alone.
+# "address" turns on AddressSanitizer and UndefinedBehaviorSanitizer together:
+# they compose, and the combined run costs little more than either alone. It
+# is what CI runs. "undefined" is UBSan alone. The build goes to
+# build-<mode>/ under the repository root, in Debug with the benchmarks off.
 #
 # There is deliberately no "thread" mode. ThreadSanitizer cannot validate this
 # library at all: the parallelism is OpenMP, GCC's libgomp carries no TSan
@@ -35,7 +36,9 @@ cmake -S "${root}" -B "${build}" \
   -DGSHTRANS_INSTALL=OFF \
   "$@"
 
-cmake --build "${build}" --parallel
+# A bare --parallel starts every translation unit at once, and these are
+# heavy; four by default, CMAKE_BUILD_PARALLEL_LEVEL to choose.
+cmake --build "${build}" --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-4}"
 
 # halt_on_error keeps the first report from being buried under later ones, and
 # a sanitizer diagnostic must fail the run rather than be printed and ignored.

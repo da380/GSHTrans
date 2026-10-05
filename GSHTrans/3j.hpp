@@ -195,9 +195,9 @@ inline std::pair<int, int> OrderRange(int l2, int l3, int m1) {
  * The recurrence has a growing and a decaying solution, and a classically
  * allowed region between two forbidden ones. Recursing *inward* from a
  * forbidden end follows the growing solution, so errors decay; outward
- * follows the decaying one, so they grow exponentially -- which is what
- * destroyed the one-directional scheme this replaces, and which extra
- * precision delays rather than cures.
+ * follows the decaying one, so they grow exponentially -- which is why a
+ * one-directional scheme fails, and which extra precision delays rather than
+ * cures.
  *
  * So the run comes inward from both ends and the two halves are matched where
  * they overlap. Each is correct up to its own scale; matching leaves one
@@ -216,13 +216,13 @@ inline std::pair<int, int> OrderRange(int l2, int l3, int m1) {
  * match is best conditioned.
  *
  * SLATEC watches the recurrence coefficient |c1| instead and stops when it
- * first rises, and so did this. It is a proxy, good in a row with an allowed
- * region because |c1| is smallest near the middle of one, and wrong in a
- * near-stretched row, where its minimum is nowhere near the hump: one half
- * then ran downhill, in the direction the unwanted solution grows. That cost
- * four digits where it cost least, and where the halves ended more than
- * 1e154 apart the join overflowed and the table could not be built at all --
- * which was more than half of all (l, 2l, l) tables up to l = 1000.
+ * first rises. That is a proxy, good in a row with an allowed region because
+ * |c1| is smallest near the middle of one, and wrong in a near-stretched row,
+ * where its minimum is nowhere near the hump: one half would then run
+ * downhill, in the direction the unwanted solution grows. That costs digits
+ * at best, and where the halves end more than 1e154 apart the join overflows
+ * and the table cannot be built at all -- which is the case for more than
+ * half of all (l, 2l, l) tables up to l = 1000.
  *
  * Schulten, K. and Gordon, R. G., J. Math. Phys. 16 (1975) 1961, and the
  * companion at 1971 for the semiclassical picture behind the turning points.
@@ -386,9 +386,9 @@ int SchultenGordonRow(int l1, int l2, int l3, int m1, std::span<T> g) {
  * and 2.8 in single precision, the worst always on a flat row such as
  * (0, l, l). Fifty is that with room for another compiler's arithmetic.
  *
- * It was a thousand, which was a guess, and a generous one: for a long row in
- * single precision it came to a tenth of the row's scale, and tables wrong by
- * a third of theirs passed it. A broken match shows up at order one in these
+ * A much looser constant would not do: a thousand, for a long row in single
+ * precision, comes to a tenth of the row's scale, and lets through tables
+ * wrong by a third of theirs. A broken match shows up at order one in these
  * units times the row length, so there is a great deal of room between the
  * two and no reason to sit at the far end of it.
  */
@@ -399,10 +399,9 @@ T ResidualTolerance(int steps) {
 
 /**
  * @brief Checks a completed row against the recurrence that defines it.
- * @details This is the runtime self-check, and it replaced the completeness
- * relation when the algorithm changed. Completeness was the right
- * check for a one-directional recursion seeded from a closed form; it is
- * nearly worthless against Schulten-Gordon, which normalises every row by
+ * @details This is the runtime self-check. The completeness relation, the
+ * natural check for a one-directional recursion seeded from a closed form,
+ * is nearly worthless against Schulten-Gordon, which normalises every row by
  * that very identity, so the sum is one by construction whatever the row
  * holds -- and in particular a mis-scaled join, which is this algorithm's
  * characteristic failure, passes it.
@@ -510,8 +509,8 @@ void Wigner3jPlane(int l1, int l2, int l3, std::span<T> table) {
   // or three digits left at l = 450 -- a flat row such as l1 = 0 shows it
   // plainly. Single precision is worth having for what is stored and moved,
   // and buys nothing in a recursion that runs once, so a row is computed in
-  // double and narrowed as it is scattered. The row was always a scratch
-  // buffer, so this costs the difference in its arithmetic and no memory.
+  // double and narrowed as it is scattered. The row is a scratch buffer in
+  // any case, so this costs the difference in its arithmetic and no memory.
   using Work = std::conditional_t<(std::numeric_limits<T>::digits <
                                    std::numeric_limits<double>::digits),
                                   double, T>;
@@ -528,7 +527,7 @@ void Wigner3jPlane(int l1, int l2, int l3, std::span<T> table) {
     if (not RowSatisfiesRecurrence<Work>(
             l1, l2, l3, m1, std::span<const Work>(row.data(), n), n)) {
       throw std::runtime_error(
-          "Wigner3jMatrix: the recurrence is not satisfied for degrees (" +
+          "Wigner 3-j symbols: the recurrence is not satisfied for degrees (" +
           std::to_string(l1) + ", " + std::to_string(l2) + ", " +
           std::to_string(l3) + ") at m1 = " + std::to_string(m1) +
           ". The values are not to be trusted.");
@@ -552,12 +551,14 @@ void Wigner3jPlane(int l1, int l2, int l3, std::span<T> table) {
 /**
  * @brief Fills user-provided storage with the table of Wigner 3j symbols
  * (l1 l2 l3; m1, -(m1+m3), m3) in row-major order, m1 being the row axis
- * and m3 the column axis. Allocation-free.
+ * and m3 the column axis. Allocates nothing but one row of scratch.
  * @tparam Range A contiguous, sized, readable and writable range of reals.
  * @param l1 The first degree.
  * @param l2 The second degree.
  * @param l3 The third degree.
- * @param table Storage of size (2 l1 + 1) x (2 l3 + 1).
+ * @param table Storage of at least (2 l1 + 1) x (2 l3 + 1) values.
+ * @throws std::invalid_argument if a degree is negative or the storage is too
+ * small; std::runtime_error if a row fails its self-check.
  */
 template <RealContiguousWritableRange Range>
 void FillWigner3jMatrix(int l1, int l2, int l3, Range&& table) {
@@ -571,13 +572,18 @@ void FillWigner3jMatrix(int l1, int l2, int l3, Range&& table) {
  * (-1)^m (l1 l2 l3; -m, m-mp, mp) in row-major order, m being the row axis
  * and mp the column axis: the first order negated, with an alternating phase.
  * This is the arrangement the symbols appear in within normal-mode coupling
- * matrices, and it is exactly the array a(m+l1+1, mp+l3+1) returned by the
- * Fortran routine wig2(l1, l2, l3, a, id1). Allocation-free.
+ * matrices, and element for element it is the array a(m+l1+1, mp+l3+1)
+ * returned by the Fortran routine wig2(l1, l2, l3, a, id1) -- the memory
+ * order differs, Fortran being column-major, so a buffer exchanged with
+ * Fortran directly is the transpose. Allocates nothing but one row of
+ * scratch.
  * @tparam Range A contiguous, sized, readable and writable range of reals.
  * @param l1 The first degree.
  * @param l2 The second degree.
  * @param l3 The third degree.
- * @param table Storage of size (2 l1 + 1) x (2 l3 + 1).
+ * @param table Storage of at least (2 l1 + 1) x (2 l3 + 1) values.
+ * @throws std::invalid_argument if a degree is negative or the storage is too
+ * small; std::runtime_error if a row fails its self-check.
  */
 template <RealContiguousWritableRange Range>
 void FillCouplingMatrix(int l1, int l2, int l3, Range&& table) {
@@ -601,7 +607,8 @@ void FillCouplingMatrix(int l1, int l2, int l3, Range&& table) {
  * mathematically consistent value of the symbol. The class models
  * std::ranges::random_access_range over its values, and therefore also
  * satisfies NumericConcepts::RealRange.
- * @tparam T The floating-point type used for computation and storage.
+ * @tparam T The floating-point type used for storage. Rows are computed in
+ * at least double precision and narrowed to T.
  */
 template <NumericConcepts::Real T>
 class Wigner3jMatrix {
@@ -729,12 +736,12 @@ class Wigner3jMatrix {
  * @details Stored as one Wigner3jMatrix per value of l2. By default l2
  * runs over the full triangle range [|l1 - l3|, l1 + l3], but any
  * non-negative range may be requested; matrices outside the triangle
- * range are identically zero. The middle degree was chosen as the degree
- * axis because that is the common pattern in applications (e.g. coupling
+ * range are identically zero. The middle degree is the degree axis because
+ * that is the common pattern in applications (e.g. coupling
  * through a structural degree l2 in normal-mode seismology); other
  * arrangements follow from the column-permutation symmetries of the
  * symbols. The stack is itself a range over its matrices.
- * @tparam T The floating-point type used for computation and storage.
+ * @tparam T The floating-point type used for storage, as for Wigner3jMatrix.
  */
 template <NumericConcepts::Real T>
 class Wigner3jStack {
