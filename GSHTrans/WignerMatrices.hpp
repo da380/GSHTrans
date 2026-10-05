@@ -35,17 +35,19 @@ namespace GSHTrans {
 /// The matrix kernel writes the Legendre stage as one matrix product per
 /// order,
 ///
-///     f^n_{lm} = sum_i D^(n,m)_{li} b^(m)_i,     D^(n,m)_{li} =
-///     X^n_{lm}(theta_i)
+///     f^n_{lm} = sum_i D^(n,m)_{li} b^(m)_i,
+///     D^(n,m)_{li} = X^n_{lm}(theta_i),
 ///
 /// and that needs D^(n,m) contiguous in (l, theta) at fixed (n, m). The table
 /// Wigner builds is contiguous in (l, m) at fixed (n, theta), which is the
 /// transpose of what is wanted. This class holds the other one.
 ///
-/// The total size is unchanged, which is worth stating because it is not
-/// obvious: summing (lMax - max(|n|,|m|) + 1) over m gives exactly the same
-/// count as summing (2 min(l, mMax) + 1) over l. The same triangle, read the
-/// other way. At lMax = 256 that is 66,045 values per upper index either way.
+/// In the full layout the total size is the same as Wigner's, which is worth
+/// stating because it is not obvious: summing (lMax - max(|n|,|m|) + 1) over m
+/// gives exactly the same count as summing (2 min(l, mMax) + 1) over l. The
+/// same triangle, read the other way. At lMax = 256 and |n| = 2 that is 66,045
+/// values per colatitude either way. The reflected layout (see Reflected())
+/// stores the non-negative orders only, so roughly half.
 ///
 /// -- Why a separate class, and not a layout flag on Wigner.
 ///
@@ -54,8 +56,8 @@ namespace GSHTrans {
 /// one (n, m), as a plain span a BLAS call can take. A single class serving
 /// both would carry two interfaces and would have to branch in the accessor
 /// the inner loop calls, which is the one place that cannot afford it. The
-/// grid already holds its table in an optional -- empty on a generating grid --
-/// so a second optional beside it is the shape that was already there.
+/// grid holds its Wigner table in an optional -- empty on a generating grid --
+/// and holds this in a second optional beside it.
 ///
 /// -- Why the values are generated rather than transposed.
 ///
@@ -73,9 +75,8 @@ namespace GSHTrans {
 /// A block computed for one (n, theta) scatters across every matrix, at stride
 /// NumberOfAngles() in the degree. That is one cache line per value written in
 /// the worst case. It is paid once, at construction and in parallel, where
-/// the loop kernel's table is written in the order it is computed; blocking
-/// over colatitudes would fix it and is not done until something says it
-/// needs fixing.
+/// the loop kernel's table is written in the order it is computed. Blocking
+/// over colatitudes would remove it, and is not done.
 template <RealFloatingPoint Real_, OrderIndexRange MRange_ = All,
           IndexRange NRange_ = All>
 class WignerMatrices {
@@ -88,7 +89,7 @@ class WignerMatrices {
 
   WignerMatrices() = default;
 
-  /// Every order the alphabet has.
+  /// Every order MRange admits.
   template <std::ranges::range Range>
   requires RealFloatingPoint<std::ranges::range_value_t<Range>>
   static auto Full(Int lMax, Int mMax, Int nMax, Range &&theta) {
@@ -96,7 +97,7 @@ class WignerMatrices {
   }
 
   /// Non-negative orders only, the negative ones recovered from the reflection
-  /// Requires colatitudes symmetric about pi/2, and checks it.
+  /// (see Sign()). Requires colatitudes symmetric about pi/2, and checks it.
   template <std::ranges::range Range>
   requires RealFloatingPoint<std::ranges::range_value_t<Range>>
   static auto Reflected(Int lMax, Int mMax, Int nMax, Range &&theta) {
@@ -175,7 +176,7 @@ class WignerMatrices {
   /** @brief The largest order stored. */
   auto MaxOrder() const { return mMax_; }
 
-  /// Zero when reflected, whatever the alphabet: the negative orders are not
+  /// Zero when reflected, whatever MRange: the negative orders are not
   /// stored and are reached through Sign() instead.
   auto MinOrder() const {
     if (reflected_) return Int{0};
@@ -299,8 +300,8 @@ class WignerMatrices {
   requires RealFloatingPoint<std::ranges::range_value_t<Range>>
   void ComputeAll(Range &&thetaRange) {
     // Recursed in at least double and narrowed at the scatter below; see
-    // WignerRecursionReal. The block was always computed into scratch here,
-    // so for single precision this is a change of the scratch's type.
+    // WignerRecursionReal. The block is computed into scratch in any case, so
+    // for single precision the only cost is a wider scratch type.
     using Work = WignerRecursionReal<Real>;
     const auto [sqrtInt, sqrtIntInv] =
         WignerDetails::PreComputeRecursionTables<Real>(lMax_, mMax_, nMax_);

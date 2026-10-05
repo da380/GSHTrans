@@ -37,6 +37,14 @@ void Fill(T& t, Real tag) {
 
 }  // namespace
 
+// Real tensors: one representative is stored per orbit of negation (and of
+// the symmetry group, where there is one), the rest is derived through
+// T^{-alpha} = (-1)^N conj(T^{alpha}). Checked here: that the storage is the
+// real degrees of freedom, that every derived component satisfies the
+// reality condition, that a self-paired component is pinned to one real
+// number, that the condition survives a transform, and that a real tensor
+// can be produced from an expression.
+
 //--------------------------------------------------------------------------//
 //                          What a real tensor stores                        //
 //--------------------------------------------------------------------------//
@@ -44,8 +52,7 @@ void Fill(T& t, Real tag) {
 TEST(TensorReality, StorageIsTheRealDegreesOfFreedom) {
   // Two reals for each complex component and one for each the reality
   // condition pins, which is 3^p -- the real degrees of freedom of a real
-  // rank-p tensor, and the theory note's claim that "the reduction loses
-  // nothing".
+  // rank-p tensor: the reduction loses nothing.
   static_assert(
       (TensorField<1, NoSymmetry<1>, RealTensor, Grid>::RealsPerPoint) == 3);
   static_assert(
@@ -82,8 +89,8 @@ TEST(TensorReality, PinnedComponentsAreRealFieldsAtUpperIndexZero) {
   EXPECT_EQ(t.RealSize(), 1 * t.FieldSize());
 
   // The all-zero component is the pinned one, and it is a real-valued field.
-  // Phase 1 admits RealValued only at upper index zero, which is exactly
-  // where a self-paired component must sit.
+  // The spin-field layer admits RealValued only at upper index zero, which
+  // is exactly where a self-paired component must sit.
   auto zero = t.Component<0, 0>();
   static_assert(std::same_as<typename decltype(zero)::Value, RealValued>);
   static_assert(decltype(zero)::UpperIndex == 0);
@@ -150,9 +157,9 @@ TEST(TensorReality, EveryComponentSatisfiesTheRealityCondition) {
 }
 
 TEST(TensorReality, TheVectorCaseIsTheOneTheTheoryNoteSpellsOut) {
-  // "For a vector this reads u^0 = conj(u^0) and u^- = -conj(u^+): the radial
-  // component is a real field, and the two transverse components are not
-  // independent."
+  // For a vector the reality condition reads u^0 = conj(u^0) and
+  // u^- = -conj(u^+): the radial component is a real field, and the two
+  // transverse components are not independent.
   using V = TensorField<1, NoSymmetry<1>, RealTensor, Grid>;
   auto grid = TestGrid();
   auto v = V(grid);
@@ -173,7 +180,7 @@ TEST(TensorReality, TheVectorCaseIsTheOneTheTheoryNoteSpellsOut) {
   EXPECT_NEAR(std::imag(plus), std::imag(-std::conj(minus)), 1.0e-14);
 
   // The derived component carries the reversed upper index, which is what
-  // conj does and what the layer it replaced got wrong.
+  // conj does.
   static_assert(decltype(u.Component<-1>())::UpperIndex == -1);
   static_assert(decltype(u.Component<1>())::UpperIndex == 1);
 }
@@ -196,7 +203,7 @@ TEST(TensorReality, DerivedComponentsAreNotWritable) {
 //--------------------------------------------------------------------------//
 
 TEST(TensorReality, SymmetricRealTensorMatchesTheWorkedExample) {
-  // The theory note's worked check: four orbits, six reals, and two of the
+  // The worked symmetric rank-2 case: four orbits, six reals, and two of the
   // four stored components real-valued -- {(00)} and the self-paired
   // {(-+), (+-)}.
   using T = TensorField<2, Symmetric<2>, RealTensor, Grid>;

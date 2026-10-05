@@ -17,9 +17,8 @@ namespace GSHTrans {
 //
 // The seam of RadialOperator.hpp is where the library stops: it applies
 // whatever callable it is given along the radial axis and owns no
-// discretisation. That is still true. What these add is that `Gradient` can be
-// used without the caller writing a differentiation matrix first, which until
-// now they had to.
+// discretisation. These do not change that. What they add is that `Gradient`
+// can be used without the caller writing a differentiation matrix first.
 //
 // They are also meant to be *read*. Each is a type satisfying RadialOperator
 // and nothing more, so a caller whose discretisation is none of these has a
@@ -204,8 +203,9 @@ void RequireDistinctRadii(std::span<const Real> radii, const char* remedy) {
 /// The weights are Fornberg's, so unequal spacing costs nothing extra and the
 /// rule is exact for polynomials of degree at most `order`. This is the one to
 /// reach for by default: it is banded, so a line costs `nR * (order + 1)`
-/// multiplications, and it is the only one here whose cost does not grow with
-/// the number of radii.
+/// multiplications, and its cost per radius is set by the order alone --
+/// neither by the number of radii, as for LagrangeDerivative, nor by the size
+/// of an element, as for ElementDerivative.
 template <RealFloatingPoint Real_>
 class FiniteDifferenceDerivative {
  public:
@@ -433,9 +433,9 @@ class LagrangeDerivative {
 /// approximation: the field is not assumed differentiable across an interface,
 /// because at a material interface it is not.
 ///
-/// **What makes this well defined is the element structure.** The blocks
-/// are disjoint, so two
-/// elements meet at a repeated radius and each owns one of the pair. The
+/// **What makes this well defined is the element structure.** The blocks are
+/// disjoint, so two elements meet at a repeated radius and each owns one of the
+/// pair. The
 /// derivative at an interface is therefore two numbers, one per side, each
 /// stored at its own index -- which is what a discontinuity *is*, and is the
 /// same pair `Interpolation::Piecewise::Limits` hands back. Had the elements

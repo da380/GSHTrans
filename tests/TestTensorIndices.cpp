@@ -4,6 +4,12 @@
 #include <array>
 #include <cstddef>
 
+// The combinatorics under the tensor layer, all at compile time: the
+// multi-index and its upper index, and the orbit table that decides which
+// components are stored, which are derived and how, which vanish, and which
+// are pinned to one real number -- for the general and the tangential
+// alphabets, with and without permutation symmetry and reality.
+
 namespace {
 
 using namespace GSHTrans;
@@ -74,7 +80,7 @@ TEST(MultiIndex, SizeIsThreeToTheRank) {
   SUCCEED();
 }
 
-// Theory note table 1: the upper index of each component of a rank-2 tensor.
+// The upper index of each component of a rank-2 tensor.
 // The point of the table is that the multi-index and the upper index are
 // different things -- three distinct components share N = 0.
 TEST(MultiIndex, UpperIndexIsTheSignedSum) {
@@ -125,8 +131,10 @@ TEST(MultiIndex, NegationIsAnInvolutionWithOneFixedPoint) {
 //                                  Orbits                                   //
 //--------------------------------------------------------------------------//
 
-// Theory note table 2, the storage table for a real tensor under negation
-// alone. These are the numbers the reduction is claimed to achieve.
+// The storage table for a real tensor under negation alone
+// (docs/gshtrans-reference.tex, "Which components must be stored"): one
+// stored component per negation orbit, which is the saving the reduction is
+// claimed to achieve.
 TEST(Orbits, ReproducesTheStorageTableOfTheTheoryNote) {
   static_assert((StoredCount<0, NoSymmetry<0>, true>()) == 1);
   static_assert((StoredCount<1, NoSymmetry<1>, true>()) == 2);
@@ -151,16 +159,17 @@ TEST(Orbits, ReproducesTheStorageTableOfTheTheoryNote) {
   static_assert(realCount.template operator()<4>() == 1);
 
   // And the storage in reals is 3^p, the real degrees of freedom of a real
-  // rank-p tensor. "The reduction loses nothing."
+  // rank-p tensor: the reduction loses nothing.
   static_assert((RealsPerPoint<1, NoSymmetry<1>, true>()) == 3);
   static_assert((RealsPerPoint<2, NoSymmetry<2>, true>()) == 9);
   static_assert((RealsPerPoint<4, NoSymmetry<4>, true>()) == 81);
   SUCCEED();
 }
 
-// The theory note's worked check, which it offers as evidence that the orbit
-// construction is the right abstraction. Four orbits, six reals, and the
-// membership is what makes it a check rather than a coincidence of counts.
+// The worked symmetric rank-2 case (docs/gshtrans-reference.tex, "Reality"),
+// which is evidence that the orbit construction is the right abstraction.
+// Four orbits, six reals, and the membership is what makes it a check rather
+// than a coincidence of counts.
 TEST(Orbits, ReproducesTheWorkedSymmetricRankTwoExample) {
   constexpr auto table = MakeOrbitTable<2, Symmetric<2>, true>();
   constexpr auto Flat = [](Int a, Int b) {
@@ -230,9 +239,9 @@ TEST(Orbits, AntisymmetryAnnihilatesTheDiagonal) {
   SUCCEED();
 }
 
-// The case rank 4 is exposed for. The theory note does not mention it, which
-// makes it the strongest check here: nothing in the machinery knows about
-// elasticity, and 21 is the answer everyone already knows.
+// The case rank 4 is exposed for, and the strongest check here: nothing in
+// the machinery knows about elasticity, and 21 is the answer everyone already
+// knows.
 TEST(Orbits, ElasticSymmetryGivesTwentyOneIndependentComponents) {
   static_assert((StoredCount<4, ElasticSymmetry, false>()) == 21);
   static_assert((RealsPerPoint<4, ElasticSymmetry, true>()) == 21);
@@ -301,7 +310,7 @@ TEST(Orbits, RealityReducesOnlyARealTensor) {
 //--------------------------------------------------------------------------//
 
 // A tangential tensor has no radial slot: every index runs over {-1, +1}. The
-// point of these tests is not the tangential case itself but that nothing was
+// point of these tests is not the tangential case itself but that nothing is
 // special-cased to reach it -- the same MultiIndex, the same orbit walk, the
 // same symmetry policies, told only which multi-indices exist.
 
@@ -406,10 +415,9 @@ TEST(MultiIndex, TangentialNegationHasNoFixedPoint) {
 //
 // With no permutation symmetry, negation is fixed-point-free, so every orbit
 // has size two: 2^{Rank-1} stored components, none of them pinned. That last
-// is the interesting half -- the pinned components are the second buffer
-// the reality reduction had to introduce, and a tangential tensor with no
-// symmetry does not
-// have one.
+// is the interesting half -- the pinned components are what the reality
+// reduction keeps in a second buffer, and a tangential tensor with no
+// symmetry does not have one.
 TEST(Orbits, ATangentialTensorWithoutSymmetryHasNoPinnedComponents) {
   static_assert((StoredCount<1, NoSymmetry<1>, true, TangentialSlots>()) == 1);
   static_assert((StoredCount<2, NoSymmetry<2>, true, TangentialSlots>()) == 2);
@@ -444,7 +452,7 @@ TEST(Orbits, ATangentialTensorWithoutSymmetryHasNoPinnedComponents) {
 //
 // Negation maps (-+) to (+-) and the symmetry maps it back, so that component
 // is related to its own conjugate and pinned real. Nothing in the machinery
-// was told that; it is what the orbit walk finds when two routes reach the
+// is told that; it is what the orbit walk finds when two routes reach the
 // same component and the two expressions are equated.
 TEST(Orbits, ASymmetricTangentialTensorIsARealSymmetricTwoByTwoMatrix) {
   static_assert((StoredCount<2, Symmetric<2>, true, TangentialSlots>()) == 2);
@@ -480,7 +488,7 @@ TEST(Orbits, ASymmetricTangentialTensorIsARealSymmetricTwoByTwoMatrix) {
 
 // A symmetry is generated by signed permutations, and the orbit walk takes
 // that on trust -- so it is asked of the type. An image that repeats a slot
-// would otherwise have produced a table, and a tensor storing too little.
+// would otherwise produce a table, and a tensor storing too little.
 static_assert(TensorSymmetry<Symmetric<3>, 3>);
 static_assert(TensorSymmetry<ElasticSymmetry, 4>);
 static_assert(

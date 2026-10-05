@@ -30,7 +30,7 @@
  *
  * @see WignerMatrices.hpp, which holds the same values in the layout a matrix
  * product wants, and is checked against this one.
- * @see docs/canonical-components.tex for the conventions.
+ * @see docs/gshtrans-reference.tex, "Conventions", for the conventions.
  */
 
 #include <algorithm>
@@ -147,9 +147,8 @@ class Arguments {
   // The linear values are kept as well as their logarithms. The closed forms
   // below, and the seed row at a large upper index, need the logarithms,
   // because they form sqrt((2l)!/...) which is of order 4^l; the recursions
-  // need the values themselves, and they stay
-  // bounded because each step multiplies by about 2 sin(theta/2) cos(theta/2),
-  // which is sin(theta).
+  // need the values themselves, and they stay bounded because each step
+  // multiplies by about 2 sin(theta/2) cos(theta/2), which is sin(theta).
   constexpr auto SinHalf() const { return sinHalf_; }
   constexpr auto CosHalf() const { return cosHalf_; }
 
@@ -162,6 +161,10 @@ class Arguments {
   bool atRight_;
 };
 
+// The boundary values d^l_{n,-l}, d^l_{n,l}, d^l_{-l,m} and d^l_{l,m} in
+// closed form. ComputeBlock does not use them -- it runs the boundary up the
+// degrees instead, see BoundaryValues -- and they are kept as an independent
+// reference that the tests check the recursion against.
 template <std::integral Int, RealFloatingPoint Real>
 constexpr auto WignerMinOrder(Int l, Int n, const Arguments<Real> &arg) {
   // Check the inputs.
@@ -220,12 +223,12 @@ constexpr auto IntegerPower(Real x, std::ptrdiff_t k) {
 // The two boundary values of a degree, run up the degrees rather than
 // evaluated in closed form at each one.
 //
-// Compute needs d^l_{n,-l} and d^l_{n,l} once per degree, and the closed forms
-// above cost three lgamma and an exp apiece. Paid once inside grid
+// ComputeBlock needs d^l_{n,-l} and d^l_{n,l} once per degree, and the closed
+// forms above cost three lgamma and an exp apiece. Paid once inside grid
 // construction that is affordable; paid inside a transform, which is what a
-// generating Wigner supplier does, it is of order 131k
-// transcendental evaluations per upper index per transform at lMax = 256,
-// comparable to the whole transform.
+// generating Wigner supplier does, it is of order 131k transcendental
+// evaluations per upper index per transform at lMax = 256, comparable to the
+// whole transform.
 //
 // The boundary obeys a one-term recursion in l. Writing
 //
@@ -256,8 +259,9 @@ constexpr auto IntegerPower(Real x, std::ptrdiff_t k) {
 // 0 or 1 that the closed form's AtLeft and AtRight branches return, and the
 // factor is zero thereafter.
 //
-// Values are unnormalised. Compute applies sqrt((2l+1)/4pi) to the whole block
-// afterwards, which is also the contract a generating supplier must meet.
+// Values are unnormalised. ComputeBlock applies sqrt((2l+1)/4pi) to the whole
+// block afterwards, so that a generating supplier, which calls ComputeBlock
+// too, gets the same stored values.
 template <RealFloatingPoint Real>
 class BoundaryValues {
  public:
@@ -273,8 +277,8 @@ class BoundaryValues {
                                         2 * (n < 0 ? -n : n))} {}
 
   // Move to the next degree. Degrees must be visited in ascending order from
-  // |n|, which is what Compute's loops already do; the recursion carries no
-  // way to skip one or to go back.
+  // |n|, which is what ComputeBlock's loops do; the recursion carries no way
+  // to skip one or to go back.
   constexpr void Advance() {
     l_++;
     const auto Fl = static_cast<Real>(l_);
@@ -306,10 +310,10 @@ class BoundaryValues {
 // The square-root tables the recursion indexes: sqrt(k) and its reciprocal,
 // for k up to lMax + max(mMax, |n|).
 //
-// Lifted out of Wigner::PreCompute for the same reason as ComputeBlock: a
-// generating grid needs them without needing a table, and two definitions of
-// the same tables would be one too many. They are the tiny tables that replace
-// the large one -- 2 lMax + 1 entries each.
+// Free-standing for the same reason as ComputeBlock: a generating grid needs
+// them without needing a table, and two definitions of the same tables would
+// be one too many. They are the tiny tables that replace the large one -- at
+// most 2 lMax + 1 entries each.
 template <RealFloatingPoint Real>
 auto PreComputeTables(std::ptrdiff_t lMax, std::ptrdiff_t mMax,
                       std::ptrdiff_t nMax) {
@@ -332,13 +336,10 @@ auto PreComputeTables(std::ptrdiff_t lMax, std::ptrdiff_t mMax,
 // The recursion itself, as a pure function of a destination view, an upper
 // index, a colatitude and the two square-root tables.
 //
-// Lifted out of Wigner::Compute unchanged, so that the values can be written
-// somewhere other than a stored table -- into per-thread scratch inside a
-// transform, which is what a generating grid does. Wigner::Compute is the
-// wrapper that points the view at its own storage.
-// The destination's degree and order bounds come from the view, so a caller
-// wanting only the degrees up to some truncation asks for a view of that
-// extent and pays for no more.
+// Free-standing so that the values can be written somewhere other than a
+// stored table -- into per-thread scratch inside a transform, which is what a
+// generating grid does, or into WignerMatrices' scratch before its scatter.
+// Wigner::Compute is the wrapper that points the view at Wigner's own storage.
 template <RealFloatingPoint Real, OrderIndexRange MRange>
 constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
                             Real theta, std::span<const Real> sqrtInt,
@@ -367,10 +368,10 @@ constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
   // recursion this is not about cost.
   //
   // It is about lgamma. glibc's writes the global signgam, and ComputeAll
-  // calls Compute from every thread, so the closed form is a data race here
-  // -- benign, since nothing reads signgam, but the only genuine one
-  // ThreadSanitizer finds in this library. The values are also exact this
-  // way, where the closed form is merely accurate.
+  // calls Compute from every thread, so the closed form would be a data race
+  // here -- benign, since nothing reads signgam, but one ThreadSanitizer
+  // reports. The values are also exact this way, where the closed form is
+  // merely accurate.
   {
     const auto l = nAbs;
     const auto s = arg.SinHalf();
@@ -382,12 +383,11 @@ constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
     // The binomial itself is formed only while it fits. C(2l, l) is about
     // 4^l, so past l = max_exponent / 2 it overflows before its root is taken
     // -- |n| above 508 in double -- and the row, and everything recursed from
-    // it, came back non-finite. Beyond that the entry is formed from
+    // it, would come back non-finite. Beyond that the entry is formed from
     // logarithms instead: the binomial's as a running sum, which needs no
     // lgamma, and the two that Arguments already carries. That is accurate
-    // and not exact, which is why it is not simply used throughout: every
-    // table anyone has built sits below the switch, and stays bit for bit
-    // what it was.
+    // and not exact, which is why it is not used throughout: below the switch
+    // the seed row is exact.
     constexpr auto directLimit =
         static_cast<Int>((std::numeric_limits<Real>::max_exponent - 8) / 2);
 
@@ -535,7 +535,7 @@ constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
       }
     }
 
-    // Apply two-term recusion for the interior orders.
+    // Apply two-term recursion for the interior orders.
     {
       const auto alpha =
           (2 * l - 1) * l * cos * sqrtIntInv[l - n] * sqrtIntInv[l + n];
@@ -571,8 +571,6 @@ constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
 
     // Add in the upper boundary term at the critical degree.
     if (l == mMax + 1) {
-      // Update the iterators.
-
       const auto f1 = (2 * l - 1) * (l * (l - 1) * cos - m * n) *
                       sqrtIntInv[l - n] * sqrtIntInv[l + n] *
                       sqrtIntInv[l - m] * sqrtIntInv[l + m] /
@@ -686,8 +684,9 @@ class Wigner {
    * @param nMax The largest upper index.
    * @param theta The colatitudes, in @f$[0, \pi]@f$.
    * @throws std::invalid_argument if the degree or the largest order is
-   * negative, if the upper index exceeds the degree or is negative in a table
-   * holding more than one, or if a colatitude lies outside @f$[0, \pi]@f$.
+   * negative, if the degree exceeds MaxSafeDegree, if the upper index exceeds
+   * the degree or is negative in a table holding more than one, or if a
+   * colatitude lies outside @f$[0, \pi]@f$.
    */
   template <std::ranges::random_access_range Range>
   requires std::ranges::sized_range<Range> &&
@@ -879,8 +878,9 @@ class Wigner {
 
   // The shape, checked before anything is sized by it. This is a public class
   // and these are a caller's numbers; left to the index classes' asserts they
-  // were unchecked in a Release build, where an upper index above the degree
-  // made a block's size negative and the table was written through anyway.
+  // would be unchecked in a Release build, where an upper index above the
+  // degree makes a block's size negative and the table would be written
+  // through anyway.
   static Int Checked(Int lMax, Int mMax, Int nMax) {
     if (lMax < 0) {
       throw std::invalid_argument(

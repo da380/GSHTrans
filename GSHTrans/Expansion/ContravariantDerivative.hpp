@@ -36,8 +36,7 @@ namespace GSHTrans {
 // coefficients of a rank-q tensor to those of the rank-(q+1) tensor grad T:
 //
 //   (grad T)^{sigma a_1...a_q}_{lm} = Omega^{-+N}_l T^{a_1...a_q}_{lm}
-//                                     - sum_i T^{a_1...(a_i +
-//                                     sigma)...a_q}_{lm}
+//                       - sum_i T^{a_1...(a_i + sigma)...a_q}_{lm}
 //
 // for sigma = +-1, the upper sign going with sigma = -1. The operator
 // *prepends* a slot, and the result carries upper index sigma + N, which is
@@ -185,9 +184,8 @@ void FillComponent(Result& result, const Expansion& operand,
 // does not close on a tangential tensor and no signature over that alphabet
 // would be honest. A tangential operand is embedded first and then
 // differentiated, in that order and visibly, which is why the deduction below
-// simply does not match one. What
-// *is* closed on a tangential tensor is the intrinsic derivative, and that
-// has a name of its own.
+// simply does not match one. What *is* closed on a tangential tensor is the
+// intrinsic derivative, and that has a name of its own.
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
           TensorReality Reality, AngularGrid Grid>
 auto SurfaceGradient(

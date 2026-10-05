@@ -159,8 +159,8 @@ concept ScalarFor_ = SpinFieldExpr<A> and
                        std::same_as<RemoveComplex<S>, typename Node<A>::Real>));
 
 // The scalar as the field's own precision: a real one -- an integer included
-// -- as Real, a complex one as std::complex<Real>. Which of the two decides
-// the value kind of the result, exactly as before.
+// -- as Real, a complex one as std::complex<Real>. Which of the two it is
+// decides the value kind of the result.
 template <typename S, typename A>
 using ScalarOf = std::conditional_t<ComplexFloatingPoint<S>,
                                     std::complex<typename Node<A>::Real>,
@@ -234,8 +234,8 @@ auto operator-(A&& a) {
   return Unary<SpinFieldOps::Negated, IndexRules::Same, A>(std::forward<A>(a));
 }
 
-// Conjugation reverses the upper index; see section 5 of the theory note,
-// docs/canonical-components.tex.
+// Conjugation reverses the upper index; see "Reality" in
+// docs/gshtrans-reference.tex.
 template <SpinFieldExpr A>
 auto conj(A&& a) {
   return Unary<SpinFieldOps::Conjugated, IndexRules::Negate, A>(

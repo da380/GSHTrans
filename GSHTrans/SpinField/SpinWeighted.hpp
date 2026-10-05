@@ -23,9 +23,9 @@ namespace GSHTrans {
 //
 // The unit is deliberately a single component, not a tensor. For rank >= 2 a
 // collection labelled only by an upper index does not determine a tensor (see
-// section 2 of the theory note, docs/canonical-components.tex), so tensors
-// are built from these at the
-// tensor layer rather than being what this layer is about.
+// "Canonical components" in docs/gshtrans-reference.tex), so tensors
+// are built from these at the tensor layer rather than being what this layer
+// is about.
 
 // The scalar a node evaluates to: Real when the node is real-valued, Complex
 // otherwise.
@@ -96,13 +96,13 @@ using Node = std::remove_cvref_t<T>;
 // real-valued expression into a complex field and makes the reverse a compile
 // error rather than a truncation.
 //
-// **A concept, and it has to be one.** This was a `static constexpr bool`
-// member of SpinField, written as a chain of `and`s beginning with
-// SpinWeighted. That is ill-formed for any operand that is not spin-weighted,
-// because `and` short-circuits *evaluation* and not *well-formedness*: the
-// initialiser still names Node<Expr>::UpperIndex, which does not exist. GCC
-// accepted it and clang did not, so a grid passed where a field's constructor
-// was being considered failed to compile there and nowhere else.
+// **A concept, and it has to be one.** Written as a `static constexpr bool`
+// chain of `and`s beginning with SpinWeighted, it would be ill-formed for any
+// operand that is not spin-weighted, because `and` short-circuits *evaluation*
+// and not *well-formedness*: the initialiser would still name
+// Node<Expr>::UpperIndex, which does not exist. GCC accepts that and clang
+// does not, so (for example) a grid passed where a field's constructor is
+// being considered would fail to compile under clang alone.
 //
 // Concept conjunction is the construct that actually short-circuits: an
 // atomic constraint is only checked once the ones before it are satisfied, so
@@ -145,21 +145,19 @@ concept AngularGrid = requires(const G& grid) {
   // The two axes separately, which is more than an evaluation loop needs and
   // is required anyway.
   //
-  // The expression layer only ever walks Points(), so this used to be left
-  // out and Interpolate carried its own refinement asking for it -- a
-  // rectilinear interpolant takes one abscissa range per axis, and the polar
-  // padding has to build each of them. Grids on this library's terms are
-  // separable, since SphericalGrid holds the two axes and forms Points() from
-  // them, so the refinement was describing every grid there is. Asking here
-  // instead means one concept rather than two, and Points() becomes a
-  // convenience the grid already provides rather than a separate demand.
+  // The expression layer only ever walks Points(), but Interpolate needs the
+  // axes -- a rectilinear interpolant takes one abscissa range per axis, and
+  // the polar padding has to build each of them. Grids on this library's
+  // terms are separable, since SphericalGrid holds the two axes and forms
+  // Points() from them, so a separate refinement asking for the axes would
+  // describe every grid there is. Asking here means one concept rather than
+  // two.
   //
   // Written against range_value_t rather than *begin(...): an axis accessor
   // returns a view by value, and views::all of a prvalue container is an
   // owning_view, which is not a borrowed range -- so ranges::begin on the
   // returned prvalue is ill-formed for such a grid even though it plainly has
-  // the axis. That cost a debugging session when Interpolate's local concept
-  // was first written.
+  // the axis.
   requires std::convertible_to<
       std::ranges::range_value_t<decltype(grid.CoLatitudes())>,
       typename G::Real>;
@@ -179,7 +177,8 @@ concept AngularGrid = requires(const G& grid) {
 
 // The default EvaluateInto: read every point through operator[] and write it
 // in the canonical order, phi fastest. Terminals override this with a
-// contiguous copy; expressions and views use it as it stands.
+// contiguous copy and views with a (possibly strided) copy; expression nodes
+// use it as it stands.
 //
 // Evaluation is const and stateless, so several threads may evaluate the same
 // node concurrently into disjoint targets. That is a documented guarantee, not
@@ -323,9 +322,10 @@ struct Negate {
   static constexpr Int Apply = -N;
 };
 
-// abs, abs2, real, imag and Map all land at zero -- which is precisely why
-// real and imag are admissible only there, since that is the only place their
-// results could be real.
+// abs, abs2, real, imag and Map all land at zero, whatever the operand's
+// upper index. The rule itself admits any operand; real, imag and Map further
+// require theirs to be at zero, and that restriction is on the free functions
+// in SpinFieldOverloads.hpp.
 struct Zero {
   template <Int N>
   static constexpr bool Admissible = true;

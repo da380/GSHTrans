@@ -8,8 +8,8 @@
  * @details A coefficient buffer is a flat array; these give it the
  * @f$(l, m)@f$ structure without copying or owning anything. Each pairs a
  * pointer with a GSHIndices, which supplies the arithmetic, and adds nothing
- * else — so a view is two words and is meant to be made, used within one
- * expression, and let go.
+ * else — so a view is a pointer and a few integers, and is meant to be made,
+ * used within one expression, and let go.
  *
  * There are four rather than two because constness is carried in the type
  * rather than in a template parameter: GSHView writes, ConstGSHView reads, and

@@ -1,20 +1,36 @@
 // 18 -- The radial seam, and the operators that come ready made
 //
-// Example 16 showed the seam: the library applies whatever callable it is
-// given along the radial axis and owns no discretisation. That is still the
-// arrangement, and it is the point rather than a gap -- a finite-difference
-// derivative is banded, a spectral-element one is block-diagonal, and a caller
-// with a factorisation wants to apply it rather than hand over a matrix.
+// What this shows. Example 16 introduced the seam: the library applies
+// whatever callable it is given along the radial axis, and does not own the
+// radial discretisation. That is deliberate -- a finite-difference derivative
+// is banded, a spectral-element one is block-diagonal, and a caller with a
+// factorisation wants to apply it rather than hand over a matrix.
 //
-// What this example adds is that a few operators now come with the library, so
-// nothing has to be written before a gradient will run. They are also worth
-// reading: each is a worked example of the two obligations the seam states,
-// for a caller whose discretisation is none of them.
+// A few radial derivatives are supplied (GSHTrans/Layered/
+// RadialDerivatives.hpp and RadialSplineDerivative.hpp), so a gradient can be
+// taken without writing one first. They are conveniences, not the library's
+// claim on the radial half: production codes use a finite-element basis,
+// finite differences or a radial spectral basis -- Chebyshev, say, which
+// would sit behind this same seam as a transform, a multiply and a transform
+// back. They are also worth reading as worked examples of the two rules any
+// radial operator must follow.
 //
-// The library is not trying to own the radial half. Production codes use a
-// finite-element basis, finite differences, or a radial spectral basis --
-// Chebyshev, say, which would sit behind this same seam as a transform, a
-// multiply and a transform back. These are conveniences.
+// The example then shows the second layout a radial code needs. A layered
+// field is stored radius-major, [r][(l, m)], which is what the angular
+// transform wants. A radial solve wants [(l, m)][r], where each radial line
+// is a contiguous vector; ExpandToLines, ApplyToLines and EvaluateLines work
+// in that layout directly.
+//
+// Read first. 07 (threading policy), 16 (layered fields, ApplyRadially,
+// Gradient).
+//
+// Introduced. FiniteDifferenceDerivative, LagrangeDerivative and, when the
+// Interpolation dependency is present, SplineDerivative; the RadialOperator
+// contract; ExpandToLines, ApplyToLines, EvaluateLines.
+//
+// The output. Errors in d/dr of r^3 for each operator on an uneven grid;
+// the Laplacian of r^2 Y_3^1 from two applications of Gradient; and the
+// lines route agreeing exactly with the gather route.
 
 #include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
@@ -35,13 +51,17 @@ int main() {
   constexpr auto lMax = Int{8};
   auto grid = Grid(lMax, 2);
 
-  // Deliberately uneven: every operator here takes the spacing as it finds it,
-  // and a rule that quietly assumed a uniform grid would pass on one.
+  // Six radii, deliberately unevenly spaced: every operator here takes the
+  // spacing as it finds it, and a rule that quietly assumed a uniform grid
+  // would pass a test on a uniform one. No weights are given, since nothing
+  // here integrates.
   const auto radii = std::vector<Real>{0.40, 0.55, 0.70, 1.00, 1.30, 1.45};
   auto radial = RadialGrid<Real>(radii);
 
   std::cout << std::scientific << std::setprecision(3);
 
+  // Apply an operator to one line by hand, which is all a radial operator
+  // is: a const call taking an input span and an output span of nR values.
   const auto line = [&](const auto& op, const std::vector<Real>& in) {
     auto out = std::vector<Real>(in.size());
     op(std::span<const Real>(in), std::span<Real>(out));
@@ -52,17 +72,22 @@ int main() {
   // Three operators, and what distinguishes them
   //------------------------------------------------------------------------//
 
-  // Finite differences: banded, exact for polynomials up to the order asked
-  // for, centred where there is room and one-sided at the ends -- which is
-  // what makes it usable on a grid that *has* ends, those being exactly the
-  // radii a boundary condition is applied at. The one to reach for by
-  // default.
+  // Finite differences with Fornberg's weights: banded, exact for
+  // polynomials of degree up to the order asked for (here 4, a five-point
+  // stencil), centred where there is room and one-sided at the ends -- which
+  // is what makes it usable on a grid that *has* ends, those being exactly
+  // the radii a boundary condition is applied at. Its cost per line grows
+  // with nR only linearly. The one to reach for by default.
   const auto fd = FiniteDifferenceDerivative<Real>(radial, 4);
 
-  // The differentiation matrix of the nodes: exact to the highest degree any
-  // operator on them could be, and the right thing on a few nodes -- the
-  // Gauss-Lobatto points of one element, say. Wrong on many: the cost is
-  // quadratic and a global polynomial through many points diverges.
+  // The differentiation matrix of the nodes: d/dr of the polynomial of
+  // degree nR - 1 through all of them. Exact to the highest degree any
+  // operator on these nodes could be, and the right thing on a few nodes --
+  // the Gauss-Lobatto points of one element, say. Wrong on many: the cost is
+  // nR^2 per line, and a global polynomial through many equally spaced
+  // points diverges.
+  //
+  // Both are exact on a cubic, so the errors printed are rounding.
   const auto lagrange = LagrangeDerivative<Real>(radial);
 
   auto cubic = std::vector<Real>{};
@@ -81,14 +106,15 @@ int main() {
   }
 
 #ifdef GSHTRANS_HAVE_INTERPOLATION
-  // The spline: global like the matrix but linear in the number of radii, and
-  // unlike a global polynomial it does not fall apart as the nodes multiply.
-  // Built on Interpolation's factorised system, so it exists only when that
-  // optional dependency does.
+  // The cubic spline: global like the matrix but linear in the number of
+  // radii, and unlike a global polynomial it does not fall apart as the nodes
+  // multiply. Built on Interpolation's factorised spline system, so it exists
+  // only when that optional dependency does (GSHTRANS_HAVE_INTERPOLATION).
   //
-  // Its end conditions matter. Natural forces the second derivative to zero at
-  // the ends, which is wrong for a curve whose is not; not-a-knot stays fourth
-  // order right up to them.
+  // Its end conditions matter. Natural, the default, forces the second
+  // derivative to zero at the ends, which is wrong for a curve whose is not;
+  // not-a-knot stays fourth order right up to them, and reproduces a cubic
+  // exactly.
   const auto natural = SplineDerivative<Real>(radial);
   const auto notAKnot = SplineDerivative<Real>(
       radial, BoundaryCondition::NotAKnot, BoundaryCondition::NotAKnot);
@@ -111,18 +137,24 @@ int main() {
   // Writing your own, which is the general case
   //------------------------------------------------------------------------//
 
-  // A radial operator is any callable taking one line to another. Two
-  // obligations come with that, and both follow from how the library calls it:
-  // once per line, from inside a parallel region, through a const reference.
+  // A radial operator is any callable taking one line to another, as
+  // op(std::span<const T> in, std::span<T> out), both of length nR and never
+  // the same span. Two obligations come with that, and both follow from how
+  // the library calls it: once per line, from inside a parallel region,
+  // through a const reference.
   //
   //   - it must be safe to call concurrently, so any scratch is thread_local
-  //     and never a mutable member;
-  //   - it is called SliceSize() times per application -- tens of thousands --
-  //     so whatever depends only on the nodes is computed once, at
-  //     construction, and an allocation inside the call is a defect.
+  //     or local to the call, and never a mutable member;
+  //   - it is called SliceSize() times per application -- once per angular
+  //     point, or once per (l, m) coefficient, tens of thousands at
+  //     production degree -- so whatever depends only on the nodes is
+  //     computed once, at construction, and an allocation inside the call is
+  //     a defect.
   //
-  // Here is one that obeys both, in a dozen lines: the exact derivative of
-  // c * r^a, which is what a test wants when it needs no truncation error.
+  // Here is one that obeys both: the exact derivative of c * r^a, which is
+  // what a test wants when it needs no truncation error. It is example 16's
+  // lambda written as a type, with the radii copied in at construction. It
+  // is shown and not used below.
   struct PowerDerivative {
     Real power;
     std::vector<Real> r;
@@ -136,9 +168,11 @@ int main() {
   // And they compose with everything else
   //------------------------------------------------------------------------//
 
-  // The seam applies any of them along the radial axis of a stack, in either
-  // domain: a field's line is angular samples and an expansion's is
-  // coefficients, and the radial axis does not distinguish them.
+  // ApplyRadially applies any of them along the radial axis of a stack, in
+  // either domain: a field's line is the samples at one angular point and an
+  // expansion's is one coefficient across radius, and the radial axis does
+  // not distinguish them. The field here is complex, with arbitrary values
+  // written straight into its buffer.
   auto f = LayeredSpinField<0, Grid, ComplexValued>(radial, grid);
   for (Int i = 0; i < f.NumberOfRadii() * f.SliceSize(); i++) {
     f.Data()[i] = Complex{std::cos(0.05 * i), std::sin(0.11 * i)};
@@ -147,10 +181,11 @@ int main() {
   std::cout << "\nApplyRadially over " << f.SliceSize()
             << " lines, threaded: " << df.NumberOfRadii() << " radii out\n";
 
-  // The full gradient takes one and supplies the rest. Note what production
-  // code often does instead: expand, apply the radial operator to the
-  // coefficients, evaluate back. The pieces are separate on purpose, and
-  // Gradient is the assembled convenience over them.
+  // The full gradient takes a radial operator and supplies the angular part
+  // (example 16). Production code often works with the pieces instead:
+  // expand, apply the radial operator to the coefficients, evaluate back.
+  // The pieces are public on purpose, and Gradient is the assembled
+  // convenience over them.
   constexpr auto l = Int{3};
   const auto a = Real{2};
   auto scalar = LayeredScalarExpansion<Grid, ComplexTensor>(radial, grid, lMax);
@@ -160,8 +195,10 @@ int main() {
 
   const auto gradient = Gradient(scalar, fd);
   const auto second = Gradient(gradient, fd);
-  // `a` would print in scientific notation under the format set above, and a
-  // power of two is easier to read as a two.
+  // The metric trace of the second gradient is the Laplacian, as in
+  // example 16. The power 2 is written into the label rather than printed
+  // from `a`, which would come out in scientific notation under the format
+  // set above.
   std::cout << "\nthe Laplacian of r^2 Y_" << l << "^1, "
             << "against [a(a+1) - l(l+1)] r^(a-2)\n";
   for (auto i : radial.RadiusIndices()) {
@@ -184,19 +221,25 @@ int main() {
   // operator and scatters the answer back, which is right when a line is
   // touched once. A solver touches it many times -- an iteration, a
   // factorisation applied again and again -- and then the layout to be in is
-  // the other one, [(l, m)][r], where a line is a contiguous vector.
+  // the other one, [(l, m)][r], where a line is a contiguous vector. The
+  // RadialMajor buffer holds that layout: a shape and the radial grid, with
+  // no angular grid or upper index, since nothing angular is meaningful
+  // once the data are cut into radial lines.
   //
   // ExpandToLines transforms straight into that layout and EvaluateLines out
-  // of it, so the radius-major coefficients never exist: a whole copy saved,
-  // which at production sizes is gigabytes. RadialMajor(Expand(f)) gives the
-  // same numbers, bit for bit, by way of the copy.
+  // of it, so the radius-major coefficients never exist: one whole set of
+  // coefficients saved, hundreds of megabytes to gigabytes at production
+  // sizes. RadialMajor(Expand(f)) gives the same numbers, bit for bit, by way
+  // of the copy. What this saves is memory; whether it also saves time
+  // depends on the machine.
   auto lines = ExpandToLines(f, lMax, Execution::Parallel());
   std::cout << "\nExpandToLines: " << lines.NumberOfLines() << " lines of "
             << lines.NumberOfRadii() << " radii, each contiguous\n";
 
-  // In place, as often as is wanted. The operator is handed a scratch line
-  // when the two buffers are one, so it need not cope with its output being
-  // its input.
+  // In place, as often as is wanted: here d/dr twice, giving d^2/dr^2. The
+  // operator is handed a scratch line when the two buffers are one, so it
+  // need not cope with its output being its input. Then back to a layered
+  // field on the angular grid.
   ApplyToLines(lines, lines, fd, Execution::Parallel());
   ApplyToLines(lines, lines, fd, Execution::Parallel());
   const auto curvature =
@@ -207,6 +250,7 @@ int main() {
   // threaded transform chunks its sums differently from a sequential one and
   // may differ from it in the last bit, as any two orders of summation may,
   // so the promise is between the two routes and not between two policies.
+  // The example exits non-zero if they differ at all.
   const auto expanded = Expand(f, lMax, Execution::Parallel());
   const auto gathered = Evaluate(ApplyRadially(ApplyRadially(expanded, fd), fd),
                                  Execution::Parallel());

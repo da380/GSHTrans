@@ -1,18 +1,65 @@
-// The transform benchmark harness.
+// The transform benchmark harness: timings for the spherical harmonic
+// transform and the choices around it -- batching and chunk size, threading,
+// stored against generated Wigner values, loop against matrix kernel, radial
+// lines, interpolation and tuning -- together with the memory-bandwidth roofs
+// they are to be read against.
 //
-// Steps E to H are each supposed to be preceded by the measurement that
-// justifies them, and this is that measurement. In particular it checks
-// central finding -- that the transform is Legendre-stage bandwidth-bound by
-// a wide
-// margin -- which is currently an arithmetic estimate and which the whole case
-// for batching rests on.
+// Usage
 //
-// The two stages are separated without instrumenting the transform. The
-// coefficient loop is filtered on `l <= lMax`, where lMax is the *call's*
-// truncation degree, so calling at the smallest legal degree does the full FFT
-// work and almost no Legendre work. The difference between that and a
-// full-degree call is the Legendre stage, measured on the production code
-// rather than on a replica of it.
+//   TransformBenchmark [section...]   run the named sections; all the default
+//                                     ones if none is named
+//   TransformBenchmark --check        print the harness revision and exit
+//
+// Default sections: stream (also accepted as `roof`), grid, transforms,
+// threading, generated, kernels (only in a build with a BLAS), server,
+// batching, interpolation, tuning. Run only when named: kernels-loop,
+// kernels-matrix, lines, huge. `server` builds tables of several GB -- 43 GB
+// at lMax = 1024, which it adds only when MemAvailable allows -- so on a small
+// machine it is better to name the sections wanted.
+//
+// Build with -DCMAKE_BUILD_TYPE=Release; an unoptimised build says so at the
+// top of its output and its figures are meaningless. run-server-benchmark.sh
+// in this directory builds, gates on the test suite, and runs the server
+// sections under three thread and page placements.
+//
+// How things are timed
+//
+// Every time comes from TimePerCall: one untimed warm-up call (FFTW plans,
+// page faults, cold caches), then several windows -- five unless the section
+// says otherwise. Within a window the call is repeated, doubling the count
+// until the window lasts at least 0.15 s, and the window gives a time per
+// call. The figure reported is the best window, not the mean. The clock is
+// std::chrono::steady_clock, so these are wall-clock times.
+//
+// All arithmetic is double precision. Inputs are fixed deterministic patterns
+// and results are not checked here; correctness is the test suite's job.
+//
+// A row with one thread runs Execution::Sequential() and any other
+// Execution::Parallel(threads). The "thread ladder" is the powers of two up to
+// the hardware thread count, with the physical core count and the hardware
+// thread count themselves added. Thread placement is whatever OMP_PROC_BIND
+// and OMP_PLACES say; the header echoes both.
+//
+// Reading the output
+//
+// The header describes the machine (threads, cores, NUMA nodes, L2 and L3,
+// transparent huge pages, CPU governor, OpenMP environment); the figures
+// cannot be interpreted without it. Each section then prints a titled table,
+// with a note above or below it saying how to read its columns. Times are per
+// call in ms unless a column says per field or per point, and ratios are
+// printed with a trailing "x". A GB/s column is the Wigner-table bytes the
+// call streams divided by its time, to be compared with the `stream` roofs.
+//
+// On a machine whose clock scales with load the same measurement moves by
+// tens of per cent between runs, so compare figures only within one run, or
+// between runs made back to back on an otherwise idle machine.
+//
+// The FFT/Legendre split in `transforms` is made without instrumenting the
+// transform. The coefficient loop is filtered on `l <= lMax`, where lMax is
+// the *call's* truncation degree, so a call at the smallest legal degree does
+// the full FFT work and almost no Legendre work. The difference between that
+// and a full-degree call is the Legendre stage, measured on the production
+// code rather than on a replica of it.
 
 #include <omp.h>
 
@@ -65,11 +112,11 @@ long ResidentMegabytes() {
 //                              Machine facts                               //
 //--------------------------------------------------------------------------//
 //
-// Printed at the top of every run. The numbers below are unreadable without
-// them -- cores and hardware threads have already been found to be different
-// answers, and on a multi-socket machine the node count is a third. All of
-// this is Linux sysfs; elsewhere the fields come back unknown and the
-// benchmark still runs.
+// Printed at the top of every run, because the numbers below are unreadable
+// without them: cores and hardware threads give different scaling answers for
+// memory-bound work, and on a multi-socket machine the NUMA node count is a
+// third. All of this is Linux /proc and sysfs; elsewhere the fields come back
+// empty or unknown and the benchmark still runs.
 
 std::string FirstLine(const std::string& path) {
   auto file = std::ifstream(path);
@@ -123,9 +170,11 @@ int PhysicalCores() {
   return static_cast<int>(seen.size());
 }
 
-// Size in kilobytes of the cache at this level on cpu0, and how many hardware
-// threads share it. The second is what the chunk formula needs: it sizes
-// a chunk against per-core last-level cache, not against the whole of it.
+// Size in kilobytes of the data or unified cache at this level on cpu0, and
+// how many hardware threads share it. Together with the core count this gives
+// the per-core L3 printed in the header, which is the figure to weigh against
+// Chunking's cache assumption: the chunk heuristic divides a cache size by the
+// number of live copies of the coefficient block.
 long CacheKilobytes(int level, int& sharedBy) {
   sharedBy = 0;
   for (auto index = 0; index < 10; ++index) {
@@ -212,8 +261,9 @@ void PrintMachineFacts() {
             : 0.0);
   }
   std::printf("  MemAvailable     %ld MB\n", MemAvailableMegabytes());
-  // A 5.4 GB table streamed by every thread is a lot of TLB pressure, and the
-  // table is a plain std::vector, so under `madvise` it gets no huge pages.
+  // A multi-GB table (5.4 GB at lMax = 512) streamed by every thread is a lot
+  // of TLB pressure, and the table is a plain std::vector, so under `madvise`
+  // it gets no huge pages.
   std::printf("  huge pages       %s\n",
               FirstLine("/sys/kernel/mm/transparent_hugepage/enabled").c_str());
   std::printf("  cpu governor     %s\n",
@@ -226,8 +276,9 @@ void PrintMachineFacts() {
 }
 
 // Powers of two up to the hardware thread count, with the physical core count
-// inserted -- the last doubling, from cores to threads, was measured to go
-// the wrong way, so the ladder has to contain both to show it.
+// and the hardware thread count inserted. Both ends are needed because for
+// memory-bound work the step from one thread per core to two can make things
+// slower, and the ladder has to contain both to show it.
 std::vector<int> ThreadLadder() {
   const auto threads = HardwareThreads();
   const auto cores = PhysicalCores();
@@ -238,9 +289,8 @@ std::vector<int> ThreadLadder() {
   return std::vector<int>(ladder.begin(), ladder.end());
 }
 
-// Keep a computed value from being optimised away. One definition rather
-// than a volatile sink per section, and it measures nothing itself -- an
-// accumulate-into-volatile would add its own arithmetic to the per-point
+// Keep a computed value from being optimised away without adding work of its
+// own: an accumulate-into-volatile would add its arithmetic to the per-point
 // columns, which are small enough for that to matter.
 template <typename T>
 void DoNotOptimise(const T& value) {
@@ -254,11 +304,18 @@ void DoNotOptimise(const T& value) {
 
 // Run `action` enough times to measure it, and return seconds per call.
 //
-// Best of several windows, not the mean of one. This machine's clock scales
-// under load: repeating one measurement a few seconds apart moves it by tens
-// of percent, which is enough to invent a speedup that is not there. Comparing
-// two versions of the code therefore needs them interleaved, and any single
-// number here should be read as an upper bound rather than a value.
+// One untimed warm-up call, then `windows` windows. In each, the repetition
+// count doubles (starting from one, and carried over from the previous
+// window) until a window of back-to-back calls lasts at least `target`
+// seconds or the count reaches 2^20; that window's elapsed time over its
+// count is one estimate. The smallest estimate is returned.
+//
+// Best of several windows, not the mean of one. A laptop or desktop clock
+// scales under load: repeating one measurement a few seconds apart moves it
+// by tens of per cent, which is enough to invent a speedup that is not there.
+// Comparing two versions of the code therefore needs them interleaved, and
+// any single number here should be read as an upper bound rather than a
+// value.
 template <typename Action>
 double TimePerCall(Action&& action, double target = 0.15, int windows = 5) {
   action();  // warm up: first call plans, faults pages, fills caches
@@ -289,12 +346,11 @@ double TimePerCall(Action&& action, double target = 0.15, int windows = 5) {
 //
 // The `touch` argument is the point. Pages are placed on the NUMA node of the
 // thread that first writes them, and `Wigner::data_` is a std::vector<Real>
-// built by its size constructor, so the whole table is
-// zero-filled by the single constructing thread and lives on one node however
-// many nodes the machine has. Touching with one thread reproduces that;
-// touching with the full team is the roof the transform could reach if the
-// table were placed deliberately. On a one-node machine the two agree, and
-// that agreement is itself the finding.
+// built by its size constructor, so the whole table is zero-filled by the
+// single constructing thread and lives on one node however many nodes the
+// machine has. Touching with one thread reproduces that; touching with the
+// full team is the roof the transform could reach if the table were placed
+// deliberately. On a one-node machine the two should agree.
 
 // Uninitialised, then written by `touch` threads: `new double[n]` does not
 // touch, so first touch really is the parallel loop.
@@ -307,7 +363,8 @@ std::unique_ptr<double[]> MakeTouched(std::size_t n, int touch, double value) {
   return data;
 }
 
-// STREAM triad: two streams read, one written.
+// STREAM triad, a[i] = b[i] + 3 c[i]: two streams read, one written. GB/s
+// counts all three arrays once per pass.
 double TriadBandwidthGBs(int threads, int touch, int windows = 5) {
   constexpr std::size_t n = 40'000'000;  // ~960 MB touched, far beyond any L3
   auto a = MakeTouched(n, touch, 1.0);
@@ -336,14 +393,12 @@ double ScanBandwidthGBs(double bytes, int threads, int touch, int windows = 5) {
   auto* ap = a.get();
   const auto count = static_cast<std::ptrdiff_t>(n);
   static volatile double sink = 0.0;  // keeps the sum from being optimised out
-  // Four accumulators, not one, and this was a defect rather than a
-  // refinement. A single `sum += a[i]` is a floating-point dependency chain,
-  // and the compiler may not reassociate it without -ffast-math -- so at one
-  // thread this measured add latency and not memory at all: 12.7 GB/s against
-  // a triad of 36.2 on the same machine, a threefold understatement. It came
-  // right at four threads and above, where several chains overlap, which is
-  // why the published figures -- all taken at eight threads -- stand.
-  // Any single-thread comparison made against the old column was wrong.
+  // Four independent partial sums per iteration, not one. A single
+  // `sum += a[i]` is a floating-point dependency chain, and the compiler may
+  // not reassociate it without -ffast-math, so at one thread it measures add
+  // latency rather than memory -- about a third of the triad figure on a
+  // laptop. Several threads hide this by overlapping their chains; one thread
+  // does not.
   const auto seconds = TimePerCall(
       [&] {
         auto sum = 0.0;
@@ -362,11 +417,10 @@ double ScanBandwidthGBs(double bytes, int threads, int touch, int windows = 5) {
   return static_cast<double>(n) * sizeof(double) / seconds / 1e9;
 }
 
-// Bytes of Wigner values one transform at this degree and upper index streams:
-// the (l, m) block for that upper index, once per colatitude.
-// Bytes the *matrix* kernel streams: the same values, but only for m >= 0,
-// the rest coming from the reflection. Order zero is its own
-// reflection and is counted once, so this is a shade over half.
+// Bytes of Wigner values the *matrix* kernel streams for one transform: the
+// same values as WignerBytes below, but only for m >= 0, the rest coming from
+// the reflection. Order zero is its own reflection and is counted once, so
+// this is a shade over half.
 double ReflectedWignerBytes(Int lMax, Int n) {
   const auto nTheta = lMax + 1;
   auto values = 0.0;
@@ -376,6 +430,10 @@ double ReflectedWignerBytes(Int lMax, Int n) {
   return values * static_cast<double>(nTheta) * sizeof(Real);
 }
 
+// Bytes of Wigner values one transform at this degree and upper index
+// streams (loop kernel): the (l, m) block for that upper index, once per
+// colatitude. This is the numerator of every GB/s column except the matrix
+// kernel's.
 double WignerBytes(Int lMax, Int n) {
   const auto perColatitude = GSHIndices<All>(lMax, lMax, n).Size();
   const auto nTheta = lMax + 1;
@@ -398,12 +456,12 @@ void PrintHeader(const char* title) {
   std::putchar('\n');
 }
 
-// Which sections to run. Named on the command line, all of them if none is
-// named. A single section takes a fraction of the whole, which is what makes
-// an A/B of two builds affordable -- and an A/B run back to back on an idle
-// machine is the only kind worth having here: the same binary measured 1.75 ms
-// and 2.23 ms on this laptop in different power states, so figures from
-// different sessions cannot be compared at all.
+// Which sections to run: those named on the command line, or every default
+// section if none is named. A single section takes a fraction of the whole,
+// which is what makes an A/B of two builds affordable -- and an A/B run back
+// to back on an idle machine is the only kind worth having: the same binary
+// can measure 1.75 ms and 2.23 ms on a laptop in different power states, so
+// figures from different sessions cannot be compared at all.
 std::vector<std::string> sectionsWanted;
 
 bool Want(const std::string& name) {
@@ -412,7 +470,8 @@ bool Want(const std::string& name) {
              sectionsWanted.end();
 }
 
-// For sections that cost too much to run by accident: named or not run.
+// For sections that cost too much to run by accident: named or not run. A
+// bare invocation does not run them.
 bool WantNamed(const std::string& name) {
   return !sectionsWanted.empty() && Want(name);
 }
@@ -423,19 +482,24 @@ double TableMegabytes(Int lMax, Int nMax) {
   return bytes / 1e6;
 }
 
-// The thread-scaling table, with both directions side by side.
+// The thread-scaling table for the `server` and `huge` sections: one grid at
+// this degree, complex fields at upper index nMax, forward and inverse timed
+// at every rung of the thread ladder with `windows` windows each.
 //
-// Side by side is the design, not the presentation. Threading left the lMax =
-// 256 shortfall with two unseparated candidates -- thread-private accumulators
-// competing for last-level cache, and a serialised reduction -- and later work
-// removed the second without being able to measure the first. The inverse
-// transform's colatitudes write disjoint rows of the field and share only
-// read-only input, so it carries no accumulator and does no reduction; the
-// forward transform's colatitudes all contribute to every coefficient, so each
-// thread accumulates privately and the partials are summed at the end.
-// Everything else about the two is the same stream over the same table. The
-// fwd/inv column is therefore the accumulator's cost with the rest divided
-// out, and its growth with thread count is the answer wanted.
+// Columns: time per call and speedup over one thread for each direction;
+// fwd/inv, the ratio of the two times; accum(MB), the forward direction's
+// private accumulators summed over all threads; and GB/s for each direction,
+// WignerBytes over the time.
+//
+// Side by side is the design, not the presentation. The inverse transform's
+// colatitudes write disjoint rows of the field and share only read-only
+// input, so it carries no accumulator and does no reduction; the forward
+// transform's colatitudes all contribute to every coefficient, so each thread
+// accumulates privately and the partials are summed at the end. Everything
+// else about the two is the same stream over the same table. The fwd/inv
+// column is therefore the accumulators' cost -- their competition for
+// last-level cache -- with the rest divided out, and its growth with thread
+// count is what the table is for.
 void RunScaling(Int lMax, Int nMax, int windows) {
   const auto n = nMax;
   const auto started = Clock::now();
@@ -494,8 +558,7 @@ void RunScaling(Int lMax, Int nMax, int windows) {
 // cache to speak to whether generating the values beats storing them.
 // lMax = 1800 is the `huge` section instead, named explicitly: a 233 GB table
 // takes a good while just to zero, and its single-threaded rows are minutes
-// each. It was 2048, which is above MaxSafeDegree -- the table it timed was
-// silently wrong, and is now refused.
+// each. It sits just under MaxSafeDegree, above which a table is refused.
 std::vector<Int> ScalingDegrees() {
   auto degrees = std::vector<Int>{128, 256, 512};
   const auto available = MemAvailableMegabytes();
@@ -505,7 +568,7 @@ std::vector<Int> ScalingDegrees() {
   return degrees;
 }
 
-// Fewer repetitions where one call is already long enough to measure.
+// Fewer timing windows where one call is already long enough to measure.
 int Windows(Int lMax) {
   if (lMax >= 1024) return 2;
   if (lMax >= 512) return 3;
@@ -513,7 +576,9 @@ int Windows(Int lMax) {
 }
 
 // Skip rather than swap: at lMax = 512 the table is 5.4 GB and at 1024 it is
-// 43 GB, and a run that starts swapping measures the disk.
+// 43 GB, and a run that starts swapping measures the disk. The factor 1.4 is
+// a margin over the table alone for everything else the section holds; the
+// comparison is against MemAvailable, as printed in the header.
 bool AffordableAt(Int lMax, Int nMax) {
   const auto needed = TableMegabytes(lMax, nMax) * 1.4;
   const auto available = MemAvailableMegabytes();
@@ -529,11 +594,12 @@ bool AffordableAt(Int lMax, Int nMax) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  // Bumped whenever a section is added or its output changes, so that the
-  // wrapper can refuse to run a binary older than the script driving it. Two
-  // server runs were lost to exactly that: the source reached the machine with
-  // an old timestamp, make saw nothing to do, and the log looked plausible
-  // while being produced by the previous harness.
+  // Bumped whenever a section is added or its output changes, so that
+  // run-server-benchmark.sh can refuse to run a binary older than itself. A
+  // copied source tree can carry a timestamp older than an existing object
+  // file, make then sees nothing to do, and the previous harness produces a
+  // log that looks entirely plausible. The script's `expected` must be bumped
+  // with this.
   constexpr auto revision = 11;
 
   if (argc == 2 && std::string(argv[1]) == "--check") {
@@ -556,9 +622,9 @@ int main(int argc, char** argv) {
   // An unoptimised build measures nothing, and the default build directory is
   // one: `cmake -S . -B build` leaves CMAKE_BUILD_TYPE empty, which is fine
   // for the test suite and useless here. The whole harness runs about ten
-  // times slow in it -- and every number is self-consistent, so nothing looks
-  // wrong. Found the hard way while adding the `kernels` section, whose first
-  // run reported speedups of forty.
+  // times slow in it, and every number is self-consistent, so nothing looks
+  // wrong -- ratios between kernels can be off by an order of magnitude.
+  // NDEBUG is the proxy for an optimised build.
 #ifndef NDEBUG
   std::printf(
       "\n*** WARNING: built without NDEBUG, so probably without "
@@ -572,6 +638,11 @@ int main(int argc, char** argv) {
   //------------------------------------------------------------------------//
   //                            Bandwidth roofs                             //
   //------------------------------------------------------------------------//
+  //
+  // Per rung of the thread ladder, three windows each: a STREAM triad over
+  // three 320 MB arrays, and a read-only scan over an array the size of one
+  // lMax = 256, n = 2 transform's table, first touched by the whole team and
+  // then by one thread. Penalty is team-touch over one-thread-touch scan.
 
   if (Want("stream") || Want("roof")) {
     PrintHeader(
@@ -605,6 +676,8 @@ int main(int argc, char** argv) {
   //------------------------------------------------------------------------//
 
   if (Want("grid")) {
+    // One construction each, not repeated. RSS is the growth in VmRSS across
+    // the constructor, against the computed size of the Wigner table.
     PrintHeader("Grid construction: time and resident size");
     std::printf("%6s %6s %12s %12s %12s\n", "lMax", "nMax", "build (s)",
                 "RSS (MB)", "table (MB)");
@@ -624,11 +697,17 @@ int main(int argc, char** argv) {
                     after - before, tableBytes / 1e6);
       }
     }
-
-    //------------------------------------------------------------------------//
-    //                       Transforms, and the split                        //
-    //------------------------------------------------------------------------//
   }
+
+  //------------------------------------------------------------------------//
+  //                       Transforms, and the split                        //
+  //------------------------------------------------------------------------//
+  //
+  // Single-threaded, one field per call, five windows per figure. total is a
+  // full-degree call, FFT a call at the smallest legal degree (see the top of
+  // the file), Leg their difference, and GB/s the WignerBytes of the call over
+  // Leg. Real fields exist only at n = 0, so those rows appear only there. The
+  // note explaining the columns is printed at the very end of the run.
 
   if (Want("transforms")) {
     PrintHeader("Transforms: total, stage split, and Legendre bandwidth");
@@ -702,11 +781,17 @@ int main(int argc, char** argv) {
         }
       }
     }
-
-    //------------------------------------------------------------------------//
-    //                               Threading                                //
-    //------------------------------------------------------------------------//
   }
+
+  //------------------------------------------------------------------------//
+  //                               Threading                                //
+  //------------------------------------------------------------------------//
+  //
+  // A quick scaling check at laptop size: complex fields, n = 2, one field
+  // per call, at a fixed 1, 2, 4, 8 and 16 threads whatever the machine has
+  // (counts above the hardware's oversubscribe it). Speedup is against the
+  // one-thread row of the same direction; GB/s is WignerBytes over the time.
+  // The `server` section is the full-machine version, on the thread ladder.
 
   if (Want("threading")) {
     PrintHeader("Threading");
@@ -747,6 +832,14 @@ int main(int argc, char** argv) {
   //------------------------------------------------------------------------//
   //            Generated Wigner values against the stored table            //
   //------------------------------------------------------------------------//
+  //
+  // Two tables. The first is one construction of each kind of grid, with its
+  // time and the growth in resident memory it causes. The second times
+  // transforms of a contiguous batch of k = 1 or 8 complex fields at n = 2,
+  // on 1 and 8 threads, and reports time *per field* (call time over k):
+  // stored is the default grid, gen the generating one, both under
+  // Chunking::Automatic(); at k = 8, genWhole and storedWhole are the same two
+  // with the chunk fixed at k, so the whole batch is one chunk.
 
   if (Want("generated")) {
     PrintHeader("Generated Wigner values against the stored table");
@@ -871,27 +964,30 @@ int main(int argc, char** argv) {
   }
 
   //------------------------------------------------------------------------//
-  //                   Thread scaling to the full machine                   //
-  //------------------------------------------------------------------------//
-
-  //------------------------------------------------------------------------//
   //                   Loop kernel against matrix kernel                    //
   //------------------------------------------------------------------------//
 
 #ifdef GSHTRANS_HAVE_BLAS
+  // Built only with a BLAS. For lMax = 64, 128, 256 at n = 2, unbatched
+  // (k = 1) and then batched (k = 8), every rung of the thread ladder and both
+  // directions: loop and matrix are call times in ms, ratio is loop over
+  // matrix (above 1 means the matrix kernel is faster), GB/s is the reported
+  // kernel's table traffic over its time, and roof is a one-thread-touched
+  // read scan of the same size on the same thread count, three windows.
+  //
   // Three requirements, each guarding a way this measurement can mislead, and
   // they are part of the measurement rather than of its presentation.
   //
   // -- Two tables, batched and unbatched, and not one with k as a row. The
-  // restructure is predicted to buy nothing unbatched at high degree on many
-  // threads, where the stage is already at the memory roof. That is the
-  // prediction coming true, and a column of 1.0x sitting beside the batched
-  // gains reads as failure to anyone scanning it.
+  // matrix kernel is expected to buy nothing unbatched at high degree on many
+  // threads, where the stage is already at the memory roof. A column of 1.0x
+  // there is the expected result, and sitting beside the batched gains it
+  // would read as failure to anyone scanning it.
   //
-  // -- A GB/s column against the roof the `stream` section measures. This is
-  // the requirement that does the real work. A caption asserting that no gain
-  // is expected is something a reader must take on trust; a row showing 40
-  // GB/s against a 42 GB/s roof demonstrates it.
+  // -- A GB/s column against a roof of the kind the `stream` section
+  // measures. This is the requirement that does the real work. A caption
+  // asserting that no gain is expected is something a reader must take on
+  // trust; a row showing 40 GB/s against a 42 GB/s roof demonstrates it.
   //
   // -- One kernel per invocation, for a careful A/B. Comparing
   // construction-time policies means two grids, and at lMax = 256 that is
@@ -983,7 +1079,8 @@ int main(int argc, char** argv) {
             // The two kernels stream different amounts: the matrix kernel's
             // table holds only non-negative orders, so reporting the
             // loop kernel's byte count against it would overstate its rate by
-            // two and put it above a roof it is nowhere near.
+            // two and put it above a roof it is nowhere near. When both
+            // kernels are timed, the figure is the matrix kernel's.
             const auto reported = wantMatrix ? tMatrix : tLoop;
             const auto streamed =
                 wantMatrix ? ReflectedWignerBytes(lMax, n) : bytes;
@@ -1027,6 +1124,13 @@ int main(int argc, char** argv) {
   //------------------------------------------------------------------------//
   //            Why the inverse gains less: efficiency against K            //
   //------------------------------------------------------------------------//
+  //
+  // The matrix kernel's per-order GEMMs called directly, outside any
+  // transform: lMax = 256, n = 2, k = 8, a handful of orders m, one call per
+  // timing on the calling thread (plus whatever threads the BLAS itself uses).
+  // The matrices are built at nTheta copies of one colatitude, since only
+  // their shape matters here. nL and K inv are the same number, printed twice
+  // so the inverse's inner dimension is labelled.
 
   if (Want("kernels")) {
     PrintHeader("Per-order products: Gflop/s against the inner dimension");
@@ -1085,6 +1189,14 @@ int main(int argc, char** argv) {
   }
 #endif  // GSHTRANS_HAVE_BLAS
 
+  //------------------------------------------------------------------------//
+  //                   Thread scaling to the full machine                   //
+  //------------------------------------------------------------------------//
+  //
+  // RunScaling at each of ScalingDegrees(), n = 2, skipping any degree whose
+  // table would not fit in memory. Runs by default, so a bare invocation on a
+  // large machine builds tables of several GB.
+
   if (Want("server")) {
     PrintHeader("Thread scaling to the full machine");
     std::printf(
@@ -1106,6 +1218,14 @@ int main(int argc, char** argv) {
   //------------------------------------------------------------------------//
   //                   Batching, and the chunk heuristic                    //
   //------------------------------------------------------------------------//
+  //
+  // Forward transforms only, sequential, complex fields at n = 2. For each k
+  // a grid is built with the chunk fixed at k and one call transforms a
+  // contiguous batch of k fields. total is the call time, per field is total
+  // over k, speedup is the k = 1 per-field time over this row's, and
+  // resident is the field and coefficient storage of the batch (not the
+  // table). `auto` in the subheading is Chunking::Automatic()'s chunk for one
+  // thread at this degree.
 
   if (Want("batching")) {
     PrintHeader("Batching");
@@ -1147,15 +1267,13 @@ int main(int argc, char** argv) {
         const auto inBatch = Batch::Contiguous(k, fieldSize);
         const auto outBatch = Batch::Contiguous(k, coefficientSize);
 
+        // Neither of the next two grids is timed in this section: they are
+        // built and discarded, and only add to its running time. Their timed
+        // counterparts are the whole-chunk columns of the `generated` section.
         auto wholeChunk = GaussLegendreGrid<Real, All, All>(
             lMax, n, FFTWpp::Measure, Chunking::Fixed(k),
             WignerValues::Generated());
 
-        // The control for it. If taking the whole batch as one chunk costs
-        // the forward direction on the stored path too, the cost belongs to
-        // the chunk -- each thread's private accumulator is chunk times the
-        // coefficient array, which is 8.4 MB per thread at lMax = 256 and
-        // k = 8 -- and not to generating anything.
         auto storedWhole = GaussLegendreGrid<Real, All, All>(
             lMax, n, FFTWpp::Measure, Chunking::Fixed(k));
 
@@ -1189,17 +1307,23 @@ int main(int argc, char** argv) {
   // or tell the transform its coefficient side is Batch::Interleaved(nR, nR)
   // and let it write the lines itself (ExpandToLines, EvaluateLines). The
   // second never makes the radius-major copy, which is its real merit. On
-  // *time* it was uneven on the development laptop, with a trap: the scatter
-  // has stride nR, and at lMax = 256 with nR = 64 and 128 under threads it
-  // lost by eight to twenty per cent -- a power-of-two stride landing
-  // successive writes in the same cache sets -- while at nR = 100 and 200 it
-  // won by twenty, and at lMax = 128 the matrix kernel won at every nR. With
-  // the loop kernel the routes are close, and the direct one slower at 128. So
-  // the radii here are chosen to show that, two powers of two and two not, and
-  // this section exists so that the answer for a particular machine can be had
-  // by asking.
+  // *time* it is uneven, with a trap: the scatter has stride nR, and a
+  // power-of-two nR lands successive writes in the same cache sets. On a
+  // laptop at lMax = 256 under threads the direct route lost by eight to
+  // twenty per cent at nR = 64 and 128 and won by twenty at nR = 100 and 200;
+  // at lMax = 128 the matrix kernel won at every nR, and with the loop kernel
+  // the routes were close. So the radii here are two powers of two and two
+  // not, and the section exists so that the answer for a particular machine
+  // can be had by asking.
   //
-  // Nothing is allocated inside a timed region, in either route.
+  // Run only when named. lMax = 128 and 256, upper index 0, loop kernel and
+  // (with a BLAS) matrix kernel, on one thread and on the physical core
+  // count. Route A is a transform to the radius-major expansion followed by a
+  // copy into the lines (or, inverse, the copy back then the transform);
+  // route B is the transform straight to or from the lines. Columns are ms
+  // per call for A and B in each direction, B/A, and the size of the
+  // radius-major expansion route B does without. Nothing is allocated inside
+  // a timed region, in either route.
   if (WantNamed("lines")) {
     PrintHeader("Radial lines: direct transform against transform + transpose");
     std::printf(
@@ -1293,11 +1417,12 @@ int main(int argc, char** argv) {
     }
   }
 
-  // Named explicitly or not run. A 233 GB table needs a machine that has it
-  // spare and nothing else running, and the single-threaded rows are minutes
-  // each. Worth one run on a large server: it is far enough past last-level
-  // cache that the stored path has no cache left to lose, which is the regime
-  // the case for generating the values argues from. Just under MaxSafeDegree,
+  // The `server` table at lMax = 1800, two timing windows per figure. Named
+  // explicitly or not run. A 233 GB table needs a machine that has it spare
+  // and nothing else running, and the single-threaded rows are minutes each.
+  // Worth one run on a large server: it is far enough past last-level cache
+  // that the stored path has no cache left to lose, which is the regime the
+  // case for generating the values argues from. Just under MaxSafeDegree,
   // which is 1827 in double precision.
   if (WantNamed("huge")) {
     constexpr auto hugeDegree = Int{1800};
@@ -1311,16 +1436,22 @@ int main(int argc, char** argv) {
   //                             Interpolation                              //
   //------------------------------------------------------------------------//
   //
-  // The measurement that says whether the local schemes are
-  // worth having. Spectral is exact for a band-limited field, so it is the
-  // reference the other two are measured against -- which is the whole reason
-  // It is what makes the accuracy of a cheap scheme
+  // The measurement that says whether the local schemes (bilinear, bicubic;
+  // only with Interpolation built in) are worth having. Spectral is exact for
+  // a band-limited field, so it is the reference the other two are measured
+  // against, and that is what makes the accuracy of a cheap scheme
   // measurable on any field rather than only on one with a closed form.
   //
-  // Three columns of error rather than one, because the padding exists for
-  // two specific regions and a single number would hide whether it worked:
-  // the interior, the two polar cells, and the last longitude cell where the
-  // wrap column was added.
+  // Two tables. The first is accuracy: the largest error over 4000 random
+  // points, relative to the largest sampled value, for one band-16 field on
+  // grids oversampled 1x to 8x. Three columns of error rather than one,
+  // because the padded grid exists for two specific regions and a single
+  // number would hide whether it worked: the interior, the two polar cells,
+  // and the last longitude cell, closed by the wrap column.
+  //
+  // The second is cost: building each interpolant, one point evaluation, and
+  // break-even, the number of spectral point evaluations that take as long
+  // as one expand-and-evaluate remesh of the whole grid.
 
   if (Want("interpolation")) {
     PrintHeader("Interpolation: error against the spectral reference");
@@ -1449,6 +1580,9 @@ int main(int argc, char** argv) {
         for (auto m : expansion.Orders(l)) expansion[l, m] = Complex(1, 0);
       const auto field = Evaluate(expansion);
 
+      // Build times include one evaluation, so that the interpolant is used.
+      // Per-point times cycle through 1024 nearby colatitudes rather than
+      // repeating a single point.
       const auto buildSpectral = TimePerCall([&] {
         auto at = Interpolate(field, Scheme::Spectral());
         DoNotOptimise(at(1.0, 1.0));
@@ -1507,13 +1641,19 @@ int main(int argc, char** argv) {
   //                                 Tuning                                 //
   //------------------------------------------------------------------------//
   //
-  // Does the mechanism pay? What makes the persistence layer
-  // conditional on this answer, so the section reports the two tuners side by
-  // side and lets the numbers decide.
+  // Does measuring a policy at start-up pay? The section runs the two tuners,
+  // TuneChunking and TuneKernel, side by side for lMax = 64, 128, 256, batches
+  // of 1, 8 and 32 fields, and 1 and 8 threads (8 only if OpenMP allows it).
+  // chunk is the tuned chunking's speedup over Chunking::Automatic(); cands is
+  // how many distinct schedules there were to choose between; kernel is the
+  // tuned kernel's speedup over the loop kernel, and chose says which won
+  // ("n/a" when the matrix kernel could not be tried, with the reason on the
+  // next line). The tuners do their own timing, with a 10 per cent margin
+  // before a challenger displaces the default.
   //
   // The answer is machine-dependent by construction -- that is the premise
-  // the whole mechanism rests on -- so this exists to be re-run elsewhere
-  // rather than to settle anything once.
+  // tuning rests on -- so this exists to be re-run on each machine rather than
+  // to settle anything once.
 
   if (Want("tuning")) {
     PrintHeader("Tuning: what measuring a policy is worth");

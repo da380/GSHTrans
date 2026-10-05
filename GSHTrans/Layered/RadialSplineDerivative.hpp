@@ -61,8 +61,12 @@ class SplineDerivative {
    * @brief Factorises one spline system per element.
    * @param radial The radii; if they know their elements there is one system
    * per element, otherwise one for the whole grid.
-   * @param left The condition at the first node.
-   * @param right The condition at the last.
+   * @param left The condition at the first node of every piece -- so at the
+   * bottom of each element, interfaces included, and not only at the grid's
+   * innermost radius.
+   * @param right The condition at the last node of every piece.
+   * @throws std::invalid_argument if either condition is Clamped, or if a
+   * radius is repeated on a grid without elements.
    */
   explicit SplineDerivative(
       RadialGrid<Real> radial,

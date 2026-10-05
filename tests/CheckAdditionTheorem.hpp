@@ -12,11 +12,14 @@
 
 #include "TestRandom.hpp"
 
+// The addition theorem at one seeded angle: for every pair of upper indices
+// n, n' and every degree, sum_m d^l_{nm} d^l_{n'm} = delta_{nn'}. Returns
+// nonzero on failure.
 template <std::floating_point Real>
 int CheckAdditionTheorem() {
   using namespace GSHTrans;
 
-  // Set the degree, order and upper index
+  // The degree, which also bounds the orders and upper indices.
   int lMax = 40;
 
   // A seeded angle, so that a failure can be run again: see TestRandom.hpp.

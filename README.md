@@ -10,17 +10,15 @@ says how it transforms under a rotation of the local frame
 arithmetic of an expression is checked when it is written rather than assumed
 when it is run.
 
-## Status
-
-The library is complete through the layers below.
+## What it provides
 
 * **The numerical core** — `GaussLegendreGrid`, `Wigner`, `Indexing`, `Views`:
   the batched transform, the plan cache, threading, and Wigner values either
   held as a table or generated on the fly, as a construction-time policy. Two
   Legendre kernels are carried permanently, `TransformKernel::Loop()` and,
   where a BLAS is present, `TransformKernel::Matrix()` — the second worth 3–6×
-  where it is worth anything and storing half the table, with the first kept
-  as its oracle. `Tuning.hpp` chooses between them by measuring the caller's own
+  on batched transforms and storing half the table, with the first kept as
+  its oracle. `Tuning.hpp` chooses between them by measuring the caller's own
   problem.
 * **The field layer** — spin fields, tensor storage and algebra, the reality
   reduction, and the spectral side; the contravariant derivative, which is
@@ -34,10 +32,14 @@ The library is complete through the layers below.
   the Schulten–Gordon recursion, checked against the recurrence that defines
   it.
 
-`docs/canonical-components.tex` is the authority on the mathematics and the
-conventions, and the code defers to it by name. `docs/gshtrans-reference.tex`
-describes the library that exists. `docs/lessons.md` is a short record of the
-things worth not learning twice.
+Further documentation:
+
+* `docs/gshtrans-reference.tex` (and its PDF) — the mathematics, the
+  conventions and the numerical methods; the authority the code defers to.
+* `docs/design.md` — how the software is organised and why: ownership,
+  threading, errors, numerics, and the rules for testing and benchmarking it.
+* `docs/open-issues.md` — known limitations, open questions and planned work.
+* `examples/` — a numbered tutorial series; `examples/README.md` lists it.
 
 ## The spin-field algebra
 
@@ -80,8 +82,8 @@ version of the above; `examples/README.md` lists the whole series.
 | `Map(f, F)` | `0` | `N == 0` |
 | `Integrate(f)` | — | `N == 0` |
 
-Two of these are worth stating as facts rather than as table rows, because the
-superseded layer had them wrong. **Conjugation reverses the upper index**: `f`
+Two of these are worth stating as facts rather than as table rows, because
+they are easy to get wrong. **Conjugation reverses the upper index**: `f`
 at `N` conjugates to a field at `−N`. And **`real` and `imag` exist only at
 `N = 0`**, because that is the only upper index at which they are covariant.
 
@@ -172,8 +174,7 @@ Real-valued fields, with their reduced `m ≥ 0` coefficient storage, exist only
 at `n = 0`; a real transform at `n ≠ 0` throws.
 
 **Two Legendre kernels, chosen at construction and both kept.**
-`TransformKernel::Loop()` is the default and is what the library has always
-done. `TransformKernel::Matrix()` is the transform-major arrangement of the same
+`TransformKernel::Loop()` is the default and needs nothing beyond FFTW. `TransformKernel::Matrix()` is the transform-major arrangement of the same
 sum: every FFT first, then one `dgemm` per order against a table laid out
 `[n][m][l][θ]`. It needs a BLAS — `GSHTRANS_WITH_BLAS`, which
 is `AUTO` by default and found rather than fetched — and a build without one
@@ -183,7 +184,7 @@ It is worth **5.8–6.0× forward and 2.9–3.2× inverse** batched at `lMax = 2
 on eight threads, and little unbatched there, where the loop kernel is already
 at the memory roof and nothing is available. Products at different orders
 write disjoint output, so it carries no accumulator and no reduction in either
-direction, which is where the forward transform's threading used to lose. It
+direction, which is what lets the forward transform thread well. It
 also stores **half** the Wigner values — 325 MB against 648 at `lMax = 256`,
 2.6 GB against 5.2 at 512 — the negative orders coming from
 `d^l_{nm}(π − θ) = (−1)^{l+n} d^l_{n,−m}(θ)`.
@@ -299,8 +300,9 @@ Values come from the **Schulten–Gordon** recursion: each row is built inward
 from both ends of its range — the stable direction, since recursing outward
 follows the decaying solution and loses the answer exponentially — matched
 where the halves overlap, and normalised from the unitary property. No
-closed-form seed, no factorials, and the turning point is found by watching
-the recurrence coefficient rather than locating it analytically.
+closed-form seed and no factorials. Each half stops where its own values stop
+growing, and the halves are joined without squaring their ratio, so
+near-stretched rows neither lose digits nor overflow.
 
 That matters because a one-directional recursion loses these values near
 *stretched* triangles, where one degree approaches the sum of the other two —
@@ -311,8 +313,9 @@ recursion along different lines) it agrees to `1e-16` at `(200,200,200)` and
 
 Every row is checked against the recurrence that defines it before it is
 handed back, so a table that has gone wrong is refused rather than returned.
-That check replaced the completeness relation, which stopped testing anything
-once the algorithm began normalising by it.
+The completeness relation is not used as a check: the algorithm normalises by
+it, so it would pass whatever the row held. Single-precision tables are
+computed in double and rounded.
 
 `CouplingElement(m, mp)` and `FillCouplingMatrix` give the same symbols in the
 layout normal-mode codes expect — the first order negated with an alternating
@@ -333,8 +336,7 @@ Requires a C++23 compiler (GCC 13+ or Clang 18+), CMake 3.24+, and a local
 FFTW. OpenMP is used for the parallel paths and is optional: without it the
 library is the same library on one thread. `GaussQuad`, `FFTWpp`, `NumericConcepts` and
 `Interpolation` are looked for on the system and fetched by `FetchContent`
-only if they are not there. All four are header-only, and none of them brings
-Eigen: GaussQuad used to, and no longer does.
+only if they are not there. All four are header-only.
 
 | option | default | effect |
 | :--- | :--- | :--- |
@@ -402,11 +404,8 @@ configuration and is worth using rather than a hand-rolled one. They run
 under GCC and under Clang, and every job but the one that builds with no
 optional dependencies has a BLAS and demands it, so the matrix kernel is
 built, run and sanitised there and not only on a developer's machine. The
-Clang jobs are required like the rest. No Clang OpenMP runtime is installed on
-the development machine, so CI is the only place they run — and they earn
-it: Clang is what found a
-`static constexpr bool` constraint whose later terms named members a
-non-spin-weighted operand does not have, which GCC accepted and clang did not.
+Clang jobs are required like the rest: GCC and Clang disagree at the edges of
+constraint checking, and code accepted by one alone does not pass.
 
 ThreadSanitizer is deliberately not offered. The parallelism here is OpenMP,
 GCC's `libgomp` carries no TSan annotations, and every barrier and reduction
@@ -417,15 +416,20 @@ finding.
 section names so that an A/B costs one section rather than the whole run:
 
 ```
-stream grid transforms threading batching generated
-kernels kernels-loop kernels-matrix interpolation tuning server huge
+default:     stream grid transforms threading batching generated
+             kernels interpolation tuning server
+named only:  kernels-loop kernels-matrix lines huge
 ```
+
+`server` builds tables of several GB and `huge` larger still, so on a small
+machine name the sections wanted. The header of `TransformBenchmark.cpp`
+explains how each figure is timed and how to read the output.
 
 `benchmarks/run-server-benchmark.sh` drives it on a target machine. **Build it
 Release.** `cmake -S . -B build` leaves `CMAKE_BUILD_TYPE` empty, and the
 harness there runs about ten times slow with every figure internally
-consistent — it once reported speedups of forty. It now warns when built
-without `NDEBUG`.
+consistent; it warns when built without `NDEBUG`. `docs/design.md` has the
+rules for measurements that can be trusted.
 
 ## Layout
 
@@ -437,8 +441,8 @@ GSHTrans/SpinField/    the spin-field algebra
 GSHTrans/Tensor/       tensor fields and their algebra
 GSHTrans/Expansion/    the spectral side
 GSHTrans/Layered/      three-dimensional fields
-GSHTrans/All, Core     forwarding headers, kept so that older code still builds
-docs/                  the theory note, the reference, the lessons
+GSHTrans/All, Core     forwarding headers to GSHTrans.hpp and Core.hpp
+docs/                  the mathematical reference, the design notes, open issues
 tests/  examples/  benchmarks/  scripts/
 ```
 

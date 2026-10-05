@@ -1,13 +1,11 @@
 // The conventions, pinned to things a user can check.
 //
-// docs/gshtrans-reference.tex, under "What remains a convention", used to
-// list two statements the library
-// could not settle from the inside: the sign in
+// Two sign choices cannot be settled from inside the library: the sign in
 //
 //     e_{+-} = -+ (1/sqrt2)(theta-hat +- i phi-hat),   e_0 = r-hat        (*)
 //
-// and the overall signs of eth and eth-bar. Neither was observed by anything:
-// every test worked in canonical components throughout, and a convention that
+// and the overall signs of eth and eth-bar. A test that works in canonical
+// components throughout never observes either, because a convention that
 // nothing reads back into the physical frame is not observable.
 //
 // This file reads it back. The claim under test is the one a user actually
@@ -24,23 +22,23 @@
 //
 // What that settles, and what it does not. Flipping (*) and the sign of the
 // eth pair *together* is still a relabelling that nothing can see -- it
-// renames which component is called +1. What is no longer free is the
-// relation between them: given (*) as written, the operator signs are
-// determined, and given the operator signs, (*) is. The two were previously
-// independent unknowns and are now one convention, fixed here, with the
-// physical gradient as the thing that fixes it. Every test below fails by an
-// O(1) amount, not by a tolerance, if either sign is flipped alone.
+// renames which component is called +1. What is not free is the relation
+// between them: given (*) as written, the operator signs are determined, and
+// given the operator signs, (*) is. They form one convention, fixed here,
+// with the physical gradient as the thing that fixes it. Every test below
+// fails by an O(1) amount, not by a tolerance, if either sign is flipped
+// alone. docs/gshtrans-reference.tex states the convention.
 //
-// One trap, met while writing these and worth recording. A field written as
-// a(theta, phi) theta-hat is almost never smooth on the sphere, because
-// theta-hat is not: at the pole its direction depends on the azimuth from
-// which the pole is approached. a = sin(theta) cos(phi) looks harmless and is
-// not differentiable there, and its spin-weighted expansion does not
-// converge -- the divergence check below came out wrong by 0.18 at every
-// truncation from lMax = 8 to 128, which is what a non-convergent expansion
-// looks like rather than what a bug looks like. The tangential fields here
-// are therefore built as grad f + r-hat x grad g from smooth scalars, which
-// is smooth by construction.
+// One trap worth knowing. A field written as a(theta, phi) theta-hat is
+// almost never smooth on the sphere, because theta-hat is not: at the pole
+// its direction depends on the azimuth from which the pole is approached.
+// a = sin(theta) cos(phi) looks harmless and is not differentiable there, and
+// its spin-weighted expansion does not converge -- the divergence check below
+// would be wrong by about 0.18 at every truncation from lMax = 8 to 128,
+// which is what a non-convergent expansion looks like rather than what a bug
+// looks like. The tangential fields here are therefore built as
+// grad f + r-hat x grad g from smooth scalars, which is smooth by
+// construction.
 
 #include <gtest/gtest.h>
 

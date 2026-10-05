@@ -1,7 +1,8 @@
 // 21 -- Interpolating a field, as a callable of the two angles
 //
-// A field is samples on a fixed grid. Interpolate turns one into a function
-// you can evaluate anywhere on the sphere, in one of three schemes:
+// What this shows. A field is samples on a fixed grid. Interpolate turns one
+// -- or an expansion, or a lazy expression -- into a function you can
+// evaluate at any (theta, phi), in one of three schemes:
 //
 //   Spectral -- sum the expansion. Exact for a band-limited field, and the
 //               reference the other two are measured against. O(lMax^2) a
@@ -26,10 +27,25 @@
 //      expansion rather than guessed -- which is why building a local
 //      interpolant costs a forward transform.
 //
-// At a pole only one order survives, so the value there is c exp(+-i N phi):
-// a *row*, not a constant. That is not a defect. A spin-weighted field at a
-// coordinate pole is genuinely not single-valued, because the frame e_+-
-// depends on the azimuth of approach.
+// At a pole only one order survives (m = N at theta = 0, m = -N at
+// theta = pi; example 14), so the value there is c exp(+-i N phi): a *row*,
+// not a constant. That is not a defect. A spin-weighted field at a coordinate
+// pole is genuinely not single-valued, because the frame e_+- depends on the
+// azimuth of approach.
+//
+// Read first. 06 (the transform), 12 (expansions), 14 (the d-functions and
+// their behaviour at the poles). docs/gshtrans-reference.tex,
+// "Interpolation", has the polar-row formulae.
+//
+// Introduced. Interpolate(field, scheme) and Interpolate(expansion);
+// Scheme::Spectral(), Scheme::Bilinear(), Scheme::Bicubic(); constructing a
+// field from an interpolant; Grid::ForBand for oversampling.
+//
+// The output. Spectral interpolation agreeing with the transform at the
+// grid points; the phase rotation of a spin-2 field at the north pole; the
+// refusal of a colatitude outside [0, pi] and the wrapping of longitude; a
+// remesh onto a finer grid; and, with the Interpolation dependency, the
+// errors of the local schemes at the band limit and on an oversampled grid.
 //
 
 #include <GSHTrans/GSHTrans.hpp>
@@ -52,7 +68,8 @@ int main() {
   constexpr auto band = Int{12};
 
   // A band-limited field of upper index 2, built from its coefficients so
-  // that we know exactly what it is.
+  // that we know exactly what it is: every (l, m) set, with an amplitude
+  // falling like 1/(l+1)^2.
   auto grid = Grid(band, 2);
   auto expansion = SpinExpansion<N, Grid>(grid, band);
   for (auto l : expansion.Degrees()) {
@@ -69,6 +86,9 @@ int main() {
   //  The reference, and that it agrees with the transform where both apply  //
   //------------------------------------------------------------------------//
 
+  // The spectral interpolant expands the field once and sums the expansion
+  // at each query. At the grid's own points it must reproduce the samples,
+  // which is what the loop below checks.
   const auto exact = Interpolate(field, Scheme::Spectral());
 
   {
@@ -92,6 +112,9 @@ int main() {
   //                     The poles, and the frame phase                      //
   //------------------------------------------------------------------------//
 
+  // At theta = 0 only m = N = 2 survives, so f(0, phi) = c exp(2 i phi):
+  // same modulus at every phi, and a phase that turns by N * (pi / 2N) =
+  // pi/2 between phi = 0 and phi = pi/2N.
   {
     const auto atZero = exact(0.0, 0.0);
     const auto atQuarter = exact(0.0, pi / (2 * N));
@@ -104,7 +127,8 @@ int main() {
     if (!(std::abs(std::abs(atZero) - std::abs(atQuarter)) < 1e-12)) return 1;
   }
 
-  // Off the sphere in theta is refused; phi is periodic and simply wrapped.
+  // Off the sphere in theta is refused with std::invalid_argument; phi is
+  // periodic and is reduced modulo 2 pi, which is exact.
   try {
     exact(-0.1, 0.0);
     std::cout << "\nA colatitude below zero should have thrown\n";
@@ -120,11 +144,15 @@ int main() {
   //                        Remeshing is one line                            //
   //------------------------------------------------------------------------//
 
+  // The interpolant is a callable of (theta, phi), which is what a field
+  // constructor takes (example 02), so building the field on another grid
+  // from it is a remesh. Interpolate(field) with no scheme is spectral.
   {
     auto finer = Grid(band + 6, 2);
     const auto moved = SpinField<N, Grid>(finer, Interpolate(field));
 
-    // The same field, expanded on the finer grid directly, as a check.
+    // The same field, evaluated on the finer grid directly from its
+    // coefficients, as a check.
     auto there = SpinExpansion<N, Grid>(finer, band);
     for (auto l : expansion.Degrees())
       for (auto m : expansion.Orders(l)) there[l, m] = expansion[l, m];
@@ -158,7 +186,13 @@ int main() {
     // A local scheme wants an oversampled grid. At the band limit it has
     // barely enough samples to see the field at all; give it room and the
     // error falls at its own order -- second for bilinear, fourth for
-    // bicubic. ForBand is how you ask for that room.
+    // bicubic. ForBand(band, nMax, oversampling) is how you ask for that
+    // room: a grid of degree 8 * band for a field of band `band`.
+    //
+    // The third argument of Interpolate is the degree at which the field is
+    // expanded -- for the polar rows of a local scheme, or for the whole sum
+    // of the spectral one. It defaults to the grid's own degree; here the
+    // field's band is enough.
     auto roomy = Grid::ForBand(band, 2, 8);
     auto same = SpinExpansion<N, Grid>(roomy, band);
     for (auto l : expansion.Degrees())

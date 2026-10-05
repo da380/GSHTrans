@@ -35,8 +35,7 @@ namespace GSHTrans {
 /// The alphabet is deliberately uniform across slots rather than per slot. A
 /// mixed object such as D&T's T^{r Omega} would break an invariant the symmetry
 /// machinery relies on -- a permutation may only exchange slots drawn from the
-/// same alphabet -- and widening to a per-slot list later costs only this
-/// header.
+/// same alphabet -- so such objects are not representable as one tensor.
 ///
 /// Both alphabets are closed under negation, which is what the reality
 /// condition needs: it maps -1 to +1 and 0 to itself.
@@ -116,15 +115,16 @@ constexpr bool HasRadialSlotIn() {
 //--------------------------------------------------------------------------//
 
 /// The label of one canonical component of a rank-p tensor: p slots, each
-/// carrying alpha drawn from the alphabet above; see section 2 of the theory
-/// note, docs/canonical-components.tex.
+/// carrying alpha drawn from the alphabet above; see "Canonical components" in
+/// docs/gshtrans-reference.tex.
 ///
 /// The distinction this type exists to keep is that the multi-index is *not*
 /// the upper index. The upper index is the signed sum of the slots (eq:N), and
 /// for rank >= 2 several multi-indices share one: a rank-2 tensor has three
 /// components at N = 0, namely (-+), (00) and (+-). A collection labelled only
-/// by N therefore does not determine a tensor, which is why the unit below is
-/// called SpinField and why components are addressed by multi-index here.
+/// by N therefore does not determine a tensor, which is why the
+/// single-component unit of the field layer is called SpinField and why
+/// components are addressed by multi-index here.
 template <std::ptrdiff_t Rank_, SlotAlphabet Slots_ = AllSlots>
 class MultiIndex {
  public:
@@ -297,7 +297,7 @@ constexpr auto Transposition(Int a, Int b, Int sign) {
 
 }  // namespace SymmetryDetails
 
-/// No relation between components: every one of the 3^Rank is independent.
+/// No relation between components: every one of the Base^Rank is independent.
 template <std::ptrdiff_t Rank>
 struct NoSymmetry {
   /** @brief Generators of the symmetry group. */
@@ -330,9 +330,10 @@ using Symmetric = FullPermutationSymmetry<Rank, 1>;
 template <std::ptrdiff_t Rank>
 using Antisymmetric = FullPermutationSymmetry<Rank, -1>;
 
-/// Anything else, given by its generators. The case this exists for is the
-/// elastic tensor, c_{ijkl} = c_{jikl} = c_{ijlk} = c_{klij}, which is three
-/// generators and is why rank 4 is exposed at all.
+/// Anything else, given by its generators. The motivating case is the elastic
+/// tensor, c_{ijkl} = c_{jikl} = c_{ijlk} = c_{klij}, which is three
+/// generators and is why rank 4 is exposed at all; ElasticSymmetry below
+/// spells it out.
 template <std::ptrdiff_t Rank, SlotPermutation<Rank>... Gs>
 struct GeneratedBy {
   /** @brief Generators of the symmetry group. */

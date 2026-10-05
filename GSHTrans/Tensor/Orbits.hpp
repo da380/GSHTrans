@@ -20,17 +20,18 @@ namespace GSHTrans {
 //   permutation  T^{pi(alpha)} = s T^{alpha},  s = +1 symmetric, -1 anti
 //   negation     T^{-alpha}    = (-1)^N conj(T^{alpha})        (eq:reality)
 //
-// Together they generate a group acting on the 3^Rank multi-indices, and the
-// components that must be stored are one representative of each orbit. The
-// permutation half applies to every tensor; the negation half applies only to
-// a real one, and is what the reality reduction turns on. The
-// algorithm does not care which generators it is given, which is the point:
-// reality adds negation to the set and nothing else changes.
+// Together they generate a group acting on the multi-indices (3^Rank of them,
+// or 2^Rank for a tangential tensor), and the components that must be stored
+// are one representative of each orbit. The permutation half applies to every
+// tensor; the negation half applies only to a real one, and is what the
+// reality reduction turns on. The algorithm does not care which generators it
+// is given, which is the point: reality adds negation to the set and nothing
+// else changes.
 //
-// The tables in the theory note, docs/canonical-components.tex, are the
-// check. Under negation alone a real
-// rank-2 tensor stores 5 of its 9 components and a rank-4 one stores 41 of 81;
-// a symmetric real rank-2 tensor has four orbits carrying six reals per point,
+// The tables under "Which components must be stored" in
+// docs/gshtrans-reference.tex are the check. Under negation alone a real rank-2
+// tensor stores 5 of its 9 components and a rank-4 one stores 41 of 81; a
+// symmetric real rank-2 tensor has four orbits carrying six reals per point,
 // which is the number of independent entries of a real symmetric 3x3 matrix.
 //
 // The same algorithm serves a tangential tensor, whose slots run over {-1, +1}
@@ -85,7 +86,7 @@ struct OrbitTable {
   /** @brief How many components there are, stored or not. */
   static constexpr Int Size = MultiIndex<Rank, SlotSet>::Size;
 
-  /// For each of the 3^Rank components: the flat index of the component
+  /// For each of the Size components: the flat index of the component
   /// actually stored for it, the sign relating the two, and whether the
   /// relation conjugates. So
   ///
@@ -227,22 +228,23 @@ constexpr auto MakeOrbitTable() {
 //
 // So conjugation is a sign change for an imaginary orbit and *nothing at all*
 // for a real one. That distinction is the whole content of these two
-// functions, and it is why there are two functions and not four accessors:
-// written out separately on the flat and the layered type, and again on their
-// expansions, the four copies came to disagree, each wrong for a different
-// case -- a sign lost on the real orbits of an elastic tensor, which no rank-2
-// test could see because no pinned member there is reached by conjugating.
+// functions, and it is why the flat and layered tensor types and their
+// expansions all go through them rather than each spelling the relation out:
+// separate copies are easy to get subtly wrong in different cases, and the
+// real orbits of an elastic tensor are a case no rank-2 test exercises, since
+// no pinned member there is reached by conjugating.
 // tests/TestTensorOrbitValues.cpp checks the defining relations on every
 // component of every type, which is a check on this and not a copy of it.
 
 /**
  * @brief The field a component takes, from the view of what is stored for it.
  *
- * @details The view is taken **by value** and moved into whatever is returned.
- * A spin-weighted node holds an lvalue terminal by reference, which is right
- * at a call site and wrong in an accessor whose view is a local: the node
- * would outlive it. Taking the view by value makes that mistake impossible to
- * write here rather than something each caller must remember.
+ * @details The view is taken **by value** and moved into whatever is returned,
+ * so the result never refers to this function's parameter. A node holds a
+ * view by value whatever its value category (see OperandStorage), so for a
+ * view the move only saves a copy of the grid handle; were an owning field
+ * passed, the move is what makes the node own it rather than hold a reference
+ * to a parameter that dies on return.
  *
  * @tparam relation How the component is obtained from its representative.
  * @tparam Real The precision.

@@ -12,6 +12,18 @@
 
 #include "TestRandom.hpp"
 
+// Interpolation of fields on the sphere.
+//
+// Three layers, each checked against something independent of it: the padded
+// grid (the field's samples extended by the polar rows and periodic ghost
+// columns, checked by index), the spectral interpolant (the exact
+// band-limited sum, checked against the transform on the grid and against
+// closed-form generalised Legendre functions off it), and the local schemes
+// built on the padding (checked for passing through their nodes, for the
+// polar phase, and for the longitude seam). Remeshing through an interpolant
+// is checked end to end. The local schemes need the optional interpolation
+// dependency and are compiled only with it.
+
 namespace {
 
 using namespace GSHTrans;
@@ -25,11 +37,10 @@ constexpr auto pi = std::numbers::pi_v<Real>;
 
 // Arbitrary but reproducible values, in [0, 1).
 //
-// std::mt19937 rather than a hand-rolled congruential step: the first version
-// here multiplied a signed int and overflowed, which is undefined and which
-// UndefinedBehaviorSanitizer duly reported -- every test in this file failed
-// under it while passing everywhere else, because the wraparound it relied on
-// happens to be what the hardware does.
+// std::mt19937 rather than a hand-rolled congruential step: a multiplicative
+// step on a signed int overflows, which is undefined behaviour that
+// UndefinedBehaviorSanitizer reports even though the hardware wraps as
+// intended.
 class Values {
  public:
   explicit Values(std::uint_fast32_t seed) : engine_{seed} {}
@@ -303,8 +314,8 @@ TEST(SpectralInterpolant, IsExactOnALowDegreeHarmonic) {
 
 // The poles are inside the domain and are where the whole padding question
 // comes from, so the reference must answer there. The rule, from the
-// reference note's section on interpolation:
-// the order m = +N survives at the north and m = -N at the south, the latter
+// Interpolation section of docs/gshtrans-reference.tex: the order m = +N
+// survives at the north and m = -N at the south, the latter
 // with a sign alternating in the degree.
 TEST(SpectralInterpolant, AnswersAtThePolesByTheStatedRule) {
   constexpr Int N = 2;
@@ -462,9 +473,9 @@ TEST(FieldInterpolant, PolarRowsCarryTheFramePhase) {
   EXPECT_TRUE(moved) << "the north pole looks constant in phi";
 }
 
-// The wrap: the last cell used to interpolate against nothing. Just below
-// 2 pi the answer must approach the value at zero, which it cannot do without
-// the extra column.
+// The wrap: the last longitude cell closes on phi = 0. Just below 2 pi the
+// answer must approach the value at zero, which it cannot do unless the
+// samples are extended past 2 pi.
 TEST(FieldInterpolant, TheLastLongitudeCellClosesOnZero) {
   const Int lMax = 8;
   auto grid = Grid(lMax, 0);
@@ -493,7 +504,7 @@ static_assert(requires { Scheme::Bicubic(); });
 //   The interpolant as a function on the sphere, and remeshing            //
 //--------------------------------------------------------------------------//
 
-// modelling ScalarFunctionS2 is the point of the feature rather than a
+// Modelling ScalarFunctionS2 is the point of the feature rather than a
 // bonus, because it is what makes remeshing one line. Asserted because it is
 // the property most easily broken by a change of signature.
 static_assert(ScalarFunctionS2<SpectralInterpolant<2, Grid>, Real, Complex>);
@@ -558,7 +569,8 @@ TEST(FieldInterpolant, SurvivesProjectFunctionWhichCopiesIt) {
 // it ends somewhere, with an end condition -- so the samples are extended a
 // few columns past each end of [0, 2 pi] and the ends are kept away from
 // anything that is evaluated. With a single wrap column the two seam cells
-// sat *at* the spline's ends and were several times worse than the rest.
+// would sit *at* the spline's ends and be several times worse than the
+// rest.
 TEST(FieldInterpolant, TheLongitudeSeamIsNoWorseThanTheInterior) {
   const Int lMax = 64;
   const Int band = 8;

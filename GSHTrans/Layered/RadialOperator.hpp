@@ -63,11 +63,12 @@ namespace GSHTrans {
 // what decides where it lives.
 //
 // **It is called SliceSize() times per application**, which is nTheta * nPhi
-// in the spatial domain and one per coefficient in the spectral one -- of
-// order 66,000 at lMax = 256. So anything depending only on the nodes is
-// computed once, when the operator is built, and an allocation inside the
-// call is a defect rather than a cost. RadialDerivatives.hpp is written to that
-// rule and is the worked example of it.
+// in the spatial domain and one per coefficient in the spectral one -- about
+// 66,000 coefficients at lMax = 256, and twice that many points. So anything
+// depending only on the nodes is computed once, when the operator is built, and
+// an allocation inside the call is a defect rather than a cost.
+// RadialDerivatives.hpp is written to that rule and is the worked example of
+// it.
 template <typename Op, typename Scalar>
 concept RadialOperator = requires(const Op& op, std::span<const Scalar> in,
                                   std::span<Scalar> out) { op(in, out); };
@@ -90,17 +91,6 @@ concept LayeredStack = requires(const Stack& stack) {
   { stack.SameShapeOn(stack.Radial()) } -> std::same_as<Stack>;
 };
 
-// Apply a radial operator at every angular index, or at every coefficient.
-//
-// `in` and `out` must be distinct objects: each line is gathered before the
-// operator runs and scattered after, so an in-place call would be correct only
-// by accident of the gather buffer, and requiring distinctness says so rather
-// than relying on it. Use the returning form, which allocates the result.
-//
-// Threading is over lines, which is the axis with the most of them and the one
-// with no dependence between iterations. The gather buffers are thread-local
-// and grow to fit, for the same reason the transform's work buffers are: the
-// alternative is an allocation per line.
 namespace RadialDetails {
 
 // An operator's weights belong to the radii it was built on. One that says
@@ -124,6 +114,17 @@ void CheckOperatorGrid(const Op& op, const Radial& radial) {
 
 }  // namespace RadialDetails
 
+// Apply a radial operator at every angular index, or at every coefficient.
+//
+// `in` and `out` must be distinct objects: each line is gathered before the
+// operator runs and scattered after, so an in-place call would be correct only
+// by accident of the gather buffer, and requiring distinctness says so rather
+// than relying on it. Use the returning form, which allocates the result.
+//
+// Threading is over lines, which is the axis with the most of them and the one
+// with no dependence between iterations. The gather buffers are thread-local
+// and grow to fit, for the same reason the transform's work buffers are: the
+// alternative is an allocation per line.
 template <LayeredStack Stack, typename Op>
 requires RadialOperator<
     Op, typename std::remove_cvref_t<

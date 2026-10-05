@@ -312,10 +312,10 @@ void ApplyToLines(const RadialMajor<Stack>& in, RadialMajor<Stack>& out,
 // writes land in the same cache sets, which is the hazard the Fourier stage
 // guards against and the reason the transpose above is tiled. With the loop
 // kernel the two routes are within a few per cent, and at nR = 128 the direct
-// one was the slower by up to a sixth. So there is no rule
-// here simple enough to build in, and none is: where time matters more than
-// memory, measure both on the machine in question -- the benchmark's `lines`
-// section is that measurement.
+// one was the slower by up to a sixth. So there is no rule here simple enough
+// to build in, and none is: where time matters more than memory, measure both
+// on the machine in question -- the benchmark's `lines` section is that
+// measurement.
 
 /**
  * @brief The expansion of a layered field, as radial lines.

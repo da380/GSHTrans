@@ -15,16 +15,13 @@
 // The upper-index-zero row against the standard library's spherical Legendre
 // function, which is an independent implementation of the same thing.
 //
-// Three things this once got wrong, all of them making it easier to pass.
-// The "relative" error divided by `norm`, which was declared inside the
-// condition of an `if` and so was the *bool* of the comparison -- one -- and
-// the check was absolute. The standard function takes unsigned arguments, so
-// every negative order reached it as an enormous degree, came back zero, fell
-// under the size threshold and was skipped: half the table was never looked
-// at. And the angle came from std::random_device, so a failure could not have
-// been reproduced. The error is now measured against the largest value at the
-// degree, negative orders are checked through X_{l,-m} = (-1)^m X_{lm}, and
-// the angles are seeded and reported.
+// Three details keep the check honest. The error is relative to the largest
+// value at the degree, so that small entries are neither skipped nor held to
+// an absolute bound. The standard function takes unsigned arguments, so a
+// negative order passed straight through would arrive as an enormous degree
+// and come back zero; negative orders are instead checked through
+// X_{l,-m} = (-1)^m X_{lm}. And the angles are seeded and reported, so that
+// a failure can be reproduced.
 template <std::floating_point Real>
 int CheckLegendre() {
   using namespace GSHTrans;

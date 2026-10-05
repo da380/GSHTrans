@@ -11,6 +11,19 @@
 #include <stdexcept>
 #include <vector>
 
+// Layered fields: a stack of angular fields over a radial grid.
+//
+// What is checked: the radial grid and its optional element partition; that
+// the radial axis is the transform's batch axis (a stack transforms in one
+// call and agrees exactly with one radius at a time); the radial operator
+// seam, in both layouts and under threads; the layered gradient against
+// known coefficients and the Laplacian identity; the ready-made radial
+// derivatives (finite differences, differentiation matrix, spline, element
+// derivative) for exactness to their order and for respecting interfaces;
+// and radial resampling. Most tests use polynomials in r on which the
+// operator is exact, so that what is measured is the seam and the algebra
+// rather than a truncation error.
+
 namespace {
 
 using namespace GSHTrans;
@@ -1046,7 +1059,7 @@ TEST(RadialOperator, OneOperatorServesEveryThread) {
   }
 }
 
-// What the whole exercise is for: Gradient now runs without the caller
+// What the ready-made derivatives are for: Gradient runs without the caller
 // writing a differentiation matrix first. The identity is the Laplacian one,
 // at a power both operators integrate exactly -- r^2 is degree two, and both
 // a three-point rule and a three-node matrix are exact there, so the answer
@@ -1116,13 +1129,11 @@ TEST(RadialDerivatives, TheSplineRefusesARepeatedRadius) {
   EXPECT_THROW((SplineDerivative<Real>(radial)), std::invalid_argument);
 }
 
-// This used to be an oracle and is now an integration check, which is a
-// weaker thing honestly labelled. When the operator held its own spline, an
-// independent implementation agreeing with it said the algorithm was right;
-// now that both go through Interpolation's system, what it says is that the
-// right ordinates, nodes and derivative order were handed over. Still worth
-// having -- that is the half that can go wrong here -- and no longer worth
-// calling an oracle.
+// An integration check, not an oracle. The operator and the ordinary spline
+// both go through the Interpolation library's system, so agreement does not
+// say the algorithm is right; what it says is that the right ordinates,
+// nodes and derivative order were handed over. That is the half that can go
+// wrong here, so it is worth having.
 TEST(RadialDerivatives, TheSplineMatchesAnOrdinarySplineAtTheNodes) {
   auto radial = RadialGrid<Real>(UnevenRadii);
   const auto d = SplineDerivative<Real>(radial);
@@ -1363,7 +1374,7 @@ TEST(RadialGrid, CarriesTheElementsWhenItIsGivenThem) {
   EXPECT_EQ(mesh.Breakpoint(1), 0.8);
   EXPECT_EQ(mesh.Breakpoint(2), 1.2);
 
-  // And a grid without the partition is exactly what it was before.
+  // And a grid without the partition is an ordinary radial grid.
   EXPECT_EQ(plain.NumberOfRadii(), mesh.NumberOfRadii());
 }
 
@@ -1445,11 +1456,10 @@ TEST(RadialGrid, ElementsAndWeightsAreIndependent) {
 
 #ifdef GSHTRANS_HAVE_INTERPOLATION
 
-// What the rebuild bought, beyond deleting sixty lines. The hand-written
-// operator did natural ends and nothing else; the upstream system does
-// not-a-knot too, which stays fourth order right up to the ends where natural
-// costs an order -- and the ends are where a boundary condition is applied and
-// where a spline derivative was least trustworthy.
+// The spline offers not-a-knot ends as well as natural ones. Not-a-knot stays
+// fourth order right up to the ends where natural costs an order -- and the
+// ends are where a boundary condition is applied and where a spline
+// derivative is least trustworthy.
 TEST(RadialDerivatives, TheSplineOffersTheEndConditionsItUsedToLack) {
   auto radial = RadialGrid<Real>(UnevenRadii);
   const auto natural = SplineDerivative<Real>(radial);
@@ -1649,8 +1659,8 @@ TEST(RadialResample, ABreakpointIsAnsweredFromAbove) {
   EXPECT_NEAR((moved.Slice(2)[0, 0]).real(), 2.0, 1.0e-12) << "above";
 }
 
-// A grid without a partition is one piece, which is exactly what resampling
-// did before the partition existed.
+// A grid without a partition is one piece: resampling fits a single
+// interpolant over all its radii.
 TEST(RadialResample, AGridWithoutElementsIsOnePiece) {
   constexpr auto lMax = Int{4};
   auto grid = Grid(lMax, 2, FFTWpp::Estimate);
@@ -1700,7 +1710,7 @@ TEST(RadialDerivatives, TheSplineFitsPerElementWhenTheGridSaysSo) {
   }
 }
 
-// And a grid with no partition is one piece, which is what it always was.
+// And a grid with no partition is one piece.
 TEST(RadialDerivatives, TheSplineIsOnePieceWithoutAPartition) {
   const auto radial = RadialGrid<Real>(UnevenRadii);
   EXPECT_EQ((SplineDerivative<Real>(radial).PieceCount()), 1);
@@ -1930,9 +1940,9 @@ TEST(RadialOperator, AnOperatorBuiltOnAnotherGridIsRefused) {
 
 // The seam exists for a caller's own operators, and a caller's operator may
 // throw: a band solve that finds a singular line, say. Run sequentially that
-// is an ordinary exception. Run under Execution::Parallel it used to leave an
-// OpenMP region, which terminates the program -- so the same call was
-// catchable or fatal depending on a policy argument.
+// is an ordinary exception. Run under Execution::Parallel it must not escape
+// the OpenMP region, which would terminate the program -- the same call has
+// to be catchable whatever the policy argument.
 
 namespace {
 

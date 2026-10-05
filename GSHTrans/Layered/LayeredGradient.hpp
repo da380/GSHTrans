@@ -23,10 +23,10 @@ namespace GSHTrans {
 //     grad = e_0 d_r + r^{-1} grad_1,
 //
 // and the two halves live on opposite sides of the seam. The angular half,
-// grad_1, is `SurfaceGradient` -- already written, already tested, and the same
-// formula whether or not there is a radial axis. The radial half is d_r, which
-// this library does not and will not own: it belongs to the application's
-// discretisation and arrives as a RadialOperator.
+// grad_1, is `SurfaceGradient`, the same formula whether or not there is a
+// radial axis. The radial half is d_r, which this library does not own: it
+// belongs to the application's discretisation and arrives as a
+// RadialOperator.
 //
 // So the full gradient of a rank-q field is a rank-(q+1) field whose blocks
 // split by the *new* leading index sigma:
@@ -108,9 +108,12 @@ class ResultAtRadius {
 };
 
 // Apply a radial operator to every stored component of a layered tensor
-// expansion. The derived components follow from the stored ones by relations
-// with constant coefficients, so differentiating the representatives and
-// deriving is the same as deriving and differentiating.
+// expansion. The derived components follow from the stored ones by a constant
+// factor and, for the reality relation, a complex conjugation at the opposite
+// order. Both commute with an operator that acts along r alone with real
+// weights -- every ready-made one does -- so differentiating the
+// representatives and deriving is the same as deriving and differentiating. An
+// operator with complex weights would not commute with the conjugation.
 template <auto Indices, typename Stacks, typename Op, std::size_t... I>
 void ApplyOne(const Stacks& in, Stacks& out, const Op& op, Execution policy,
               std::index_sequence<I...>) {
@@ -169,9 +172,9 @@ void FillRadialComponent(Result& result, const Derivative& derivative, Int i) {
 // Like its flat counterpart it takes a general tensor and not a tangential
 // one: grad_1 moves slots between e_0 and e_+-, so it does not close on the
 // tangential bundle, and a tangential operand is embedded first. Every
-// MultiIndex<Rank + 1> below
-// is therefore over AllSlots by right rather than by oversight -- the result
-// lands in the general bundle whatever the operand was.
+// MultiIndex<Rank + 1> below is therefore over AllSlots by right rather than by
+// oversight -- the result lands in the general bundle whatever the operand
+// was.
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
           TensorReality Reality, AngularGrid Grid>
 auto SurfaceGradient(

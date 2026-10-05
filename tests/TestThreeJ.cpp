@@ -13,9 +13,8 @@
 
 // The test family for 3j.hpp.
 //
-// `3j.hpp` had no coverage at all although it is public API, and the reason
-// this file can be written without a reference implementation is the
-// completeness relation:
+// `3j.hpp` is public API. Most of this file needs no reference
+// implementation, because of the completeness relation:
 //
 //     sum over the (m1, m3) plane of the squared symbols  =  1
 //
@@ -25,9 +24,9 @@
 //
 // Completeness cannot see everything -- Schulten-Gordon normalises each row
 // by it, so it holds by construction -- and the tests further down say what
-// each of the other checks can and cannot see. The stretched region, where
-// the recursion once ran in its unstable direction, is covered at the end of
-// the file against Racah's closed form, which is exact there.
+// each of the other checks can and cannot see. The stretched region, where a
+// recursion run in its unstable direction would lose the table, is covered at
+// the end of the file against Racah's closed form, which is exact there.
 
 namespace {
 
@@ -69,17 +68,9 @@ TEST(ThreeJ, CompletenessHoldsAwayFromStretched) {
   }
 }
 
-// The degenerate edge of the triangle rule, and where the present recursion
-// starts to lose it. Measured, the departure from one is:
-//
-//     l = 16 : 1e-16     l = 25 : 1.8e-08
-//     l = 20 : 4.4e-14   l = 28 : 1.2e-05
-//                        l = 30 : 4.1e-03
-//
-// so the failure is **exponential from about l = 20** rather than a cliff at
-// 30 rather than a cliff at 30. Two assertions
-// therefore, at two tolerances, so that the shape of the decay is pinned and
-// not just its ends.
+// The degenerate edge of the triangle rule, l3 = l1 + l2, at modest degree.
+// The looser tolerance on the second loop is looser than it needs to be: the
+// next test holds the same edge to 1e-12 from l = 35 to 128.
 TEST(ThreeJ, CompletenessHoldsAtTheStretchedEdgeForModestDegrees) {
   for (auto l : {1, 2, 4, 8, 12, 16, 20}) {
     EXPECT_NEAR(Completeness<double>(l, l, 2 * l), 1.0, 1e-12)
@@ -92,20 +83,21 @@ TEST(ThreeJ, CompletenessHoldsAtTheStretchedEdgeForModestDegrees) {
 }
 
 //--------------------------------------------------------------------------//
-//                     Where the identity fails, and it must                 //
+//              Stretched and large triangles, answered in full             //
 //--------------------------------------------------------------------------//
 
-// The old boundary is gone. Schulten-Gordon recurses inward from both
-// forbidden ends and matches in the middle, so the region that destroyed the
-// one-directional scheme -- and the band that neither it nor Racah's closed
-// form could reach -- is answered like anywhere else.
+// Schulten-Gordon recurses inward from both forbidden ends and matches in the
+// middle, so the stretched region -- where a recursion run in one direction
+// only loses the table past about l = 30 -- and the band at moderately large
+// degree where Racah's closed form cancels badly are answered like anywhere
+// else.
 TEST(ThreeJ, AnswersEverythingTheOldSchemesCouldNot) {
-  // Stretched: fatal to the old recursion past l = 30.
+  // Stretched: lost by a one-directional recursion past l = 30.
   for (auto l : {35, 40, 50, 64, 100, 128}) {
     ASSERT_NO_THROW(Wigner3jMatrix<double>(l, l, 2 * l)) << "l = " << l;
     EXPECT_NEAR(Completeness<double>(l, l, 2 * l), 1.0, 1e-12) << "l = " << l;
   }
-  // The band neither classical method reached.
+  // The band neither a one-directional recursion nor Racah reaches.
   for (const auto& t : std::vector<std::array<int, 3>>{{80, 80, 120},
                                                        {90, 90, 135},
                                                        {100, 100, 150},
@@ -281,23 +273,23 @@ TEST(ThreeJ, TheSingleSymbolEntryPointAgreesWithTheTable) {
 }
 
 //--------------------------------------------------------------------------//
-//        the structural checks, which carry the weight now            //
+//                         The structural checks                           //
 //--------------------------------------------------------------------------//
 //
-// With one implementation there is no second one to compare against, so the
-// suite rests on properties a single implementation cannot satisfy by
-// accident. The sharpest is column-permutation invariance: the recursion runs
-// over m2 at fixed m1, so permuting the columns makes it run along entirely
-// different lines through different data -- and it is independent of the
-// per-row normalisation, which is what makes it stronger here than
-// completeness.
+// The library has one implementation, and the independent oracle (Racah,
+// below) is trustworthy only where its sum is short, so the suite rests on
+// properties a single implementation cannot satisfy by accident. The sharpest
+// is column-permutation invariance: the recursion runs over m2 at fixed m1, so
+// permuting the columns makes it run along entirely different lines through
+// different data -- and it is independent of the per-row normalisation, which
+// is what makes it stronger here than completeness.
 //
-// This is what caught the one real bug in the implementation. The phase was
-// recovered from the last stored value, and at near-stretched triples of high
-// degree the row's dynamic range reaches 1e201, so the rescaling flushed that
-// element to zero and the sign with it. Whole rows came out negated with
-// every magnitude correct to 1e-16. Completeness is a sum of squares and saw
-// nothing; the recurrence is homogeneous and saw nothing; only this saw it.
+// It is the check that sees a wrong phase. At near-stretched triples of high
+// degree a row's dynamic range reaches 1e201, so a phase recovered from an
+// element that rescaling has flushed to zero is lost, and whole rows come out
+// negated with every magnitude correct to 1e-16. Completeness is a sum of
+// squares and cannot see that; the recurrence is homogeneous and cannot see
+// it either; only this can.
 TEST(ThreeJ, IsInvariantUnderBothCyclicPermutations) {
   for (const auto& t : std::vector<std::array<int, 3>>{{3, 4, 5},
                                                        {12, 12, 12},
@@ -483,19 +475,19 @@ TEST(ThreeJ, TheCouplingLayoutIsAConventionAndIsItsOwnInverse) {
 
 // A row of a near-stretched table is a single hump with no classically
 // allowed region, and the rule that decides where the two halves of the
-// recursion meet has to find the top of it. It once did not -- it watched the
-// recurrence coefficient, which is a proxy for the values and a poor one
-// here -- so one half ran downhill, which costs digits, and beyond a certain
-// disparity the join overflowed and the table threw. More than half of all
-// (l, 2l, l) tables up to l = 1000 could not be built, and in single precision
-// tables came back wrong by a third of their own scale without complaint.
+// recursion meet has to find the top of it. A rule that watches the
+// recurrence coefficient instead -- a proxy for the values, and a poor one
+// here -- lets one half run downhill, which costs digits, and beyond a
+// certain disparity the join overflows and the table throws: more than half
+// of all (l, 2l, l) tables up to l = 1000 cannot be built that way, and in
+// single precision tables come back wrong by a third of their own scale.
 //
 // The oracle is Racah's closed form, which is exact to rounding where its sum
 // is short. A short sum *is* the stretched region, reached by whichever cyclic
 // permutation of the columns puts the stretched degree third.
 //
-// GSHTRANS_TEST_THOROUGH=1 runs the full sweeps the fix was accepted on, which
-// take a few seconds optimised and rather longer under a sanitiser.
+// GSHTRANS_TEST_THOROUGH=1 runs the full sweeps, which take a few seconds
+// optimised and rather longer under a sanitiser.
 
 namespace Stretched {
 
@@ -510,8 +502,8 @@ inline std::vector<int> Degrees() {
     for (auto l = 2; l <= 1000; l += 13) all.push_back(l);
     return all;
   }
-  // Small, the first failures, the band where they were densest, and one well
-  // beyond it.
+  // Small, the onset of the difficulty (l = 33 in single precision), the
+  // band where it is worst, and one well beyond it.
   return {2, 33, 130, 260, 264, 275, 302, 520};
 }
 
@@ -632,13 +624,13 @@ TEST(ThreeJ, DoublePrecisionHoldsAwayFromTheStretchedRegion) {
 }
 
 TEST(ThreeJ, SinglePrecisionIsRightAndNotMerelyReturned) {
-  // Single precision used to come back wrong by up to six tenths of the
-  // table's own scale, having passed the residual check, and threw from
-  // l = 33 on stretched tables. The first three named here are from the
-  // review. The flat rows are here for a different reason: even a correct
-  // recursion loses n^2 epsilon along a row, which in single precision left
-  // two digits at l = 450, so the rows are computed in double and a
-  // single-precision table is the double one, rounded.
+  // A single-precision table must be right, not merely pass the residual
+  // check: a table wrong by a large fraction of its own scale can still
+  // satisfy the recurrence. The first four triples named here are hard
+  // near-stretched cases. The flat rows are here for a different reason:
+  // even a correct recursion loses n^2 epsilon along a row, which in single
+  // precision would leave two digits at l = 450, so the rows are computed in
+  // double and a single-precision table is the double one, rounded.
   auto triples = Stretched::RandomTriples(Stretched::Thorough() ? 300 : 20,
                                           Stretched::Thorough() ? 500 : 350);
   triples.push_back({74, 466, 392});

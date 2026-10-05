@@ -15,10 +15,10 @@
 //
 // Everything here is explicit about its seed, because drawing a fresh
 // std::random_device per call means a test that fails cannot be rerun on the
-// data that failed it. Tests draw one seed from
-// TestSeed(), thread it through, and report it on failure; setting
-// GSHTRANS_TEST_SEED to that value reproduces the run exactly, and setting it
-// to "random" goes back to unseeded exploration.
+// data that failed it. Tests draw one seed from TestSeed(), thread it
+// through, and report it on failure; setting GSHTRANS_TEST_SEED to that value
+// reproduces the run exactly, and setting it to "random" draws a fresh seed
+// for exploration.
 
 namespace GSHTransTest {
 

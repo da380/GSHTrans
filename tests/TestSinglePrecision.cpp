@@ -9,13 +9,11 @@
 // Single precision, one test a layer, and a grid covering only the
 // non-negative upper indices.
 //
-// Neither was instantiated anywhere -- not in a test, an example or a
-// benchmark -- although both are offered: `float` by every concept in the
-// library, and NRange = NonNegative by dedicated branches in the grid and in
-// the Wigner tables. They worked when first tried, so nothing here was written
-// after a failure. It is here so that they go on working: a template nobody
-// instantiates is checked by nobody, and these are the cheapest instantiations
-// that reach each layer's arithmetic.
+// Both are offered -- `float` by every concept in the library, and
+// NRange = NonNegative by dedicated branches in the grid and in the Wigner
+// tables -- and this file is what instantiates them. A template nobody
+// instantiates is checked by nobody, and these are the cheapest
+// instantiations that reach each layer's arithmetic.
 
 using namespace GSHTrans;
 

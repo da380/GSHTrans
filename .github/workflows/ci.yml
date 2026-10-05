@@ -13,23 +13,20 @@ concurrency:
 jobs:
   # Three compilers, both build types. Clang carries its own package list
   # because it needs an OpenMP runtime of its own -- libomp rather than the
-  # libgomp the GCC entries get for free -- which is also why it took a while
-  # to be gated on: no clang OpenMP runtime is installed on the development
-  # machine, so this leg was advisory until it had been seen to pass here.
+  # libgomp the GCC entries get for free. No clang OpenMP runtime is installed
+  # on the development machine, so this is the only place the clang build is
+  # seen.
   #
   # Every entry has a BLAS and demands it: GSHTRANS_WITH_BLAS is ON and not
   # AUTO, so a runner without one fails to configure instead of quietly
-  # building without the matrix kernel. That is not hypothetical. For as long
-  # as no job installed a BLAS, every job logged "the matrix transform kernel
-  # is not built", the kernel's tests compiled to nothing, its example
-  # returned zero without running, and an installed package that could not be
-  # consumed on a machine *with* a BLAS went unnoticed -- all green.
+  # building without the matrix kernel. Without a BLAS the kernel's tests
+  # compile to nothing and its example returns zero without running, so a
+  # job without one would pass while testing none of it.
   #
   # The GCC entries take the OpenMP build of OpenBLAS, which shares libgomp
   # with the library and is what the library serialises by itself. Clang uses
-  # libomp, and two OpenMP runtimes in one process is the thing lessons.md
-  # warns about, so it takes the pthread build and the environment variable
-  # that build needs.
+  # libomp, and two OpenMP runtimes in one process is to be avoided, so it
+  # takes the pthread build and the environment variable that build needs.
   build:
     name: ${{ matrix.compiler.cxx }} / ${{ matrix.build_type }}
     runs-on: ubuntu-24.04
@@ -63,8 +60,7 @@ jobs:
         run: cmake --build build --parallel
 
       # The examples are registered as tests, so this runs them as well as the
-      # suite. That is the point: they were compile-only once and six of them
-      # were aborting.
+      # suite: an example that compiles but aborts fails here.
       - name: Test
         # Read only by a pthread OpenBLAS, which is clang's; inert elsewhere.
         env:
@@ -133,15 +129,13 @@ jobs:
   # AddressSanitizer and UndefinedBehaviorSanitizer together, which is what
   # the script's "address" mode is, under two compilers and with the matrix
   # kernel built -- the raw-pointer GEMM code with its leading dimensions is
-  # the part of the library most able to hide a memory error, and for a long
-  # while it was the part no sanitizer ever saw.
+  # the part of the library most able to hide a memory error.
   #
-  # There was an "undefined" entry here. It ran a strict subset of what
+  # There is no "undefined" entry: it would run a strict subset of what
   # "address" runs, under the same compiler, so it could not fail alone.
   #
   # The clang entry cannot be run on the development machine, which has no
-  # clang OpenMP runtime, so this is the only place it is ever seen. It was
-  # advisory until it had passed here, as the clang build entry once was.
+  # clang OpenMP runtime, so this is the only place it is ever seen.
   sanitizers:
     name: sanitizers / ${{ matrix.toolchain.name }}
     runs-on: ubuntu-24.04
@@ -232,8 +226,7 @@ jobs:
 
       # With a BLAS, and required: the exported target then names BLAS::BLAS,
       # and whether the installed package can still be consumed is exactly the
-      # question. It could not, once, and this job passed regardless because
-      # the runner had no BLAS to find.
+      # question. On a runner with no BLAS that path would go untested.
       - name: Build and install
         run: |
           cmake -S . -B build -G Ninja \
@@ -247,9 +240,9 @@ jobs:
           cmake --install build
 
       # The point of the install rules is that a separate project can consume
-      # them, so consume them from a separate project. This is also what would
-      # have caught the stale FindFFTW.cmake that stopped this library
-      # configuring at all against a current FFTWpp.
+      # them, so consume them from a separate project (tests/package). This
+      # also catches dependency-resolution failures, such as a stray
+      # FindFFTW.cmake shadowing FFTWpp's own, that only show up downstream.
       - name: Consume the installed package
         run: |
           cmake -S tests/package -B build-package -G Ninja \

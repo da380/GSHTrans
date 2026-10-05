@@ -1,8 +1,6 @@
-# 3.24, not the 3.20 this declared until now. Every dependency below is
-# declared with FetchContent_Declare(... FIND_PACKAGE_ARGS), which is a 3.24
-# feature, so a 3.20 configure never worked -- it simply failed later and less
-# clearly. Raising the floor does not break anyone who was working, because
-# nobody between 3.20 and 3.23 was.
+# 3.24, because every dependency below is declared with
+# FetchContent_Declare(... FIND_PACKAGE_ARGS), which is a 3.24 feature; an
+# older CMake would fail later and less clearly.
 cmake_minimum_required(VERSION 3.24)
 
 project(GSHTrans
@@ -45,10 +43,9 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # No FindFFTW.cmake here, and no CMAKE_MODULE_PATH entry for one.
 #
 # FFTWpp ships its own, written around imported targets, and asks for
-# FFTW::Double. This project used to prepend its own module directory holding
-# an older variable-setting FindFFTW.cmake, which won the search and set
-# FFTW_LIBRARIES instead -- so configuring against a current FFTWpp failed
-# outright with "target FFTW::Double not found". GSHTrans uses no FFTW symbol
+# FFTW::Double. A FindFFTW.cmake earlier on the module path would win the
+# search and could set variables instead of that target, failing the
+# configure with "target FFTW::Double not found". GSHTrans uses no FFTW symbol
 # directly, so it has no business finding FFTW at all.
 
 include(FetchContent)
@@ -77,14 +74,13 @@ endif()
 # exists and nothing is downloaded twice. FetchContent_MakeAvailable does the
 # find_package half itself when given FIND_PACKAGE_ARGS.
 #
-# All URLs are https. GaussQuad was previously fetched over SSH, which meant
-# the project could not be configured at all without GitHub keys.
+# All URLs are https, so that configuring needs no GitHub keys.
 #
 # Which revision of each is fetched is a cache variable, and the default is
 # main. The four are one author's and move together, so on a development
 # branch tracking main is the point. It is wrong for a *release*: a tag that
 # fetches whatever main is that day does not name a state anyone can rebuild,
-# and an upstream change has already broken a tagged tree once. So the commit
+# and an upstream change can break a tagged tree. So the commit
 # that tags a release sets these four defaults to the commits it was tested
 # against, and the commit after it sets them back. They are cache variables
 # rather than literals so that the same thing can be done from outside, by
@@ -124,12 +120,13 @@ FetchContent_MakeAvailable(NumericConcepts GaussQuad FFTWpp)
 # Interpolation, which is optional and is the one dependency only part of the
 # library uses.
 #
-# Nothing angular wants a one-dimensional interpolator: the transform, the
-# index algebra and the surface gradient are complete without it, and so are
-# all three ready-made radial derivatives, which are self-contained by
-# design. What it buys is
-# resampling a layered field onto a different radial grid, where the whole
-# menu of schemes comes for the price of a policy argument.
+# The transform, the index algebra, the surface gradient and the three
+# self-contained radial derivatives (finite-difference, Lagrange, element) are
+# complete without it. What it buys is resampling a layered field onto a
+# different radial grid, where the whole menu of schemes comes for the price
+# of a policy argument; the cubic-spline radial derivative
+# (RadialSplineDerivative.hpp); and the bilinear and bicubic schemes for
+# interpolating a field in angle. Without it those are absent, not disabled.
 #
 # On by default because it is header-only, depends on nothing but
 # NumericConcepts -- which is already here -- and is small. Off is a supported
@@ -157,10 +154,9 @@ endif()
 # header-only nor ours: a system OpenBLAS, MKL or Accelerate is what a caller
 # on a real machine already has, and building one here would be this library
 # taking on a responsibility it has declined for every other dependency. It is
-# therefore the first non-header-only dependency, which is why it is an option
-# and not a requirement -- everything the library did before this exists
-# without it, and a build with it off simply does not offer
-# TransformKernel::Matrix().
+# therefore the one non-header-only dependency, which is why it is an option
+# and not a requirement: everything but the matrix kernel works without it,
+# and a build with it off simply does not offer TransformKernel::Matrix().
 #
 # Three states rather than two, because ON has to mean two different things
 # depending on who said it. AUTO -- the default -- uses BLAS if it is there
@@ -179,9 +175,10 @@ set_property(CACHE GSHTRANS_WITH_BLAS PROPERTY STRINGS AUTO ON OFF)
 
 # The three states are compared as strings, so the other spellings CMake
 # accepts for a boolean have to be folded onto them first. Unfolded, "0" and
-# "FALSE" were neither "OFF" nor "ON" and so meant AUTO -- BLAS linked for a
-# caller who had asked for none -- and "1" and "TRUE" lost the hard failure
-# that ON exists to give. Anything else is refused rather than guessed at.
+# "FALSE" would be neither "OFF" nor "ON" and so mean AUTO -- BLAS linked for
+# a caller who had asked for none -- and "1" and "TRUE" would lose the hard
+# failure that ON exists to give. Anything else is refused rather than
+# guessed at.
 string(TOUPPER "${GSHTRANS_WITH_BLAS}" _with_blas)
 if(_with_blas MATCHES "^(ON|1|TRUE|YES|Y)$")
   set(_with_blas ON)
@@ -213,9 +210,9 @@ endif()
 # If a dependency was fetched rather than found, it is an ordinary target in
 # this build and must be in an export set of its own for GSHTrans to be
 # exportable at all. CMake does notice, but only at the generate step and with
-# a message that says nothing about how to fix it -- and the commonest way to
-# arrive here is a build tree configured before this file asked for the
-# install, whose cache still holds the old answer. So say it plainly.
+# a message that says nothing about how to fix it -- and a common way to
+# arrive here is a build tree whose cache holds an explicit
+# <DEPENDENCY>_INSTALL=OFF. So say it plainly.
 if(GSHTRANS_INSTALL)
   # Interpolation is not in this list, and that is not an omission: its
   # install rules are unconditional, so a fetched copy installs itself with no
@@ -299,15 +296,12 @@ target_include_directories(GSHTrans INTERFACE
 
 # Installation, and the CMake package.
 #
-# This could not be done until recently. An INTERFACE target can only be
-# exported if everything it links is itself exported or imported, and two of
-# the three dependencies -- FFTWpp and GaussQuad -- carried no install rules
-# at all, so a config file calling find_dependency on them would have produced
-# a package that fails at configure time. Both now ship packages of their own,
-# which is what unblocked this.
+# An INTERFACE target can only be exported if everything it links is itself
+# exported or imported, so this relies on every required dependency shipping
+# a CMake package of its own, which cmake/GSHTransConfig.cmake.in then finds.
 #
-# Consumption by add_subdirectory or FetchContent still works and is
-# unaffected.
+# Consumption by add_subdirectory or FetchContent works as well and does not
+# need any of this.
 if(GSHTRANS_INSTALL)
   include(CMakePackageConfigHelpers)
   set(GSHTRANS_CMAKE_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/GSHTrans")
@@ -316,8 +310,8 @@ if(GSHTRANS_INSTALL)
 
   # The public headers are included as <GSHTrans/GSHTrans.hpp>, so the whole
   # GSHTrans directory goes to the include prefix as it stands. All and Core
-  # are the two forwarding headers kept for code written against the old
-  # layout; they have no extension, so they are named.
+  # are forwarding headers, compatibility spellings of GSHTrans.hpp and
+  # Core.hpp; they have no extension, so they are named.
   install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/GSHTrans
           DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
           FILES_MATCHING
@@ -335,9 +329,9 @@ if(GSHTRANS_INSTALL)
     "${CMAKE_CURRENT_BINARY_DIR}/GSHTransConfig.cmake"
     INSTALL_DESTINATION "${GSHTRANS_CMAKE_INSTALL_DIR}")
 
-  # SameMajorVersion rather than AnyNewerVersion: the library is pre-1.0 in
-  # spirit and its interfaces have been changing, so promising a consumer that
-  # any newer version will do would be a promise it cannot keep.
+  # SameMajorVersion rather than AnyNewerVersion: a new major version may
+  # change the interface, so promising a consumer that any newer version will
+  # do would be a promise the library cannot keep.
   write_basic_package_version_file(
     "${CMAKE_CURRENT_BINARY_DIR}/GSHTransConfigVersion.cmake"
     VERSION ${PROJECT_VERSION}

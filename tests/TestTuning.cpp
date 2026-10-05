@@ -5,6 +5,12 @@
 #include <cstddef>
 #include <vector>
 
+// The tuner: the timing core, the chunk tuner and the kernel chooser. Timings
+// are not reproducible, so what is asserted is structure -- that tuning never
+// returns something worse than the default, never changes an answer, leaves
+// the grid it was asked about alone, and says why when a kernel is not
+// available.
+
 namespace {
 
 using namespace GSHTrans;
@@ -40,9 +46,9 @@ TEST(Tuning, BestSecondsTakesTheBestWindowAndWarmsUpFirst) {
 
 // The acceptance criterion, and it is deliberately not "it finds the
 // optimum". There may not be one resolvable -- the lMax = 128 peak has been
-// seen to swap between two runs of the same
-// binary -- so the property a caller needs, and the only one that is
-// testable, is that tuning never returns something worse than doing nothing.
+// seen to swap between two runs of the same binary -- so the property a caller
+// needs, and the only one that is testable, is that tuning never returns
+// something worse than doing nothing.
 //
 // It holds by construction, since a candidate displaces the incumbent only by
 // beating it by the margin, and these assertions are what say the
@@ -124,10 +130,10 @@ TEST(Tuning, LeavesTheGridItWasAskedAboutAlone) {
 
 // At one field there is nothing to tune: every chunk of one or more takes the
 // whole batch in one go, so all the candidates run the same schedule and are
-// collapsed to one. Pinned because the first version of the tuner did not
-// collapse them, timed seven identical experiments, and duly reported a 2x
-// "win" -- which at count == 1 is definitionally impossible and is what said
-// the method rather than the result was wrong.
+// collapsed to one. Pinned because timing seven identical experiments can
+// report a 2x "win" from noise alone -- which at count == 1 is impossible by
+// definition, and would be a statement about the method rather than the
+// result.
 TEST(Tuning, HasNothingToTuneAtOneField) {
   auto grid = TestGrid(16, 2);
   const auto tuned = TuneChunking(grid, 16, 2, 1);
@@ -158,7 +164,7 @@ TEST(Tuning, RefusesAnEmptyBatch) {
 //                  Choosing between the two kernels                       //
 //--------------------------------------------------------------------------//
 
-// every way the matrix kernel can be unavailable is named rather than
+// Every way the matrix kernel can be unavailable is named rather than
 // collapsing silently to "use the loop". Generated values are one of the
 // three, and the only one testable in every build.
 TEST(Tuning, RefusesTheMatrixKernelForGeneratedValues) {

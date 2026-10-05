@@ -1,14 +1,29 @@
 // 19 -- Layered models: elements, interfaces, and remeshing
 //
-// A radial grid has always been able to hold a repeated radius. What it could
-// not do was say what one *meant*: at the core-mantle boundary a repetition is
-// a material interface with two sides, and in a typo it is a mistake, and
-// nothing could tell them apart.
+// What this shows. Earth models are layered: at the core-mantle boundary or
+// the Moho, material properties jump, and a field's radial derivative is
+// two-valued. A radial grid represents such an interface as a repeated radius
+// -- once as the top of the element below, once as the bottom of the element
+// above. A plain RadialGrid accepts repeated radii but cannot say what one
+// means: an interface with two sides, or a mistake.
 //
-// `RadialGrid::WithElements` is the difference. It carries which radii belong
-// to which element -- the smallest fact that distinguishes a discretisation
-// from a list of numbers, and the one thing here that more than one facility
-// needs and none can infer.
+// `RadialGrid::WithElements` says which radii belong to which element. That
+// is the smallest fact that distinguishes a discretisation from a list of
+// numbers, and the one that several facilities need and none can infer: the
+// element derivative needs the blocks, the spline derivative fits one spline
+// per element, and resampling must not interpolate across an interface.
+//
+// Read first. 16 (layered fields) and 18 (radial operators).
+//
+// Introduced. RadialGrid::WithElements and its queries (ElementCount,
+// Breakpoint, ElementOf); ElementDerivative; and, with the Interpolation
+// dependency, SplineDerivative on a partitioned grid and Resample with
+// RadialInterpolation.
+//
+// The output. The mesh's structure; the message for a malformed partition; a
+// derivative reporting both one-sided slopes at the interface; that the
+// elements do not influence each other; and resampled values reproducing a
+// discontinuous profile exactly on either side of the interface.
 
 #include <GSHTrans/GSHTrans.hpp>
 #include <cmath>
@@ -35,11 +50,14 @@ int main() {
   // A model with an interface
   //------------------------------------------------------------------------//
 
-  // Two elements meeting at r = 0.8, which is held twice: once as the top of
-  // the lower element and once as the bottom of the upper one. The blocks are
-  // disjoint, so every radius belongs to exactly one element -- which is what
-  // makes a derivative at the interface well defined without anyone having to
-  // choose between the two sides.
+  // Two elements meeting at r = 0.8, which is held twice: index 2 is the top
+  // of the lower element and index 3 the bottom of the upper one. The
+  // partition is given by element starts, half-open, with the total count
+  // last: {0, 3, 6} means element 0 holds indices [0, 3) and element 1 holds
+  // [3, 6). The blocks are disjoint, so every radius belongs to exactly one
+  // element -- which is what makes a derivative at the interface well defined
+  // without anyone having to choose between the two sides. The breakpoints
+  // are the element ends: 0.4, 0.8 and 1.2.
   const auto radii = std::vector<Real>{0.40, 0.60, 0.80, 0.80, 1.00, 1.20};
   const auto starts = std::vector<Int>{0, 3, 6};
   const auto mesh = RadialGrid<Real>::WithElements(radii, starts);
@@ -52,10 +70,11 @@ int main() {
             << "  index 2 is in element " << mesh.ElementOf(2)
             << ", index 3 in element " << mesh.ElementOf(3) << "\n\n";
 
-  // The partition has to *be* one, and each way of not being one has its own
-  // message: not covering the radii, an element of a single node, a repeated
-  // radius inside an element -- which is a mistake rather than an interface --
-  // or a gap where the field would be undefined.
+  // The partition has to *be* one, and each way of not being one throws
+  // std::invalid_argument with its own message: not covering the radii, an
+  // element of a single node, a repeated radius inside an element -- which is
+  // a mistake rather than an interface -- or two elements that do not meet at
+  // a common radius. Here 0.6 is repeated inside element 0.
   try {
     (void)RadialGrid<Real>::WithElements(
         std::vector<Real>{0.4, 0.6, 0.6, 0.8, 1.0, 1.2}, {0, 3, 6});
@@ -68,6 +87,10 @@ int main() {
   // The derivative is block-diagonal, and two-valued at the interface
   //------------------------------------------------------------------------//
 
+  // The element derivative is what a spectral-element code does: within
+  // each element, d/dr of the polynomial through that element's nodes (here
+  // three nodes, so a quadratic); the blocks do not talk to each other. It
+  // needs a grid built by WithElements.
   const auto element = ElementDerivative<Real>(mesh);
 
   // A field with a jump: slope +1 below the interface, slope -3 above it.
@@ -92,7 +115,7 @@ int main() {
 
   // Nothing in one element can move the answer in another, which is what
   // block-diagonal means and what a global operator on the same radii would
-  // not give.
+  // not give. Index 4 is in the upper element; index 0 is in the lower.
   auto disturbed = profile;
   disturbed[4] += 1.0;
   auto after = std::vector<Real>(radii.size());
@@ -102,12 +125,12 @@ int main() {
 
 #ifdef GSHTRANS_HAVE_INTERPOLATION
   //------------------------------------------------------------------------//
-  // Splines stop refusing, and fit per element
+  // Splines fit per element
   //------------------------------------------------------------------------//
 
-  // Without a partition a spline through a repeated radius is refused: it does
-  // not know whether the repetition is meaningful. With one, it fits each
-  // element separately and never spans the interface.
+  // Without a partition a spline through a repeated radius is refused, since
+  // it cannot know whether the repetition is meaningful. With one, it fits
+  // each element separately and never spans the interface.
   const auto spline = SplineDerivative<Real>(mesh);
   std::cout << "the spline derivative on this mesh fits " << spline.PieceCount()
             << " pieces\n\n";
@@ -116,6 +139,8 @@ int main() {
   // Remeshing, which must not cross an interface either
   //------------------------------------------------------------------------//
 
+  // The same discontinuous profile as above, as a layered scalar field: the
+  // value at each radius is constant over the sphere.
   auto f = LayeredSpinField<0, Grid, ComplexValued>(mesh, grid);
   for (auto i : mesh.RadiusIndices()) {
     const auto r = mesh.Radius(i);
@@ -126,9 +151,22 @@ int main() {
     }
   }
 
-  // Targets on both sides of the break, none of them a source node. Each is
-  // answered from the piece that owns it, so the two straight lines are
-  // reproduced exactly rather than smeared into one curve through the jump.
+  // Resample builds an interpolant per radial line -- here a cubic spline;
+  // RadialInterpolation also offers Linear and Akima -- and evaluates it at
+  // the new radii, returning a field on the new radial grid. On a partitioned
+  // source the interpolant is piecewise, one piece per element, so it never
+  // crosses an interface. Targets outside the source's range are refused
+  // rather than extrapolated.
+  //
+  // Targets on both sides of the break, one of them on it. Each is answered
+  // from the piece that owns it, so the two straight lines are reproduced
+  // exactly rather than smeared into one curve through the jump.
+  //
+  // A target on a breakpoint is answered from the element above
+  // (right-continuously), the convention Interpolation's Piecewise uses. The
+  // exception is a target grid that itself has elements: there the first
+  // copy of a repeated radius is the top of the element below and is
+  // answered from below.
   const auto onto =
       RadialGrid<Real>(std::vector<Real>{0.5, 0.7, 0.8, 0.9, 1.1});
   const auto moved = Resample(f, onto, RadialInterpolation::CubicSpline());

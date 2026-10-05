@@ -14,8 +14,8 @@ namespace GSHTrans {
 //                        Raising and lowering the index                     //
 //--------------------------------------------------------------------------//
 
-// The operators that connect different upper indices; see section 6 of the
-// theory note, docs/canonical-components.tex.
+// The operators that connect different upper indices; see "Raising and
+// lowering" in docs/gshtrans-reference.tex.
 //
 // They are the reason the library has two representations rather than one.
 // Everything in the field algebra is local in (theta, phi); these are local in
@@ -29,15 +29,14 @@ namespace GSHTrans {
 //   eth      Y^N_{lm} = -sqrt((l - N)(l + N + 1)) Y^{N+1}_{lm}
 //   eth-bar  Y^N_{lm} = +sqrt((l + N)(l - N + 1)) Y^{N-1}_{lm}
 //
-// **The overall signs used to be an open convention, and are not any more.**
-// Two identities are checked and pin everything but the common sign: eth-bar
-// eth is the surface Laplacian on a scalar, the factors multiplying to
-// -l(l+1), and the commutator is -2N. Both survive flipping the pair, which
-// is why the sign was long carried as a question for Phinney & Burridge.
+// **The overall signs are fixed, not a free convention.** Two identities are
+// checked and pin everything but the common sign: eth-bar eth is the surface
+// Laplacian on a scalar, the factors multiplying to -l(l+1), and the
+// commutator is -2N. Both survive flipping the pair, so they cannot settle it,
+// and Phinney & Burridge do not use eth as such.
 //
-// It is not their question. P&B do not use eth as such, and what has to be
-// right is that gradients of functions come out as gradients -- which is
-// checkable here, and is checked, by reading a gradient back into the
+// What settles it is that gradients of functions come out as gradients --
+// which is checkable here, and is checked, by reading a gradient back into the
 // physical (theta-hat, phi-hat) frame through the stated e_{+-} convention
 // and requiring it to equal d_theta f and (sin theta)^{-1} d_phi f pointwise.
 // That fixes the sign here against the sign in e_{+-}: flipping either alone

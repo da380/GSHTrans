@@ -4,6 +4,32 @@
 // ordinary spin fields. A component is labelled by a multi-index, and its
 // upper index is the signed sum of that multi-index -- which for rank two and
 // above are different things.
+//
+// The mathematics, briefly. A rank-p tensor is written in the basis
+// e_- , e_0 = r_hat, e_+ of example 03, so it has 3^p components
+// T^{a_1 ... a_p}, each a_i in {-1, 0, +1}. Under a rotation of the tangent
+// frame the component picks up exp(-i N psi) with N = a_1 + ... + a_p, so
+// each component is a spin field of upper index N, and N runs from -p to p.
+// The components are contravariant; the metric g_ab = (-1)^a delta_{a+b,0}
+// is applied explicitly wherever a contraction is taken (example 09). See
+// docs/gshtrans-reference.tex, sections "Conventions" and "Canonical
+// components".
+//
+// What this shows
+//   Building a tensor field, reading and writing components by multi-index,
+//   and how a declared symmetry reduces what is stored.
+//
+// Assumes
+//   Examples 03 (upper indices) and 05 (views).
+//
+// Introduced
+//   TensorField<Rank, Symmetry, Reality, Grid>, Component<a...>(),
+//   Components, StoredComponents, NoSymmetry, Symmetric, Antisymmetric,
+//   ElasticSymmetry, Vanishes, ComplexTensor.
+//
+// Output
+//   Component counts, stored against total, for several symmetries, and
+//   values written through one component and read through another.
 
 #include <GSHTrans/GSHTrans.hpp>
 #include <complex>
@@ -20,6 +46,9 @@ int main() {
   // them. Building one on a narrower grid throws at construction.
   auto grid = Grid(16, 2);
 
+  // The template arguments are the rank, the permutation symmetry of the
+  // slots, whether the tensor is complex or real (ComplexTensor here;
+  // RealTensor is example 10) and the grid type. A new tensor field is zero.
   using Tensor = TensorField<2, NoSymmetry<2>, ComplexTensor, Grid>;
   auto t = Tensor(grid);
 
@@ -27,7 +56,10 @@ int main() {
             << Tensor::StoredComponents << "\n\n";
 
   // The upper index of each component, which is the count the theory note
-  // tabulates: 1, 2, 3, 2, 1 across N = -2 .. 2.
+  // tabulates: 1, 2, 3, 2, 1 across N = -2 .. 2. Component<a, b>() takes the
+  // multi-index as template arguments, each -1, 0 or +1, and returns a spin
+  // field whose upper index is a + b. On a non-const tensor it is a writable
+  // view into the tensor's buffer.
   static_assert(decltype(t.Component<-1, -1>())::UpperIndex == -2);
   static_assert(decltype(t.Component<-1, 0>())::UpperIndex == -1);
   static_assert(decltype(t.Component<-1, 1>())::UpperIndex == 0);
@@ -47,7 +79,9 @@ int main() {
             << (t.Component<1, -1>()[0, 0]) << "\n\n";
 
   // Symmetry is storage rather than bookkeeping: a symmetric tensor stores six
-  // of its nine components, and the transposed one *is* the same field.
+  // of its nine components, and the transposed one *is* the same field. One
+  // component per orbit of the symmetry group is stored and the rest are
+  // derived from it.
   using Symmetric2 = TensorField<2, Symmetric<2>, ComplexTensor, Grid>;
   auto s = Symmetric2(grid);
   std::cout << "symmetric: stored " << Symmetric2::StoredComponents << " of "
@@ -59,7 +93,9 @@ int main() {
   // An antisymmetric tensor goes further: its diagonal vanishes identically,
   // and asking for a component that is identically zero is a compile error
   // rather than a silently zero field. The trait is there so a compile-time
-  // traversal can skip them.
+  // traversal can skip them. A component related to a stored one by a sign
+  // (T^{10} = -T^{01} here) is read-only, since writing it would need the
+  // sign applied on the way in; write the stored one.
   using Skew = TensorField<2, Antisymmetric<2>, ComplexTensor, Grid>;
   static_assert(Skew::Vanishes<0, 0>);
   static_assert(!Skew::Vanishes<0, 1>);
@@ -69,7 +105,9 @@ int main() {
   // The elastic symmetry of a rank-4 tensor, c_{ijkl} = c_{jikl} = c_{ijlk} =
   // c_{klij}, comes out at the twenty-one independent components everyone
   // already knows -- without the machinery being told anything about
-  // elasticity.
+  // elasticity. ElasticSymmetry is just those three generators. Only the
+  // type is used here, so this grid's nMax = 2 does not matter; building a
+  // rank-4 field needs a grid carrying upper indices to 4 (example 11).
   using Elastic = TensorField<4, ElasticSymmetry, ComplexTensor, Grid>;
   std::cout << "elastic rank 4: stored " << Elastic::StoredComponents << " of "
             << Elastic::Components << "\n";

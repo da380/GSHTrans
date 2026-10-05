@@ -6,6 +6,28 @@
 //
 // Batched is also the regime where the choice of Legendre kernel matters most,
 // and there are two -- see example 20.
+//
+// What this shows
+//   The grid's own transform on raw buffers, one field at a time and as a
+//   batch; the batch descriptor; the chunking policy set at construction;
+//   and the explicit, per-call threading policy.
+//
+// Assumes
+//   Example 06 (what the transform computes), example 05 (raw buffers in
+//   the library's sample order).
+//
+// Introduced
+//   grid.ForwardTransformation(lMax, n, in, [inBatch,] out, [outBatch,]
+//   [policy]), grid.CoefficientSize, Batch::Contiguous, Chunking::ForCache,
+//   FFTWpp::Measure, Execution::Parallel.
+//
+// Output
+//   Wall-clock times for eight transforms done separately, as one batch, and
+//   as one batch on four threads. The numbers depend on the machine; only
+//   their order is the point.
+//
+// See docs/gshtrans-reference.tex, section "Batching, chunking and
+// threading".
 
 #include <GSHTrans/GSHTrans.hpp>
 #include <chrono>
@@ -29,8 +51,20 @@ int main() {
   // The chunking policy is a property of the machine, not of the call, so it
   // is given once. Automatic assumes a modest cache; ForCache takes the real
   // figure and does better.
+  //
+  // A chunk is how many fields of a batch the inner loop takes at once. The
+  // gain from batching saturates and then reverses once the chunk's
+  // coefficients stop fitting in last-level cache, so a large batch is
+  // processed in chunks sized from the cache. ForCache takes the machine's
+  // total last-level cache in bytes (16 MiB here); Automatic assumes 8 MiB.
+  //
+  // The third argument is FFTW's planner flag, how hard FFTW works to plan
+  // each transform shape. Plans are made on first use, once per thread and
+  // shape, and kept.
   auto grid = Grid(lMax, n, FFTWpp::Measure, Chunking::ForCache(Int{16} << 20));
 
+  // The sizes of one field's samples and one field's coefficients at this
+  // degree and upper index.
   const auto fieldSize = grid.FieldSize();
   const auto coefficientSize = static_cast<Int>(grid.CoefficientSize(lMax, n));
 
@@ -42,7 +76,10 @@ int main() {
 
   // A batch is described by (count, stride, dist) rather than by contiguity,
   // so it covers fields laid end to end and fields interleaved with others
-  // alike. Here they are contiguous: stride 1, dist FieldSize.
+  // alike: element j of field k lives at j * stride + k * dist. Here they are
+  // contiguous: stride 1, dist FieldSize. Fields and coefficients take
+  // separate descriptors, since their sizes, and so their dist, differ.
+  // Batch::Interleaved and Batch::Strided name the other affine layouts.
   const auto in = Batch::Contiguous(count, fieldSize);
   const auto out = Batch::Contiguous(count, coefficientSize);
 
@@ -54,7 +91,12 @@ int main() {
         .count();
   };
 
-  // One field at a time.
+  // Each timing below begins with the first call of its kind, so it also
+  // pays for FFTW planning of that shape on each thread involved. That is
+  // part of what a first call costs; a careful benchmark would warm up first.
+
+  // One field at a time, through the k = 1 overload, which takes one field's
+  // samples and one field's coefficients and no descriptors.
   const auto separate = time([&] {
     for (Int k = 0; k < count; k++) {
       auto one = std::span(fields).subspan(k * fieldSize, fieldSize);
@@ -75,6 +117,11 @@ int main() {
   // library never creates threads because it can, only because it was asked.
   // Exactly one level threads, so a caller already inside a parallel region
   // gets a sequential transform rather than nested teams.
+  //
+  // Parallel(4) asks for four threads; Parallel() leaves the count to OpenMP.
+  // In a build without OpenMP the same call runs on one thread. On a machine
+  // with simultaneous multithreading, ask for cores rather than hardware
+  // threads: this work is memory-bound.
   const auto threaded = time([&] {
     grid.ForwardTransformation(lMax, n, fields, in, coefficients, out,
                                Execution::Parallel(4));
@@ -87,5 +134,7 @@ int main() {
   // A batch shares grid, degree *and upper index*: the Wigner block is what
   // is being amortised, so fields at different upper indices cannot batch
   // together. For a tensor that means batching over radii within each n, not
-  // across components -- which example 08 shows the field layer arranging.
+  // across components -- which is why the tensor fields of example 08 order
+  // their buffer by upper index, making each upper index's components one
+  // contiguous batch.
 }

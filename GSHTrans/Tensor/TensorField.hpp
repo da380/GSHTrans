@@ -31,7 +31,7 @@ namespace GSHTrans {
 // Both are offered rather than one being required, because the transform's
 // batch descriptor covers either: (stride 1, dist FieldSize) for the first
 // and (stride nStored, dist 1) for the second. Which is faster is a
-// measurement, not a precondition, which is why neither layout is required.
+// measurement, not a precondition.
 struct ComponentMajor {};
 struct PointMajor {};
 
@@ -44,9 +44,9 @@ concept TensorLayout =
 ///
 /// One buffer rather than a tuple of separately allocated fields, because the
 /// components are what get transformed and the transform wants to see them as
-/// a batch. A component is therefore a *view* into the
-/// buffer, which is why views are admissible wherever an owning field
-/// is, and why operator[] returns by value on every node.
+/// a batch. A component is therefore a *view* into the buffer, which is why
+/// views are admissible wherever an owning field is, and why operator[]
+/// returns by value on every node.
 ///
 /// What is stored is one component per orbit of the symmetry group, computed by
 /// Orbits.hpp. Everything else is derived: a component related to a stored one
@@ -54,8 +54,8 @@ concept TensorLayout =
 /// antisymmetric permutation is the view negated, and one whose orbit vanishes
 /// is not representable at all. So Component<...>() returns different types for
 /// different components and traversal over all of them is a compile-time loop.
-/// That consequence is more familiar from the reality
-/// reduction; it arrives here already, because antisymmetry has it too.
+/// The reality reduction has the same consequence, but antisymmetry alone is
+/// enough to bring it about.
 template <std::ptrdiff_t Rank_, TensorSymmetry<Rank_> Symmetry_,
           TensorReality Reality_, AngularGrid Grid_,
           TensorLayout Layout_ = ComponentMajor, SlotAlphabet Slots_ = AllSlots>
@@ -74,13 +74,13 @@ class TensorField {
   /// Which slots this tensor's indices are drawn from, and the multi-index
   /// over them. AllSlots is the ordinary canonical tensor; TangentialSlots is
   /// one with no radial slot, whose components number 2^Rank rather than
-  /// 3^Rank. The parameter is appended last and defaulted so that no existing
-  /// spelling of this template moves.
+  /// 3^Rank. The parameter is last and defaulted so that an ordinary tensor
+  /// need not mention it.
   ///
   /// Nothing below knows which alphabet it has. Everything is written against
-  /// Index and against the orbit table built over it, which is the whole of
-  /// why the generalisation is additive: the storage groups by the slot sum,
-  /// and the slot sum does not care how many values a slot can take.
+  /// Index and against the orbit table built over it: the storage groups by
+  /// the slot sum, and the slot sum does not care how many values a slot can
+  /// take.
   using SlotSet = Slots_;  ///< The alphabet the slots are drawn from.
   /// The multi-index over those slots.
   using Index = MultiIndex<Rank, SlotSet>;
@@ -91,9 +91,10 @@ class TensorField {
   using Real = typename Grid_::Real;   ///< The precision.
   using Complex = std::complex<Real>;  ///< `std::complex` over the precision.
 
-  /// Every component of a complex tensor is a complex field. Reality makes
-  /// the all-zero component real-valued: see Orbits.hpp, where the switch
-  /// lives.
+  /// The scalar of the main buffer. Every component of a complex tensor is a
+  /// complex field; under reality, the components an orbit pins to a single
+  /// real number live in a second, real buffer instead (see Layout below, and
+  /// Orbits.hpp, where the switch lives).
   using Scalar = Complex;
 
   /** @brief The orbits of the symmetry group, and what each pins. */
@@ -112,12 +113,12 @@ class TensorField {
   /// dist) -- a uniform spacing. In flat order the stored components carrying
   /// one upper index are scattered at no fixed spacing once there is any
   /// symmetry, so no single descriptor covers them and batching would be
-  /// unreachable. Ordered by upper
-  /// index they are contiguous, and one batch per upper index describes the
-  /// whole tensor.
+  /// unreachable. Ordered by upper index they are contiguous, and one batch
+  /// per upper index describes the whole tensor.
   ///
   /// Orbits.hpp stays in flat order, which is pure combinatorics. The layout
   /// belongs here.
+  ///
   /// Reality splits the storage in two, and that is the other thing the layout
   /// has to carry.
   ///
@@ -135,10 +136,11 @@ class TensorField {
   /// the real buffer is one transform group rather than several.
   ///
   /// The arithmetic comes out exactly right: two reals per complex component
-  /// and one per constrained one is Base^p, the real degrees of freedom of a
-  /// real rank-p tensor. Nine for rank 2, six symmetric, three antisymmetric,
-  /// ten for symmetric rank 3 -- and four for a tangential rank 2, which has
-  /// no constrained component at all to contribute the odd one.
+  /// and one per constrained one is the number of real degrees of freedom of
+  /// the real tensor -- Base^p with no symmetry, fewer under one. Nine for
+  /// rank 2, six symmetric, three antisymmetric, ten for symmetric rank 3 --
+  /// and four for a tangential rank 2, which has no constrained component at
+  /// all to contribute the odd one.
   struct Layout {
     /// Flat index of each slot.
     std::array<Int, StoredComponents> flatOfSlot{};
@@ -300,8 +302,10 @@ class TensorField {
 
   /**
    * @brief A zero tensor field on @p grid.
-   * @throws std::invalid_argument if the grid does not carry every upper
-   * index from -Rank to Rank.
+   * @throws std::invalid_argument if the grid's largest upper index is less
+   * than Rank. Whether it carries the negative ones is not checked here: over
+   * a grid with NRange = NonNegative, asking for a component stored at a
+   * negative upper index is a compile error in the view, not a throw here.
    */
   explicit TensorField(GridType grid)
       : grid_{std::move(grid)},
@@ -330,15 +334,15 @@ class TensorField {
 
   // The complex buffer, in [component][iTheta][iPhi] order, and the real one
   // holding the components the reality condition pins to a single real number.
-  // The second is empty unless reality is being reduced on.
-  /** @brief How many elements are stored. */
+  // The second is empty unless some orbit is pinned, which needs reality.
+  /** @brief How many elements the complex buffer holds. */
   auto Size() const { return static_cast<Int>(data_.size()); }
-  /** @brief How many real-valued elements are stored. */
+  /** @brief How many elements the real buffer holds. */
   auto RealSize() const { return static_cast<Int>(real_.size()); }
 
-  /** @brief The underlying buffer. */
+  /** @brief The complex buffer. */
   auto Data() { return std::span<Scalar>(data_); }
-  /** @brief The underlying buffer. */
+  /** @brief The complex buffer. */
   auto Data() const { return std::span<const Scalar>(data_); }
   /** @brief The buffer holding the real-valued components. */
   auto RealData() { return std::span<Real>(real_); }
@@ -353,24 +357,26 @@ class TensorField {
   ///
   /// Read-only, and available for every component the tensor can represent.
   /// What comes back depends on how the component is related to the one stored
-  /// for it, and there are now four cases rather than two:
+  /// for it, in four cases:
   ///
-  ///   stored, sign +1        the view itself
+  ///   stored, sign +1       the view itself
   ///   sign -1               that view negated, an expression
   ///   related by reality    conj of the view, at the reversed upper index
   ///   pinned by its orbit   a real-valued view, or i times one
   ///
-  /// The reality case is the one the field layer was made to accommodate. The
-  /// relation is T^{-alpha} = (-1)^N conj(T^{alpha}) (eq:reality), and conj
-  /// reverses the upper index, so the view taken is at the *stored*
-  /// component's upper index and the expression built from it is at this
-  /// one's. The (-1)^N is already folded into the orbit table's sign.
+  /// In the reality case the relation is T^{-alpha} = (-1)^N conj(T^{alpha})
+  /// (eq:reality), and conj reverses the upper index, so the view taken is at
+  /// the *stored* component's upper index and the expression built from it is
+  /// at this one's. The (-1)^N is already folded into the orbit table's sign.
   ///
   /// Note what this means for a grid. The stored representative of an orbit
-  /// is its smallest multi-index, which is the one of most *negative* upper
-  /// index, so a real tensor needs a grid that carries negative upper indices
-  /// to hold its terminals at all: one over NRange = NonNegative cannot. The
-  /// derived partners, at +N, are expressions and need nothing of the grid.
+  /// is its member of smallest flat index, whose first non-zero slot is -1
+  /// when negation is in the group; at rank <= 2 that puts it at upper index
+  /// <= 0, and at higher rank some representatives still sit at negative upper
+  /// index. So a real tensor needs a grid that carries negative upper indices
+  /// to hold its stored components at all: one over NRange = NonNegative
+  /// cannot. The derived partners are expressions and need nothing more of
+  /// the grid.
   template <Int... Alphas>
   requires Represents<Alphas...>
   auto Component() const& {
@@ -424,13 +430,13 @@ class TensorField {
 
   /// Not offered on a temporary. A component is a view into this field's
   /// storage, so one taken from a temporary names storage that is gone by the
-  /// end of the statement: `MakeField().Component<0, 0>()` was always a
-  /// dangling view, and now does not compile. Name the field.
+  /// end of the statement: `MakeField().Component<0, 0>()` would be a dangling
+  /// view, and so does not compile. Name the field.
   template <Int... Alphas>
   void Component() const&& = delete;
 
   //------------------------------------------------------------------------//
-  //                    What the transform layer will need                   //
+  //                     Stored components by upper index                    //
   //------------------------------------------------------------------------//
 
   /// Which stored components carry a given upper index: a contiguous run of
@@ -469,7 +475,7 @@ class TensorField {
   /// index.
   ///
   /// This is why the buffer is ordered by upper index: each group is a
-  /// contiguous run on both sides, so one Batch::Contiguous describes it and
+  /// contiguous run on both sides, so one batch descriptor describes it and
   /// the Wigner block for that upper index is streamed once for the whole
   /// group rather than once per component. A rank-2 tensor has three
   /// components at N = 0, so that is three fields for the price of one pass.
@@ -638,10 +644,7 @@ class TensorField {
     }
   }
 
-  // The stored component's samples. The representative is looked up at
-  // compile time; only the multiplication by the field size is left to run
-  // time, and that because the grid is a runtime object.
-  // Where a stored component's samples live, and how far apart. Contiguous
+  // How far apart a stored component's samples are. Contiguous
   // and one apart in ComponentMajor; starting at the component's slot and one
   // buffer-width apart in PointMajor.
   //
@@ -652,6 +655,9 @@ class TensorField {
   static constexpr Int RealComponentStride =
       IsComponentMajor ? Int{1} : RealComponents;
 
+  // The stored component's samples. The representative is looked up at
+  // compile time; only the multiplication by the field size is left to run
+  // time, and that because the grid is a runtime object.
   template <Int Flat>
   std::span<Scalar> StoredSpan() {
     return std::span<Scalar>(data_).subspan(SpanOffset<Flat, false>(),
@@ -706,10 +712,11 @@ class TensorField {
 
 // A tensor field owns its storage, so an expression holds an lvalue one by
 // reference. Said here, beside the class, and not in the header of the
-// expression layer where it once was: a specialisation has to be seen before
-// the first use that would otherwise pick the primary template, and a
-// translation unit that includes this header alone -- the layered types and
-// the expansions do -- would have had OperandStorage copy the whole field.
+// expression layer: a specialisation has to be seen before the first use that
+// would otherwise pick the primary template, and a translation unit that
+// includes this header without the expression layer -- the layered types and
+// the expansions do -- would otherwise have OperandStorage copy the whole
+// field.
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
           TensorReality Reality, AngularGrid Grid, TensorLayout Layout,
           SlotAlphabet Slots>
@@ -726,7 +733,7 @@ struct IsTerminalTrait<
 // aliases, which already read this way. Every one of these needs a grid and
 // most want a real tensor -- displacement, strain, stress, moduli are all real
 // -- so `VectorField<Grid>` is the common case written shortly. The cost is
-// that the surprising case is now the silent one: a real tensor stores fewer
+// that the surprising case is the silent one: a real tensor stores fewer
 // components and derives the rest, and a caller who wanted a complex one and
 // forgot to say so gets that reduction without being told. `ComplexTensor` is
 // one word and the type name carries it.
@@ -754,11 +761,10 @@ using AntisymmetricTensorField =
 template <AngularGrid Grid, TensorReality Reality = RealTensor>
 using ElasticTensorField = TensorField<4, ElasticSymmetry, Reality, Grid>;
 
-// And the tangential forms, named alongside rather than bolted on
-// afterwards. The prefix says which bundle the
-// object lives in, which is the thing about it that a reader most needs to
-// know: its indices run over {-1, +1}, it has 2^p components rather than 3^p,
-// and the derivative that is closed on it is the intrinsic one.
+// And the tangential forms. The prefix says which bundle the object lives in,
+// which is the thing about it that a reader most needs to know: its indices
+// run over {-1, +1}, it has 2^p components rather than 3^p, and the
+// derivative that is closed on it is the intrinsic one.
 template <AngularGrid Grid, TensorReality Reality = RealTensor>
 using TangentialVectorField = TensorField<1, NoSymmetry<1>, Reality, Grid,
                                           ComponentMajor, TangentialSlots>;
@@ -767,8 +773,9 @@ template <AngularGrid Grid, TensorReality Reality = RealTensor>
 using TangentialRank2Field = TensorField<2, NoSymmetry<2>, Reality, Grid,
                                          ComponentMajor, TangentialSlots>;
 
-// The spin-2 object of surface geodesy and of the CMB, up to the trace that
-// `Orbits.hpp` cannot express and a caller subtracts. As a real tensor it
+// The spin-2 object of surface geodesy and of the CMB, up to the trace: a
+// trace-free condition is not a slot permutation, so `Orbits.hpp` cannot
+// express it and a caller subtracts the trace. As a real tensor it
 // is three reals a point: a real symmetric 2x2 matrix, which is what it is.
 template <AngularGrid Grid, TensorReality Reality = RealTensor>
 using TangentialSymmetricField = TensorField<2, Symmetric<2>, Reality, Grid,

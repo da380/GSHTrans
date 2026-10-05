@@ -8,28 +8,29 @@
 #include <stdexcept>
 #include <string>
 
-// Reality relations between canonical components, and the removal of
+// Reality relations between canonical components, and the absence of
 // real-valued transforms at nonzero upper index.
 //
-// The relation this file exercises is theory note eq:basiclevel,
+// The relation this file exercises is eq:basiclevel of
+// docs/gshtrans-reference.tex,
 //
 //     (conj f)^{-N}_{l,-m} = (-1)^{m-N} conj(f^N_{lm}),
 //
 // which is true at every N and is the engine of the reality reduction.
-// It relates two *different* fields, f and conj(f), and it survives.
+// It relates two *different* fields, f and conj(f).
 //
-// What does not survive is the self-relation
+// What does not hold in general is the self-relation
 //
 //     f^N_{l,-m} = (-1)^{m-N} conj(f^N_{lm}),
 //
 // which holds only when f is its own conjugate, i.e. only at N = 0. That
 // self-relation is what the reduced m >= 0 coefficient storage assumes, so
-// real-valued transforms now exist only at n = 0. The tests below keep the
-// relation at n = 2, move the storage tests to n = 0, and pin the rejection.
+// real-valued transforms exist only at n = 0. The tests below check the
+// relation at n = 2, the reduced storage at n = 0, and the rejection of a
+// real-valued transform anywhere else.
 //
-// Written against raw coefficient buffers rather than the
-// CanonicalComponentExpansion classes, which were superseded and have since
-// been deleted; this file was meant to outlive them, and did.
+// Written against raw coefficient buffers, so that the relations are checked
+// independently of the expansion classes built on them.
 
 namespace {
 
@@ -57,9 +58,9 @@ void ExpectNear(Complex actual, Complex expected) {
 // A real-valued field on the grid, in both real and complex storage. The last
 // two terms deliberately excite the orders m = +-lMax. Both a cosine and a
 // sine are present so that the resulting coefficient at (lMax, lMax) is
-// genuinely complex: while nPhi = 2 * lMax those two orders were one mode and
-// that coefficient was forced real, so a test built only from the cosine would
-// not notice a return to that behaviour.
+// genuinely complex: with nPhi = 2 * lMax those two orders would be one mode
+// and that coefficient forced real, and a test built only from the cosine
+// could not tell.
 template <typename AnyGrid>
 void MakeRealSamples(const AnyGrid& grid, FFTWpp::vector<Real>& realSamples,
                      FFTWpp::vector<Complex>& complexSamples) {
@@ -160,7 +161,8 @@ TEST(RealFieldSymmetry, ReducedSpectrumMatchesFullNonNegativeOrders) {
 
 // The self-relation f^0_{l,-m} = (-1)^m conj(f^0_{lm}) for a real field. This
 // is what makes the reduced m >= 0 storage lossless -- and it is exactly what
-// fails at nonzero upper index, which is why that storage is gone there.
+// fails at nonzero upper index, which is why that storage does not exist
+// there.
 TEST(RealFieldSymmetry, RealFieldIsSelfConjugateAtUpperIndexZero) {
   auto grid = Grid(lMax, nSpin, FFTWpp::Estimate);
   auto realSamples = FFTWpp::vector<Real>(grid.FieldSize());
@@ -176,11 +178,11 @@ TEST(RealFieldSymmetry, RealFieldIsSelfConjugateAtUpperIndexZero) {
   }
 }
 
-// The orders m = +-lMax are separate discrete modes now that nPhi exceeds
-// 2 * lMax. Both carry the amplitude the sample field
-// puts into cos(lMax * phi), and neither is zeroed. The complex transform once
-// zeroed (lMax, lMax) outright and the reduced storage held the sum
-// of the two, so this test replaces one that asserted the opposite.
+// The orders m = +-lMax are separate discrete modes because nPhi exceeds
+// 2 * lMax. Both carry the amplitude the sample field puts into
+// cos(lMax * phi), and neither is zeroed; with nPhi = 2 * lMax the complex
+// transform would have to zero (lMax, lMax) and the reduced storage would
+// hold the sum of the two.
 TEST(RealFieldSymmetry, HighestOrdersAreResolvedSeparately) {
   auto grid = Grid(lMax, nSpin, FFTWpp::Estimate);
   ASSERT_GT(grid.NumberOfLongitudes(), 2 * lMax);
@@ -197,7 +199,7 @@ TEST(RealFieldSymmetry, HighestOrdersAreResolvedSeparately) {
   const auto bottom = full[indices.Index(lMax, -lMax)];
 
   // Both are present, and the top one is genuinely complex -- which it could
-  // not be while the two orders were a single real mode.
+  // not be if the two orders were a single real mode.
   EXPECT_GT(std::abs(top), tolerance);
   EXPECT_GT(std::abs(bottom), tolerance);
   EXPECT_GT(std::abs(top.imag()), tolerance);
@@ -261,7 +263,7 @@ TEST(RealFieldSymmetry, ReducedInverseUsesTheImplicitHermitianPair) {
   }
 }
 
-// The removal itself.
+// The rejection itself: no real-valued transform at nonzero upper index.
 TEST(RealFieldSymmetry, RealTransformsAreRejectedAtNonzeroUpperIndex) {
   auto grid = Grid(lMax, nSpin, FFTWpp::Estimate);
   auto realField = FFTWpp::vector<Real>(grid.FieldSize());

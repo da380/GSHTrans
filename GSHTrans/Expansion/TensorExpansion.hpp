@@ -179,8 +179,7 @@ class TensorExpansion {
   /// zero, so zero is the right answer; a radial index on a tangential tensor
   /// is not a component at all, and saying zero would be answering a question
   /// about a different bundle. The check is also what stops the multi-index
-  /// being formed from a letter that
-  /// would make its constructor throw.
+  /// being formed from a letter that would make its constructor throw.
   template <Int... Alphas>
   requires(sizeof...(Alphas) == Rank and AreSlotLetters<Slots_, Alphas...>())
   Complex Coefficient(Int l, Int m) const {
@@ -206,11 +205,11 @@ class TensorExpansion {
       // Read straight out of the buffer, by the index arithmetic a view of
       // the block would use, and **without making the view**. A view holds a
       // grid handle, which is a shared_ptr, and this is called once per
-      // (l, m) per term by every spectral operator: the copy was a contended
-      // atomic on a count every thread shares, and it made eight surface
-      // gradients on eight threads four times *slower* than the same eight on
-      // one -- 8 ns a call alone, 380 ns in company. The index block is three
-      // integers and its arithmetic is closed-form.
+      // (l, m) per term by every spectral operator: the copy is a contended
+      // atomic on a count every thread shares, and measured, it makes eight
+      // surface gradients on eight threads four times *slower* than the same
+      // eight on one -- 8 ns a call alone, 380 ns in company. The index block
+      // is three integers and its arithmetic is closed-form.
       using Orders = std::conditional_t<real, NonNegative, All>;
       const auto indices = GSHIndices<Orders>(lMax_, lMax_, repN);
       const auto* block =
@@ -247,7 +246,7 @@ class TensorExpansion {
   // Where each slot's block starts, with the total at the end. Worked out
   // once: the blocks follow the component order, which is the order the
   // transform writes them in, and summing the sizes of the blocks before a
-  // slot on every read was a loop inside the innermost one.
+  // slot on every read would put a loop inside the innermost one.
   std::array<std::size_t, static_cast<std::size_t>(StoredComponents) + 1>
       blockStart_;
   FFTWpp::vector<Complex> data_;
@@ -297,9 +296,9 @@ auto Expand(
   return expansion;
 }
 
-// Slots is deduced from the expansion and Layout is not, so Layout keeps its
-// old position and its default: naming a point-major result still takes the
-// same five arguments it always did.
+// Slots is deduced from the expansion and Layout is not, so Layout comes
+// before Slots and has a default: a point-major result is asked for as
+// Evaluate<Rank, Symmetry, Reality, Grid, PointMajor>(expansion).
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
           TensorReality Reality, AngularGrid Grid,
           TensorLayout Layout = ComponentMajor, SlotAlphabet Slots = AllSlots>

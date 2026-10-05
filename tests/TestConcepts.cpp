@@ -231,7 +231,7 @@ TEST(Chunking, ReproducesTheTwoMeasuredAnchors) {
   // running sequentially -- so one thread had the whole cache.
   EXPECT_EQ(Chunking::ForCache(16 * mebibyte).Count(bytesAt256, 1), 8);
 
-  // the prediction for a 256 MiB, 64-core machine at full width. The point
+  // The prediction for a 256 MiB, 64-core machine at full width. The point
   // of dividing by the running threads rather than by a fixed per-core figure
   // is that both of these come out right.
   EXPECT_EQ(Chunking::ForCache(256 * mebibyte).Count(bytesAt256, 64), 2);
@@ -284,20 +284,19 @@ TEST(Chunking, RejectsPoliciesThatDescribeNothing) {
 //                              AngularGrid                                  //
 //--------------------------------------------------------------------------//
 //
-// The concept gained the two axes when SphericalGrid took over the transform:
-// grids on this library's terms are separable, so Interpolate's local
-// refinement asking for them separately was describing every grid there is
-// and went away.
+// The concept requires the two axes, CoLatitudes() and Longitudes(): grids on
+// this library's terms are separable, and Interpolate reads the axes
+// directly.
 //
 // Asserted both ways, because a requirement nothing can fail is decoration. A
-// type carrying everything the concept asked for *before* that change must now
-// be rejected, and the real grid must still be accepted.
+// type carrying everything else the concept asks for but not the axes must be
+// rejected, and the real grid must be accepted.
 
 namespace {
 
 using ProbeReal = double;
 
-// Everything AngularGrid required before the axes were added.
+// Everything AngularGrid requires except the two axes.
 struct WithoutAxes {
   using Real = ProbeReal;
   using NRange = GSHTrans::All;
