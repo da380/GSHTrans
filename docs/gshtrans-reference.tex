@@ -1242,8 +1242,9 @@ all.  The forward transform's colatitudes all contribute to every
 coefficient, so each thread accumulates into a private buffer and the
 partial sums are added at the end --- partitioned rather than serialised:
 each thread sums every thread's partials for its own block of
-coefficients.  The matrix kernel decomposes over orders instead and needs
-no reduction in either direction (\S\ref{sec:gemmthreads}).
+coefficients.  The matrix kernel does not thread its Legendre stage at
+all: its order loop is sequential and threading each product belongs to
+the BLAS (\S\ref{sec:gemmthreads}); the policy governs its Fourier stage.
 
 \paragraph{Measured}, loop kernel, unbatched, at $n=2$, complex, per call:
 \begin{center}
@@ -1408,43 +1409,53 @@ doubling helps most exactly where $k$ is small.
 \subsection{Threading}
 \label{sec:gemmthreads}
 
-The products at different $m$ write disjoint outputs.  So the
-decomposition is over orders, and it needs \textbf{no accumulator and no
-reduction in either direction}: the forward transform's thread-private
-accumulators, which the loop kernel needs and which compete for cache as
-the thread count grows, do not exist.  The answer does not depend on which
-thread took which order.
+The matrix kernel's order loop is sequential by construction, and the rule
+it enforces is that \textbf{no BLAS call is ever made from inside a
+library-opened parallel region}.  Whether and how a BLAS threads is
+outside the library's control, and the nesting is fatal rather than slow:
+OpenBLAS's OpenMP build --- the default \code{libblas.so.3} on Ubuntu ---
+livelocks when a GEMM past its internal threading threshold is issued from
+inside an enclosing region (its dispatcher opens a nested region it cannot
+re-enter, and the threads spin at full CPU forever), and that build
+ignores \code{OPENBLAS\_NUM\_THREADS}, so no environment setting protects
+the user.  So the library opens no region around the products: a threaded
+BLAS is free to thread each GEMM itself, a sequential one runs the loop as
+written, and the \code{Execution} policy governs the Fourier stage alone.
 
-The work per order is not constant: $n_L(m)$ falls linearly in $|m|$, so a
-static split over orders is about twice as unbalanced as it looks; and a
-split weighted by $n_L$ would also be wrong, since the inverse's inner
-dimension \emph{is} $n_L$ and a GEMM's efficiency falls with its inner
-dimension, making time superlinear in $n_L$.  The schedule is therefore
-dynamic, which needs no cost model.  A thread's share of the table is a
-set of whole $(n,m)$ blocks, which is a better arrangement for NUMA than a
-colatitude split.
+The Legendre stage still has \textbf{no accumulator and no reduction in
+either direction}: the forward transform's thread-private accumulators,
+which the loop kernel needs and which compete for cache as the thread
+count grows, do not exist here whatever threads the BLAS uses.
 
 \subsection{Measured performance}
 \label{sec:gemmdone}
 
-Batched, at $l_{\max}=256$ on eight threads, the matrix kernel is
-\textbf{5.8 to 6.0$\times$ faster forward and 2.9 to 3.2$\times$ inverse}
-than the loop kernel, and stores half the table.
+Sequentially the matrix kernel is \textbf{3.0 to 3.3$\times$ faster
+forward and 2.4$\times$ inverse} than the loop kernel, batched ($k=8$) at
+$l_{\max}=256$, and stores half the table; the threading contract of
+\S\ref{sec:gemmthreads} does not touch the sequential path.  All figures
+in this subsection are one \code{TransformBenchmark kernels} run on the
+development machine (eight cores, sixteen hardware threads); the 64-core
+target has its own open questions and wants its own run.
 
-\paragraph{Sequential and threaded.}  Sequentially the forward gain is
-$3.0\times$.  The larger threaded gain is not the GEMM doing better but the
-loop kernel doing worse: at that size the loop forward scales only
-$1.5\times$ from one thread to eight, because eight private accumulators
-of 8.4\,MB compete for a 16\,MB cache.  The matrix kernel has no
-accumulator to collapse, so the threaded comparison measures the GEMM and
-the absence of that problem together.
+\paragraph{Threaded.}  A parallel policy threads only the matrix kernel's
+Fourier stage, while the loop kernel threads its whole Legendre stage, so
+the matrix kernel's lead narrows as threads are added rather than
+growing.  Batched at $l_{\max}=256$ on eight threads the forward matrix
+kernel keeps $2.3\times$ over the loop kernel; the inverse falls to
+parity and a little below ($0.8$--$1.0\times$), and the loop kernel is
+the measured choice there.  At $k=8$ the per-order products are far too
+skinny for OpenBLAS to thread ($N = 2k = 16$), so a threaded BLAS
+measures the same as a pinned one; a batch that fills the chunk cap of 63
+gives the BLAS something it may choose to thread.  \S\ref{sec:tuning}
+times both kernels on the caller's problem, which is the decision that
+matters.
 
-\paragraph{Unbatched.}  At $l_{\max}=256$, $k=1$ on eight threads the gain
-is $1.20\times$ forward and $1.10\times$ inverse, and this is the only
-regime in which the matrix kernel is worth little.  The reason is that
-the loop kernel there reaches 65\% of the memory roof and the matrix
-kernel 100\%: with the traffic unchanged, the most it can win is the
-difference.
+\paragraph{Unbatched.}  At $l_{\max}=256$, $k=1$, sequentially the matrix
+kernel is $3.7$--$4.4\times$ faster forward and $3.0\times$ inverse; on
+eight threads the gain is $1.3\times$ forward and parity inverse, because
+the loop kernel is near the memory roof there and the matrix kernel's
+Fourier stage is the only part of it that threads.
 
 \subsection{What it composes with}
 \label{sec:gemmcompose}

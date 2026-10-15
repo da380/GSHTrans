@@ -83,14 +83,4 @@ inline bool InParallel() {
 #endif
 }
 
-/**
- * @brief `omp_set_num_threads()` for the calling task, or nothing.
- * @param threads How many threads a region opened from here may have.
- */
-inline void SetThreads([[maybe_unused]] int threads) {
-#ifdef _OPENMP
-  omp_set_num_threads(threads);
-#endif
-}
-
 }  // namespace GSHTrans::OpenMP

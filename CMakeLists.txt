@@ -165,10 +165,11 @@ endif()
 # downgrade to the loop kernel. OFF never looks.
 #
 # A note for whoever links this against a threaded BLAS: the matrix kernel
-# threads over orders itself, so the BLAS must be single-threaded when it
-# does. A BLAS on the same OpenMP runtime is held to one thread by the library
-# itself; one with its own pthread pool is out of its reach and needs
-# OPENBLAS_NUM_THREADS=1 or its equivalent.
+# runs its order loop in sequence and calls the BLAS from outside any OpenMP
+# region, so a threaded BLAS may thread each product and needs no pinning. The
+# library never calls a BLAS from inside a region of its own -- an OpenMP-build
+# OpenBLAS livelocks when nested there, and ignores OPENBLAS_NUM_THREADS, so
+# no environment setting would save the user.
 set(GSHTRANS_WITH_BLAS AUTO CACHE STRING
     "Matrix transform kernel, built on a system BLAS (AUTO, ON, OFF)")
 set_property(CACHE GSHTRANS_WITH_BLAS PROPERTY STRINGS AUTO ON OFF)

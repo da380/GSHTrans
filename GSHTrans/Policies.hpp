@@ -100,48 +100,6 @@ class Execution {
   int threads_;
 };
 
-namespace Details {
-
-/**
- * @brief Runs @p body on every thread of a team, with any OpenMP region
- * opened from inside it held to one thread.
- *
- * @details This is for code that calls a BLAS. A GEMM here is small and
- * skinny, a threaded BLAS loses on it, and the library threads over orders
- * itself -- so the BLAS has to run serially, and there is no portable call
- * that says so. What there is, for a BLAS built on the same OpenMP runtime, is
- * the runtime: the thread count a nested region gets is an internal control
- * variable of the *task* that opens it, so setting it to one inside the team
- * serialises every region the body goes on to open and nothing else. It is
- * scoped to the team's implicit tasks and the caller's own setting is as it
- * was when this returns.
- *
- * Opening the team is not enough by itself. A region opened inside a team of
- * two or more is nested, and the default of one active level makes it serial.
- * A team of **one**, though, is an *inactive* region: it does not count as a
- * level, `omp_in_parallel()` is false inside it, and a region opened from it
- * gets the whole machine -- so without the explicit setting, the sequential
- * case, which is the one most callers run, would be exactly the case in which
- * the BLAS is not held back.
- *
- * A BLAS with its own pthread pool is untouched by any of this and needs
- * `OPENBLAS_NUM_THREADS=1` or its equivalent from the caller.
- *
- * @param threads The team size; one is allowed and is not a special case.
- * @param body Called once on each thread. It may contain an orphaned
- * worksharing construct, which binds to this team.
- */
-template <typename Body>
-void InSerialisingRegion([[maybe_unused]] int threads, Body&& body) {
-#pragma omp parallel num_threads(threads)
-  {
-    OpenMP::SetThreads(1);
-    body();
-  }
-}
-
-}  // namespace Details
-
 //-------------------------------------------------------------------------//
 //                             Batch descriptor                             //
 //--------------------------------------------------------------------------//
