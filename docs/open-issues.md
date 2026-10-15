@@ -28,10 +28,6 @@ Statements that may be wrong and need the owner's judgement or a measurement.
 - **Two timings for one configuration** in the reference: lMax = 256, n = 2,
   one thread, forward is ~19 ms in "The transform" and 12.16 ms in "Batching,
   chunking and threading". Re-measure in one run.
-- **Matrix-kernel speed-up, threaded forward.** The reference ("Measured
-  performance") gives 5.8–6.0× batched on eight threads at lMax = 256; an
-  earlier version of the same section also gave 4.6× for what reads as the
-  same quantity. Re-measure (`TransformBenchmark kernels`) and state one.
 - **A citation with no bibliography.** The reference cites "Woodhouse \&
   Deuss [41]" but has no bibliography; give the reference in full.
 - **Radial lines with the loop kernel**: `run-server-benchmark.sh` says the
@@ -152,3 +148,67 @@ Each wants a decision rather than an edit.
 - **Release pinning.** A release commit should set the four sibling
   dependencies (`GSHTRANS_FFTWPP_TAG` and siblings) to fixed revisions;
   development tracks their `main`. googletest is pinned to a release.
+
+## 7. A Python interface
+
+Possible work, not started. The aim is a PyPI package exposing what no Python
+library offers directly: the grid, the generalised spherical harmonics
+(Wigner d-functions, Y^N_lm) and the fast transforms. Double precision only;
+no templated forms.
+
+**Shape.** An array-based toolkit, not a port of the field algebra. Fields are
+numpy arrays `(nTheta, nPhi)`, which is the library's colatitude-major,
+longitude-fastest layout, so they pass without copying; a batch is a 3-D
+array, and `Batch(count, stride, dist)` maps onto numpy strides; coefficients
+are 1-D with `(l, m)` index helpers. `n` and `lMax` are runtime arguments, as
+they already are in `ForwardTransformation`. The lazy `SpinField` algebra is
+not exposed: its fused loops and compile-time index checks do not survive
+per-call crossing into Python, and numpy does pointwise arithmetic well. A
+field is built from the grid's `theta` and `phi` arrays, not from a callback
+per point (slow, and serialised by the GIL under OpenMP). Spectral operators
+templated on the upper index, if exposed later, are instantiated over a small
+range of `N` and chosen at runtime.
+
+**Tools.**
+
+- Bindings: **nanobind** (zero-copy numpy, small fast modules, C++17+). It
+  maps `std::invalid_argument` to `ValueError`, and should release the GIL
+  around transforms. It can target Python's stable ABI, so one wheel per
+  platform covers Python ≥ 3.12.
+- Build backend: **scikit-build-core**, which drives the existing CMake; the
+  module is one more target behind an option that is off by default. Not
+  Poetry: `poetry-core` is designed for pure-Python packages and its build-
+  script hook is experimental. Develop with `pip install -e .` or `uv`.
+- Layout: a `python/` directory with the binding source, `pyproject.toml` and
+  pytest tests checked against the same analytic fields as the C++ tests.
+
+**Distribution.** Publish pre-built wheels so that users need no compiler; the
+sdist (which needs C++23, CMake and FFTW headers) is the fallback. Wheels are
+built by **cibuildwheel** in GitHub Actions, which also runs pytest against
+each one, and uploaded with PyPI trusted publishing. Order: Linux to TestPyPI,
+then macOS and the real PyPI, then Windows and/or conda-forge on demand.
+conda-forge already packages FFTW, OpenBLAS and modern compilers on every
+platform, so it avoids most of the problems below.
+
+**Decisions and problems, in order of weight.**
+
+- **FFTW is GPL.** A wheel bundles it (`auditwheel` / `delocate` do this), so
+  the wheel is GPL though GSHTrans is BSD. Either accept GPL for the Python
+  package, or give FFTWpp a BSD backend such as pocketfft (numpy's and
+  scipy's), which is a significant piece of work. Settle this before writing
+  any code: it fixes the package's licence.
+- **C++23 on each platform.** The `manylinux` images carry a modern GCC
+  toolset. Apple clang and MSVC support for the C++23 features used here
+  (multidimensional `operator[]` among them) has to be found by trying a
+  build. Windows is the least certain.
+- **BLAS and OpenMP in wheels.** Simplest: loop kernel only, no BLAS; macOS
+  either bundles `libomp` or is built serial (`GSHTRANS_WITH_OPENMP=OFF`).
+  Users who want the matrix kernel and threading build from source.
+- **Fetched dependencies.** CMake fetches NumericConcepts, GaussQuad and FFTWpp
+  at configure time. An sdist should build offline: pin the tags (see release
+  pinning, §6) and include the sources in the sdist.
+
+**Stages.** (1) Grid (constructor, `ForBand`, angles, weights, sizes),
+forward and inverse transforms (single and batched), Wigner d-functions and
+Y^N_lm, 3-j symbols. (2) Expansion class, raising and lowering, gradient,
+interpolation. (3) Tensor and layered fields, only if asked for.

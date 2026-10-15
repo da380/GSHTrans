@@ -822,40 +822,6 @@ TEST(Threading, TeamSizeIsOneInsideAnActiveRegion) {
   EXPECT_EQ(insideDefault, (std::vector<int>{1, 1}));
 }
 
-// The matrix kernel issues every GEMM from inside this region so that a BLAS
-// on the same OpenMP runtime runs serially. What has to hold is that a region
-// opened from inside it -- which is what such a BLAS does -- gets one thread,
-// for *every* team size. A team of one is the case that matters: it is an
-// inactive region, so nothing about it is nested, and unless it is handled
-// explicitly a region opened from it takes the whole machine.
-TEST(Threading, ARegionOpenedInsideTheSerialisingRegionGetsOneThread) {
-  const auto available = OpenMP::MaxThreads();
-  if (available < 2) GTEST_SKIP() << "needs two threads";
-
-  for (auto team : {1, 2, available}) {
-    auto opened = std::vector<int>(static_cast<std::size_t>(team), -1);
-    Details::InSerialisingRegion(team, [&] {
-      auto got = 0;
-#pragma omp parallel
-      {
-#pragma omp single
-        got = OpenMP::TeamThreads();
-      }
-      opened[static_cast<std::size_t>(OpenMP::ThreadNumber())] = got;
-    });
-    for (auto got : opened) {
-      // A thread the runtime declined to supply never ran, and says -1.
-      if (got != -1) {
-        EXPECT_EQ(got, 1) << "from a team of " << team;
-      }
-    }
-    EXPECT_EQ(opened[0], 1) << "from a team of " << team;
-  }
-
-  // And the caller's own setting is untouched.
-  EXPECT_EQ(OpenMP::MaxThreads(), available);
-}
-
 // An exception must not leave a parallel region -- the program is terminated
 // if one does -- so inside one everything that can throw runs through this,
 // and is thrown again after the region has closed.
@@ -2148,10 +2114,11 @@ TEST(MatrixKernel, RoundTripsOnItsOwn) {
 #endif  // GSHTRANS_HAVE_BLAS
 
 #ifdef GSHTRANS_HAVE_BLAS
-// Threading over orders.
+// The threading policy must not change the answer.
 //
-// The orders write disjoint output, so a threaded run must give the *same*
-// answer as a sequential one -- not a close one. Bit-exact is the right
+// The matrix kernel's order loop is sequential by construction (OverOrders),
+// so a parallel policy moves only the Fourier stage onto threads, and each
+// FFT computes the same rows whichever thread runs it. Bit-exact is the right
 // standard here even though the cross-kernel comparison is not: within one
 // kernel nothing about the arithmetic changes, only which thread does it, and
 // each order's product is a single BLAS call either way.

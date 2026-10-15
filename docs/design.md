@@ -155,17 +155,23 @@ length when `_OPENMP` is undefined. The library asks the compiler through
 `_OPENMP` rather than defining a macro of its own that could disagree with it.
 `OpenMP::Available` reports which was built.
 
-### 3.2 Keeping the BLAS serial
+### 3.2 The BLAS and the library's threads
 
-The GEMMs here are skinny, and threading them inside a threaded transform
-loses. A BLAS on the same OpenMP runtime is held to one thread by issuing every
-GEMM inside `Details::InSerialisingRegion`, which sets the nested thread count
-to one. Merely being inside a parallel region is not enough: a team of one is
-*inactive*, so a region opened from it is not nested and gets the whole
-machine — and the sequential case is the commonest. A BLAS with its own thread
-pool, or on another OpenMP runtime (e.g. a clang build against a `libgomp`
-OpenBLAS), is out of the library's reach and must be set to one thread by the
-caller.
+No BLAS call is ever made from inside a library-opened parallel region. The
+rule is not about speed: whether and how a BLAS threads is outside the
+library's control, and the nesting is fatal rather than slow. OpenBLAS's
+OpenMP build — Ubuntu's default `libblas.so.3` — livelocks when a GEMM past
+its internal threading threshold is issued from inside an enclosing region
+(its dispatcher opens a nested region it cannot re-enter and the threads spin
+in `sched_yield`, at full CPU, forever), and that build ignores
+`OPENBLAS_NUM_THREADS`, so no environment setting protects the user.
+
+The matrix kernel therefore runs its order loop in sequence and leaves
+threading each product to the BLAS: a threaded BLAS may thread each GEMM, a
+sequential one costs nothing, and the kernel's `Execution` policy governs only
+the Fourier stage. The rule is structural rather than policed — `OverOrders`
+takes no policy, so there is no parallel region around the GEMMs to
+reintroduce.
 
 `Blas.hpp` assumes 32-bit BLAS integers. An ILP64 BLAS uses the same symbol
 names, so linking one would not fail; it would pass the wrong arguments. There
@@ -184,8 +190,9 @@ the same thing.
 ### 3.4 Exceptions and OpenMP regions
 
 An exception that escapes an OpenMP region terminates the process. Every
-region that can throw — both Fourier stages, both kernels, the loop over
-orders, the Wigner table constructions, the radial-line loops — runs its body
+region that can throw — both Fourier stages, the loop kernel's colatitude
+loops,
+the Wigner table constructions, the radial-line loops — runs its body
 through `Details::ExceptionCapture` (`Utility.hpp`), which keeps the first
 exception and rethrows it after the region closes. A thread whose set-up
 failed still passes through the worksharing loop and does nothing, as OpenMP

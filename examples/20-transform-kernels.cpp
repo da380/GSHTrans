@@ -180,15 +180,16 @@ int main() {
     std::cout << "matrix kernel refuses long double, since BLAS has none\n";
   }
 
-  // One obligation, which no caller can meet without being told. Under a
-  // parallel policy the matrix kernel threads over orders and issues every
-  // product from inside an OpenMP region, so a BLAS built on the same OpenMP
-  // runtime is nested and runs serial with nothing to configure. A BLAS with
-  // a thread pool of its own cannot see that region, and must be held to one
-  // thread by the environment -- OPENBLAS_NUM_THREADS=1 or the equivalent.
-  // These products are skinny, and threading them loses even when there is
-  // no nesting to worry about.
-  std::cout << "\nremember: a pthread-pool BLAS must be held to one thread\n";
+  // The threading contract, which differs between the kernels. The loop
+  // kernel threads over colatitudes itself. The matrix kernel does not: it runs
+  // its order loop in sequence and issues every product from outside any
+  // OpenMP region, so a threaded BLAS is free to thread each GEMM and a
+  // sequential one costs nothing. The policy still governs the FFTs. The
+  // library never calls a BLAS from inside a region of its own: an
+  // OpenMP-build OpenBLAS livelocks when nested, and nothing in the
+  // environment can prevent that.
+  std::cout << "\nthe matrix kernel leaves threading each product to the "
+               "BLAS\n";
 
   return 0;
 #endif

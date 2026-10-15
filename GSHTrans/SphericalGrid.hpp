@@ -1442,30 +1442,23 @@ class SphericalGrid {
     return buffer;
   }
 
-  // Run `body(m, scratch)` for every order from minOrder to lMax, threaded or
-  // not.
+  // Run `body(m, scratch)` for every order from minOrder to lMax, in
+  // sequence.
   //
-  // **schedule(dynamic), and the reason is that the obvious static split is
-  // wrong twice over.** First, the work per order is not constant, since
-  // n_L(m) falls linearly in |m|, so counting orders is about twice as
-  // unbalanced as it looks and the schedule has to divide work instead.
-  // Second, and sharper: a static split weighted by n_L would assume time
-  // proportional to n_L -- but the inverse's inner dimension *is* n_L, and a
-  // GEMM's efficiency falls with its inner dimension, so time is superlinear in
-  // n_L and a linear model mis-splits in the same direction it was correcting.
-  // Dynamic needs no model and so cannot hold a wrong one.
-  //
-  // Determinism is unaffected: the orders write disjoint output, so the answer
-  // does not depend on which thread took which or in what sequence.
-  //
-  // The scratch is per thread and is taken *inside* the region for that
-  // reason. Anything shared -- the table, the intermediate -- is captured by
-  // reference from outside it, and must be: OrderScratch and MatrixScratch are
-  // both thread_local, so a buffer filled before the region is the master
-  // thread's and reaching for it again inside would find an empty one.
+  // **Sequential by construction, and the BLAS is why.** Every body issues a
+  // GEMM, and no BLAS call may be made from inside a library-opened parallel
+  // region: whether and how a BLAS threads is outside the library's control,
+  // and OpenBLAS's OpenMP build -- Ubuntu's default libblas.so.3 -- livelocks
+  // when a GEMM past its internal threading threshold is issued from inside
+  // one, because its dispatcher opens a nested region it cannot re-enter
+  // (dgemm_thread_nt -> exec_blas -> GOMP_parallel, spinning in sched_yield).
+  // That build also ignores OPENBLAS_NUM_THREADS, so no environment setting
+  // saves the caller. There is therefore no region here, and no policy
+  // parameter through which one could come back: threading over orders is not
+  // something this loop can be asked for. A threaded BLAS is free to thread
+  // each product itself; a sequential BLAS runs the loop as written.
   template <typename Body>
-  void OverOrders(Int minOrder, Int lMax, Int c, Execution policy,
-                  Body&& body) const {
+  void OverOrders(Int minOrder, Int lMax, Int c, Body&& body) const {
     // Room for one order's product and, beside it, one right-hand side. The
     // product is at most lMax + 1 rows of c fields. The right-hand side is
     // needed only for the order -m, whose Fourier data has to be copied out in
@@ -1474,41 +1467,8 @@ class SphericalGrid {
     // the two never coexist and the buffer holds one of each.
     const auto scratchSize =
         static_cast<std::size_t>(c * (lMax + 1 + this->NumberOfCoLatitudes()));
-    const auto orders = lMax - minOrder + 1;
-
-    // **A team is opened even for the sequential case, and that is the point
-    // rather than an accident of the code.** A threaded BLAS loses on these
-    // products -- 23.7 ms against 17.0 at lMax = 256, k = 8, with GSHTrans
-    // sequential and so with no nesting to blame -- because the 513 products
-    // are skinny and thread launch dominates. The library cannot set a BLAS's
-    // thread count portably: there is no standard call, and
-    // OPENBLAS_NUM_THREADS is a property of one implementation and is inert
-    // in its OpenMP build.
-    //
-    // What it can do is issue every GEMM from inside a region that holds
-    // nested regions to one thread, which is what InSerialisingRegion is and
-    // where the mechanism is described -- including why opening a team is not
-    // enough by itself. A BLAS on its own pthread pool is unaffected and still
-    // needs the caller's environment, which is what the CMake comment says.
-    //
-    // Without it, "GSHTrans sequential" lets the BLAS take the whole machine,
-    // which shows in a benchmark as table traffic at twice single-core
-    // bandwidth.
-    //
-    // The scratch is grown in here and growing it can throw, and nothing may
-    // leave a region: see ExceptionCapture, including for why a thread whose
-    // set-up failed still goes through the loop.
-    auto capture = Details::ExceptionCapture{};
-    Details::InSerialisingRegion(policy.TeamSize(), [&] {
-      Complex* scratch = nullptr;
-      capture.Run([&] { scratch = OrderScratch(scratchSize).data(); });
-#pragma omp for schedule(dynamic)
-      for (Int i = 0; i < orders; i++) {
-        if (capture.Failed()) continue;
-        capture.Run([&] { body(minOrder + i, scratch); });
-      }
-    });
-    capture.Rethrow();
+    auto* scratch = OrderScratch(scratchSize).data();
+    for (auto m = minOrder; m <= lMax; m++) body(m, scratch);
   }
 
   // The forward transform as one matrix product per order.
@@ -1562,13 +1522,13 @@ class SphericalGrid {
           stage.data(), static_cast<std::size_t>(nFourier * nTheta * c));
       ForwardFourierStage(in, inBatch, first, c, stageSpan, 0, policy);
 
-      // Everything one order needs, and nothing another order touches. That
-      // disjointness is the whole of the threading argument: the
-      // products at different orders read a shared, read-only table and a
-      // shared, read-only intermediate, and write coefficients no other order
-      // writes. **No accumulator and no reduction, in either direction** --
-      // which is the forward loop kernel's weak point deleted rather than
-      // tuned.
+      // Everything one order needs, and nothing another order touches: the
+      // products read a shared, read-only table and a shared, read-only
+      // intermediate, and write coefficients no other order writes. **No
+      // accumulator and no reduction, in either direction** -- which is the
+      // forward loop kernel's weak point deleted rather than tuned. The order
+      // loop runs in sequence and each product's threading belongs to the
+      // BLAS: see OverOrders.
       // One order and, where there is one, its negation -- both against the
       // *same* matrix.
       //
@@ -1655,7 +1615,7 @@ class SphericalGrid {
         }
       };
 
-      OverOrders(Int{0}, lMax, c, policy, DoOrder);
+      OverOrders(Int{0}, lMax, c, DoOrder);
     }
   }
 
@@ -1773,7 +1733,7 @@ class SphericalGrid {
         }
       };
 
-      OverOrders(Int{0}, lMax, c, policy, DoOrder);
+      OverOrders(Int{0}, lMax, c, DoOrder);
 
       auto stageSpan = std::span<const Complex>(
           stage.data(), static_cast<std::size_t>(nFourier * nTheta * c));
