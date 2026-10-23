@@ -5,6 +5,7 @@
 #include <complex>
 #include <cstddef>
 #include <cstdlib>
+#include <limits>
 #include <numbers>
 #include <stdexcept>
 #include <string>
@@ -12,18 +13,15 @@
 
 // Wigner tables at large degree, and in single precision.
 //
-// The recursion in degree is seeded at l = |m| with a value of about
-// (sin theta)^m, and the column it starts grows back to order one only once
-// l sin theta reaches m. A seed that has underflowed *and* still matters needs
-// lMax * s |ln s| > |ln min| for some s = sin theta, and s |ln s| is largest
-// at s = 1/e -- so the plain recursion is safe if and only if
-//
-//     lMax  <  e * |ln min|,
-//
-// and a little below that, e * (|ln min| - |ln eps|), if the seed is not to go
-// denormal and lose bits on the way. Measured, the formula puts the onset
-// within a per cent in both precisions. Above it the plain recursion is
-// silently wrong by order one, so a table there is refused.
+// The recursion in degree is seeded at l0 = max(|n|, |m|) with a value that is
+// exponentially small near the poles, and the column it starts grows back to
+// order one only at its turning point. A seed that has underflowed *and* still
+// matters is a column silently wrong by order one, so a table whose shape
+// allows one is refused: SafeDegree finds the first degree at which a seed
+// below min / eps meets its turning point, over the table's columns and all
+// colatitudes. With every order and upper index zero that is 1822 in double;
+// with the orders restricted it rises steeply; with large upper indices it
+// falls, to 913 at |n| = |m| = 336, the worst shape of all.
 //
 // Single precision is recursed in double and narrowed, because what single
 // precision is good for is what is stored and moved, and the recursion runs
@@ -55,27 +53,82 @@ double UnitarityDefect(const Table& table, Int l) {
       sum * 4 * std::numbers::pi_v<long double> / (2 * l + 1) - 1));
 }
 
-}  // namespace
-
-TEST(LargeDegree, TheSafeDegreeIsWhatTheFormulaGives) {
-  EXPECT_EQ(MaxSafeDegree<double>(), 1827);
-  EXPECT_EQ(MaxSafeDegree<long double>(), 30747);
-  // Recursed in double, so limited as double is.
-  EXPECT_EQ(MaxSafeDegree<float>(), 1827);
+// The largest difference between a double table and the long double one of
+// the same shape, over every stored entry, in d^l_{nm} itself rather than in
+// the orthonormalised value. Long double's own ceiling is far above every
+// degree asked of it here, so it is the truth to double's rounding.
+double DifferenceFromLongDouble(Int lMax, Int mMax, Int n, double theta) {
+  const auto inDouble =
+      Wigner<double, All, Single, Single>(lMax, mMax, n, theta);
+  const auto inLong = Wigner<long double, All, Single, Single>(
+      lMax, mMax, n, static_cast<long double>(theta));
+  auto worst = 0.0;
+  for (auto l = std::abs(n); l <= lMax; l++) {
+    const auto norm = std::sqrt((2.0 * l + 1) / (4 * std::numbers::pi));
+    const auto mBound = std::min(l, mMax);
+    for (auto m = -mBound; m <= mBound; m++) {
+      const auto difference =
+          std::abs(static_cast<long double>(inDouble[l][m]) - inLong[l][m]);
+      worst = std::max(worst, static_cast<double>(difference) / norm);
+    }
+  }
+  return worst;
 }
 
-TEST(LargeDegree, ATableAboveTheSafeDegreeIsRefused) {
-  // One order and one colatitude, so that the tables which are built cost
-  // nothing: the limit is on the degree whatever else is asked for.
+constexpr auto unbounded = std::numeric_limits<Int>::max();
+
+}  // namespace
+
+TEST(LargeDegree, TheSafeDegreeDependsOnTheShape) {
+  // Every order, at upper index zero.
+  EXPECT_EQ(MaxSafeDegree<double>(), 1822);
+  EXPECT_EQ(MaxSafeDegree<long double>(), 30740);
+  // Recursed in double, so limited as double is.
+  EXPECT_EQ(MaxSafeDegree<float>(), 1822);
+  EXPECT_EQ(SafeDegree<double>(unbounded, 0, 0), MaxSafeDegree<double>());
+
+  // Small upper indices lower it a little, for the grids' usual ranges.
+  EXPECT_EQ(SafeDegree<double>(unbounded, 0, 2), 1818);
+  EXPECT_EQ(SafeDegree<double>(unbounded, 0, 4), 1814);
+  EXPECT_EQ(SafeDegree<double>(unbounded, 2, 2), 1818);
+
+  // Restricted orders raise it steeply, and without bound once the seeds
+  // cannot underflow where they matter at all.
+  EXPECT_EQ(SafeDegree<double>(500, 0, 2), 1903);
+  EXPECT_EQ(SafeDegree<double>(200, 0, 0), 5721);
+  EXPECT_EQ(SafeDegree<double>(100, 0, 2), 72314);
+  EXPECT_EQ(SafeDegree<double>(2, 0, 2), unbounded);
+  EXPECT_EQ(SafeDegree<double>(0, 0, 0), unbounded);
+  for (auto mMax = Int{100}; mMax < 2000; mMax += 100) {
+    EXPECT_GE(SafeDegree<double>(mMax, 0, 2),
+              SafeDegree<double>(mMax + 100, 0, 2));
+  }
+
+  // Large upper indices lower it, to the worst shape of all at
+  // |n| = |m| = 336, which is the closed form every table is safe below.
+  EXPECT_EQ(SafeDegreeForAnyShape<double>(), 913);
+  EXPECT_EQ(SafeDegreeForAnyShape<long double>(), 15373);
+  EXPECT_EQ(SafeDegree<double>(unbounded, 336, 336), 913);
+  EXPECT_EQ(SafeDegree<double>(unbounded, 0, unbounded), 913);
+  EXPECT_EQ(SafeDegree<double>(unbounded, 1300, 1300), 1683);
+
+  EXPECT_THROW(SafeDegree<double>(-1, 0, 0), std::invalid_argument);
+  EXPECT_THROW(SafeDegree<double>(0, 2, 1), std::invalid_argument);
+}
+
+TEST(LargeDegree, ATableAboveItsSafeDegreeIsRefused) {
+  // Every order at one colatitude, so that the tables which are built cost
+  // little: a table of order zero alone is safe at any degree.
   using Table = Wigner<double, All, Single, Single>;
   const auto limit = MaxSafeDegree<double>();
-  EXPECT_NO_THROW(Table(limit, 0, 0, 1.0));
-  EXPECT_THROW(Table(limit + 1, 0, 0, 1.0), std::invalid_argument);
+  EXPECT_NO_THROW(Table(limit, limit, 0, 1.0));
+  EXPECT_THROW(Table(limit + 1, limit + 1, 0, 1.0), std::invalid_argument);
+  EXPECT_NO_THROW(Table(4 * limit, 0, 0, 1.0));
 
   using Matrices = WignerMatrices<double, All, Single>;
   const auto theta = std::vector<double>{1.0};
-  EXPECT_NO_THROW(Matrices(limit, 0, 0, theta));
-  EXPECT_THROW(Matrices(limit + 1, 0, 0, theta), std::invalid_argument);
+  EXPECT_NO_THROW(Matrices(limit, limit, 0, theta));
+  EXPECT_THROW(Matrices(limit + 1, limit + 1, 0, theta), std::invalid_argument);
 
   // A grid refuses before it builds anything, which matters: a generating
   // grid has no table to do the refusing.
@@ -86,12 +139,65 @@ TEST(LargeDegree, ATableAboveTheSafeDegreeIsRefused) {
                std::invalid_argument);
 }
 
+TEST(LargeDegree, RestrictedOrdersAreRightFarAboveTheFullCeiling) {
+  // Orders up to 200 are safe to 5721 in double, three times the ceiling of
+  // a table of every order, and right there: the colatitudes are around the
+  // ones at which the columns near |m| = 200 first underflow.
+  constexpr auto mMax = Int{200};
+  const auto lMax = SafeDegree<double>(mMax, 0, 0);
+  ASSERT_EQ(lMax, 5721);
+  const auto angles = Thorough()
+                          ? std::vector<double>{0.020, 0.024, 0.028, 0.035}
+                          : std::vector<double>{0.024};
+  for (auto theta : angles) {
+    EXPECT_LT(DifferenceFromLongDouble(lMax, mMax, 0, theta), 1e-10)
+        << "theta = " << theta;
+  }
+  using Table = Wigner<double, All, Single, Single>;
+  EXPECT_THROW(Table(lMax + 1, mMax, 0, 0.024), std::invalid_argument);
+}
+
+TEST(LargeDegree, ALargeUpperIndexLowersTheCeiling) {
+  // At |n| = 336 the column of order -336 is seeded by sin^672(theta/2) and
+  // is wrong from degree 929 in the tenth place, and by 8e-2 at 1003 -- both
+  // under the 1827 that once let it through. Its own ceiling is 913, and the
+  // table is right there.
+  constexpr auto n = Int{336};
+  const auto lMax = SafeDegree<double>(unbounded, n, n);
+  ASSERT_EQ(lMax, 913);
+  const auto angles = Thorough() ? std::vector<double>{0.55, 0.62, 0.67, 0.75}
+                                 : std::vector<double>{0.67};
+  for (auto theta : angles) {
+    EXPECT_LT(DifferenceFromLongDouble(lMax, lMax, n, theta), 1e-11)
+        << "theta = " << theta;
+  }
+  using Table = Wigner<double, All, Single, Single>;
+  EXPECT_THROW(Table(lMax + 1, lMax + 1, n, 0.67), std::invalid_argument);
+}
+
+TEST(LargeDegree, AnUnderflowingSeedFallsToZeroAndDoesNotStick) {
+  // At |n| = 1300 the seed row holds cos^2600(theta/2), e^-1600 at
+  // theta = 2. Formed by repeated multiplication in double it once stuck at
+  // the smallest denormal -- each factor, above one half, rounded it back --
+  // and the columns seeded from it came back as numbers near 1e114 at degree
+  // 1650, inside this shape's ceiling of 1683. Carried with an exponent of its
+  // own, the seed rounds to zero once, and the table is right.
+  constexpr auto n = Int{1300};
+  constexpr auto lMax = Int{1650};
+  ASSERT_LE(lMax, SafeDegree<double>(unbounded, n, n));
+  const auto angles = Thorough() ? std::vector<double>{1.2, 1.5, 1.7, 2.0, 2.4}
+                                 : std::vector<double>{1.7, 2.0};
+  for (auto theta : angles) {
+    EXPECT_LT(DifferenceFromLongDouble(lMax, lMax, n, theta), 1e-11)
+        << "theta = " << theta;
+  }
+}
+
 TEST(LargeDegree, TheTableIsStillUnitaryAtTheSafeDegree) {
-  // At the worst colatitude, asin(1/e), and at the limit itself. One step
-  // above the bare e |ln min| this is wrong in the ninth place, and by
+  // At about the worst colatitude, asin(1/e), and at each shape's own limit.
+  // A hundred degrees above it this is wrong in the ninth place, and by
   // lMax = 2000 in the third.
   using Table = Wigner<double, All, Single, Single>;
-  const auto lMax = MaxSafeDegree<double>();
   const auto worstAngle = std::asin(std::exp(-1.0));
   const auto angles =
       Thorough() ? std::vector<double>{worstAngle, 0.30, 0.45, 0.9, 1.5707}
@@ -100,6 +206,7 @@ TEST(LargeDegree, TheTableIsStillUnitaryAtTheSafeDegree) {
       Thorough() ? std::vector<Int>{0, 1, 2, 3, 4} : std::vector<Int>{0, 2};
   for (auto theta : angles) {
     for (auto n : indices) {
+      const auto lMax = SafeDegree<double>(unbounded, n, n);
       const auto table = Table(lMax, lMax, n, theta);
       for (auto l : {lMax, lMax - lMax / 7}) {
         EXPECT_LT(UnitarityDefect(table, l), 1e-11)

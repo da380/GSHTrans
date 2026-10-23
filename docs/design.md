@@ -310,16 +310,30 @@ samples it already has, not a second evaluation of the expression.
 
 ### 5.1 The Wigner recursion and its ceiling
 
-`d^l_{nm}(θ)` is computed by recursion in `l` from a seed of order
-`(sin θ)^m`. The seed underflows, and the column recovers only once
-`l sin θ ≳ m`, so the recursion is sound only for
-`lMax < e·|ln min|`. `MaxSafeDegree<Real>()` enforces
-`⌊e(|ln min| − |ln ε|)⌋` — 1827 in double, 30 747 in long double — slightly
-below that so the seed never goes denormal. `Wigner`, `WignerMatrices` and the
-grid all refuse a degree above it (the grid because a generating grid has no
-table to do the refusing). Above the ceiling the table would be wrong by order
-one with no sign of trouble. Extending the range (an exponent carried per
-column) is known and not built; see `open-issues.md`.
+`d^l_{nm}(θ)` is computed by recursion in `l` from a seed at
+`l0 = max(|n|, |m|)` of `√C(a+b, a) sin^a(θ/2) cos^b(θ/2)`, with `a = |n − m|`
+and `b = |n + m|`. The seed underflows near the poles, and the column recovers
+only at its turning point `½√(a²/sin²(θ/2) + b²/cos²(θ/2))`, so a table is
+sound only below the first degree at which a seed under `min/ε` meets its
+turning point. `SafeDegree<Real>(mMax, nLow, nHigh)` finds that degree for a
+table's shape, searching the most lopsided column at each `l0`, which is the
+worst there: 1822 in double for every order at `n = 0` (`MaxSafeDegree`),
+1818 for `|n| ≤ 2`, 5721 for `|m| ≤ 200`, unbounded for `|m| ≤ 30`, and 913
+at `|n| = |m| = 336`, the worst shape of all, below which the search is
+skipped (`SafeDegreeForAnyShape`). Measured against an extended-range
+recursion, the first degree wrong by `1e-10` lies within a per cent above the
+bound for every shape tried. `Wigner`, `WignerMatrices`, the grid and the
+spectral interpolant all refuse a degree above their shape's ceiling (the grid
+because a generating grid has no table to do the refusing). Above it the table
+would be wrong by order one with no sign of trouble. Extending the range (an
+exponent carried per column) is known and not built; see `open-issues.md`.
+
+The seeds themselves — the seed row's powers and the boundary values run up
+the degrees — are long products of factors below one, carried with an
+exponent of their own (`ScaledProduct`) and rounded to `Real` once. Kept in
+`Real`, a product that went denormal stuck at the smallest denormal whenever
+the next factor exceeded one half, and the column seeded from it came back as
+numbers of order `10^100` (seen at `|n| = 1300`, degree 1650).
 
 The seed row's binomial is formed directly while it fits (`|n| ≤ 508` in
 double) and from logarithms above, without `lgamma`, whose global state is a

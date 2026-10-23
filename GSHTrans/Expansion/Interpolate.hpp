@@ -386,7 +386,8 @@ class SpectralInterpolant {
         throw std::invalid_argument(
             "Interpolate: the degree is below the upper index");
       }
-      WignerDetails::CheckSafeDegree<Real>(lMax);
+      WignerDetails::CheckSafeDegree<Real>(lMax, lMax, std::abs(UpperIndex),
+                                           std::abs(UpperIndex));
       const auto indices = GSHIndices<MRange>(lMax, lMax, UpperIndex);
       if (data.size() != static_cast<std::size_t>(indices.Size())) {
         throw std::invalid_argument(

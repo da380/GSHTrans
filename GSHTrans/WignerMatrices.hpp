@@ -113,8 +113,9 @@ class WignerMatrices {
    * @param theta The colatitudes.
    * @param reflected Whether only the non-negative orders are stored, the
    * rest being reached through Sign(); see Reflected().
-   * @throws std::invalid_argument if the degree is negative or above
-   * MaxSafeDegree, if the order or upper index exceeds the degree, if a
+   * @throws std::invalid_argument if the degree is negative or above the
+   * SafeDegree of the table's orders and upper indices, if the order or upper
+   * index exceeds the degree, if a
    * colatitude lies outside @f$[0, \pi]@f$, or if @p reflected is asked of
    * colatitudes not symmetric about @f$\pi/2@f$.
    */
@@ -130,7 +131,6 @@ class WignerMatrices {
         reflected_{reflected} {
     if (lMax < 0)
       throw std::invalid_argument("Maximum degree must not be negative");
-    WignerDetails::CheckSafeDegree<Real>(lMax);
     if (mMax < 0 || mMax > lMax) {
       throw std::invalid_argument(
           "Maximum order must lie between zero and the maximum degree");
@@ -139,6 +139,9 @@ class WignerMatrices {
       throw std::invalid_argument(
           "Maximum upper index must not exceed the maximum degree");
     }
+    WignerDetails::CheckSafeDegree<Real>(
+        lMax, mMax, std::same_as<NRange, Single> ? std::abs(nMax) : Int{0},
+        std::abs(nMax));
 
     for (auto angle : theta) {
       if (!(angle >= 0 && angle <= std::numbers::pi_v<Real>)) {

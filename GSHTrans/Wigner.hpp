@@ -83,42 +83,217 @@ using WignerRecursionReal =
                         std::numeric_limits<double>::digits),
                        double, Real>;
 
-/**
- * @brief The largest degree at which a table of Wigner functions is right.
- *
- * @details The recursion in degree is seeded at @f$l = |m|@f$ with a value of
- * about @f$(\sin\theta)^m@f$, and the column it starts grows back to order one
- * only once @f$l \sin\theta@f$ reaches @f$m@f$. A seed that has underflowed
- * *and* still matters therefore needs
- * @f$l_{\max}\, s|\ln s| > |\ln \mathrm{min}|@f$ for some
- * @f$s = \sin\theta@f$, and @f$s|\ln s|@f$ is largest at @f$s = 1/e@f$: the
- * plain recursion is safe if and only if
- * @f$l_{\max} < e\,|\ln \mathrm{min}|@f$. Measured, that puts the onset
- * within a per cent -- 1926 in double, where the table is right at 1900 and
- * wrong in the ninth place at 1930, and by order one at 3000.
- *
- * What is returned is a little less,
- * @f$\lfloor e\,(|\ln \mathrm{min}| - |\ln \epsilon|) \rfloor@f$, which
- * keeps the seed above @f$\mathrm{min}/\epsilon@f$ and so out of the denormal
- * range, where it loses bits before it loses everything: 1827 in double and
- * 30747 in long double. Single precision is recursed in double (see
- * WignerRecursionReal) and so shares double's limit and not the 194 its own
- * arithmetic would give.
- *
- * Above this a table is refused. The cure, an exponent carried beside each
- * column (Fukushima, J. Geod. 86, 2012), is known and not built: nothing
- * this library is used for comes near the limit.
- */
+namespace WignerDetails {
+
+// |ln min| - |ln eps| of the recursion's arithmetic: how far below one a
+// seed may fall and still sit above min / eps, out of the denormal range.
+// Exact from the format, min = 2^(min_exponent - 1) and eps = 2^(1 - digits):
+// 672.4 in double, 11311 in long double.
 template <RealFloatingPoint Real>
-constexpr std::ptrdiff_t MaxSafeDegree() {
+constexpr auto SeedRange() {
   using Work = WignerRecursionReal<Real>;
-  // |ln min| - |ln eps| in units of ln 2, exactly, from the format:
-  // min = 2^(min_exponent - 1) and eps = 2^(1 - digits).
   constexpr auto bits = 2 - std::numeric_limits<Work>::min_exponent -
                         std::numeric_limits<Work>::digits;
-  return static_cast<std::ptrdiff_t>(std::numbers::e_v<long double> *
-                                     std::numbers::ln2_v<long double> *
-                                     static_cast<long double>(bits));
+  return std::numbers::ln2_v<Work> * static_cast<Work>(bits);
+}
+
+// ln k!, without lgamma, whose glibc implementation writes the global signgam
+// and so races when tables are built on several threads at once. Summed
+// below 32, and Stirling's series above, which is good to rounding there.
+template <RealFloatingPoint Real>
+Real LogFactorial(std::ptrdiff_t k) {
+  if (k < 32) {
+    auto sum = Real{0};
+    for (auto i = std::ptrdiff_t{2}; i <= k; i++) {
+      sum += std::log(static_cast<Real>(i));
+    }
+    return sum;
+  }
+  const auto x = static_cast<Real>(k + 1);
+  const auto inverse = 1 / x;
+  const auto inverse2 = inverse * inverse;
+  return (x - Real{0.5}) * std::log(x) - x +
+         std::log(2 * std::numbers::pi_v<Real>) / 2 +
+         inverse * (Real{1} / 12 -
+                    inverse2 * (Real{1} / 360 - inverse2 * Real{1} / 1260));
+}
+
+// The smallest degree at which a column is wrong from the pole theta = 0, as
+// a function of its exponents there.
+//
+// The column of upper index n and order m is seeded at l0 = max(|n|, |m|),
+// with a = |n - m|, b = |n + m| and l0 = (a + b) / 2, by
+//
+//   |d^{l0}_{nm}| = sqrt(C(a + b, a)) s^a c^b,  s = sin(theta/2),
+//                                               c = cos(theta/2),
+//
+// and it is evanescent -- growing with l from that seed -- until its turning
+// point
+//
+//   l*(theta) = (1/2) sqrt(a^2 / s^2 + b^2 / c^2),
+//
+// beyond which it is of order one. A seed below min / eps at an angle where
+// l* <= lMax is a column that underflowed and still matters. Written in
+// t = s^2, the seed rises on (0, t*], t* = a / (a + b), while l* falls to its
+// least value l0 there; so the first degree at which the column is wrong is
+// l* at the t where the seed crosses min / eps, or l0 if it never does. The
+// other pole is this one for (n, -m), whose exponents are (b, a).
+//
+// Done in double whatever the table's precision: a degree is wanted to the
+// nearest integer, and long double would only make the search slower.
+inline double UnsafeDegreeFromPole(std::ptrdiff_t a, std::ptrdiff_t b,
+                                   double range) {
+  using Real = double;
+  if (a == 0) return std::numeric_limits<Real>::infinity();
+  const auto threshold = -range;
+  const auto Fa = static_cast<Real>(a);
+  const auto Fb = static_cast<Real>(b);
+  const auto halfLogBinomial = (LogFactorial<Real>(a + b) -
+                                LogFactorial<Real>(a) - LogFactorial<Real>(b)) /
+                               2;
+  // ln|seed| at t = e^u.
+  const auto logSeed = [&](Real u) {
+    return halfLogBinomial + Fa * u / 2 +
+           (b > 0 ? Fb * std::log1p(-std::exp(u)) / 2 : Real{0});
+  };
+  const auto turningPoint = [&](Real u) {
+    const auto t = std::exp(u);
+    return std::sqrt(Fa * Fa / t + (b > 0 ? Fb * Fb / (1 - t) : Real{0})) / 2;
+  };
+  const auto peak = std::log(Fa / (Fa + Fb));
+  if (logSeed(peak) < threshold) return (Fa + Fb) / 2;
+  // Bracket the crossing from below, then bisect: logSeed is increasing on
+  // (-infinity, peak], and the step is where the a ln s term alone has
+  // fallen by the whole range.
+  const auto step = 2 * threshold / Fa;
+  auto lower = peak + step;
+  while (!(logSeed(lower) < threshold)) lower += step;
+  auto upper = peak;
+  for (auto i = 0; i < 48; i++) {
+    const auto middle = (lower + upper) / 2;
+    (logSeed(middle) < threshold ? lower : upper) = middle;
+  }
+  return turningPoint(lower);
+}
+
+}  // namespace WignerDetails
+
+/**
+ * @brief The largest degree at which every table of Wigner functions is
+ * right, whatever orders and upper indices it holds.
+ *
+ * @details The worst column of all is the one at @f$n = -m@f$, seeded by
+ * exactly @f$\sin^{2|m|}(\theta/2)@f$ and turning at exactly
+ * @f$|m| / \sin(\theta/2)@f$, for which SafeDegree's bound is
+ * @f$e\,(|\ln \mathrm{min}| - |\ln\epsilon|)/2@f$ in closed form: 913 in
+ * double and 15373 in long double. A table no higher than this is safe
+ * without SafeDegree's search, which is what the constructors ask first.
+ */
+template <RealFloatingPoint Real>
+constexpr std::ptrdiff_t SafeDegreeForAnyShape() {
+  return static_cast<std::ptrdiff_t>(
+      std::numbers::e_v<long double> *
+      static_cast<long double>(WignerDetails::SeedRange<Real>()) / 2);
+}
+
+/**
+ * @brief The largest degree at which a table of Wigner functions of a given
+ * shape is right.
+ *
+ * @details The recursion in degree is seeded at
+ * @f$l_0 = \max(|n|, |m|)@f$ by a value that is exponentially small near the
+ * poles -- @f$\sqrt{C(a+b, a)}\, \sin^a(\theta/2) \cos^b(\theta/2)@f$, with
+ * @f$a = |n - m|@f$ and @f$b = |n + m|@f$ -- and the column it starts grows
+ * back to order one only at its turning point
+ * @f$\tfrac12 \sqrt{a^2/\sin^2(\theta/2) + b^2/\cos^2(\theta/2)}@f$. A seed
+ * that has underflowed *and* still matters is a column that is wrong by order
+ * one, with nothing to say so. A table is safe up to the degree below the
+ * first turning point, over its columns and over all colatitudes, at which a
+ * seed lies below @f$\mathrm{min}/\epsilon@f$ -- out of the denormal range,
+ * where it loses bits before it loses everything.
+ *
+ * How far that is depends on the shape. The column at @f$n = 0@f$ and order
+ * @f$m@f$ is wrong from about @f$m\, e^{L/m}@f$ for @f$m < L@f$, with
+ * @f$L = |\ln \mathrm{min}| - |\ln \epsilon|@f$ (672 in double), and from
+ * @f$e L@f$ beyond: so restricting the orders lifts the ceiling steeply --
+ * 1822 in double with every order, 5721 with @f$|m| \le 200@f$, 81987 with
+ * @f$|m| \le 100@f$, and beyond any degree with @f$|m| \le 30@f$. The column
+ * at @f$n = -m@f$ is the worst, seeded by @f$\sin^{2|m|}(\theta/2)@f$ with no
+ * binomial to lift it, and wrong from @f$|m|\, e^{L/2|m|}@f$: a table holding
+ * upper indices and orders both up to 336 is safe only to 913 in double. The
+ * search runs over the most lopsided column at each @f$l_0@f$, which is the
+ * worst there.
+ *
+ * Measured against an extended-range recursion, the first degree at which an
+ * entry is wrong by @f$10^{-10}@f$ lies within a per cent above this bound
+ * for every shape tried, from @f$n = 0@f$ with all orders (1847, against
+ * 1822) to @f$n = 1300@f$ (1683, against 1683).
+ *
+ * Orders of both signs are covered whatever the table stores, because the
+ * pole at @f$\theta = \pi@f$ sees order @f$m@f$ as the pole at zero sees
+ * @f$-m@f$. Single precision is recursed in double (see WignerRecursionReal)
+ * and so shares double's limits.
+ *
+ * @param mMax The largest order held. Pass the degree for a table of every
+ * order.
+ * @param nLow The smallest @f$|n|@f$ among the upper indices held.
+ * @param nHigh The largest @f$|n|@f$ among them.
+ * @returns The largest safe degree, or the largest @c std::ptrdiff_t if no
+ * degree is too high.
+ * @throws std::invalid_argument if @p mMax is negative or the upper indices
+ * are not @f$0 \le n_{\mathrm{low}} \le n_{\mathrm{high}}@f$.
+ */
+template <RealFloatingPoint Real>
+std::ptrdiff_t SafeDegree(std::ptrdiff_t mMax, std::ptrdiff_t nLow,
+                          std::ptrdiff_t nHigh) {
+  using Int = std::ptrdiff_t;
+  if (mMax < 0 || nLow < 0 || nHigh < nLow) {
+    throw std::invalid_argument(
+        "SafeDegree is asked for orders up to mMax >= 0 and upper indices "
+        "with 0 <= nLow <= nHigh");
+  }
+
+  // At each l0, the most lopsided column the shape holds: the one with the
+  // largest k = min(|n|, |m|). Upper index l0 is held if it lies in
+  // [nLow, nHigh], with orders up to min(l0, mMax); order l0 is held if
+  // l0 <= mMax, with upper indices up to min(nHigh, l0). A column is never
+  // wrong below its own l0, so the search stops once l0 passes the worst
+  // degree found -- which bounds it even when mMax is unbounded.
+  const auto range = static_cast<double>(WignerDetails::SeedRange<Real>());
+  auto worst = std::numeric_limits<double>::infinity();
+  const auto last = std::max(mMax, nHigh);
+  for (auto l0 = Int{1}; l0 <= last && static_cast<double>(l0) < worst; l0++) {
+    auto k = Int{-1};
+    if (nLow <= l0 && l0 <= nHigh) k = std::min(l0, mMax);
+    if (l0 <= mMax && nLow <= l0) k = std::max(k, std::min(nHigh, l0));
+    if (k < 0) continue;
+    worst = std::min(
+        {worst, WignerDetails::UnsafeDegreeFromPole(l0 + k, l0 - k, range),
+         WignerDetails::UnsafeDegreeFromPole(l0 - k, l0 + k, range)});
+  }
+
+  // Safe below the first unsafe degree.
+  constexpr auto unbounded = std::numeric_limits<Int>::max();
+  if (!(worst < static_cast<double>(unbounded) / 2)) return unbounded;
+  return static_cast<Int>(std::ceil(worst)) - 1;
+}
+
+/**
+ * @brief The largest degree at which a table of every order is right, at
+ * upper index zero: SafeDegree for that shape.
+ *
+ * @details 1822 in double and 30740 in long double. A table holding other
+ * upper indices has a ceiling of its own, lower for large ones -- 1814 with
+ * @f$|n| \le 4@f$ -- and one restricted in its orders a higher one: ask
+ * SafeDegree. Above its own ceiling a table is refused. The cure, an exponent
+ * carried beside each column (Fukushima, J. Geod. 86, 2012), is known and
+ * not built.
+ */
+template <RealFloatingPoint Real>
+std::ptrdiff_t MaxSafeDegree() {
+  static const auto value =
+      SafeDegree<Real>(std::numeric_limits<std::ptrdiff_t>::max(), 0, 0);
+  return value;
 }
 
 namespace WignerDetails {
@@ -210,15 +385,74 @@ constexpr auto WignerMaxUpperIndex(Int l, Int m, const Arguments<Real> &arg) {
   return WignerMinOrder(l, -m, arg);
 }
 
-// x^k for a small non-negative k. Written out because the exponents here are
-// 2|n| and its neighbours -- four, for a rank-2 application -- and a loop of
-// that length is both exact and cheaper than a call to pow.
+// A product of factors, carried with a binary exponent of its own and rounded
+// to Real once, when it is read.
+//
+// The seeds of the recursion are long products of factors below one, and a
+// product kept in Real does not underflow cleanly. Once it is a denormal, a
+// further factor above one half rounds it back to the same denormal, so it
+// sticks near the smallest one rather than falling to the zero it should be,
+// and the column seeded with it is the true column multiplied by the ratio of
+// the stuck value to the true seed -- e^800 at |n| = 1300 -- coming back as
+// numbers of order 10^100. Carried here, the product is exact to rounding
+// however small it gets, and reading it rounds it once: to a denormal with
+// the bits it has, or to zero.
+//
+// While the product stays within 2^(+-Shift) the exponent is zero and Value
+// is the product itself, formed in the same order as plain multiplication,
+// so nothing changes for a seed that never comes near underflow.
 template <RealFloatingPoint Real>
-constexpr auto IntegerPower(Real x, std::ptrdiff_t k) {
-  auto result = static_cast<Real>(1);
-  for (auto i = std::ptrdiff_t{0}; i < k; i++) result *= x;
-  return result;
-}
+class ScaledProduct {
+ public:
+  constexpr explicit ScaledProduct(Real value) : mantissa_{value} {}
+
+  // x^k for a non-negative k. Written out because the exponents are usually
+  // 2|n| and its neighbours -- four, for a rank-2 application -- and a loop of
+  // that length is both exact and cheaper than a call to pow.
+  static constexpr auto Power(Real x, std::ptrdiff_t k) {
+    auto result = ScaledProduct(static_cast<Real>(1));
+    for (auto i = std::ptrdiff_t{0}; i < k; i++) result *= x;
+    return result;
+  }
+
+  constexpr ScaledProduct &operator*=(Real factor) {
+    mantissa_ *= factor;
+    Rescale();
+    return *this;
+  }
+
+  constexpr ScaledProduct &operator*=(const ScaledProduct &other) {
+    mantissa_ *= other.mantissa_;
+    exponent_ += other.exponent_;
+    Rescale();
+    return *this;
+  }
+
+  constexpr Real Value() const {
+    return exponent_ == 0 ? mantissa_ : std::ldexp(mantissa_, exponent_);
+  }
+
+ private:
+  // Half the exponent range, so that a rescaled mantissa is far from both
+  // ends of it: 512 in double.
+  static constexpr int Shift = std::numeric_limits<Real>::max_exponent / 2;
+
+  Real mantissa_;
+  int exponent_ = 0;
+
+  constexpr void Rescale() {
+    const auto size = mantissa_ < 0 ? -mantissa_ : mantissa_;
+    if (size == 0) return;
+    if (size < std::ldexp(static_cast<Real>(1), -Shift)) {
+      mantissa_ = std::ldexp(mantissa_, Shift);
+      exponent_ -= Shift;
+    } else if (exponent_ < 0 &&
+               size > std::ldexp(static_cast<Real>(1), Shift)) {
+      mantissa_ = std::ldexp(mantissa_, -Shift);
+      exponent_ += Shift;
+    }
+  }
+};
 
 // The two boundary values of a degree, run up the degrees rather than
 // evaluated in closed form at each one.
@@ -271,10 +505,10 @@ class BoundaryValues {
       : n_{n},
         l_{n < 0 ? -n : n},
         sinCos_{arg.SinHalf() * arg.CosHalf()},
-        atUpperIndex_{IntegerPower(n >= 0 ? arg.SinHalf() : arg.CosHalf(),
-                                   2 * (n < 0 ? -n : n))},
-        atMinusUpperIndex_{IntegerPower(n >= 0 ? arg.CosHalf() : arg.SinHalf(),
-                                        2 * (n < 0 ? -n : n))} {}
+        atUpperIndex_{ScaledProduct<Real>::Power(
+            n >= 0 ? arg.SinHalf() : arg.CosHalf(), 2 * (n < 0 ? -n : n))},
+        atMinusUpperIndex_{ScaledProduct<Real>::Power(
+            n >= 0 ? arg.CosHalf() : arg.SinHalf(), 2 * (n < 0 ? -n : n))} {}
 
   // Move to the next degree. Degrees must be visited in ascending order from
   // |n|, which is what ComputeBlock's loops do; the recursion carries no way
@@ -292,19 +526,19 @@ class BoundaryValues {
   constexpr auto Degree() const { return l_; }
 
   // d^l_{n,-l}, which is WignerMinOrder(l, n).
-  constexpr auto MinOrder() const { return atUpperIndex_; }
+  constexpr auto MinOrder() const { return atUpperIndex_.Value(); }
 
   // d^l_{n,l}, which is WignerMaxOrder(l, n).
   constexpr auto MaxOrder() const {
-    return MinusOneToPower<Real>(n_ + l_) * atMinusUpperIndex_;
+    return MinusOneToPower<Real>(n_ + l_) * atMinusUpperIndex_.Value();
   }
 
  private:
   Int n_;
   Int l_;
   Real sinCos_;
-  Real atUpperIndex_;
-  Real atMinusUpperIndex_;
+  ScaledProduct<Real> atUpperIndex_;
+  ScaledProduct<Real> atMinusUpperIndex_;
 };
 
 // The square-root tables the recursion indexes: sqrt(k) and its reciprocal,
@@ -399,11 +633,13 @@ constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
       }
 
       while (iter != finish) {
-        const auto root = std::sqrt(binomial);
-        *iter++ = n >= 0
-                      ? root * IntegerPower(s, l - m) * IntegerPower(c, l + m)
-                      : MinusOneToPower<Real>(l - m) * root *
-                            IntegerPower(s, l + m) * IntegerPower(c, l - m);
+        // In this order so that, away from underflow, the value is the plain
+        // product root * s^a * c^b to the bit.
+        auto value = ScaledProduct(std::sqrt(binomial));
+        value *= ScaledProduct<Real>::Power(s, n >= 0 ? l - m : l + m);
+        value *= ScaledProduct<Real>::Power(c, n >= 0 ? l + m : l - m);
+        *iter++ = n >= 0 ? value.Value()
+                         : MinusOneToPower<Real>(l - m) * value.Value();
         binomial *= static_cast<Real>(l - m) / static_cast<Real>(l + m + 1);
         m++;
       }
@@ -594,19 +830,27 @@ constexpr void ComputeBlock(GSHView<Real, MRange> d, std::ptrdiff_t n,
   }
 }
 
-// Refuse a degree the recursion cannot reach. One function, so that the three
-// things that build tables -- Wigner, WignerMatrices and a generating grid,
-// which has no table to do the refusing -- say the same thing.
+// Refuse a degree the recursion cannot reach, for a table of orders up to
+// mMax and upper indices nLow <= |n| <= nHigh. One function, so that the
+// things that build tables -- Wigner, WignerMatrices, a generating grid,
+// which has no table to do the refusing, and the spectral interpolant -- say
+// the same thing. The search is skipped below the degree at which every shape
+// is safe, which is every table this library is usually asked for.
 template <RealFloatingPoint Real>
-void CheckSafeDegree(std::ptrdiff_t lMax) {
-  if (lMax > MaxSafeDegree<Real>()) {
+void CheckSafeDegree(std::ptrdiff_t lMax, std::ptrdiff_t mMax,
+                     std::ptrdiff_t nLow, std::ptrdiff_t nHigh) {
+  if (lMax <= SafeDegreeForAnyShape<Real>()) return;
+  const auto limit = SafeDegree<Real>(std::min(mMax, lMax), nLow, nHigh);
+  if (lMax > limit) {
     throw std::invalid_argument(
         "The Wigner recursion underflows above degree " +
-        std::to_string(MaxSafeDegree<Real>()) +
-        " in this precision, and the table it would build is silently wrong "
-        "by order one, so lMax = " +
+        std::to_string(limit) + " in this precision for orders up to " +
+        std::to_string(std::min(mMax, lMax)) + " and upper indices " +
+        std::to_string(nLow) + " <= |n| <= " + std::to_string(nHigh) +
+        ", and the table it would build is silently wrong by order one, so "
+        "lMax = " +
         std::to_string(lMax) +
-        " is refused. See MaxSafeDegree for where the limit comes from");
+        " is refused. See SafeDegree for where the limit comes from");
   }
 }
 
@@ -684,7 +928,8 @@ class Wigner {
    * @param nMax The largest upper index.
    * @param theta The colatitudes, in @f$[0, \pi]@f$.
    * @throws std::invalid_argument if the degree or the largest order is
-   * negative, if the degree exceeds MaxSafeDegree, if the upper index exceeds
+   * negative, if the degree exceeds the SafeDegree of the table's orders and
+   * upper indices, if the upper index exceeds
    * the degree or is negative in a table holding more than one, or if a
    * colatitude lies outside @f$[0, \pi]@f$.
    */
@@ -886,7 +1131,6 @@ class Wigner {
       throw std::invalid_argument(
           "A Wigner table's maximum degree must be at least zero");
     }
-    WignerDetails::CheckSafeDegree<Real>(lMax);
     if (mMax < 0) {
       throw std::invalid_argument(
           "A Wigner table's maximum order must be at least zero");
@@ -904,6 +1148,10 @@ class Wigner {
             "index is NRange = Single");
       }
     }
+    // Last, because the ceiling depends on the shape just checked.
+    const auto nHigh = nMax < 0 ? -nMax : nMax;
+    WignerDetails::CheckSafeDegree<Real>(
+        lMax, mMax, std::same_as<NRange, Single> ? nHigh : Int{0}, nHigh);
     return lMax;
   }
 

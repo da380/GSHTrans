@@ -1410,7 +1410,7 @@ int main(int argc, char** argv) {
   // Worth one run on a large server: it is far enough past last-level cache
   // that the stored path has no cache left to lose, which is the regime the
   // case for generating the values argues from. Just under MaxSafeDegree,
-  // which is 1827 in double precision.
+  // which is 1822 in double precision (1818 for the grid's upper indices).
   if (WantNamed("huge")) {
     constexpr auto hugeDegree = Int{1800};
     PrintHeader("Thread scaling at lMax = 1800");
