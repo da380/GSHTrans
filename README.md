@@ -126,15 +126,21 @@ makes `FFTWpp::CleanUp()` callable again after a transform.
 the orders `m = ±lMax` are resolved separately. Samples are stored
 colatitude-major with longitude fastest: flat index `iTheta * nPhi + iPhi`.
 
-`Real` is `float`, `double` or `long double`, and **`lMax` has a ceiling**:
-`MaxSafeDegree<Real>()`, which is 1827 in `double` and 30747 in `long double`.
-The Wigner recursion is seeded with a value of about `(sin θ)^m`, which
-underflows; beyond `e·|ln min|` it underflows in a column that still matters,
-and the table is then wrong by order one without a word. A grid above the
-ceiling is refused. `float` shares `double`'s ceiling and not the 194 its own
-arithmetic would give, because a single-precision table is recursed in double
-and rounded: single precision is for what is stored and moved, which is where
-it pays, and the recursion runs once.
+`Real` is `float`, `double` or `long double`, and **`lMax` has a ceiling**,
+which depends on the orders and upper indices a table holds:
+`SafeDegree<Real>(mMax, nLow, nHigh)`. For every order at upper index zero
+(`MaxSafeDegree<Real>()`) it is 1822 in `double` and 30740 in `long double`;
+a grid of upper indices up to 2 has 1818. The Wigner recursion is seeded with
+a value that is exponentially small near the poles, and beyond the ceiling a
+seed underflows in a column that still matters, so the table would be wrong by
+order one without a word; a grid or table above its ceiling is refused.
+Restricting the orders raises the ceiling steeply — 5721 in `double` for
+`|m| ≤ 200`, beyond any degree for `|m| ≤ 30` — and large upper indices lower
+it, to 913 at `|n| = |m| = 336`, below which every shape is safe
+(`SafeDegreeForAnyShape<Real>()`). `float` shares `double`'s ceilings and not
+the far lower ones its own arithmetic would give, because a single-precision
+table is recursed in double and rounded: single precision is for what is
+stored and moved, which is where it pays, and the recursion runs once.
 
 Sizes and indices are signed, `std::ptrdiff_t` throughout. `std::size_t`
 appears only where a standard container is indexed.

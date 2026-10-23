@@ -1051,14 +1051,57 @@ the third at 2000, the same for every $|n|\le4$; in single precision it is
 right at 240 and wrong at 250.  Above the bound whole columns come back zero
 where the truth is of order one, and nothing says so.
 
-The library therefore \emph{refuses} a table above
+\paragraph{The ceiling depends on the shape.}  The argument above is for
+$n = 0$ and approximate.  Exactly, the column of upper index $n$ and order
+$m$ is seeded at $l_0 = \max(|n|,|m|)$ by
 \begin{equation}
-  \code{MaxSafeDegree} = \big\lfloor e\,(|\ln\mathrm{min}| -
-  |\ln\varepsilon|)\big\rfloor,
+  |d^{l_0}_{nm}(\theta)| = \sqrt{C(a+b,\,a)}\;\sin^a\tfrac\theta2\,
+  \cos^b\tfrac\theta2, \qquad a = |n-m|,\quad b = |n+m|,
 \end{equation}
-which is 1827 in double and 30747 in long double --- the $|\ln\varepsilon|$
-keeping the seed above $\mathrm{min}/\varepsilon$ and so out of the
-denormal range, where it loses bits before it loses everything.
+and is evanescent --- growing from that seed --- up to its turning point
+\begin{equation}
+  l^*(\theta) = \tfrac12\sqrt{a^2/\sin^2\tfrac\theta2 +
+  b^2/\cos^2\tfrac\theta2},
+  \label{eq:turningpoint}
+\end{equation}
+beyond which it is of order one.  The library refuses a table whose
+degree reaches the first $l^*$, over its columns and over all
+colatitudes, at which a seed lies below $\mathrm{min}/\varepsilon$ ---
+the $|\ln\varepsilon|$ keeping the seed out of the denormal range, where
+it loses bits before it loses everything.  \code{SafeDegree} finds that
+degree for a given largest order and range of $|n|$.  In $t =
+\sin^2(\theta/2)$ the seed rises on $(0, a/(a+b)]$ while $l^*$ falls to
+its least value $l_0$ there, so each column's degree is one root-find; at
+fixed $l_0$ the most lopsided column, $\min(|n|,|m|)$ largest, is the
+worst, so the search is one root-find per $l_0$.
+
+With every order and $n = 0$ the bound is 1822 in double and 30740 in long
+double (\code{MaxSafeDegree}); \eqref{eq:safedegree}'s approximations put it
+at 1827.  Small upper indices lower it a little, to 1818 for $|n|\le2$.
+Restricted orders raise it steeply: the $n=0$ column of order $m$ fails
+from about $m\,e^{L/m}$, $L = |\ln\mathrm{min}|-|\ln\varepsilon|$, which is
+5721 for $|m|\le200$, 81987 for $|m|\le100$ and beyond any degree for
+$|m|\le30$.  Large upper indices lower it: at $n = -m$ the seed is exactly
+$\sin^{2|m|}(\theta/2)$, with no binomial to lift it, and $l^* =
+|m|/\sin(\theta/2)$, so the column fails from $|m|\,e^{L/2|m|}$ and the
+worst of these, at $|m| = L/2 = 336$, from $eL/2$ --- 913 in double, the
+degree below which every table is safe (\code{SafeDegreeForAnyShape}).
+Measured against a recursion carrying an exponent per column, the first
+degree at which an entry is wrong by $10^{-10}$ lies within a per cent
+above the bound for every shape tried: 1847 for $n=0$ with every order,
+929 at $|n| = 336$, 1683 at $|n| = 1300$, 6609 for $|m|\le200$.
+
+\paragraph{The seeds are carried with an exponent.}  The seed row's powers
+and the boundary values of \eqref{eq:boundaryrecursion} are long products of
+factors below one.  Kept in floating point, a product that has gone
+denormal does not go on to underflow: each further factor above one half
+rounds it back to the same denormal, and it sticks near the smallest one.
+A column seeded with that is the true column times the ratio of the stuck
+value to the true seed, and at $|n| = 1300$, $\theta = 2$ it came back near
+$10^{114}$ at degree 1650.  So the products carry a binary exponent of their
+own and are rounded once, when read --- to a denormal with the bits it has,
+or to zero --- and away from underflow the value is the plain product to
+the bit.
 
 \paragraph{Single precision is recursed in double.}  Read naively,
 \eqref{eq:safedegree} with the $|\ln\varepsilon|$ margin would stop a
@@ -1868,10 +1911,11 @@ triangular ceiling.  The decay is real but slower to a useful tolerance
 than it looks: at $10^{-15}$, $\sin^{256}\theta$ is still above threshold
 over a third of the range.  It is not implemented.
 
-\paragraph{Degrees above \code{MaxSafeDegree}} (\S\ref{sec:recursion}) are
+\paragraph{Degrees above \code{SafeDegree}} (\S\ref{sec:recursion}) are
 refused rather than supported.  The known cure, an integer exponent carried
 beside each column (Fukushima, \emph{J.\ Geod.}\ 86, 2012), is not built:
-nothing the library is used for comes near the bound of 1827 in double.
+nothing the library is used for comes near the bound of 1822 in double with
+every order, and a table of a few orders goes far higher without it.
 
 \paragraph{Persisted tuning results} --- a keyed, fingerprinted store of
 what \S\ref{sec:tuning} measured, in the manner of FFTW's wisdom --- are

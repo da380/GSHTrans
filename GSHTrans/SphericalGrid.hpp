@@ -1932,16 +1932,18 @@ class SphericalGrid {
             "zero, and this one is " +
             std::to_string(lMax));
       }
-      // Here as well as in the tables, because a generating grid builds no
-      // table and would otherwise run the recursion past its range inside
-      // every transform.
-      WignerDetails::CheckSafeDegree<Real>(lMax);
       if (std::abs(nMax) > lMax) {
         throw std::invalid_argument(
             "A grid's maximum upper index cannot exceed its maximum degree, "
             "since no harmonic has l < |N|: this grid has lMax = " +
             std::to_string(lMax) + " and nMax = " + std::to_string(nMax));
       }
+      // Here as well as in the tables, because a generating grid builds no
+      // table and would otherwise run the recursion past its range inside
+      // every transform. A grid holds every order.
+      WignerDetails::CheckSafeDegree<Real>(
+          lMax, lMax, std::same_as<NRange, Single> ? std::abs(nMax) : Int{0},
+          std::abs(nMax));
 
       // The derived grid's contract, checked rather than trusted: a grid
       // that gets the nodes wrong otherwise fails inside the Wigner

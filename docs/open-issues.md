@@ -41,10 +41,13 @@ decision can be revisited if the use changes.
 
 **Numerics and transforms**
 
-- **Degree ceiling.** `lMax ≤ MaxSafeDegree<Real>()` — 1827 in double — set by
-  underflow of the Wigner seed (`design.md` §5.1). Lifting it needs an exponent
-  carried per column (Fukushima, *J. Geod.* 86, 2012). Out of scope unless a
-  use above lMax ≈ 1800 in double appears; long double reaches 30 747.
+- **Degree ceiling.** `lMax ≤ SafeDegree<Real>(mMax, nLow, nHigh)` — 1822 in
+  double for every order at `n = 0`, higher for restricted orders, 913 at
+  worst — set by underflow of the Wigner seed (`design.md` §5.1). Lifting it
+  needs an exponent carried per column (Fukushima, *J. Geod.* 86, 2012). Out
+  of scope unless a use above lMax ≈ 1800 in double with every order appears;
+  long double reaches 30 740, and a table of a few orders goes much higher in
+  double already.
 - **6-j symbols are not implemented.** Schulten and Gordon give the recursion
   in the same paper, and the 3-j machinery would carry over.
 - **The 3-j `Fill…` functions allocate one row of scratch per call.** Calling
