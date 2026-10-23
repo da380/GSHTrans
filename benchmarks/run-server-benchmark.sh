@@ -139,7 +139,7 @@ else
     sed 's/^/  /'
   echo "  (delete it to reconfigure)"
 fi
-cmake --build "$build" --target TransformBenchmark -j "$(nproc)" || exit 1
+cmake --build "$build" --target gshtrans_transform_benchmark -j "$(nproc)" || exit 1
 
 # Refuse to measure with a binary older than this script.
 #

@@ -26,8 +26,10 @@ set(GSHTRANS_EXAMPLES
 )
 
 foreach(example IN LISTS GSHTRANS_EXAMPLES)
-  add_executable(${example} ${example}.cpp)
-  target_link_libraries(${example} PRIVATE GSHTrans)
+  set(target gshtrans_${example})
+  add_executable(${target} ${example}.cpp)
+  set_target_properties(${target} PROPERTIES OUTPUT_NAME ${example})
+  target_link_libraries(${target} PRIVATE GSHTrans)
   # Registered as tests, so that they are run rather than merely compiled: a
   # compile-only example can abort at run time with the build still green,
   # and an example nobody runs documents nothing.
@@ -35,5 +37,5 @@ foreach(example IN LISTS GSHTRANS_EXAMPLES)
   # They are not assertions and mostly just print, so this catches crashes,
   # throws and non-zero exits rather than wrong numbers. Where an example
   # states an identity it checks it itself and returns non-zero on failure.
-  add_test(NAME example.${example} COMMAND ${example})
+  add_test(NAME example.${example} COMMAND ${target})
 endforeach()

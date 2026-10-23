@@ -206,7 +206,7 @@ jobs:
             -DGSHTRANS_BUILD_TESTS=OFF \
             -DGSHTRANS_BUILD_EXAMPLES=OFF \
             -DGSHTRANS_BUILD_BENCHMARKS=OFF
-          cmake --build build --target docs
+          cmake --build build --target gshtrans_docs
 
       - name: Show the warnings
         if: always()

@@ -36,9 +36,14 @@ endif()
 unset(_version_header)
 unset(_header_version)
 
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+# Developer binaries in one place, but only when this is the top-level project:
+# CMAKE_BINARY_DIR is then the parent's build tree, and the parent's outputs
+# are its own business.
+if(PROJECT_IS_TOP_LEVEL)
+  set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+  set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+endif()
 
 # No FindFFTW.cmake here, and no CMAKE_MODULE_PATH entry for one.
 #
@@ -344,7 +349,10 @@ if(GSHTRANS_INSTALL)
           DESTINATION "${GSHTRANS_CMAKE_INSTALL_DIR}")
 endif()
 
-# Developer targets, only when this is the top-level project.
+# Developer targets, only when this is the top-level project. The docs, example
+# and benchmark targets are prefixed gshtrans_ as in the sibling libraries, so
+# that they cannot collide with a target of theirs in one build (NumericConcepts
+# has a 05-views of its own); the programs keep their plain names.
 if(PROJECT_IS_TOP_LEVEL)
   option(GSHTRANS_BUILD_EXAMPLES   "Build the examples"   ON)
   option(GSHTRANS_BUILD_TESTS      "Build the test suite" ON)
@@ -367,14 +375,14 @@ if(PROJECT_IS_TOP_LEVEL)
 
   # The API documentation, built on request rather than by default: doxygen is
   # not needed to build or use the library, and a missing one should not fail
-  # a configure. `cmake --build build --target docs`.
+  # a configure. `cmake --build build --target gshtrans_docs`.
   find_package(Doxygen QUIET)
   if(Doxygen_FOUND)
     set(DOXYGEN_INPUT_DIR  "${PROJECT_SOURCE_DIR}/GSHTrans")
     set(DOXYGEN_OUTPUT_DIR "${PROJECT_BINARY_DIR}/docs")
     configure_file("${PROJECT_SOURCE_DIR}/docs/Doxyfile.in"
                    "${PROJECT_BINARY_DIR}/Doxyfile" @ONLY)
-    add_custom_target(docs
+    add_custom_target(gshtrans_docs
       COMMAND ${CMAKE_COMMAND} -E make_directory "${DOXYGEN_OUTPUT_DIR}"
       COMMAND ${DOXYGEN_EXECUTABLE} "${PROJECT_BINARY_DIR}/Doxyfile"
       WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"

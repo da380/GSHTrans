@@ -3,7 +3,7 @@
 # Configured by CMake into the build tree, so that @PROJECT_VERSION@ and the
 # paths follow the build rather than being repeated here. Run with
 #
-#   cmake --build build --target docs
+#   cmake --build build --target gshtrans_docs
 #
 # A sparse file: everything not named here takes doxygen's default.
 
