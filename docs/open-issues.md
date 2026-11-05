@@ -103,11 +103,22 @@ decision can be revisited if the use changes.
 These need measurements on the production machine (dual-socket, 64 cores)
 rather than the development laptop.
 
-- **The forward loop kernel's decomposition.** Each thread keeps a private
-  accumulator over its colatitudes, followed by a partitioned reduction
-  (`SphericalGrid.hpp`, forward loop kernel). That shape is expected to stop
-  scaling well before 128 threads; the alternatives (blocks of m, the batch
-  axis, a two-dimensional split) have not been measured.
+- **The forward loop kernel's decomposition** is answered for stored tables
+  on one socket (`ForwardBlockKernel`; measurements in `design.md` §2.3).
+  Still open: (a) on stored tables the *inverse* is now the slower direction
+  threaded (0.19 against 0.11 ms per field at lMax 128 on 32 threads), and
+  its own chunk rule and colatitude decomposition are the next thing to
+  measure; (b) a threaded forward on *generated* values still keeps private
+  accumulators — the candidate is to generate each colatitude's row once per
+  chunk, threaded over colatitudes, into a chunk-local table and run the
+  degree-block Legendre stage on it (one n of the table per chunk: 26 MB at
+  lMax 128, 8.6 GB at 1024); (c) across two sockets every thread reads the
+  other socket's Fourier rows, and a two-dimensional split (groups of fields
+  × blocks of coefficients) is the fallback if that shows; (d) a chunk of 32
+  makes the per-colatitude FFT's output stride 512 B, the cache-set hazard
+  `ChooseThetaBlock` guards against, and `Chunking::Count` can return 32
+  (16 MiB at lMax 128); `Fixed(31/32/33)` would settle whether it needs the
+  same guard.
 - **The chunk rule on multi-cache-domain machines.** `Chunking::Count` counts
   the inverse transform's shared block as one copy, but on a multi-CCD or
   multi-socket machine it is pulled into every cache domain that reads it, so

@@ -472,11 +472,14 @@ class Chunking {
    *
    * @param bytesPerField The size of one field's coefficient block.
    * @param copies How many copies of that block will be live at once. This is
-   * **not** the thread count in both directions: the forward transform gives
-   * every thread a private accumulator, so its copies are its threads, while
-   * the inverse gathers one block, shared and read-only, so it has one copy
-   * however many threads read it. Serving both with the thread count starves
-   * the inverse, which measures 2.2x slower where the whole batch would fit.
+   * **not** the thread count in general: only the threaded forward transform
+   * on generated Wigner values gives every thread a private accumulator, so
+   * its copies are its threads, while the inverse gathers one block, shared
+   * and read-only, and the threaded forward on a stored table divides one
+   * block between its threads, so each has one copy. Serving them with the
+   * thread count starves them: the inverse measures 2.2x slower where the
+   * whole batch would fit, and the forward took a chunk of one at
+   * lMax = 128 on 16 threads.
    */
   Int Count(Int bytesPerField, int copies) const {
     if (fixed_ > 0) return fixed_;

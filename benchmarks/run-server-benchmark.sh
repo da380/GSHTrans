@@ -16,23 +16,21 @@
 # The questions these runs answer:
 #
 #   threads
-#          The transform threads over colatitudes, with a private accumulator
-#          per thread in the forward direction. On a laptop that scales to
-#          eight threads; at 64-128 it may not, because the accumulators become
-#          the dominant memory traffic and the colatitude axis is only lMax + 1
-#          long. The alternatives -- m-block threading, threading over the
-#          batch axis, a two-dimensional split -- should be chosen on numbers
-#          from a machine of that size, not on laptop numbers.
+#          The inverse threads over colatitudes. The forward, on a stored
+#          table, threads its FFTs over colatitudes and its Legendre sum over
+#          runs of coefficients, with no accumulator (since November 2026; it
+#          used to keep a private accumulator per thread, which stopped
+#          scaling at 8-16 threads on a 32-core socket -- open-issues.md 4).
+#          On generated values it still keeps the accumulators.
 #
 #   scaling
-#          At lMax = 256 the forward transform scales less well than at 128.
-#          Thread-private accumulators competing for last-level cache are the
-#          candidate cause, and the fwd/inv column in the `server` section
-#          isolates them: the inverse has no accumulator.
+#          The fwd/inv column in the `server` section compares the two
+#          decompositions on the same stream over the same table.
 #
 #   chunk  The heuristic sizes a transform's chunk as
 #          cache / copies / (2 * 16 * nCoefficients), rounded, where copies is
-#          the thread count forward and one inverse, and cache is 8 MiB under
+#          one, except the thread count for a threaded forward on generated
+#          values, and cache is 8 MiB under
 #          Chunking::Automatic() or the caller's figure under ForCache(). The
 #          `batching` section shows where the optimum is; the header records
 #          this machine's L3, which is the figure to pass to ForCache().
@@ -228,7 +226,7 @@ else
     echo "Wigner table is zero-filled by the single constructing thread, so"
     echo "every page of it lands on one node and all threads then stream one"
     echo "node's memory. Whether that is what limits the scaling below cannot"
-    echo "be told apart from the accumulators without this run."
+    echo "be told apart from the decomposition without this run."
     echo "    apt install numactl   (or dnf install numactl), then run again."
   fi
 fi

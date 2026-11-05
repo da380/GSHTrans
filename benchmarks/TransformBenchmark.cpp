@@ -487,19 +487,20 @@ double TableMegabytes(Int lMax, Int nMax) {
 // at every rung of the thread ladder with `windows` windows each.
 //
 // Columns: time per call and speedup over one thread for each direction;
-// fwd/inv, the ratio of the two times; accum(MB), the forward direction's
-// private accumulators summed over all threads; and GB/s for each direction,
+// fwd/inv, the ratio of the two times; and GB/s for each direction,
 // WignerBytes over the time.
 //
 // Side by side is the design, not the presentation. The inverse transform's
 // colatitudes write disjoint rows of the field and share only read-only
-// input, so it carries no accumulator and does no reduction; the forward
-// transform's colatitudes all contribute to every coefficient, so each thread
-// accumulates privately and the partials are summed at the end. Everything
-// else about the two is the same stream over the same table. The fwd/inv
-// column is therefore the accumulators' cost -- their competition for
-// last-level cache -- with the rest divided out, and its growth with thread
-// count is what the table is for.
+// input. The forward transform's colatitudes all contribute to every
+// coefficient; on this stored table it threads its FFTs over colatitudes and
+// its Legendre sum over runs of coefficients, so it too has no accumulator.
+// (Until November 2026 each thread accumulated privately and the partials
+// were summed at the end, and this column measured that cost: harness
+// revisions up to 12 printed an accum(MB) column for it.) Everything else
+// about the two is the same stream over the same table, so the fwd/inv
+// column is the difference between the two decompositions, and its growth
+// with thread count is what the table is for.
 void RunScaling(Int lMax, Int nMax, int windows) {
   const auto n = nMax;
   const auto started = Clock::now();
@@ -513,18 +514,14 @@ void RunScaling(Int lMax, Int nMax, int windows) {
     field[i] = Complex{0.5 + 0.001 * i, -0.25 + 0.002 * i};
   }
   const auto bytes = WignerBytes(lMax, n);
-  const auto accumulator = static_cast<double>(grid.CoefficientSize(lMax, n)) *
-                           sizeof(Complex) / 1e6;
 
   std::printf(
       "\nlMax = %zd, nMax = %zd, complex.  Table %.0f MB built in %.2f s; one\n"
-      "transform streams %.0f MB; each thread's forward accumulator is "
-      "%.2f MB.\n\n",
-      lMax, nMax, TableMegabytes(lMax, nMax), buildSeconds, bytes / 1e6,
-      accumulator);
-  std::printf("%8s %10s %8s %10s %8s %8s %10s %9s %9s\n", "threads", "fwd(ms)",
-              "speedup", "inv(ms)", "speedup", "fwd/inv", "accum(MB)",
-              "fwd GB/s", "inv GB/s");
+      "transform streams %.0f MB.\n\n",
+      lMax, nMax, TableMegabytes(lMax, nMax), buildSeconds, bytes / 1e6);
+  std::printf("%8s %10s %8s %10s %8s %8s %9s %9s\n", "threads", "fwd(ms)",
+              "speedup", "inv(ms)", "speedup", "fwd/inv", "fwd GB/s",
+              "inv GB/s");
 
   auto forwardBase = 0.0;
   auto inverseBase = 0.0;
@@ -545,9 +542,9 @@ void RunScaling(Int lMax, Int nMax, int windows) {
       forwardBase = forward;
       inverseBase = inverse;
     }
-    std::printf("%8d %10.3f %7.2fx %10.3f %7.2fx %8.2f %10.1f %9.1f %9.1f\n",
+    std::printf("%8d %10.3f %7.2fx %10.3f %7.2fx %8.2f %9.1f %9.1f\n",
                 threads, forward * 1e3, forwardBase / forward, inverse * 1e3,
-                inverseBase / inverse, forward / inverse, accumulator * threads,
+                inverseBase / inverse, forward / inverse,
                 bytes / forward / 1e9, bytes / inverse / 1e9);
   }
 }
@@ -925,9 +922,10 @@ int main(int argc, char** argv) {
 
         // The control for it. If taking the whole batch as one chunk costs
         // the forward direction on the stored path too, the cost belongs to
-        // the chunk -- each thread's private accumulator is chunk times the
-        // coefficient array, which is 8.4 MB per thread at lMax = 256 and
-        // k = 8 -- and not to generating anything.
+        // the chunk and not to generating anything. (Threaded, the two paths
+        // now differ in kernel as well: a generating grid keeps a private
+        // accumulator per thread, chunk times the coefficient array, 8.4 MB
+        // at lMax = 256 and k = 8; a stored one divides one block.)
         auto storedWhole = GaussLegendreGrid<Real, All, All>(
             lMax, n, FFTWpp::Measure, Chunking::Fixed(k));
 
@@ -1200,14 +1198,11 @@ int main(int argc, char** argv) {
   if (WantNamed("server")) {
     PrintHeader("Thread scaling to the full machine");
     std::printf(
-        "The loop kernel's decomposition -- colatitudes, with a private "
-        "accumulator "
-        "per\n"
-        "thread for the forward direction -- is expected not to scale\n"
-        "to 64-128 threads: the accumulators become the\n"
-        "dominant traffic and the colatitude axis is only lMax + 1 long. "
-        "These\n"
-        "rows are what decides that, and nothing on a laptop can.\n");
+        "The loop kernel threads the inverse over colatitudes and, on a\n"
+        "stored table, the forward's Legendre sum over runs of coefficients.\n"
+        "Whether either keeps scaling to 64-128 threads, where the\n"
+        "colatitude axis is only lMax + 1 long, is what these rows decide;\n"
+        "nothing on a laptop can.\n");
     for (auto lMax : ScalingDegrees()) {
       if (!AffordableAt(lMax, 2)) continue;
       RunScaling(lMax, 2, Windows(lMax));
@@ -1710,9 +1705,11 @@ int main(int argc, char** argv) {
   //
   // Two chunking policies per row: Automatic() (8 MiB, what sl3dpp uses) and
   // ForCache(32 MiB), one Zen 4 CCD's L3, which separates what the chunk rule
-  // costs from what the decomposition costs. chunk(fwd) is the chunk the
-  // forward direction picks at that thread count; the inverse's is the
-  // one-thread figure. Times are per field, in ms. Run only when named.
+  // costs from what the decomposition costs. chunkA and chunkC are the chunk
+  // both directions take on a stored table (one copy of the block; before
+  // the degree-block forward kernel, the forward counted one copy per thread
+  // and took 1 at lBand 128 on 16 or more threads). Times are per field, in
+  // ms. Run only when named.
   if (WantNamed("forward-threading")) {
     PrintHeader("Batched transforms against threads (sl3dpp shape)");
     constexpr Int batch = 256;
@@ -1775,9 +1772,8 @@ int main(int argc, char** argv) {
           std::printf("%4zd %8d %6zd %6zd %10.4f %10.4f %10.4f %10.4f %7.2fx "
                       "%7.2fx\n",
                       n, threads,
-                      Chunking::Automatic().Count(bytesPerField, threads),
-                      Chunking::ForCache(ccdCache).Count(bytesPerField,
-                                                         threads),
+                      Chunking::Automatic().Count(bytesPerField, 1),
+                      Chunking::ForCache(ccdCache).Count(bytesPerField, 1),
                       fa * 1e3, fc * 1e3, ia * 1e3, ic * 1e3, fa / ia,
                       forwardBase / fa);
           std::fflush(stdout);

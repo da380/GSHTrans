@@ -101,7 +101,37 @@ The transform is an FFT in longitude and a Legendre sum in colatitude. The
 Legendre stage has two implementations, chosen when the grid is made:
 
 - `TransformKernel::Loop()` — the default — interleaves the two stages per
-  colatitude block.
+  colatitude block. Threaded on a stored table, its forward direction runs
+  in two stages per chunk instead (`ForwardBlockKernel`): the FFTs threaded
+  over colatitudes into per-thread `[θ][m][k]` rows, then, after one
+  barrier, the Legendre sum threaded over contiguous runs of coefficients,
+  each thread summing every colatitude in order into its own slice. No
+  accumulator, no reduction, and the sequential path's bits whatever the
+  thread count. Generated values keep the per-thread accumulator kernel,
+  since a block of degrees would re-run the recursion in every thread.
+
+  Measured 5 November 2026 on a 2 × EPYC 9334 (Zen 4, one socket used,
+  `OMP_PLACES=cores OMP_PROC_BIND=close`), `TransformBenchmark
+  forward-threading`: `ForBand(128, 2, 1.5)` (193 × 385), stored, complex,
+  256 contiguous fields, n = 0, `Chunking::Automatic()`, ms per field, the
+  old and new builds run back to back:
+
+  | threads | forward, accumulators | forward, degree blocks | inverse |
+  |---|---|---|---|
+  | 1  | 2.89 | 2.88 | 2.43 |
+  | 8  | 0.504 | 0.337 | 0.356 |
+  | 16 | 0.489 | 0.220 | 0.287 |
+  | 32 | 0.418 | 0.114 | 0.186 |
+
+  Forward speedup at 32 threads went from 6.9× to 25×; at `ForBand(64, …)`
+  from 4.4× (slower than at 8 threads) to 18×. n = ±1, ±2 agree within a few
+  per cent. The cause of the old plateau was the chunk as much as the
+  reduction: counting one accumulator per thread made the chunk one at 16
+  and 32 threads, so the table was streamed once per field. In sl3dpp's
+  `step_timing` (lmax 128, 1388 radial nodes, 32 threads) analysis went from
+  1.49 s to 0.45 s per pass, the pass from 2.76 s to 1.57 s, and two whole
+  steps from 38.7 s to 22.0 s; at 16 threads 1.70 → 0.91 s, 3.68 → 2.74 s and
+  51.6 → 38.4 s. Peak memory is unchanged (34 GB).
 - `TransformKernel::Matrix()` does every FFT first and then one pair of GEMMs
   per order against a table laid out `[n][m][l][θ]`. It needs a BLAS, stores
   only half the Wigner values (the other half by the reflection
@@ -119,10 +149,13 @@ derivation of the matrix form and its measured gains are in the reference.
 
 A batch is processed in chunks sized to fit cache. `Chunking::Count` takes the
 bytes per field and the number of **copies** of the working set that will be
-live at once. That is not the thread count: the forward transform gives every
-thread a private accumulator (copies = threads), while the inverse shares one
-read-only block (copies = 1). Using the thread count for both starves the
-inverse.
+live at once. That is not the thread count: only the threaded forward
+transform on *generated* values gives every thread a private accumulator
+(copies = threads); the inverse shares one read-only block, and the threaded
+forward on a stored table divides one block between its threads (copies = 1
+for both). Using the thread count where there is one block starves the call:
+at lMax = 128 on 16 or more threads it made the forward chunk one, which is
+what `open-issues.md` §4 measured before the degree-block kernel.
 
 `Chunking::MaximumCount` is 63, not 64: a chunk of 64 lands on one of the
 power-of-two FFT strides that cause cache-set collisions, and measures 8–20 %
@@ -191,7 +224,7 @@ the same thing.
 
 An exception that escapes an OpenMP region terminates the process. Every
 region that can throw — both Fourier stages, the loop kernel's colatitude
-loops,
+loops, the degree-block forward kernel's set-up,
 the Wigner table constructions, the radial-line loops — runs its body
 through `Details::ExceptionCapture` (`Utility.hpp`), which keeps the first
 exception and rethrows it after the region closes. A thread whose set-up
