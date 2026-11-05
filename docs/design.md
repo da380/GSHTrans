@@ -191,7 +191,10 @@ one streams the whole Wigner table once per field. Measured 5 November 2026
 (`TransformBenchmark degree-sweep`, 1.5× grids, 32 threads, one Zen 4
 socket), the default was 14% slower than `ForCache(32 MiB)` at band 256, 26%
 at 384 and 1.7× at 512; per band³ the time was otherwise flat from band 96 to
-384, and the FFT a shrinking share (14% at band 128, 4% at 512). The floor is
+384, and the FFT a shrinking share (14% at band 128, 4% at 512). With the
+floor, the same run gives 8.72 → 5.15 ms per field at band 512 (equal to
+32 MiB), 2.77 → 2.30 at 384 and 1.51 → 1.41 at 320, nothing changed at band
+256 and below, and the time per band³ flat from 96 to 512. The floor is
 the low-risk part of the answer. Raising `DefaultCacheBytes` itself, which
 would also recover the 14–26%, waits on a `chunk-sweep` on a laptop-sized
 cache with the current kernels, since the case for keeping it at 8 MiB was

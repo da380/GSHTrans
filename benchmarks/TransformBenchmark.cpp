@@ -1888,8 +1888,9 @@ int main(int argc, char** argv) {
   // time per field grows smoothly with degree (the per-band^3 column should
   // be roughly flat if the Legendre sum dominates), and where the chunk
   // rule's 8 MiB default leaves batching behind -- one field's coefficients
-  // are 4.2 MB at band 512, so Automatic() takes a chunk of one there,
-  // against ForCache(32 MiB)'s four.
+  // are 4.2 MB at band 512, where the cache rule alone gives a chunk of one;
+  // Chunking::MinimumSharedCount holds it at four, ForCache(32 MiB)'s
+  // figure there.
   //
   // fft is the forward call truncated to degree 0 on the auto grid: the whole
   // FFT stage and almost no Legendre work. ms per field; batch of 64; one table per band,
