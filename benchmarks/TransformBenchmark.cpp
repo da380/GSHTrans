@@ -289,6 +289,25 @@ std::vector<int> ThreadLadder() {
   return std::vector<int>(ladder.begin(), ladder.end());
 }
 
+// The thread counts a section walks: GSHTRANS_BENCH_THREADS, a
+// comma-separated list such as "32,64", when it is set, so that a targeted
+// run (two sockets, a placement experiment) needs no rebuild; `fallback`
+// otherwise. The `forward-threading`, `chunk-sweep` and `degree-sweep`
+// sections read it.
+std::vector<int> ThreadsOr(std::vector<int> fallback) {
+  const auto* text = std::getenv("GSHTRANS_BENCH_THREADS");
+  if (text == nullptr || *text == '\0') return fallback;
+  auto threads = std::vector<int>{};
+  for (const auto* p = text; *p != '\0';) {
+    char* end = nullptr;
+    const auto value = std::strtol(p, &end, 10);
+    if (end == p) break;
+    if (value > 0) threads.push_back(static_cast<int>(value));
+    p = (*end == ',') ? end + 1 : end;
+  }
+  return threads.empty() ? fallback : threads;
+}
+
 // Keep a computed value from being optimised away without adding work of its
 // own: an accumulate-into-volatile would add its arithmetic to the per-point
 // columns, which are small enough for that to matter.
@@ -487,19 +506,20 @@ double TableMegabytes(Int lMax, Int nMax) {
 // at every rung of the thread ladder with `windows` windows each.
 //
 // Columns: time per call and speedup over one thread for each direction;
-// fwd/inv, the ratio of the two times; accum(MB), the forward direction's
-// private accumulators summed over all threads; and GB/s for each direction,
+// fwd/inv, the ratio of the two times; and GB/s for each direction,
 // WignerBytes over the time.
 //
 // Side by side is the design, not the presentation. The inverse transform's
 // colatitudes write disjoint rows of the field and share only read-only
-// input, so it carries no accumulator and does no reduction; the forward
-// transform's colatitudes all contribute to every coefficient, so each thread
-// accumulates privately and the partials are summed at the end. Everything
-// else about the two is the same stream over the same table. The fwd/inv
-// column is therefore the accumulators' cost -- their competition for
-// last-level cache -- with the rest divided out, and its growth with thread
-// count is what the table is for.
+// input. The forward transform's colatitudes all contribute to every
+// coefficient; on this stored table it threads its FFTs over colatitudes and
+// its Legendre sum over runs of coefficients, so it too has no accumulator.
+// (With a private accumulator per thread, summed at the end, this column
+// measured that cost: harness revisions up to 12 printed an accum(MB)
+// column for it.) Everything else
+// about the two is the same stream over the same table, so the fwd/inv
+// column is the difference between the two decompositions, and its growth
+// with thread count is what the table is for.
 void RunScaling(Int lMax, Int nMax, int windows) {
   const auto n = nMax;
   const auto started = Clock::now();
@@ -513,18 +533,14 @@ void RunScaling(Int lMax, Int nMax, int windows) {
     field[i] = Complex{0.5 + 0.001 * i, -0.25 + 0.002 * i};
   }
   const auto bytes = WignerBytes(lMax, n);
-  const auto accumulator = static_cast<double>(grid.CoefficientSize(lMax, n)) *
-                           sizeof(Complex) / 1e6;
 
   std::printf(
       "\nlMax = %zd, nMax = %zd, complex.  Table %.0f MB built in %.2f s; one\n"
-      "transform streams %.0f MB; each thread's forward accumulator is "
-      "%.2f MB.\n\n",
-      lMax, nMax, TableMegabytes(lMax, nMax), buildSeconds, bytes / 1e6,
-      accumulator);
-  std::printf("%8s %10s %8s %10s %8s %8s %10s %9s %9s\n", "threads", "fwd(ms)",
-              "speedup", "inv(ms)", "speedup", "fwd/inv", "accum(MB)",
-              "fwd GB/s", "inv GB/s");
+      "transform streams %.0f MB.\n\n",
+      lMax, nMax, TableMegabytes(lMax, nMax), buildSeconds, bytes / 1e6);
+  std::printf("%8s %10s %8s %10s %8s %8s %9s %9s\n", "threads", "fwd(ms)",
+              "speedup", "inv(ms)", "speedup", "fwd/inv", "fwd GB/s",
+              "inv GB/s");
 
   auto forwardBase = 0.0;
   auto inverseBase = 0.0;
@@ -545,10 +561,10 @@ void RunScaling(Int lMax, Int nMax, int windows) {
       forwardBase = forward;
       inverseBase = inverse;
     }
-    std::printf("%8d %10.3f %7.2fx %10.3f %7.2fx %8.2f %10.1f %9.1f %9.1f\n",
-                threads, forward * 1e3, forwardBase / forward, inverse * 1e3,
-                inverseBase / inverse, forward / inverse, accumulator * threads,
-                bytes / forward / 1e9, bytes / inverse / 1e9);
+    std::printf("%8d %10.3f %7.2fx %10.3f %7.2fx %8.2f %9.1f %9.1f\n", threads,
+                forward * 1e3, forwardBase / forward, inverse * 1e3,
+                inverseBase / inverse, forward / inverse, bytes / forward / 1e9,
+                bytes / inverse / 1e9);
   }
 }
 
@@ -600,7 +616,7 @@ int main(int argc, char** argv) {
   // file, make then sees nothing to do, and the previous harness produces a
   // log that looks entirely plausible. The script's `expected` must be bumped
   // with this.
-  constexpr auto revision = 12;
+  constexpr auto revision = 14;
 
   if (argc == 2 && std::string(argv[1]) == "--check") {
     std::printf("harness revision %d\n", revision);
@@ -618,7 +634,7 @@ int main(int argc, char** argv) {
       "sections run by default: stream (or roof) grid transforms threading "
       "batching generated kernels interpolation tuning\n"
       "sections run only when named: kernels-loop kernels-matrix server "
-      "lines huge\n");
+      "lines huge forward-threading chunk-sweep degree-sweep\n");
 
   // An unoptimised build measures nothing, and the default build directory is
   // one: `cmake -S . -B build` leaves CMAKE_BUILD_TYPE empty, which is fine
@@ -925,9 +941,10 @@ int main(int argc, char** argv) {
 
         // The control for it. If taking the whole batch as one chunk costs
         // the forward direction on the stored path too, the cost belongs to
-        // the chunk -- each thread's private accumulator is chunk times the
-        // coefficient array, which is 8.4 MB per thread at lMax = 256 and
-        // k = 8 -- and not to generating anything.
+        // the chunk and not to generating anything. (Threaded, the two paths
+        // now differ in kernel as well: a generating grid keeps a private
+        // accumulator per thread, chunk times the coefficient array, 8.4 MB
+        // at lMax = 256 and k = 8; a stored one divides one block.)
         auto storedWhole = GaussLegendreGrid<Real, All, All>(
             lMax, n, FFTWpp::Measure, Chunking::Fixed(k));
 
@@ -1200,14 +1217,11 @@ int main(int argc, char** argv) {
   if (WantNamed("server")) {
     PrintHeader("Thread scaling to the full machine");
     std::printf(
-        "The loop kernel's decomposition -- colatitudes, with a private "
-        "accumulator "
-        "per\n"
-        "thread for the forward direction -- is expected not to scale\n"
-        "to 64-128 threads: the accumulators become the\n"
-        "dominant traffic and the colatitude axis is only lMax + 1 long. "
-        "These\n"
-        "rows are what decides that, and nothing on a laptop can.\n");
+        "The loop kernel threads the inverse over colatitudes and, on a\n"
+        "stored table, the forward's Legendre sum over runs of coefficients.\n"
+        "Whether either keeps scaling to 64-128 threads, where the\n"
+        "colatitude axis is only lMax + 1 long, is what these rows decide;\n"
+        "nothing on a laptop can.\n");
     for (auto lMax : ScalingDegrees()) {
       if (!AffordableAt(lMax, 2)) continue;
       RunScaling(lMax, 2, Windows(lMax));
@@ -1694,5 +1708,262 @@ int main(int argc, char** argv) {
         "FFT\n"
         "work, negligible Legendre work. Leg is the difference. GB/s is the\n"
         "Wigner bytes that call streams divided by the Legendre time.\n");
+  }
+
+  //------------------------------------------------------------------------//
+  //          Batched transforms against threads (forward threading)        //
+  //------------------------------------------------------------------------//
+  //
+  // The shape sl3dpp's step uses: a 3/2-oversampled grid for band lBand
+  // (GaussLegendreGrid::ForBand(lBand, 2, 1.5)), stored Wigner values, the
+  // loop kernel, complex fields, and one batched call of a few hundred
+  // contiguous fields at each upper index n = -2..2, transformed at degree
+  // lBand. The question is whether the forward direction scales with
+  // threads inside one call, and
+  // the inverse beside it is the control, since it has no accumulator.
+  //
+  // Two chunking policies per row: Automatic() (8 MiB, what sl3dpp uses) and
+  // ForCache(32 MiB), one Zen 4 CCD's L3, which separates what the chunk rule
+  // costs from what the decomposition costs. chunkA and chunkC are the chunk
+  // both directions take on a stored table (one copy of the block; before
+  // the degree-block forward kernel, the forward counted one copy per thread
+  // and took 1 at lBand 128 on 16 or more threads). Times are per field, in
+  // ms. Run only when named.
+  if (WantNamed("forward-threading")) {
+    PrintHeader("Batched transforms against threads (sl3dpp shape)");
+    constexpr Int batch = 256;
+    constexpr Int nMax = 2;
+    constexpr Int ccdCache = Int{32} << 20;
+    std::printf(
+        "\nForBand(lBand, 2, 1.5) grid, stored, loop kernel, complex, "
+        "batch %zd contiguous.\nms per field; auto = Chunking::Automatic(), "
+        "ccd = Chunking::ForCache(32 MiB).\n",
+        batch);
+    for (auto lBand : {Int{64}, Int{128}}) {
+      using Grid = GaussLegendreGrid<Real, All, All>;
+      auto automatic = Grid::ForBand(lBand, nMax, 1.5, FFTWpp::Measure,
+                                     Chunking::Automatic());
+      auto ccd = Grid::ForBand(lBand, nMax, 1.5, FFTWpp::Measure,
+                               Chunking::ForCache(ccdCache));
+      const auto fieldSize = automatic.FieldSize();
+      std::printf("\nlBand = %zd, grid lMax = %zd (%zd x %zd points)\n\n",
+                  lBand, automatic.MaxDegree(), automatic.NumberOfCoLatitudes(),
+                  automatic.NumberOfLongitudes());
+      std::printf("%4s %8s %6s %6s %10s %10s %10s %10s %8s %8s\n", "n",
+                  "threads", "chunkA", "chunkC", "fwd auto", "fwd ccd",
+                  "inv auto", "inv ccd", "fwd/inv", "fwdSpd");
+      for (auto n = -nMax; n <= nMax; ++n) {
+        const auto coefficientSize =
+            static_cast<Int>(automatic.CoefficientSize(lBand, n));
+        auto fields = FFTWpp::vector<Complex>(batch * fieldSize);
+        auto coefficients = FFTWpp::vector<Complex>(batch * coefficientSize);
+        for (auto i = Int{0}; i < batch * fieldSize; ++i) {
+          fields[i] =
+              Complex{0.5 + 0.001 * (i % 997), -0.25 + 0.002 * (i % 991)};
+        }
+        const auto fb = Batch::Contiguous(batch, fieldSize);
+        const auto cb = Batch::Contiguous(batch, coefficientSize);
+        const auto bytesPerField =
+            coefficientSize * static_cast<Int>(sizeof(Complex));
+        auto forwardBase = 0.0;
+        for (auto threads : ThreadsOr({1, 8, 16, 32})) {
+          const auto policy = threads == 1 ? Execution::Sequential()
+                                           : Execution::Parallel(threads);
+          auto Time = [&](auto& grid, bool forward) {
+            return TimePerCall(
+                       [&] {
+                         if (forward) {
+                           grid.ForwardTransformation(lBand, n, fields, fb,
+                                                      coefficients, cb, policy);
+                         } else {
+                           grid.InverseTransformation(lBand, n, coefficients,
+                                                      cb, fields, fb, policy);
+                         }
+                       },
+                       0.3, 3) /
+                   static_cast<double>(batch);
+          };
+          const auto fa = Time(automatic, true);
+          const auto fc = Time(ccd, true);
+          const auto ia = Time(automatic, false);
+          const auto ic = Time(ccd, false);
+          if (threads == 1) forwardBase = fa;
+          std::printf(
+              "%4zd %8d %6zd %6zd %10.4f %10.4f %10.4f %10.4f %7.2fx "
+              "%7.2fx\n",
+              n, threads, Chunking::Automatic().Count(bytesPerField, 1),
+              Chunking::ForCache(ccdCache).Count(bytesPerField, 1), fa * 1e3,
+              fc * 1e3, ia * 1e3, ic * 1e3, fa / ia, forwardBase / fa);
+          std::fflush(stdout);
+        }
+      }
+    }
+    std::printf(
+        "\nfwd/inv and fwdSpd (forward speedup over one thread) are for the "
+        "auto\ncolumns, which is sl3dpp's configuration.\n");
+  }
+
+  //------------------------------------------------------------------------//
+  //                 Chunk size against threads, both directions            //
+  //------------------------------------------------------------------------//
+  //
+  // The same shape as `forward-threading` at n = 0, with the chunk forced by
+  // Chunking::Fixed(c) instead of chosen: whether either direction wants a
+  // different chunk as the thread count grows, whether c = 32, whose
+  // per-colatitude FFT output stride is 512 B, is the cache-set hazard that
+  // ChooseThetaBlock guards against, and whether odd chunks cost anything.
+  // (Written when the inverse's serial gather made odd chunks 25-40% slower
+  // for it; with the gather divided between the team, none of these showed
+  // more than about 8% on Zen 4. design.md section 2.3.) auto marks the
+  // chunk Automatic() picks. ms per field. Run only when named.
+  if (WantNamed("chunk-sweep")) {
+    PrintHeader("Chunk size against threads (sl3dpp shape, n = 0)");
+    constexpr Int batch = 252;  // a multiple of most of the chunks below
+    const auto chunks =
+        std::array<Int, 14>{1, 2, 4, 8, 12, 16, 24, 30, 31, 32, 33, 34, 62, 63};
+    for (auto lBand : {Int{64}, Int{128}}) {
+      using Grid = GaussLegendreGrid<Real, All, All>;
+      auto grids = std::vector<Grid>{};
+      for (auto c : chunks) {
+        grids.push_back(
+            Grid::ForBand(lBand, 0, 1.5, FFTWpp::Measure, Chunking::Fixed(c)));
+      }
+      const auto& any = grids.front();
+      const auto fieldSize = any.FieldSize();
+      const auto coefficientSize =
+          static_cast<Int>(any.CoefficientSize(lBand, 0));
+      const auto automatic = Chunking::Automatic().Count(
+          coefficientSize * static_cast<Int>(sizeof(Complex)), 1);
+      auto fields = FFTWpp::vector<Complex>(batch * fieldSize);
+      auto coefficients = FFTWpp::vector<Complex>(batch * coefficientSize);
+      for (auto i = Int{0}; i < batch * fieldSize; ++i) {
+        fields[i] = Complex{0.5 + 0.001 * (i % 997), -0.25 + 0.002 * (i % 991)};
+      }
+      const auto fb = Batch::Contiguous(batch, fieldSize);
+      const auto cb = Batch::Contiguous(batch, coefficientSize);
+
+      std::printf(
+          "\nlBand = %zd, grid lMax = %zd, batch %zd, Automatic() picks "
+          "%zd\n\n",
+          lBand, any.MaxDegree(), batch, automatic);
+      std::printf("%6s %8s %10s %10s\n", "chunk", "threads", "fwd", "inv");
+      for (auto threads : ThreadsOr({8, 16, 32})) {
+        const auto policy = Execution::Parallel(threads);
+        for (auto i = std::size_t{0}; i < chunks.size(); ++i) {
+          auto& grid = grids[i];
+          const auto forward =
+              TimePerCall(
+                  [&] {
+                    grid.ForwardTransformation(lBand, 0, fields, fb,
+                                               coefficients, cb, policy);
+                  },
+                  0.3, 3) /
+              static_cast<double>(batch);
+          const auto inverse =
+              TimePerCall(
+                  [&] {
+                    grid.InverseTransformation(lBand, 0, coefficients, cb,
+                                               fields, fb, policy);
+                  },
+                  0.3, 3) /
+              static_cast<double>(batch);
+          std::printf("%6zd %8d %10.4f %10.4f%s\n", chunks[i], threads,
+                      forward * 1e3, inverse * 1e3,
+                      chunks[i] == automatic ? "   <- auto" : "");
+          std::fflush(stdout);
+        }
+        std::printf("\n");
+      }
+    }
+  }
+
+  //------------------------------------------------------------------------//
+  //                Degree sweep: how the batched transforms scale          //
+  //------------------------------------------------------------------------//
+  //
+  // The sl3dpp shape (ForBand(band, 0, 1.5), stored, loop kernel, complex,
+  // n = 0) at bands from 96 to 512, chosen to mix powers of two with values
+  // between them. (The grid picks an FFT-friendly longitude count rather than
+  // 2 lMax + 1 -- 616 = 2^3.7.11, 1155 = 3.5.7.11, 1540 = 2^2.5.7.11 -- so
+  // the degree itself is free to be anything.) Two questions: whether the
+  // time per field grows smoothly with degree (the per-band^3 column should
+  // be roughly flat if the Legendre sum dominates), and where the chunk
+  // rule's 8 MiB default leaves batching behind -- one field's coefficients
+  // are 4.2 MB at band 512, where the cache rule alone gives a chunk of one;
+  // Chunking::MinimumSharedCount holds it at four, ForCache(32 MiB)'s
+  // figure there.
+  //
+  // fft is the forward call truncated to degree 0 on the auto grid: the whole
+  // FFT stage and almost no Legendre work. ms per field; batch of 64; one table
+  // per band, shared by both chunkings through With(). Threads from
+  // GSHTRANS_BENCH_THREADS, default 8 and 32. Run only when named: the band
+  // 512 table is 3.6 GB.
+  if (WantNamed("degree-sweep")) {
+    PrintHeader("Degree sweep (sl3dpp shape, n = 0, batch 64)");
+    constexpr Int batch = 64;
+    constexpr Int ccdCache = Int{32} << 20;
+    std::printf("%5s %5s %6s %8s %6s %6s %9s %9s %9s %9s %8s %11s %11s\n",
+                "band", "lMax", "nPhi", "threads", "chunkA", "chunkC",
+                "fwd auto", "fwd ccd", "inv auto", "inv ccd", "fft",
+                "fwd/b^3 ns", "inv/b^3 ns");
+    for (auto band : {Int{96}, Int{128}, Int{160}, Int{200}, Int{256}, Int{320},
+                      Int{384}, Int{512}}) {
+      using Grid = GaussLegendreGrid<Real, All, All>;
+      const auto automatic =
+          Grid::ForBand(band, 0, 1.5, FFTWpp::Measure, Chunking::Automatic());
+      const auto ccd = automatic.With(Chunking::ForCache(ccdCache));
+      const auto fieldSize = automatic.FieldSize();
+      const auto coefficientSize =
+          static_cast<Int>(automatic.CoefficientSize(band, 0));
+      const auto bytesPerField =
+          coefficientSize * static_cast<Int>(sizeof(Complex));
+
+      auto fields = FFTWpp::vector<Complex>(batch * fieldSize);
+      auto coefficients = FFTWpp::vector<Complex>(batch * coefficientSize);
+      auto lowest = FFTWpp::vector<Complex>(batch);
+      for (auto i = Int{0}; i < batch * fieldSize; ++i) {
+        fields[i] = Complex{0.5 + 0.001 * (i % 997), -0.25 + 0.002 * (i % 991)};
+      }
+      const auto fb = Batch::Contiguous(batch, fieldSize);
+      const auto cb = Batch::Contiguous(batch, coefficientSize);
+      const auto lb = Batch::Contiguous(batch, 1);
+
+      for (auto threads : ThreadsOr({8, 32})) {
+        const auto policy = threads == 1 ? Execution::Sequential()
+                                         : Execution::Parallel(threads);
+        const auto PerField = [&](auto&& action) {
+          return TimePerCall(action, 0.3, 3) / static_cast<double>(batch);
+        };
+        const auto fa = PerField([&] {
+          automatic.ForwardTransformation(band, 0, fields, fb, coefficients, cb,
+                                          policy);
+        });
+        const auto fc = PerField([&] {
+          ccd.ForwardTransformation(band, 0, fields, fb, coefficients, cb,
+                                    policy);
+        });
+        const auto ia = PerField([&] {
+          automatic.InverseTransformation(band, 0, coefficients, cb, fields, fb,
+                                          policy);
+        });
+        const auto ic = PerField([&] {
+          ccd.InverseTransformation(band, 0, coefficients, cb, fields, fb,
+                                    policy);
+        });
+        const auto fft = PerField([&] {
+          automatic.ForwardTransformation(0, 0, fields, fb, lowest, lb, policy);
+        });
+        const auto cube = static_cast<double>(band) * band * band;
+        std::printf(
+            "%5zd %5zd %6zd %8d %6zd %6zd %9.4f %9.4f %9.4f %9.4f %8.4f "
+            "%11.3f %11.3f\n",
+            band, automatic.MaxDegree(), automatic.NumberOfLongitudes(),
+            threads, Chunking::Automatic().Count(bytesPerField, 1),
+            Chunking::ForCache(ccdCache).Count(bytesPerField, 1), fa * 1e3,
+            fc * 1e3, ia * 1e3, ic * 1e3, fft * 1e3, fa / cube * 1e9,
+            ia / cube * 1e9);
+        std::fflush(stdout);
+      }
+    }
   }
 }

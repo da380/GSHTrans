@@ -3,8 +3,8 @@
 How the library is put together, and why it is put together that way. This
 document is about the software. The mathematics, the conventions and the
 numerical methods are in `gshtrans-reference.tex` (and its PDF); how to use the
-library is in `README.md` and the numbered `examples/`; what is still open is
-in `open-issues.md`.
+library is in `README.md` and the numbered `examples/`; what it deliberately
+does not do is in `limitations.md`.
 
 The intended use sets the priorities throughout: real rank-2 and rank-4 tensor
 fields, layered Earth models, Release builds, and a many-core shared-memory
@@ -22,12 +22,12 @@ layout.
 
 | Layer | Headers | What it provides |
 | :--- | :--- | :--- |
-| Core | `SphericalGrid.hpp`, `GaussLegendreGrid.hpp`, `Wigner.hpp`, `WignerMatrices.hpp`, `Indexing.hpp`, `Views.hpp`, `Policies.hpp`, `Tuning.hpp`, `Blas.hpp`, `OpenMP.hpp`, `Utility.hpp`, `Concepts.hpp` | quadrature grid, Wigner tables, the batched transform and its two Legendre kernels, policies, threading, measurement-based tuning |
+| Core | `SphericalGrid.hpp`, `GaussLegendreGrid.hpp`, `Wigner.hpp`, `WignerMatrices.hpp`, `Indexing.hpp`, `Views.hpp`, `Policies.hpp`, `Tuning.hpp`, `Blas.hpp`, `OpenMP.hpp`, `Parallel.hpp`, `Utility.hpp`, `Concepts.hpp` | quadrature grid, Wigner tables, the batched transform and its two Legendre kernels, policies, threading and parallel loops, measurement-based tuning |
 | 3-j | `3j.hpp` | Wigner 3-j symbols and coupling matrices; independent of grids and fields |
 | Spin fields | `SpinField/` | the lazy, index-checked algebra of spin-weighted fields |
 | Tensors | `Tensor/` | tensor fields in the canonical basis, symmetry orbits, tensor algebra |
 | Expansions | `Expansion/` | the spectral side: spin and tensor expansions, `ð`/`ð̄`, raising and lowering, surface gradient, intrinsic derivative, interpolation |
-| Layered | `Layered/` | fields on a stack of spheres; radial grids with interfaces; radial operators; `RadialMajor` |
+| Layered | `Layered/` | fields on a stack of spheres, owned or viewed; layered expressions; radial grids with interfaces; radial operators; `RadialMajor` |
 
 The 3-j header stands alone: it includes nothing from the rest of the library.
 
@@ -101,7 +101,74 @@ The transform is an FFT in longitude and a Legendre sum in colatitude. The
 Legendre stage has two implementations, chosen when the grid is made:
 
 - `TransformKernel::Loop()` — the default — interleaves the two stages per
-  colatitude block.
+  colatitude block. Threaded on a stored table, its forward direction runs
+  in two stages per chunk instead (`ForwardBlockKernel`): the FFTs threaded
+  over colatitudes into per-thread `[θ][m][k]` rows, then, after one
+  barrier, the Legendre sum threaded over contiguous runs of coefficients,
+  each thread summing every colatitude in order into its own slice. No
+  accumulator, no reduction, and the sequential path's bits whatever the
+  thread count. Generated values keep the per-thread accumulator kernel,
+  since a block of degrees would re-run the recursion in every thread.
+
+  The threaded inverse gathers each chunk's coefficients into
+  `[coefficient][field]` order before synthesising, and divides that gather
+  between the team by runs of coefficients.
+
+  Measured on a 2 × EPYC 9334 (Zen 4, one socket used,
+  `OMP_PLACES=cores OMP_PROC_BIND=close`), `TransformBenchmark
+  forward-threading`: `ForBand(128, 2, 1.5)` (193 × 385), stored, complex,
+  256 contiguous fields, n = 0, `Chunking::Automatic()`, ms per field. Each
+  arrangement is timed against its alternative in back-to-back runs: for the
+  forward, a private accumulator per thread with a partitioned reduction (the
+  generated-values kernel's shape); for the inverse, the gather done by the
+  calling thread while the others wait.
+
+  | threads | forward, accumulators | forward, degree blocks | inverse, serial gather | inverse, team gather |
+  |---|---|---|---|---|
+  | 1  | 2.89 | 2.88 | 2.43 | 2.49 |
+  | 8  | 0.504 | 0.337 | 0.366 | 0.336 |
+  | 16 | 0.489 | 0.220 | 0.290 | 0.207 |
+  | 32 | 0.418 | 0.114 | 0.184 | 0.106 |
+
+  The forward speedup at 32 threads is 25× with degree blocks against 6.9×
+  with accumulators; at `ForBand(64, …)` it is 18× against 4.4×, where the
+  accumulators are slower on 32 threads than on 8. n = ±1, ±2 agree within a
+  few per cent. The accumulators' plateau comes from the chunk as much as the
+  reduction: counting one accumulator per thread makes the chunk one at 16
+  and 32 threads, so the table is streamed once per field (§2.4). The serial
+  gather is 4.3 MB of strided copy per chunk at lMax = 128, a serial fraction
+  that caps the inverse at 0.18 ms per field on 32 threads; at
+  `ForBand(64, …)` and 32 threads the team gather gives 0.020 ms against
+  0.057. The serial gather's strided writes are also slower for odd chunks:
+  with it, chunks of 31, 33 and 63 measure 25–40% slower than 32 or 62 for
+  the inverse; with the team gather every chunk from 16 to 63 is within about
+  8% in either direction, and 32 shows no cache-set penalty.
+
+  In sl3dpp's `step_timing` (lmax 128, 1388 radial nodes), seconds:
+
+  | threads | quantity | accumulators, serial gather | degree blocks, serial gather | degree blocks, team gather |
+  |---|---|---|---|---|
+  | 32 | analysis per pass | 1.49 | 0.45 | 0.44 |
+  | 32 | synthesis per pass | — | 0.75 | 0.42 |
+  | 32 | pass | 2.76 | 1.57 | 1.21 |
+  | 32 | two steps | 38.7 | 22.0 | 17.0 |
+  | 16 | analysis per pass | 1.70 | 0.91 | — |
+  | 16 | synthesis per pass | — | 1.18 | 0.84 |
+  | 16 | pass | 3.68 | 2.74 | 2.30 |
+  | 16 | two steps | 51.6 | 38.4 | 32.2 |
+
+  Peak memory is 34 GB with either forward kernel. With degree blocks and
+  the team gather analysis and synthesis cost about the same, and two steps
+  at 32 threads are 2.3× faster than with accumulators and the serial gather.
+
+  Placement, same machine (other users loaded it during these runs, so the
+  figures are approximate and only the direction is claimed): 16 threads
+  spread over four CCDs against packed onto two make no difference in
+  either direction; 64 threads over both sockets are *slower* than 32 on
+  one in both directions (forward 0.12 → 0.17, inverse 0.19 → 0.24 ms per
+  field, with the serial gather), with an interleaved table helping
+  little, and 32 threads spread over both sockets slower still. One process
+  per socket, threads inside it, is the configuration to use.
 - `TransformKernel::Matrix()` does every FFT first and then one pair of GEMMs
   per order against a table laid out `[n][m][l][θ]`. It needs a BLAS, stores
   only half the Wigner values (the other half by the reflection
@@ -119,10 +186,30 @@ derivation of the matrix form and its measured gains are in the reference.
 
 A batch is processed in chunks sized to fit cache. `Chunking::Count` takes the
 bytes per field and the number of **copies** of the working set that will be
-live at once. That is not the thread count: the forward transform gives every
-thread a private accumulator (copies = threads), while the inverse shares one
-read-only block (copies = 1). Using the thread count for both starves the
-inverse.
+live at once. That is not the thread count: only the threaded forward
+transform on *generated* values gives every thread a private accumulator
+(copies = threads); the inverse shares one read-only block, and the threaded
+forward on a stored table divides one block between its threads (copies = 1
+for both). Using the thread count where there is one block starves the call:
+at lMax = 128 on 16 or more threads it makes the forward chunk one, the
+accumulators' plateau in §2.3.
+
+For one copy the heuristic never returns less than
+`Chunking::MinimumSharedCount` (four). Under the default 8 MiB
+(`Chunking::DefaultCacheBytes`) the cache rule alone falls with degree — 16
+at band 128, 4 at 256, 2 at 384, 1 at 512 — and a chunk of one streams the
+whole Wigner table once per field. Measured with `TransformBenchmark
+degree-sweep` (1.5× grids, 32 threads, one Zen 4 socket of the same
+machine), the cache rule alone at 8 MiB is 14% slower than
+`ForCache(32 MiB)` at band 256, 26% at 384 and 1.7× at 512; per band³ the
+time is otherwise flat from band 96 to 384, and the FFT a shrinking share
+(14% at band 128, 4% at 512). With the floor, the same run gives 5.15 ms per
+field at band 512 against 8.72 without (equal to 32 MiB), 2.30 against 2.77
+at 384 and 1.41 against 1.51 at 320, the same at band 256 and below, and the
+time per band³ flat from 96 to 512. Where the rule already gives four or
+more the floor changes nothing, so at band 256 the default stays 14% slower
+than 32 MiB on that machine. Private copies (the generated-values forward)
+keep the plain cache rule.
 
 `Chunking::MaximumCount` is 63, not 64: a chunk of 64 lands on one of the
 power-of-two FFT strides that cause cache-set collisions, and measures 8–20 %
@@ -155,7 +242,36 @@ length when `_OPENMP` is undefined. The library asks the compiler through
 `_OPENMP` rather than defining a macro of its own that could disagree with it.
 `OpenMP::Available` reports which was built.
 
-### 3.2 The BLAS and the library's threads
+### 3.2 Parallel loops
+
+`Parallel.hpp` gives callers, and the library's own pointwise and per-line
+work, the loops these rules imply without an OpenMP region of their own:
+`ForEach(policy, n, body(i))` and `ForEachBlock(policy, n, body(begin, end))`
+over static contiguous blocks (one per team member, the same blocks for the
+same `n`, so a pass over memory stays on the thread that touched it; the block
+form leaves the body's inner loop free to vectorise); `ForEachTask` with a
+dynamic schedule for tasks of uneven cost; and `Reduce`/`Sum`. Each takes an
+`Execution` policy and its team is `TeamSize()`, so a loop inside a region, or
+a threaded transform inside a loop, runs sequentially.
+
+Two properties are part of the contract:
+
+- **The exception is the sequential one.** A body may throw; the exception
+  rethrown is the lowest failing index's. After a failure at index `j` only
+  indices above `j` may be skipped, so the lowest failure is always found,
+  under a static or a dynamic schedule.
+- **Reductions do not depend on the team.** `Reduce` divides `[0, n)` into
+  `min(n, ReduceBlocks)` blocks fixed by `n` alone, forms each block's partial
+  in index order and combines the partials in block order. The grouping is the
+  same however the blocks are shared out, so the result is bitwise identical
+  on any number of threads, sequential included (absent `-ffast-math`). Fixing
+  the blocks costs a few hundred extra combines per reduction.
+
+The loops take index ranges, not grids or fields, so they work on a caller's
+own storage and layout. Distribution over processes is the caller's: a
+cross-process combine is applied to what `Reduce` returns.
+
+### 3.3 The BLAS and the library's threads
 
 No BLAS call is ever made from inside a library-opened parallel region. The
 rule is not about speed: whether and how a BLAS threads is outside the
@@ -177,7 +293,7 @@ reintroduce.
 names, so linking one would not fail; it would pass the wrong arguments. There
 is no portable way to detect this from a header.
 
-### 3.3 Preconditions throw, in every build
+### 3.4 Preconditions throw, in every build
 
 Size, degree, upper-index, layout and range checks throw
 `std::invalid_argument` in Release as well as Debug.
@@ -187,17 +303,19 @@ can reach, and where an asserting member initialiser would run before a
 throwing check, the throwing check is placed first so that both builds throw
 the same thing.
 
-### 3.4 Exceptions and OpenMP regions
+### 3.5 Exceptions and OpenMP regions
 
-An exception that escapes an OpenMP region terminates the process. Every
-region that can throw — both Fourier stages, the loop kernel's colatitude
-loops,
-the Wigner table constructions, the radial-line loops — runs its body
-through `Details::ExceptionCapture` (`Utility.hpp`), which keeps the first
-exception and rethrows it after the region closes. A thread whose set-up
-failed still passes through the worksharing loop and does nothing, as OpenMP
-requires. The result is that a call that throws sequentially throws the same
-exception threaded. Regions whose bodies only copy or allocate nothing are not
+An exception that escapes an OpenMP region terminates the process. The
+radial-line loops (`ApplyRadially`, `ApplyToLines`, `Resample`), the
+radial-major transpose and `Broadcast` run on the loops of §3.2, which catch
+inside the region and rethrow the lowest failing index's exception. The
+regions with a structure of their own — both Fourier stages, the transform
+kernels' set-up and barriers, the Wigner table constructions — run what can
+throw through `Details::ExceptionCapture` (`Utility.hpp`), which keeps the
+first exception in time and rethrows it after the region closes; a thread
+whose set-up failed still passes through the worksharing loop and does
+nothing, as OpenMP requires. Either way a call that throws sequentially
+throws threaded. Regions whose bodies only copy or allocate nothing are not
 wrapped.
 
 ---
@@ -277,6 +395,10 @@ Consequences:
 - `Permute<Image>(T)^{a0 a1 …} = T^{a_Image[0] a_Image[1] …}`; an image that is
   not a permutation is not an overload. `TensorSymmetry` requires its
   generators to be signed permutations.
+- A trace-free condition is not one: it ties two orbits by a linear relation
+  (for a symmetric rank-2 tensor, the `(-, +)` and `(0, 0)` components), so a
+  deviatoric tensor is stored as a symmetric one and its trace removed by the
+  caller.
 - A letter outside a `MultiIndex` alphabet is a hard error (thrown in a
   constant expression), not a SFINAE-friendly failure, so every accessor that
   takes component letters as template arguments checks them first with
@@ -292,6 +414,21 @@ the intrinsic derivative and the bundle maps — and how they differ from one
 another are covered in the reference. An expansion too short to carry a
 gradient's output returns zero at the lowest degree that can hold it rather
 than refusing.
+
+Every transform between the two domains comes in two forms: `Expand(field,
+lMax)` and `Evaluate(expansion)` return a new result, and `Expand(field, out)`
+and `Evaluate(expansion, out)` write into one the caller holds, taking the
+degree from `out` and allocating nothing. The same pairs exist for layered
+fields, flat and layered tensors, and radial lines (`ExpandToLines(field,
+lMax, out)`, `EvaluateLines(lines, lMax, out)`). The returning form is the
+writing form applied to a new result, so the two give the same bits. A
+writing form refuses a result on another grid — the same radial and angular
+grids, not merely equal sizes. In the flat spin case `out` may be a view over
+the caller's own storage, and the field may be one too: a `SpinFieldView` is
+read and written in place at its stride through the batch descriptor, with no
+copy, and a lazy expression is evaluated into per-thread scratch kept between
+calls. This is the form for a code that keeps its workspaces from one
+transform to the next.
 
 ### 4.5 Interpolation
 
@@ -326,14 +463,14 @@ bound for every shape tried. `Wigner`, `WignerMatrices`, the grid and the
 spectral interpolant all refuse a degree above their shape's ceiling (the grid
 because a generating grid has no table to do the refusing). Above it the table
 would be wrong by order one with no sign of trouble. Extending the range (an
-exponent carried per column) is known and not built; see `open-issues.md`.
+exponent carried per column) is known and not built; see `limitations.md`.
 
 The seeds themselves — the seed row's powers and the boundary values run up
 the degrees — are long products of factors below one, carried with an
 exponent of their own (`ScaledProduct`) and rounded to `Real` once. Kept in
-`Real`, a product that went denormal stuck at the smallest denormal whenever
-the next factor exceeded one half, and the column seeded from it came back as
-numbers of order `10^100` (seen at `|n| = 1300`, degree 1650).
+`Real`, a product that goes denormal sticks at the smallest denormal whenever
+the next factor exceeds one half, and the column seeded from it comes back as
+numbers of order `10^100` (at `|n| = 1300`, degree 1650).
 
 The seed row's binomial is formed directly while it fits (`|n| ≤ 508` in
 double) and from logarithms above, without `lgamma`, whose global state is a
@@ -424,6 +561,60 @@ scatter has stride `nR`, and at power-of-two `nR` under threads it loses to the
 tiled transpose. There is therefore no automatic choice; it is offered as the
 memory-saving route.
 
+**Views.** `LayeredSpinFieldView` and `LayeredSpinExpansionView` (and their
+`Const` forms) are the layered fields and expansions over a caller's storage:
+the same radius-major layout, a span instead of owned storage, and `Slice(i)`
+a two-dimensional view. Every layered transform accepts either on either side,
+so a code with its own arrays uses the layered layer in place. Contiguous
+radius-major only; a strided or point-major layered view would go through the
+batch descriptor but nothing needs one.
+
+**Expressions** (`LayeredExpressions.hpp`). A layered expression is a map from
+a radius to a two-dimensional expression: `Slice(i)` of `w * u` is
+`w.Slice(i) * u.Slice(i)`, formed with the two-dimensional operators. There is
+no second expression system, so the upper-index rules, reality, precision and
+the angular-grid check are the two-dimensional ones, and an operator is
+offered on layered operands exactly when the two-dimensional one is defined on
+their slices. What the layer adds is the radial axis (operands must share the
+radial grid too, checked when the node is made) and the loop over radii:
+`Assign(target, expr, policy)` evaluates slice by slice through `ForEach`, and
+`stack = expr` is its sequential form. The target may appear in the
+expression, for the two-dimensional reason. A two-dimensional field enters
+only explicitly: `AtEveryRadius(radial, f)` is a layered node equal to `f` at
+every radius that stores nothing, while `Broadcast` remains the way to make a
+stack of it.
+
+**Expanding an expression.** `Expand(expr, out)` evaluates the expression a
+block of radii at a time into per-thread scratch and transforms each block in
+one batched call, so the product is never stored whole: the scratch is about
+64 slices. The block is a multiple of the transform's own chunk
+(`ForwardChunk`), so every chunk falls where one call over the stored value
+would put it and the result is that call's, bit for bit.
+
+**Layered tensors** (`LayeredTensorExpressions.hpp`). A layered tensor's
+`Component<α...>()` is the whole radial stack of that component as a layered
+expression — the stored stack, or its representative's with the orbit
+table's sign and conjugation, through the same `DerivedComponent` the flat
+type uses. So a layered tensor is a tensor expression whose components are
+layered, and the tensor operations of `TensorExpr.hpp` — `Permute`,
+`Transpose`, `TensorProduct`, `Contract`, `Symmetrise` — apply to it
+unchanged: their components are formed with operators layered expressions
+have. A tensor times a scalar field (`w * T`, upper index zero) is one node
+for both cases. `FlatTensorExpr` and `LayeredTensorExpr` tell the two kinds
+apart by what a component is. `Assign`, `Materialise<Symmetry, Reality>` and
+`Expand` for a layered tensor expression work one stored component at a time
+through the layered spin layer — threaded over radii, expanded in blocks,
+bitwise equal to expanding the stored value — and a component the target pins
+to one real number takes the part of the expression that survives, as flat
+`Materialise` does. `LayeredTensorFieldView` and `LayeredTensorExpansionView`
+are the layered tensor types over a caller's storage, one array per stored
+component in slot order.
+
+A trace-free tensor has no storage of its own: the trace ties two orbits by a
+linear relation, which is not a signed permutation or a conjugation, so the
+orbit derivation cannot express it (§4.3). A deviatoric tensor is stored as a
+symmetric one, or kept per component as layered spin expressions.
+
 ---
 
 ## 7. Policies and tuning
@@ -466,8 +657,7 @@ up to lMax of a few hundred, which is why there is no persistence layer.
 
 ## 9. Testing and measurement
 
-These are rules for working on the library. Each one is here because ignoring
-it has produced a wrong conclusion.
+These are rules for working on the library.
 
 **Testing**
 

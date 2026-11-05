@@ -72,10 +72,14 @@ namespace Details {
  * one, and everything that can throw inside a region -- a per-thread
  * workspace being allocated, a plan being made, and above all a *caller's*
  * radial operator, which the library knows nothing about -- runs through
- * Run(). The first exception is kept and the rest are dropped, which is what
- * a sequential loop would have shown the caller anyway; Rethrow() after the
- * region hands it on, so a call that throws when it runs sequentially throws
- * the same thing when it runs threaded.
+ * Run(). The first exception *in time* is kept and the rest are dropped, and
+ * Rethrow() after the region hands it on, so a call that throws when it runs
+ * sequentially also throws when it runs threaded. Which exception is kept,
+ * when more than one thread fails, depends on timing; the loops in
+ * Parallel.hpp keep the lowest failing index instead, which is the one a
+ * sequential loop would raise, and are what a loop over a caller's operator
+ * should use. This class remains for regions with a structure of their own
+ * (set-up, barriers) that those loops do not express.
  *
  * Two rules for using it, both of which come from OpenMP and not from here.
  *

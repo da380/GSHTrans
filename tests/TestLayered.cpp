@@ -199,6 +199,15 @@ TEST(LayeredSpinField, BroadcastLiftsAnExpressionToEveryRadius) {
       }
     }
   }
+
+  // Slices evaluated concurrently, more threads than slices included, give
+  // the same values.
+  for (auto threads : {2, 3, 8}) {
+    auto threaded = Broadcast(radial, 2.0 * node, Execution::Parallel(threads));
+    for (auto k = std::size_t{0}; k < stack.Data().size(); ++k) {
+      EXPECT_EQ(threaded.Data()[k], stack.Data()[k]) << threads << " threads";
+    }
+  }
 }
 
 //--------------------------------------------------------------------------//

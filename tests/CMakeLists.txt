@@ -94,6 +94,22 @@ add_executable(TestRealFieldSymmetry
                TestRealFieldSymmetry.cpp)
 target_link_libraries(TestRealFieldSymmetry PRIVATE GSHTrans gtest_main)
 
+add_executable(TestParallel
+               TestParallel.cpp)
+target_link_libraries(TestParallel PRIVATE GSHTrans gtest_main)
+
+add_executable(TestWritingForms
+               TestWritingForms.cpp)
+target_link_libraries(TestWritingForms PRIVATE GSHTrans gtest_main)
+
+add_executable(TestLayeredExpressions
+               TestLayeredExpressions.cpp)
+target_link_libraries(TestLayeredExpressions PRIVATE GSHTrans gtest_main)
+
+add_executable(TestLayeredTensorExpressions
+               TestLayeredTensorExpressions.cpp)
+target_link_libraries(TestLayeredTensorExpressions PRIVATE GSHTrans gtest_main)
+
 # Every core header must compile on its own, and twice.
 # One translation unit per header, generated at configure time.
 #
@@ -118,8 +134,10 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/GSHTrans.hpp
   GSHTrans/GaussLegendreGrid.hpp
   GSHTrans/Indexing.hpp
+  GSHTrans/Layered/LayeredExpressions.hpp
   GSHTrans/Layered/LayeredGradient.hpp
   GSHTrans/Layered/LayeredSpinField.hpp
+  GSHTrans/Layered/LayeredTensorExpressions.hpp
   GSHTrans/Layered/LayeredTensorField.hpp
   GSHTrans/Layered/RadialDerivatives.hpp
   GSHTrans/Layered/RadialGrid.hpp
@@ -128,6 +146,7 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/Layered/RadialResample.hpp
   GSHTrans/Layered/RadialSplineDerivative.hpp
   GSHTrans/OpenMP.hpp
+  GSHTrans/Parallel.hpp
   GSHTrans/Policies.hpp
   GSHTrans/SphericalGrid.hpp
   GSHTrans/SpinField/SpinField.hpp
@@ -219,3 +238,7 @@ gtest_discover_tests(TestLayered)
 gtest_discover_tests(TestWigner)
 gtest_discover_tests(TestGaussLegendreGrid)
 gtest_discover_tests(TestRealFieldSymmetry)
+gtest_discover_tests(TestParallel)
+gtest_discover_tests(TestWritingForms)
+gtest_discover_tests(TestLayeredExpressions)
+gtest_discover_tests(TestLayeredTensorExpressions)

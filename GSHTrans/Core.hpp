@@ -12,6 +12,7 @@
 #include "GaussLegendreGrid.hpp"
 #include "Indexing.hpp"
 #include "OpenMP.hpp"
+#include "Parallel.hpp"
 #include "Policies.hpp"
 #include "SphericalGrid.hpp"
 #include "Tuning.hpp"

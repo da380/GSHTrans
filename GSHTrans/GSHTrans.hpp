@@ -47,8 +47,10 @@
 // Three-dimensional fields: a radial grid crossed with an angular one, held as
 // a stack of angular slices. Two-dimensional is the primitive; a slice is an
 // ordinary spin field.
+#include "Layered/LayeredExpressions.hpp"
 #include "Layered/LayeredGradient.hpp"
 #include "Layered/LayeredSpinField.hpp"
+#include "Layered/LayeredTensorExpressions.hpp"
 #include "Layered/LayeredTensorField.hpp"
 #include "Layered/RadialDerivatives.hpp"
 #include "Layered/RadialGrid.hpp"

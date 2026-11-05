@@ -7,20 +7,11 @@
 #include <vector>
 
 #include "../Concepts.hpp"
-#include "../OpenMP.hpp"
+#include "../Parallel.hpp"
 #include "../Policies.hpp"
 #include "../Utility.hpp"
 #include "LayeredSpinField.hpp"
 #include "RadialGrid.hpp"
-
-// The pragmas below are for a compiler that was asked for OpenMP. One that was
-// not ignores them, which is right, and warns that it has, which in a
-// header-only library is a warning in the caller's build. So the warning is
-// turned off for this file alone, and only where OpenMP is off: see OpenMP.hpp.
-#ifndef _OPENMP
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunknown-pragmas"
-#endif
 
 namespace GSHTrans {
 
@@ -176,23 +167,9 @@ void ApplyRadially(const Stack& in, Stack& out, const Op& op,
     }
   };
 
-  const auto threads = policy.TeamSize();
-
-  if (threads == 1) {
-    for (auto j = Int{0}; j < lines; j++) run(j);
-  } else {
-    // Nothing may leave the region, and what runs in it is the caller's: see
-    // ExceptionCapture. The first line to throw stops the rest being started,
-    // and its exception is the one the caller sees, as it would be
-    // sequentially.
-    auto capture = Details::ExceptionCapture{};
-#pragma omp parallel for schedule(static) num_threads(threads)
-    for (Int j = 0; j < lines; j++) {
-      if (capture.Failed()) continue;
-      capture.Run([&] { run(j); });
-    }
-    capture.Rethrow();
-  }
+  // What runs per line is the caller's and may throw: the exception the caller
+  // sees is the lowest failing line's, as it would be sequentially.
+  ForEach(policy, lines, run);
 }
 
 template <LayeredStack Stack, typename Op>
@@ -246,7 +223,3 @@ auto IntegrateRadially(const Stack& stack) {
 }
 
 }  // namespace GSHTrans
-
-#ifndef _OPENMP
-#pragma GCC diagnostic pop
-#endif

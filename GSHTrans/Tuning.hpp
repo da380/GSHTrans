@@ -243,16 +243,18 @@ TunedChunking TuneChunking(const GridType& grid, std::ptrdiff_t lMax,
   };
 
   // The schedule a policy would actually run, as a pair: the loop kernel's
-  // forward transform gives every thread an accumulator, so its copies are
-  // its threads, while its inverse -- and *both* directions of the matrix
-  // kernel -- gather one shared block, so theirs is one. A chunk beyond the
-  // batch is the batch. Applying the loop kernel's rule on a matrix grid
-  // would key the de-duplication on a number that grid never uses, so
+  // forward transform on generated values gives every thread an accumulator,
+  // so its copies are its threads, while on stored values it divides one
+  // block between the threads, and its inverse -- and *both* directions of
+  // the matrix kernel -- gather one shared block, so theirs is one. A chunk
+  // beyond the batch is the batch. Applying the accumulator rule anywhere
+  // else would key the de-duplication on a number that grid never uses, so
   // identical schedules would be timed as rivals and noise would have two
   // chances at the margin.
   const auto blockBytes = coefficientSize * static_cast<Int>(sizeof(Complex));
-  const auto forwardCopies =
-      grid.KernelPolicy().IsMatrix() ? 1 : policy.TeamSize();
+  const auto accumulating =
+      !grid.KernelPolicy().IsMatrix() && !grid.ValuesPolicy().AreStored();
+  const auto forwardCopies = accumulating ? policy.TeamSize() : 1;
   const auto Schedule = [&](const Chunking& chunking) {
     return std::pair(std::min(chunking.Count(blockBytes, forwardCopies), count),
                      std::min(chunking.Count(blockBytes, 1), count));

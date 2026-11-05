@@ -10,19 +10,10 @@
 #include <vector>
 
 #include "../Concepts.hpp"
-#include "../OpenMP.hpp"
+#include "../Parallel.hpp"
 #include "../Policies.hpp"
 #include "../Utility.hpp"
 #include "RadialOperator.hpp"
-
-// The pragmas below are for a compiler that was asked for OpenMP. One that was
-// not ignores them, which is right, and warns that it has, which in a
-// header-only library is a warning in the caller's build. So the warning is
-// turned off for this file alone, and only where OpenMP is off: see OpenMP.hpp.
-#ifndef _OPENMP
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunknown-pragmas"
-#endif
 
 namespace GSHTrans {
 
@@ -202,7 +193,6 @@ class RadialMajor {
   static void Transpose(const T* in, T* out, Int rows, Int cols,
                         Execution policy) {
     const auto tile = TileSize();
-    const auto threads = policy.TeamSize();
 
     const auto block = [&](Int i0) {
       const auto iEnd = std::min(i0 + tile, rows);
@@ -216,12 +206,9 @@ class RadialMajor {
       }
     };
 
-    if (threads == 1) {
-      for (auto i0 = Int{0}; i0 < rows; i0 += tile) block(i0);
-    } else {
-#pragma omp parallel for schedule(static) num_threads(threads)
-      for (Int i0 = 0; i0 < rows; i0 += tile) block(i0);
-    }
+    // One task per band of `tile` rows, in static blocks of bands.
+    ForEach(policy, (rows + tile - 1) / tile,
+            [&](Int band) { block(band * tile); });
   }
 };
 
@@ -260,7 +247,6 @@ void ApplyToLines(const RadialMajor<Stack>& in, RadialMajor<Stack>& out,
 
   const auto lines = in.NumberOfLines();
   const auto nR = static_cast<std::size_t>(in.NumberOfRadii());
-  const auto threads = policy.TeamSize();
   const bool inPlace = static_cast<const void*>(&in) == &out;
 
   const auto run = [&](Int j) {
@@ -275,21 +261,9 @@ void ApplyToLines(const RadialMajor<Stack>& in, RadialMajor<Stack>& out,
     std::copy_n(scratch.data(), nR, out.Line(j).data());
   };
 
-  if (threads == 1) {
-    for (auto j = Int{0}; j < lines; j++) run(j);
-  } else {
-    // Nothing may leave the region, and what runs in it is the caller's: see
-    // ExceptionCapture. The first line to throw stops the rest being started,
-    // and its exception is the one the caller sees, as it would be
-    // sequentially.
-    auto capture = Details::ExceptionCapture{};
-#pragma omp parallel for schedule(static) num_threads(threads)
-    for (Int j = 0; j < lines; j++) {
-      if (capture.Failed()) continue;
-      capture.Run([&] { run(j); });
-    }
-    capture.Rethrow();
-  }
+  // What runs per line is the caller's and may throw: the exception the caller
+  // sees is the lowest failing line's, as it would be sequentially.
+  ForEach(policy, lines, run);
 }
 
 //--------------------------------------------------------------------------//
@@ -323,6 +297,61 @@ void ApplyToLines(const RadialMajor<Stack>& in, RadialMajor<Stack>& out,
 // on the machine in question -- the benchmark's `lines` section is that
 // measurement.
 
+namespace RadialDetails {
+
+// How many coefficients an expansion of upper index N to degree lMax holds on
+// this grid: reduced m >= 0 storage for a real field.
+template <std::ptrdiff_t N, typename Value, typename Grid>
+std::ptrdiff_t LineCount(const Grid& grid, std::ptrdiff_t lMax) {
+  return static_cast<std::ptrdiff_t>(std::same_as<Value, RealValued>
+                                         ? grid.RealCoefficientSize(lMax)
+                                         : grid.CoefficientSize(lMax, N));
+}
+
+// A radial-major buffer is a shape and knows neither its angular grid nor its
+// degree, so a degree and a grid are checked against the shape, which is all
+// that can be checked -- and against the radii, which it does know.
+template <typename Lines, typename Stack>
+void CheckLines(const Lines& lines, const Stack& stack, std::ptrdiff_t size,
+                std::ptrdiff_t lMax) {
+  if (lines.NumberOfLines() != size) {
+    throw std::invalid_argument(
+        "These radial lines number " + std::to_string(lines.NumberOfLines()) +
+        ", and an expansion to degree " + std::to_string(lMax) + " has " +
+        std::to_string(size) +
+        " coefficients, so they were not expanded to that degree");
+  }
+  if (lines.Radial().Identity() != stack.Radial().Identity()) {
+    throw std::invalid_argument(
+        "Radial lines and the layered field they are transformed to or from "
+        "must be on the same radial grid");
+  }
+}
+
+}  // namespace RadialDetails
+
+/**
+ * @brief The expansion of a layered field, written into radial lines the
+ * caller holds.
+ * @param field The field, radius-major as every layered field is.
+ * @param lMax The degree to expand to.
+ * @param out One line per coefficient of that degree, on the field's radii.
+ * @param policy Whether the transform may thread.
+ * @throws std::invalid_argument if @p out has the wrong number of lines or is
+ * on other radii.
+ */
+template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
+void ExpandToLines(const LayeredSpinField<N, Grid, Value>& field,
+                   std::ptrdiff_t lMax,
+                   RadialMajor<LayeredSpinExpansion<N, Grid, Value>>& out,
+                   Execution policy = Execution::Sequential()) {
+  const auto size = RadialDetails::LineCount<N, Value>(field.Grid(), lMax);
+  RadialDetails::CheckLines(out, field, size, lMax);
+  auto target = out.Data();
+  field.Grid().ForwardTransformation(lMax, N, field.Data(), field.Batch(),
+                                     target, out.Batch(), policy);
+}
+
 /**
  * @brief The expansion of a layered field, as radial lines.
  * @param field The field, radius-major as every layered field is.
@@ -335,22 +364,35 @@ auto ExpandToLines(const LayeredSpinField<N, Grid, Value>& field,
                    std::ptrdiff_t lMax,
                    Execution policy = Execution::Sequential()) {
   using Lines = RadialMajor<LayeredSpinExpansion<N, Grid, Value>>;
-  const auto& grid = field.Grid();
-  const auto size = std::same_as<Value, RealValued>
-                        ? grid.RealCoefficientSize(lMax)
-                        : grid.CoefficientSize(lMax, N);
-  auto lines = Lines::OfShape(field.Radial(), size);
-  auto out = lines.Data();
-  grid.ForwardTransformation(lMax, N, field.Data(), field.Batch(), out,
-                             lines.Batch(), policy);
+  auto lines = Lines::OfShape(
+      field.Radial(), RadialDetails::LineCount<N, Value>(field.Grid(), lMax));
+  ExpandToLines(field, lMax, lines, policy);
   return lines;
 }
 
 /**
+ * @brief Evaluates radial lines into a layered field the caller holds.
+ * @param lines The coefficients, one line per (l, m).
+ * @param lMax The degree the lines were expanded to.
+ * @param out Where the samples go; its angular grid is the one evaluated on.
+ * @param policy Whether the transform may thread.
+ * @throws std::invalid_argument if the lines are not as many as that degree
+ * has coefficients, or are on other radii than @p out.
+ */
+template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
+void EvaluateLines(
+    const RadialMajor<LayeredSpinExpansion<N, Grid, Value>>& lines,
+    std::ptrdiff_t lMax, LayeredSpinField<N, Grid, Value>& out,
+    Execution policy = Execution::Sequential()) {
+  const auto size = RadialDetails::LineCount<N, Value>(out.Grid(), lMax);
+  RadialDetails::CheckLines(lines, out, size, lMax);
+  auto target = out.Data();
+  out.Grid().InverseTransformation(lMax, N, lines.Data(), lines.Batch(), target,
+                                   out.Batch(), policy);
+}
+
+/**
  * @brief The layered field whose expansion a set of radial lines is.
- * @details A radial-major buffer is a shape and knows neither its angular grid
- * nor its degree, so both are given. They are checked against the shape,
- * which is all that can be checked.
  * @param lines The coefficients, one line per (l, m).
  * @param grid The angular grid to evaluate on.
  * @param lMax The degree the lines were expanded to.
@@ -363,25 +405,9 @@ auto EvaluateLines(
     const RadialMajor<LayeredSpinExpansion<N, Grid, Value>>& lines,
     const Grid& grid, std::ptrdiff_t lMax,
     Execution policy = Execution::Sequential()) {
-  const auto size = std::same_as<Value, RealValued>
-                        ? grid.RealCoefficientSize(lMax)
-                        : grid.CoefficientSize(lMax, N);
-  if (lines.NumberOfLines() != size) {
-    throw std::invalid_argument(
-        "These radial lines number " + std::to_string(lines.NumberOfLines()) +
-        ", and an expansion to degree " + std::to_string(lMax) + " has " +
-        std::to_string(size) +
-        " coefficients, so they were not expanded to that degree");
-  }
   auto field = LayeredSpinField<N, Grid, Value>(lines.Radial(), grid);
-  auto out = field.Data();
-  grid.InverseTransformation(lMax, N, lines.Data(), lines.Batch(), out,
-                             field.Batch(), policy);
+  EvaluateLines(lines, lMax, field, policy);
   return field;
 }
 
 }  // namespace GSHTrans
-
-#ifndef _OPENMP
-#pragma GCC diagnostic pop
-#endif

@@ -287,7 +287,27 @@ class TensorExpansion {
 };
 
 // Between the two domains, arranging the batched transform the tensor field
-// already knows how to make.
+// already knows how to make. As for a spin field, each direction has a form
+// writing into a result the caller holds, which allocates nothing and takes
+// its degree from the expansion, and a returning form that is the first
+// applied to a new result.
+
+/**
+ * @brief Expands @p tensor into @p out, to @p out's degree.
+ * @throws std::invalid_argument if the two are not on the same grid.
+ */
+template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
+          TensorReality Reality, AngularGrid Grid, TensorLayout Layout,
+          SlotAlphabet Slots>
+void Expand(
+    const TensorField<Rank, Symmetry, Reality, Grid, Layout, Slots>& tensor,
+    TensorExpansion<Rank, Symmetry, Reality, Grid, Slots>& out,
+    Execution policy = Execution::Sequential()) {
+  SpinExpansionDetails::CheckSameGrid(tensor, out);
+  tensor.ForwardTransformation(out.MaxDegree(), out.Data(), policy);
+}
+
+/** @brief Expands @p tensor to degree @p lMax. */
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
           TensorReality Reality, AngularGrid Grid, TensorLayout Layout,
           SlotAlphabet Slots>
@@ -296,8 +316,23 @@ auto Expand(
     std::ptrdiff_t lMax, Execution policy = Execution::Sequential()) {
   auto expansion = TensorExpansion<Rank, Symmetry, Reality, Grid, Slots>(
       tensor.Grid(), lMax);
-  tensor.ForwardTransformation(lMax, expansion.Data(), policy);
+  Expand(tensor, expansion, policy);
   return expansion;
+}
+
+/**
+ * @brief Evaluates @p expansion into @p out, in whatever layout @p out has.
+ * @throws std::invalid_argument if the two are not on the same grid.
+ */
+template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
+          TensorReality Reality, AngularGrid Grid, TensorLayout Layout,
+          SlotAlphabet Slots>
+void Evaluate(
+    const TensorExpansion<Rank, Symmetry, Reality, Grid, Slots>& expansion,
+    TensorField<Rank, Symmetry, Reality, Grid, Layout, Slots>& out,
+    Execution policy = Execution::Sequential()) {
+  SpinExpansionDetails::CheckSameGrid(expansion, out);
+  out.InverseTransformation(expansion.MaxDegree(), expansion.Data(), policy);
 }
 
 // Slots is deduced from the expansion and Layout is not, so Layout comes
@@ -311,7 +346,7 @@ auto Evaluate(
     Execution policy = Execution::Sequential()) {
   auto tensor = TensorField<Rank, Symmetry, Reality, Grid, Layout, Slots>(
       expansion.Grid());
-  tensor.InverseTransformation(expansion.MaxDegree(), expansion.Data(), policy);
+  Evaluate(expansion, tensor, policy);
   return tensor;
 }
 
