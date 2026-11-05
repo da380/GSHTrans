@@ -425,11 +425,16 @@ section names so that an A/B costs one section rather than the whole run:
 default:     stream grid transforms threading batching generated
              kernels interpolation tuning
 named only:  kernels-loop kernels-matrix server lines huge
+             forward-threading chunk-sweep degree-sweep
 ```
 
 `server`, `lines` and `huge` build tables of several GB, which is why they
-run only when named. The header of `TransformBenchmark.cpp`
-explains how each figure is timed and how to read the output.
+run only when named; so does `degree-sweep`, which goes to band 512.
+`forward-threading`, `chunk-sweep` and `degree-sweep` time the batched,
+threaded transforms in the shape of `docs/design.md` §2.3–2.4 and take their
+thread counts from `GSHTRANS_BENCH_THREADS` (a comma-separated list). The
+header of `TransformBenchmark.cpp` explains how each figure is timed and how
+to read the output.
 
 `benchmarks/run-server-benchmark.sh` drives it on a target machine. **Build it
 Release.** `cmake -S . -B build` leaves `CMAKE_BUILD_TYPE` empty, and the

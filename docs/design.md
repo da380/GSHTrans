@@ -101,7 +101,74 @@ The transform is an FFT in longitude and a Legendre sum in colatitude. The
 Legendre stage has two implementations, chosen when the grid is made:
 
 - `TransformKernel::Loop()` — the default — interleaves the two stages per
-  colatitude block.
+  colatitude block. Threaded on a stored table, its forward direction runs
+  in two stages per chunk instead (`ForwardBlockKernel`): the FFTs threaded
+  over colatitudes into per-thread `[θ][m][k]` rows, then, after one
+  barrier, the Legendre sum threaded over contiguous runs of coefficients,
+  each thread summing every colatitude in order into its own slice. No
+  accumulator, no reduction, and the sequential path's bits whatever the
+  thread count. Generated values keep the per-thread accumulator kernel,
+  since a block of degrees would re-run the recursion in every thread.
+
+  The threaded inverse gathers each chunk's coefficients into
+  `[coefficient][field]` order before synthesising, and divides that gather
+  between the team by runs of coefficients.
+
+  Measured on a 2 × EPYC 9334 (Zen 4, one socket used,
+  `OMP_PLACES=cores OMP_PROC_BIND=close`), `TransformBenchmark
+  forward-threading`: `ForBand(128, 2, 1.5)` (193 × 385), stored, complex,
+  256 contiguous fields, n = 0, `Chunking::Automatic()`, ms per field. Each
+  arrangement is timed against its alternative in back-to-back runs: for the
+  forward, a private accumulator per thread with a partitioned reduction (the
+  generated-values kernel's shape); for the inverse, the gather done by the
+  calling thread while the others wait.
+
+  | threads | forward, accumulators | forward, degree blocks | inverse, serial gather | inverse, team gather |
+  |---|---|---|---|---|
+  | 1  | 2.89 | 2.88 | 2.43 | 2.49 |
+  | 8  | 0.504 | 0.337 | 0.366 | 0.336 |
+  | 16 | 0.489 | 0.220 | 0.290 | 0.207 |
+  | 32 | 0.418 | 0.114 | 0.184 | 0.106 |
+
+  The forward speedup at 32 threads is 25× with degree blocks against 6.9×
+  with accumulators; at `ForBand(64, …)` it is 18× against 4.4×, where the
+  accumulators are slower on 32 threads than on 8. n = ±1, ±2 agree within a
+  few per cent. The accumulators' plateau comes from the chunk as much as the
+  reduction: counting one accumulator per thread makes the chunk one at 16
+  and 32 threads, so the table is streamed once per field (§2.4). The serial
+  gather is 4.3 MB of strided copy per chunk at lMax = 128, a serial fraction
+  that caps the inverse at 0.18 ms per field on 32 threads; at
+  `ForBand(64, …)` and 32 threads the team gather gives 0.020 ms against
+  0.057. The serial gather's strided writes are also slower for odd chunks:
+  with it, chunks of 31, 33 and 63 measure 25–40% slower than 32 or 62 for
+  the inverse; with the team gather every chunk from 16 to 63 is within about
+  8% in either direction, and 32 shows no cache-set penalty.
+
+  In sl3dpp's `step_timing` (lmax 128, 1388 radial nodes), seconds:
+
+  | threads | quantity | accumulators, serial gather | degree blocks, serial gather | degree blocks, team gather |
+  |---|---|---|---|---|
+  | 32 | analysis per pass | 1.49 | 0.45 | 0.44 |
+  | 32 | synthesis per pass | — | 0.75 | 0.42 |
+  | 32 | pass | 2.76 | 1.57 | 1.21 |
+  | 32 | two steps | 38.7 | 22.0 | 17.0 |
+  | 16 | analysis per pass | 1.70 | 0.91 | — |
+  | 16 | synthesis per pass | — | 1.18 | 0.84 |
+  | 16 | pass | 3.68 | 2.74 | 2.30 |
+  | 16 | two steps | 51.6 | 38.4 | 32.2 |
+
+  Peak memory is 34 GB with either forward kernel. With degree blocks and
+  the team gather analysis and synthesis cost about the same, and two steps
+  at 32 threads are 2.3× faster than with accumulators and the serial gather.
+
+  Placement, same machine (other users loaded it during these runs, so the
+  figures are approximate and only the direction is claimed): 16 threads
+  spread over four CCDs against packed onto two make no difference in
+  either direction; 64 threads over both sockets are *slower* than 32 on
+  one in both directions (forward 0.12 → 0.17, inverse 0.19 → 0.24 ms per
+  field, with the serial gather), with an interleaved table helping
+  little, and 32 threads spread over both sockets slower still. One process
+  per socket, threads inside it, is the configuration to use.
 - `TransformKernel::Matrix()` does every FFT first and then one pair of GEMMs
   per order against a table laid out `[n][m][l][θ]`. It needs a BLAS, stores
   only half the Wigner values (the other half by the reflection
@@ -119,10 +186,30 @@ derivation of the matrix form and its measured gains are in the reference.
 
 A batch is processed in chunks sized to fit cache. `Chunking::Count` takes the
 bytes per field and the number of **copies** of the working set that will be
-live at once. That is not the thread count: the forward transform gives every
-thread a private accumulator (copies = threads), while the inverse shares one
-read-only block (copies = 1). Using the thread count for both starves the
-inverse.
+live at once. That is not the thread count: only the threaded forward
+transform on *generated* values gives every thread a private accumulator
+(copies = threads); the inverse shares one read-only block, and the threaded
+forward on a stored table divides one block between its threads (copies = 1
+for both). Using the thread count where there is one block starves the call:
+at lMax = 128 on 16 or more threads it makes the forward chunk one, the
+accumulators' plateau in §2.3.
+
+For one copy the heuristic never returns less than
+`Chunking::MinimumSharedCount` (four). Under the default 8 MiB
+(`Chunking::DefaultCacheBytes`) the cache rule alone falls with degree — 16
+at band 128, 4 at 256, 2 at 384, 1 at 512 — and a chunk of one streams the
+whole Wigner table once per field. Measured with `TransformBenchmark
+degree-sweep` (1.5× grids, 32 threads, one Zen 4 socket of the same
+machine), the cache rule alone at 8 MiB is 14% slower than
+`ForCache(32 MiB)` at band 256, 26% at 384 and 1.7× at 512; per band³ the
+time is otherwise flat from band 96 to 384, and the FFT a shrinking share
+(14% at band 128, 4% at 512). With the floor, the same run gives 5.15 ms per
+field at band 512 against 8.72 without (equal to 32 MiB), 2.30 against 2.77
+at 384 and 1.41 against 1.51 at 320, the same at band 256 and below, and the
+time per band³ flat from 96 to 512. Where the rule already gives four or
+more the floor changes nothing, so at band 256 the default stays 14% slower
+than 32 MiB on that machine. Private copies (the generated-values forward)
+keep the plain cache rule.
 
 `Chunking::MaximumCount` is 63, not 64: a chunk of 64 lands on one of the
 power-of-two FFT strides that cause cache-set collisions, and measures 8–20 %
@@ -191,7 +278,7 @@ the same thing.
 
 An exception that escapes an OpenMP region terminates the process. Every
 region that can throw — both Fourier stages, the loop kernel's colatitude
-loops,
+loops, the degree-block forward kernel's set-up,
 the Wigner table constructions, the radial-line loops — runs its body
 through `Details::ExceptionCapture` (`Utility.hpp`), which keeps the first
 exception and rethrows it after the region closes. A thread whose set-up

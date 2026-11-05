@@ -425,6 +425,21 @@ class Chunking {
    */
   static constexpr Int MaximumCount = 63;
 
+  /**
+   * @brief The smallest chunk the heuristic returns for a shared block.
+   * @details A floor, not a measured optimum. Below it batching stops paying
+   * for the Wigner table: a chunk of one streams the whole table once per
+   * field. With one copy of the coefficient block live -- the inverse, and
+   * the forward on a stored table -- the cache rule fell to one at
+   * @f$l_{\max} = 512@f$ under the default 8 MiB, and measured 1.7x slower
+   * than a chunk of four there (2 x EPYC 9334, 32 threads);
+   * at the degrees where the rule already gave four or more, nothing changes.
+   * It does not apply where every thread keeps a private copy (the threaded
+   * forward on generated values), because there a larger chunk multiplies
+   * the memory per thread, and the cache rule still decides.
+   */
+  static constexpr Int MinimumSharedCount = 4;
+
   /** @brief The heuristic, against DefaultCacheBytes. */
   static Chunking Automatic() { return Chunking(DefaultCacheBytes, 0); }
 
@@ -472,18 +487,26 @@ class Chunking {
    *
    * @param bytesPerField The size of one field's coefficient block.
    * @param copies How many copies of that block will be live at once. This is
-   * **not** the thread count in both directions: the forward transform gives
-   * every thread a private accumulator, so its copies are its threads, while
-   * the inverse gathers one block, shared and read-only, so it has one copy
-   * however many threads read it. Serving both with the thread count starves
-   * the inverse, which measures 2.2x slower where the whole batch would fit.
+   * **not** the thread count in general: only the threaded forward transform
+   * on generated Wigner values gives every thread a private accumulator, so
+   * its copies are its threads, while the inverse gathers one block, shared
+   * and read-only, and the threaded forward on a stored table divides one
+   * block between its threads, so each has one copy. Serving them with the
+   * thread count starves them: the inverse measures 2.2x slower where the
+   * whole batch would fit, and the forward took a chunk of one at
+   * lMax = 128 on 16 threads.
+   *
+   * With one copy the result is at least MinimumSharedCount; with several it
+   * is at least one. Fixed() is returned as given either way.
    */
   Int Count(Int bytesPerField, int copies) const {
     if (fixed_ > 0) return fixed_;
     if (bytesPerField < 1) return MaximumCount;
-    const auto share = cacheBytes_ / static_cast<Int>(copies > 0 ? copies : 1);
+    const auto shared = copies <= 1;
+    const auto share = cacheBytes_ / static_cast<Int>(shared ? 1 : copies);
     const auto count = (share + bytesPerField) / (2 * bytesPerField);
-    if (count < 1) return 1;
+    const auto floor = shared ? MinimumSharedCount : Int{1};
+    if (count < floor) return floor;
     return count < MaximumCount ? count : MaximumCount;
   }
 

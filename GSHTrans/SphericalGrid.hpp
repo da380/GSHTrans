@@ -172,6 +172,8 @@ class SphericalGrid {
   auto ChunkingPolicy() const { return chunking_; }
   /** @brief Which Legendre kernel the transforms use. */
   auto KernelPolicy() const { return impl_->kernel; }
+  /** @brief Whether the Wigner values are stored or generated. */
+  auto ValuesPolicy() const { return impl_->values; }
 
   /**
    * @brief Frees what *this thread* keeps between transforms: its FFTW plans,
@@ -205,6 +207,7 @@ class SphericalGrid {
       std::remove_reference_t<decltype(buffer)>{}.swap(buffer);
     };
     release(Accumulator(0));
+    release(FourierRows(0));
     release(WignerScratch(0));
     release(CoefficientScratch(0));
 #ifdef GSHTRANS_HAVE_BLAS
@@ -921,6 +924,17 @@ class SphericalGrid {
     return buffer;
   }
 
+  // Where a thread of the degree-block forward kernel keeps the Fourier rows
+  // of the colatitudes it transformed, [theta][m][k], for every thread of the
+  // team to read after the barrier. Per thread so that each row is
+  // first-touched by the thread that writes it; grow-only for the same reason
+  // as the accumulator.
+  static std::vector<Complex>& FourierRows(std::size_t size) {
+    thread_local auto buffer = std::vector<Complex>{};
+    if (buffer.size() < size) buffer.resize(size);
+    return buffer;
+  }
+
   // The aligned buffers a transform works in, and the FFTW plan bound to them.
   //
   // Held per thread rather than shared. The buffers are scratch and must be
@@ -1075,24 +1089,30 @@ class SphericalGrid {
   // copies of the coefficient block will be live at once, and that is a
   // property of the decomposition, not of the call:
   //
-  //   forward -- every thread accumulates into a private buffer of
-  //              chunk * coefficientSize, so the copies are the threads;
-  //   inverse -- one block is gathered, shared and read-only, so there is one
-  //              copy however many threads read it.
+  //   forward, generated values, threaded -- every thread accumulates into
+  //              a private buffer of chunk * coefficientSize, so the copies
+  //              are the threads;
+  //   forward otherwise, and inverse -- one block, which the threads of the
+  //              degree-block kernel (or of the inverse) divide between them
+  //              or share, so there is one copy however many threads touch it.
   //
-  // Serving both with the thread count would starve the inverse: at
-  // lMax = 256 and k = 8 on eight threads it gives a chunk of one where the
-  // whole batch fits, and taking the whole batch measured 2.2x faster. The
-  // same measurement supports the forward's rule -- the whole batch there is
-  // 2x *slower*, because eight private accumulators of 8.4 MB ask for 68 MB
-  // of a 16 MB cache.
+  // Serving the inverse with the thread count would starve it: at lMax = 256
+  // and k = 8 on eight threads it gives a chunk of one where the whole batch
+  // fits, and taking the whole batch measured 2.2x faster. The accumulator
+  // kernel needs the thread count -- the whole batch there is 2x *slower*,
+  // because eight private accumulators of 8.4 MB ask for 68 MB of a 16 MB
+  // cache -- and before the degree-block kernel that rule held for every
+  // threaded forward call, which at lMax = 128 on 16 or more threads made the
+  // chunk one and the batch worthless (docs/design.md 2.4).
   //
   // The thread count is one whenever the policy is sequential or a parallel
   // region is already open, since that is what the call will really run on.
   Int ForwardChunkSize(Int coefficientSize, Execution policy) const {
-    const auto threads = RunInParallel(policy) ? ThreadCount(policy) : 1;
+    const auto accumulating =
+        RunInParallel(policy) && !impl_->values.AreStored();
+    const auto copies = accumulating ? ThreadCount(policy) : 1;
     return chunking_.Count(coefficientSize * static_cast<Int>(sizeof(Complex)),
-                           threads);
+                           copies);
   }
 
   Int InverseChunkSize(Int coefficientSize) const {
@@ -1209,6 +1229,17 @@ class SphericalGrid {
       }
     };
 
+    // A threaded call on a stored table goes to the degree-block kernel, which
+    // has no accumulators and gives the sequential path's bits. What stays
+    // here is the sequential path, and the threaded path for generated
+    // values, where a block of degrees would re-run the recursion per thread.
+    if (RunInParallel(policy) && impl_->values.AreStored()) {
+      ForwardBlockKernel<Scalar>(lMax, n, inFirst, inBatch, outFirst, outBatch,
+                                 count, nPhi, nTheta, scaleFactor,
+                                 coefficientSize, policy);
+      return;
+    }
+
     const auto chunk = ForwardChunkSize(coefficientSize, policy);
     for (auto first = Int{0}; first < count; first += chunk) {
       const auto c = std::min(chunk, count - first);
@@ -1238,10 +1269,10 @@ class SphericalGrid {
       // per thread: invisible against the colatitude loop at eight threads,
       // and 128 MB of serialised adds per transform at 128.
       //
-      // The decomposition itself remains a limitation: thread-private
-      // accumulators over colatitudes are the wrong shape well before 128
-      // threads, and choosing what replaces them needs measurement on a
-      // many-core machine.
+      // The decomposition itself is the limitation: thread-private
+      // accumulators over colatitudes stop scaling well before 32 threads.
+      // A stored table never gets here -- ForwardBlockKernel replaced this
+      // for it -- so this serves generated values only.
       const auto threadCount = ThreadCount(policy);
 
       // The reduction reads every thread's accumulator, so the thread-local
@@ -1292,6 +1323,156 @@ class SphericalGrid {
             }
             Scatter(base, first, c, fromJ, toJ);
           });
+        }
+      }
+      capture.Rethrow();
+    }
+  }
+
+  // The threaded forward loop kernel on a stored table: two stages per chunk,
+  // with no private accumulator and no reduction.
+  //
+  //   Fourier stage -- each thread takes a contiguous run of colatitudes,
+  //     packs and FFTs them with the same per-colatitude plan the sequential
+  //     path uses, and copies each row's [m][k] output into its own
+  //     FourierRows buffer, [theta][m][k]. Disjoint writes.
+  //   Legendre stage -- after one barrier, each thread takes a contiguous run
+  //     of coefficient indices (degree-major, so a run of degrees whose first
+  //     and last may be cut in m), zeroes its slice of the [coefficient][field]
+  //     scratch, and walks every colatitude in ascending order doing the
+  //     sequential path's own axpy for its coefficients only. Disjoint writes
+  //     again, then each thread scatters its slice.
+  //
+  // Each coefficient is therefore summed over the colatitudes in the order
+  // the sequential path sums them, from the same a = d * w and the same FFT
+  // output, so the result is bitwise the sequential one whatever the thread
+  // count. The chunk rule is the inverse's, one copy of the block, and each
+  // thread reads only its own slice of each Wigner row: the table is
+  // streamed once per chunk, not once per thread.
+  //
+  // Coefficient-granular blocks rather than whole degrees, because whole
+  // degrees cannot balance once a thread's share is narrower than the top
+  // row (lMax = 64 on 64 threads: 66 coefficients against a row of 129).
+  // A thread with high degrees reads nearly every order of each Fourier row;
+  // those are L2 re-reads after the first touch, and the measurement in
+  // docs/design.md 2.4 is what says the imbalance is small.
+  template <RealOrComplexFloatingPoint Scalar, typename InIterator,
+            typename OutIterator>
+  void ForwardBlockKernel(Int lMax, Int n, InIterator inFirst, Batch inBatch,
+                          OutIterator outFirst, Batch outBatch, Int count,
+                          Int nPhi, Int nTheta, Real scaleFactor,
+                          Int coefficientSize, Execution policy) const {
+    using MRangeForScalar =
+        std::conditional_t<RealFloatingPoint<Scalar>, NonNegative, All>;
+    const auto indices = GSHIndices<MRangeForScalar>(lMax, lMax, n);
+    const auto nFourier = FourierSize<Scalar>();
+    const auto threadCount = ThreadCount(policy);
+    const auto chunk = ForwardChunkSize(coefficientSize, policy);
+
+    for (auto first = Int{0}; first < count; first += chunk) {
+      const auto c = std::min(chunk, count - first);
+      const auto rowSize = nFourier * c;
+
+      // Allocated on the calling thread, before the region, so that a failure
+      // here throws in the ordinary way.
+      auto& scratch =
+          CoefficientScratch(static_cast<std::size_t>(coefficientSize * c));
+      auto rows = std::vector<const Complex*>(threadCount, nullptr);
+      auto capture = Details::ExceptionCapture{};
+
+#pragma omp parallel num_threads(threadCount)
+      {
+        const auto thread = static_cast<Int>(OpenMP::ThreadNumber());
+        const auto threads = static_cast<Int>(OpenMP::TeamThreads());
+        const auto ThetaBegin = [nTheta, threads](Int t) {
+          return nTheta * t / threads;
+        };
+        const auto theta0 = ThetaBegin(thread);
+        const auto theta1 = ThetaBegin(thread + 1);
+
+        // Set-up can throw (a plan, an allocation); nothing may leave the
+        // region, and every thread must still reach the barrier.
+        using Work =
+            std::remove_reference_t<decltype(GetWorkspace<Scalar, true>(
+                nPhi, c, flag_))>;
+        Work* work = nullptr;
+        Complex* mine = nullptr;
+        capture.Run([&] {
+          work = &GetWorkspace<Scalar, true>(nPhi, c, flag_);
+          mine = FourierRows(static_cast<std::size_t>(
+                                 std::max(theta1 - theta0, Int{1}) * rowSize))
+                     .data();
+          rows[thread] = mine;
+        });
+
+        if (mine != nullptr) {
+          for (auto iTheta = theta0; iTheta < theta1; iTheta++) {
+            for (auto k = Int{0}; k < c; k++) {
+              PackRow(
+                  std::next(inFirst, inBatch.Offset(iTheta * nPhi, first + k)),
+                  nPhi, inBatch.Stride(),
+                  std::next(work->in.begin(), k * nPhi));
+            }
+            work->plan.Execute();
+            std::copy_n(work->out.data(), rowSize,
+                        mine + (iTheta - theta0) * rowSize);
+          }
+        }
+
+#pragma omp barrier
+
+        // Nothing below can throw: the table is stored, so WignerBlock is a
+        // view, and the scratch is already sized.
+        if (!capture.Failed()) {
+          const auto fromJ = coefficientSize * thread / threads;
+          const auto toJ = coefficientSize * (thread + 1) / threads;
+          auto* const block = scratch.data();
+          std::fill(block + fromJ * c, block + toJ * c, Complex{});
+
+          // The degrees this thread's run of coefficients touches.
+          auto lFirst = indices.MinDegree();
+          while (lFirst <= indices.MaxDegree()) {
+            const auto [offset, sub] = indices.Index(lFirst);
+            if (offset + sub.Size() > fromJ) break;
+            lFirst++;
+          }
+
+          for (auto owner = Int{0}; fromJ < toJ && owner < threads; owner++) {
+            const auto ownerTheta0 = ThetaBegin(owner);
+            const auto ownerTheta1 = ThetaBegin(owner + 1);
+            for (auto iTheta = ownerTheta0; iTheta < ownerTheta1; iTheta++) {
+              const auto* row = rows[owner] + (iTheta - ownerTheta0) * rowSize;
+              auto d = WignerBlock(n, iTheta, lMax);
+              const auto w =
+                  impl_->coLatitudeWeights[static_cast<std::size_t>(iTheta)] *
+                  scaleFactor;
+
+              for (auto l = lFirst; l <= indices.MaxDegree(); l++) {
+                const auto [offset, sub] = indices.Index(l);
+                if (offset >= toJ) break;
+                const auto mFirst =
+                    sub.MinOrder() + std::max(Int{0}, fromJ - offset);
+                const auto mLast =
+                    sub.MinOrder() + std::min(sub.Size(), toJ - offset) - 1;
+                auto dl = d[l];
+                auto* target = block + (offset + sub.Index(mFirst)) * c;
+                for (auto m = mFirst; m <= mLast; m++) {
+                  // The sequential path's own product and axpy, so the sums
+                  // agree to the bit.
+                  const auto a = dl[m] * w;
+                  const auto* source = row + (m < 0 ? nFourier + m : m) * c;
+                  for (auto k = Int{0}; k < c; k++) target[k] += a * source[k];
+                  target += c;
+                }
+              }
+            }
+          }
+
+          for (auto j = fromJ; j < toJ; j++) {
+            for (auto k = Int{0}; k < c; k++) {
+              outFirst[outBatch.Offset(j, first + k)] = block[j * c + k];
+            }
+          }
         }
       }
       capture.Rethrow();
@@ -1383,17 +1564,21 @@ class SphericalGrid {
       // reads the whole Wigner block, and measures as negligible, as the
       // scatter does in the forward direction.
       //
-      // Gathered by the calling thread before the parallel region opens, and
-      // read-only inside it.
+      // Sized by the calling thread before any region opens, so that a
+      // failure throws in the ordinary way; filled sequentially here, or by
+      // the team below.
       auto& scratch = CoefficientScratch(scratchSize);
-      for (auto k = Int{0}; k < c; k++) {
-        for (auto j = Int{0}; j < coefficientSize; j++) {
-          scratch[j * c + k] = inFirst[inBatch.Offset(j, first + k)];
+      const auto Gather = [&](Int fromJ, Int toJ) {
+        for (auto k = Int{0}; k < c; k++) {
+          for (auto j = fromJ; j < toJ; j++) {
+            scratch[j * c + k] = inFirst[inBatch.Offset(j, first + k)];
+          }
         }
-      }
+      };
       const auto* gathered = scratch.data();
 
       if (!RunInParallel(policy)) {
+        Gather(0, coefficientSize);
         auto& work = GetWorkspace<Scalar, false>(nPhi, c, flag_);
         for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
           SynthesiseRow(iTheta, first, c, gathered, work);
@@ -1408,6 +1593,20 @@ class SphericalGrid {
 
 #pragma omp parallel num_threads(ThreadCount(policy))
       {
+        // The gather is divided between the team by runs of coefficients,
+        // rather than done by the calling thread while the rest wait: at
+        // lMax = 128 a chunk of 16 is 4.3 MB of strided copy, a serial
+        // fraction the colatitude loop cannot hide at 32 threads. A copy,
+        // so the bits are unchanged, and one that cannot throw; the barrier
+        // publishes it to every reader before any colatitude is synthesised.
+        {
+          const auto thread = static_cast<Int>(OpenMP::ThreadNumber());
+          const auto threads = static_cast<Int>(OpenMP::TeamThreads());
+          Gather(coefficientSize * thread / threads,
+                 coefficientSize * (thread + 1) / threads);
+        }
+#pragma omp barrier
+
         using Work =
             std::remove_reference_t<decltype(GetWorkspace<Scalar, false>(
                 nPhi, c, flag_))>;

@@ -24,6 +24,15 @@ reference's "Scope and limitations".
   them stops being cheap, and a persisted store would become worth having.
 - **Reduced-precision storage of a double table** is not offered; any
   experiment would first need a tighter round-trip oracle.
+- **The threaded forward on generated Wigner values keeps a private
+  accumulator per thread** and a partitioned reduction, and its chunk is
+  sized for one copy per thread. Only a stored table gets the degree-block
+  kernel, whose threads share one block and need no reduction (`design.md`
+  §2.3–2.4).
+- **One process does not span sockets well.** Spread over two sockets, the
+  threaded transforms are slower in both directions than on one, and nothing
+  in the library splits the work by NUMA domain (`design.md` §2.3). Run one
+  process per socket, threads inside it.
 
 **Tensors**
 
