@@ -1564,17 +1564,21 @@ class SphericalGrid {
       // reads the whole Wigner block, and measures as negligible, as the
       // scatter does in the forward direction.
       //
-      // Gathered by the calling thread before the parallel region opens, and
-      // read-only inside it.
+      // Sized by the calling thread before any region opens, so that a
+      // failure throws in the ordinary way; filled sequentially here, or by
+      // the team below.
       auto& scratch = CoefficientScratch(scratchSize);
-      for (auto k = Int{0}; k < c; k++) {
-        for (auto j = Int{0}; j < coefficientSize; j++) {
-          scratch[j * c + k] = inFirst[inBatch.Offset(j, first + k)];
+      const auto Gather = [&](Int fromJ, Int toJ) {
+        for (auto k = Int{0}; k < c; k++) {
+          for (auto j = fromJ; j < toJ; j++) {
+            scratch[j * c + k] = inFirst[inBatch.Offset(j, first + k)];
+          }
         }
-      }
+      };
       const auto* gathered = scratch.data();
 
       if (!RunInParallel(policy)) {
+        Gather(0, coefficientSize);
         auto& work = GetWorkspace<Scalar, false>(nPhi, c, flag_);
         for (auto iTheta = Int{0}; iTheta < nTheta; iTheta++) {
           SynthesiseRow(iTheta, first, c, gathered, work);
@@ -1589,6 +1593,20 @@ class SphericalGrid {
 
 #pragma omp parallel num_threads(ThreadCount(policy))
       {
+        // The gather is divided between the team by runs of coefficients,
+        // rather than done by the calling thread while the rest wait: at
+        // lMax = 128 a chunk of 16 is 4.3 MB of strided copy, a serial
+        // fraction the colatitude loop cannot hide at 32 threads. A copy,
+        // so the bits are unchanged, and one that cannot throw; the barrier
+        // publishes it to every reader before any colatitude is synthesised.
+        {
+          const auto thread = static_cast<Int>(OpenMP::ThreadNumber());
+          const auto threads = static_cast<Int>(OpenMP::TeamThreads());
+          Gather(coefficientSize * thread / threads,
+                 coefficientSize * (thread + 1) / threads);
+        }
+#pragma omp barrier
+
         using Work =
             std::remove_reference_t<decltype(GetWorkspace<Scalar, false>(
                 nPhi, c, flag_))>;

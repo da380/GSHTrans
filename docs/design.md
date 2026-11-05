@@ -116,12 +116,12 @@ Legendre stage has two implementations, chosen when the grid is made:
   256 contiguous fields, n = 0, `Chunking::Automatic()`, ms per field, the
   old and new builds run back to back:
 
-  | threads | forward, accumulators | forward, degree blocks | inverse |
-  |---|---|---|---|
-  | 1  | 2.89 | 2.88 | 2.43 |
-  | 8  | 0.504 | 0.337 | 0.356 |
-  | 16 | 0.489 | 0.220 | 0.287 |
-  | 32 | 0.418 | 0.114 | 0.186 |
+  | threads | forward, accumulators | forward, degree blocks | inverse, serial gather | inverse, team gather |
+  |---|---|---|---|---|
+  | 1  | 2.89 | 2.88 | 2.43 | 2.49 |
+  | 8  | 0.504 | 0.337 | 0.366 | 0.336 |
+  | 16 | 0.489 | 0.220 | 0.290 | 0.207 |
+  | 32 | 0.418 | 0.114 | 0.184 | 0.106 |
 
   Forward speedup at 32 threads went from 6.9× to 25×; at `ForBand(64, …)`
   from 4.4× (slower than at 8 threads) to 18×. n = ±1, ±2 agree within a few
@@ -132,6 +132,33 @@ Legendre stage has two implementations, chosen when the grid is made:
   1.49 s to 0.45 s per pass, the pass from 2.76 s to 1.57 s, and two whole
   steps from 38.7 s to 22.0 s; at 16 threads 1.70 → 0.91 s, 3.68 → 2.74 s and
   51.6 → 38.4 s. Peak memory is unchanged (34 GB).
+
+  The threaded inverse gathers each chunk's coefficients into
+  `[coefficient][field]` order before synthesising, and that gather is now
+  divided between the team by runs of coefficients. It used to be done by
+  the calling thread while the others waited: 4.3 MB of strided copy per
+  chunk at lMax = 128, a serial fraction that capped the inverse at
+  0.18 ms per field on 32 threads (columns 4 and 5 above, the same day,
+  back to back). At `ForBand(64, …)` and 32 threads it went from 0.057 to
+  0.020 ms. The strided writes were also slower for odd chunks, which is why
+  chunks of 31, 33 and 63 measured 25–40% slower than 32 or 62 for the
+  inverse before the change; after it, every chunk from 16 to 63 is within
+  about 8% in either direction, and 32 shows no cache-set penalty. In
+  sl3dpp's `step_timing` at 32 threads synthesis went from 0.75 s to 0.42 s
+  per pass, the pass from 1.57 s to 1.21 s and two whole steps from 22.0 s to
+  17.0 s; at 16 threads 1.18 → 0.84 s, 2.74 → 2.30 s and 38.4 → 32.2 s. Over
+  both changes, a pass at 32 threads went from 2.76 s to 1.21 s and two
+  steps from 38.7 s to 17.0 s (2.3×), with analysis and synthesis now equal
+  at 0.44 and 0.42 s.
+
+  Placement, same machine (other users loaded it during these runs, so the
+  figures are approximate and only the direction is claimed): 16 threads
+  spread over four CCDs against packed onto two made no difference in
+  either direction; 64 threads over both sockets were *slower* than 32 on
+  one in both directions (forward 0.12 → 0.17, inverse 0.19 → 0.24 ms per
+  field before the gather change), with an interleaved table helping
+  little, and 32 threads spread over both sockets slower still. One process
+  per socket, threads inside it, is the configuration to use.
 - `TransformKernel::Matrix()` does every FFT first and then one pair of GEMMs
   per order against a table laid out `[n][m][l][θ]`. It needs a BLAS, stores
   only half the Wigner values (the other half by the reflection

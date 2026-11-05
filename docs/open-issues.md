@@ -105,24 +105,25 @@ rather than the development laptop.
 
 - **The forward loop kernel's decomposition** is answered for stored tables
   on one socket (`ForwardBlockKernel`; measurements in `design.md` §2.3).
-  Still open: (a) on stored tables the *inverse* is now the slower direction
-  threaded (0.19 against 0.11 ms per field at lMax 128 on 32 threads), and
-  its own chunk rule and colatitude decomposition are the next thing to
-  measure; (b) a threaded forward on *generated* values still keeps private
-  accumulators — the candidate is to generate each colatitude's row once per
-  chunk, threaded over colatitudes, into a chunk-local table and run the
+  The inverse's limit was a serial gather, now divided between the team
+  (same section). Still open: (a) a threaded forward on *generated* values
+  still keeps private accumulators — the candidate is to generate each
+  colatitude's row once per chunk, threaded over colatitudes, into a
+  chunk-local table and run the
   degree-block Legendre stage on it (one n of the table per chunk: 26 MB at
-  lMax 128, 8.6 GB at 1024); (c) across two sockets every thread reads the
-  other socket's Fourier rows, and a two-dimensional split (groups of fields
-  × blocks of coefficients) is the fallback if that shows; (d) a chunk of 32
-  makes the per-colatitude FFT's output stride 512 B, the cache-set hazard
-  `ChooseThetaBlock` guards against, and `Chunking::Count` can return 32
-  (16 MiB at lMax 128); `Fixed(31/32/33)` would settle whether it needs the
-  same guard.
+  lMax 128, 8.6 GB at 1024); (b) one process across two sockets is slower
+  than on one, in both directions, which is not this kernel's doing — a
+  two-dimensional split (groups of fields × blocks of coefficients) would
+  only matter if a single process must span sockets, and nothing needs that
+  yet.
 - **The chunk rule on multi-cache-domain machines.** `Chunking::Count` counts
   the inverse transform's shared block as one copy, but on a multi-CCD or
   multi-socket machine it is pulled into every cache domain that reads it, so
-  the rule is optimistic there.
+  the rule is optimistic there. On one Zen 4 socket (four 32 MB L3s) this
+  measured as nothing: chunks from 16 to 63 are within about 8% in both
+  directions at lMax 64 and 128 (`TransformBenchmark chunk-sweep`, 5 November
+  2026). Whether it matters across sockets is moot while one process per
+  socket is the configuration.
 - **Generated Wigner values across NUMA domains.** Whether generating per
   thread beats streaming a stored table from a remote node has been argued,
   not measured.
@@ -162,6 +163,80 @@ Each wants a decision rather than an edit.
 - **Release pinning.** A release commit should set the four sibling
   dependencies (`GSHTRANS_FFTWPP_TAG` and siblings) to fixed revisions;
   development tracks their `main`. googletest is pinned to a release.
+- **The field layers at an application's scale** (planned 5 November 2026,
+  after the transform threading work). sl3dpp hand-codes its pseudospectral
+  products — a five-real deviatoric strain per point, stacked over ~10³
+  radial nodes, multiplied by a pointwise weight between batched spin
+  transforms — rather than using `SpinField`, the layered fields or
+  `TensorField`. Its view of why, and what would change that, is in
+  `docs/gshtrans-notes-2026-11-04.md` §3c; the first step is a read-only
+  assessment of those headers against sl3dpp's `GridCoupling` that confirms
+  or corrects it. The candidates, in that note's order of payoff:
+  1. a layered `Expand` that takes a layered expression node (a stack times
+     a pointwise weight, say), evaluated slice by slice into the batch
+     buffer before one batched transform — removes a pass over a 4 GB grid
+     tensor at lMax 128 and sl3dpp's hand-written multiply loops;
+  2. caller-supplied buffers (`Into` forms) on the layered transforms;
+  3. a ragged batch (a per-slice degree), for depth-truncated node blocks;
+  4. `GridCoupling`'s tensor as a `LayeredTensorField<2, Symmetric, Real>`,
+     worth it when a rank-4 pointwise weight arrives (the relabelling work),
+     not before.
+  Beyond item 1 is a fully fused synthesise → weight → analyse kernel that
+  never holds more of the grid tensor than one chunk of latitude rows: a
+  kernel project, not an API one, whose case is memory traffic and peak
+  memory (34 GB in sl3dpp's step at lMax 128), not flops — the pointwise
+  multiply itself is 0.03 s of a 1.57 s pass. The assessment should estimate
+  what each would save on that step before either is built.
+- **A small parallel-loop layer** ("RAJA, but simpler"), to be designed with
+  the field-layer work above. The kernels repeat one pattern — the
+  `RunInParallel` decision, `num_threads(ThreadCount(policy))`,
+  `ExceptionCapture` around set-up, a static split of a range, every thread
+  reaching the barrier — and pointwise work over stacked grids (a product at
+  every node of every slice, local tensor contractions) will repeat it
+  again. Sketch: `ForEach(policy, n, body(i))`; `ForEachBlock(policy, n,
+  body(begin, end))`, the form that vectorises; a stacked form that flattens
+  radius × point into one range so a 10³-slice stack is one loop, not 10³;
+  and `Reduce` with a fixed partition and fixed combine order, so results
+  are bitwise independent of the thread count. It keeps the library's rules
+  (one level via `Execution::TeamSize`, exceptions captured, static
+  contiguous blocks for first touch, nothing when OpenMP is off), lives in
+  Core beside `OpenMP.hpp`, and is a few function templates, not a framework.
+  `std::execution::par` is not the route: it needs TBB under GCC and knows
+  nothing of either rule. A layered `Expand(node)` is the first user: its
+  evaluation into the batch buffer is exactly the stacked loop. Start by
+  listing the loops in GSHTrans and sl3dpp that would use it.
+
+  The layer is for user code as much as for the library, and serves two
+  separate aims. One is *functionality users need not write*: the loops,
+  the deterministic `Reduce`, and the threading and exception rules that
+  come with them, so an application's pointwise work is a lambda, not a
+  hand-written region. The other is *working with the user's own
+  structures*: the loops take the application's layouts, strides, buffers
+  and decomposition, not only the library's types, so a code with its own
+  stacks or its own MPI layout can use them without first converting to
+  GSHTrans's. The batched transform's `Batch` descriptor already works this
+  way for strides; the loop layer should do the same for ownership.
+
+  **MPI, as an option.** Not in the loop: ranks share no memory, so a loop
+  cannot hand iterations to another rank. MPI enters through *ownership*
+  and *reduction*.
+  - Ownership: a range over a stack knows its global extent and which slices
+    this rank holds; `ForEach` runs over the local ones, with threads inside
+    (one process per socket, as measured in `design.md` §2.3). The loop is
+    written the same way on one rank or many. GSHTrans *accepts* the
+    decomposition ("my slices are r0..r1 of N") from the application rather
+    than imposing one: sl3dpp already distributes radial segments over
+    ranks, and a second owner would fight it.
+  - Reduction: local, then across ranks. `MPI_Allreduce` does not promise the
+    same bits for different rank counts, so the deterministic form splits the
+    global range into fixed blocks independent of ranks and threads, sums
+    each block where it lives, gathers the per-block partials and combines
+    them in block order: bitwise the same for any number of ranks and
+    threads, for one small gather.
+  - Packaging: Core stays free of MPI. The ownership descriptor and a
+    pluggable cross-rank combine step live in Core with no MPI dependency; an
+    optional header behind a CMake option supplies the MPI one. A build
+    without MPI sees nothing of it.
 
 ## 7. A Python interface
 
