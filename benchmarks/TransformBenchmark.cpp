@@ -292,7 +292,8 @@ std::vector<int> ThreadLadder() {
 // The thread counts a section walks: GSHTRANS_BENCH_THREADS, a
 // comma-separated list such as "32,64", when it is set, so that a targeted
 // run (two sockets, a placement experiment) needs no rebuild; `fallback`
-// otherwise. Only the `forward-threading` and `chunk-sweep` sections read it.
+// otherwise. The `forward-threading`, `chunk-sweep` and `degree-sweep`
+// sections read it.
 std::vector<int> ThreadsOr(std::vector<int> fallback) {
   const auto* text = std::getenv("GSHTRANS_BENCH_THREADS");
   if (text == nullptr || *text == '\0') return fallback;
