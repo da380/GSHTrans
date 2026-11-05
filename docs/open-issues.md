@@ -124,6 +124,14 @@ rather than the development laptop.
   directions at lMax 64 and 128 (`TransformBenchmark chunk-sweep`, 5 November
   2026). Whether it matters across sockets is moot while one process per
   socket is the configuration.
+- **The default cache figure.** `Chunking::DefaultCacheBytes` (8 MiB) costs
+  14–26% at bands 256–384 against 32 MiB on one Zen 4 socket, and nothing
+  measured on this machine argues for keeping it small now that neither
+  direction keeps per-thread copies of a stored-table block (`design.md`
+  §2.4). The floor of four covers the collapse at band 512. Run
+  `TransformBenchmark chunk-sweep` and `degree-sweep` on a laptop (8–16 MB
+  L3) with the current kernels; if 32 MiB costs nothing there either, raise
+  the default.
 - **Generated Wigner values across NUMA domains.** Whether generating per
   thread beats streaming a stored table from a remote node has been argued,
   not measured.

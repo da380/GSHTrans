@@ -250,13 +250,18 @@ TEST(Chunking, TheDefaultIsConservative) {
   EXPECT_EQ(automatic.Count(bytesAt256, 1), 4);
   EXPECT_EQ(automatic.Count(bytesAt128, 1), 16);
 
-  // At lMax = 512 one field's coefficients already fill the assumed cache, so
-  // there is nothing to batch and the floor holds.
-  EXPECT_EQ(automatic.Count(bytesAt512, 1), 1);
+  // At lMax = 512 one field's coefficients already fill the assumed cache.
+  // For a shared block the floor holds the chunk at four, where a chunk of
+  // one measured 1.7x slower (the Wigner table streamed once per field)...
+  EXPECT_EQ(automatic.Count(bytesAt512, 1), Chunking::MinimumSharedCount);
+  EXPECT_EQ(Chunking::ForCache(1).Count(bytesAt256, 1),
+            Chunking::MinimumSharedCount);
 
-  // Never zero, however little cache is assumed to be going spare.
+  // ...but private copies keep the cache rule, since there a larger chunk
+  // multiplies the memory per thread. Never zero, however little cache is
+  // assumed to be going spare.
   EXPECT_EQ(automatic.Count(bytesAt512, 64), 1);
-  EXPECT_EQ(Chunking::ForCache(1).Count(bytesAt256, 1), 1);
+  EXPECT_EQ(Chunking::ForCache(1).Count(bytesAt256, 2), 1);
 }
 
 TEST(Chunking, FixedDefeatsTheHeuristic) {

@@ -1882,17 +1882,17 @@ int main(int argc, char** argv) {
   //
   // The sl3dpp shape (ForBand(band, 0, 1.5), stored, loop kernel, complex,
   // n = 0) at bands from 96 to 512, chosen to mix powers of two with values
-  // between them. The longitude count is 2 lMax + 1 on the grid's degree, so
-  // several are awkward for FFTW: 601, 769 and 1153 are prime, 481 = 13 x 37,
-  // 1537 = 29 x 53. Two questions: whether the time per field grows smoothly
-  // with degree (the per-band^3 column should be roughly flat if the Legendre
-  // sum dominates), and where the chunk rule's 8 MiB default leaves batching
-  // behind -- one field's coefficients are 4.2 MB at band 512, so
-  // Automatic() takes a chunk of one there, against ForCache(32 MiB)'s four.
+  // between them. (The grid picks an FFT-friendly longitude count rather than
+  // 2 lMax + 1 -- 616 = 2^3.7.11, 1155 = 3.5.7.11, 1540 = 2^2.5.7.11 -- so
+  // the degree itself is free to be anything.) Two questions: whether the
+  // time per field grows smoothly with degree (the per-band^3 column should
+  // be roughly flat if the Legendre sum dominates), and where the chunk
+  // rule's 8 MiB default leaves batching behind -- one field's coefficients
+  // are 4.2 MB at band 512, so Automatic() takes a chunk of one there,
+  // against ForCache(32 MiB)'s four.
   //
   // fft is the forward call truncated to degree 0 on the auto grid: the whole
-  // FFT stage and almost no Legendre work, so it shows when an awkward
-  // longitude count matters. ms per field; batch of 64; one table per band,
+  // FFT stage and almost no Legendre work. ms per field; batch of 64; one table per band,
   // shared by both chunkings through With(). Threads from
   // GSHTRANS_BENCH_THREADS, default 8 and 32. Run only when named: the band
   // 512 table is 3.6 GB.
