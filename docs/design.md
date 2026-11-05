@@ -3,8 +3,8 @@
 How the library is put together, and why it is put together that way. This
 document is about the software. The mathematics, the conventions and the
 numerical methods are in `gshtrans-reference.tex` (and its PDF); how to use the
-library is in `README.md` and the numbered `examples/`; what is still open is
-in `open-issues.md`.
+library is in `README.md` and the numbered `examples/`; what it deliberately
+does not do is in `limitations.md`.
 
 The intended use sets the priorities throughout: real rank-2 and rank-4 tensor
 fields, layered Earth models, Release builds, and a many-core shared-memory
@@ -326,14 +326,14 @@ bound for every shape tried. `Wigner`, `WignerMatrices`, the grid and the
 spectral interpolant all refuse a degree above their shape's ceiling (the grid
 because a generating grid has no table to do the refusing). Above it the table
 would be wrong by order one with no sign of trouble. Extending the range (an
-exponent carried per column) is known and not built; see `open-issues.md`.
+exponent carried per column) is known and not built; see `limitations.md`.
 
 The seeds themselves — the seed row's powers and the boundary values run up
 the degrees — are long products of factors below one, carried with an
 exponent of their own (`ScaledProduct`) and rounded to `Real` once. Kept in
-`Real`, a product that went denormal stuck at the smallest denormal whenever
-the next factor exceeded one half, and the column seeded from it came back as
-numbers of order `10^100` (seen at `|n| = 1300`, degree 1650).
+`Real`, a product that goes denormal sticks at the smallest denormal whenever
+the next factor exceeds one half, and the column seeded from it comes back as
+numbers of order `10^100` (at `|n| = 1300`, degree 1650).
 
 The seed row's binomial is formed directly while it fits (`|n| ≤ 508` in
 double) and from logarithms above, without `lgamma`, whose global state is a
@@ -466,8 +466,7 @@ up to lMax of a few hundred, which is why there is no persistence layer.
 
 ## 9. Testing and measurement
 
-These are rules for working on the library. Each one is here because ignoring
-it has produced a wrong conclusion.
+These are rules for working on the library.
 
 **Testing**
 

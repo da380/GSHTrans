@@ -38,7 +38,7 @@ Further documentation:
   conventions and the numerical methods; the authority the code defers to.
 * `docs/design.md` — how the software is organised and why: ownership,
   threading, errors, numerics, and the rules for testing and benchmarking it.
-* `docs/open-issues.md` — known limitations, open questions and planned work.
+* `docs/limitations.md` — what the library deliberately does not do.
 * `examples/` — a numbered tutorial series; `examples/README.md` lists it.
 
 ## The spin-field algebra
@@ -448,7 +448,7 @@ GSHTrans/Tensor/       tensor fields and their algebra
 GSHTrans/Expansion/    the spectral side
 GSHTrans/Layered/      three-dimensional fields
 GSHTrans/All, Core     forwarding headers to GSHTrans.hpp and Core.hpp
-docs/                  the mathematical reference, the design notes, open issues
+docs/                  the mathematical reference, the design notes, known limitations
 tests/  examples/  benchmarks/  scripts/
 ```
 
