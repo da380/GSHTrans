@@ -455,15 +455,28 @@ void EvaluateOne(Result& result, const Expansion& expansion, Execution policy,
 
 // One batched transform per stored component: nR fields at a time, rather than
 // one field at a time as a loop over radii and components would give.
+//
+// As for a layered spin field, each direction has a form writing into a
+// tensor stack the caller holds, which allocates nothing and takes its degree
+// from the expansion, and a returning form that is the first applied to a new
+// result.
+
+/**
+ * @brief Expands every stored component of @p field into @p out, to @p out's
+ * degree.
+ * @throws std::invalid_argument if the two are not on the same grids.
+ */
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
           TensorReality Reality, AngularGrid Grid, SlotAlphabet SlotSet>
-auto Expand(
+void Expand(
     const LayeredTensorField<Rank, Symmetry, Reality, Grid, SlotSet>& field,
-    std::ptrdiff_t lMax, Execution policy = Execution::Sequential()) {
+    LayeredTensorExpansion<Rank, Symmetry, Reality, Grid, SlotSet>& out,
+    Execution policy = Execution::Sequential()) {
   using Result = LayeredTensorExpansion<Rank, Symmetry, Reality, Grid, SlotSet>;
   using Flat = typename Result::Flat;
 
-  auto result = Result(field.Radial(), field.Grid(), lMax);
+  LayeredDetails::CheckSameGrids(field, out);
+  const auto lMax = static_cast<std::ptrdiff_t>(out.MaxDegree());
   [&]<std::size_t... Slots>(std::index_sequence<Slots...>) {
     (
         [&] {
@@ -471,24 +484,40 @@ auto Expand(
           constexpr auto indices =
               MultiIndex<Rank, SlotSet>::FromFlat(flat).Slots();
           LayeredDetails::ExpandOne<indices>(
-              result, field, lMax, policy,
+              out, field, lMax, policy,
               std::make_index_sequence<static_cast<std::size_t>(Rank)>{});
         }(),
         ...);
   }(std::make_index_sequence<static_cast<std::size_t>(
         Result::StoredComponents)>{});
+}
+
+/** @brief Expands every stored component of @p field to degree @p lMax. */
+template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
+          TensorReality Reality, AngularGrid Grid, SlotAlphabet SlotSet>
+auto Expand(
+    const LayeredTensorField<Rank, Symmetry, Reality, Grid, SlotSet>& field,
+    std::ptrdiff_t lMax, Execution policy = Execution::Sequential()) {
+  auto result = LayeredTensorExpansion<Rank, Symmetry, Reality, Grid, SlotSet>(
+      field.Radial(), field.Grid(), lMax);
+  Expand(field, result, policy);
   return result;
 }
 
+/**
+ * @brief Evaluates every stored component of @p expansion into @p out.
+ * @throws std::invalid_argument if the two are not on the same grids.
+ */
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
           TensorReality Reality, AngularGrid Grid, SlotAlphabet SlotSet>
-auto Evaluate(const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid,
+void Evaluate(const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid,
                                            SlotSet>& expansion,
+              LayeredTensorField<Rank, Symmetry, Reality, Grid, SlotSet>& out,
               Execution policy = Execution::Sequential()) {
   using Result = LayeredTensorField<Rank, Symmetry, Reality, Grid, SlotSet>;
   using Flat = typename Result::Flat;
 
-  auto result = Result(expansion.Radial(), expansion.Grid());
+  LayeredDetails::CheckSameGrids(out, expansion);
   [&]<std::size_t... Slots>(std::index_sequence<Slots...>) {
     (
         [&] {
@@ -496,12 +525,23 @@ auto Evaluate(const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid,
           constexpr auto indices =
               MultiIndex<Rank, SlotSet>::FromFlat(flat).Slots();
           LayeredDetails::EvaluateOne<indices>(
-              result, expansion, policy,
+              out, expansion, policy,
               std::make_index_sequence<static_cast<std::size_t>(Rank)>{});
         }(),
         ...);
   }(std::make_index_sequence<static_cast<std::size_t>(
         Result::StoredComponents)>{});
+}
+
+/** @brief Evaluates every stored component of @p expansion. */
+template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
+          TensorReality Reality, AngularGrid Grid, SlotAlphabet SlotSet>
+auto Evaluate(const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid,
+                                           SlotSet>& expansion,
+              Execution policy = Execution::Sequential()) {
+  auto result = LayeredTensorField<Rank, Symmetry, Reality, Grid, SlotSet>(
+      expansion.Radial(), expansion.Grid());
+  Evaluate(expansion, result, policy);
   return result;
 }
 

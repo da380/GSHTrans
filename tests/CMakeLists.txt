@@ -98,6 +98,10 @@ add_executable(TestParallel
                TestParallel.cpp)
 target_link_libraries(TestParallel PRIVATE GSHTrans gtest_main)
 
+add_executable(TestWritingForms
+               TestWritingForms.cpp)
+target_link_libraries(TestWritingForms PRIVATE GSHTrans gtest_main)
+
 # Every core header must compile on its own, and twice.
 # One translation unit per header, generated at configure time.
 #
@@ -225,3 +229,4 @@ gtest_discover_tests(TestWigner)
 gtest_discover_tests(TestGaussLegendreGrid)
 gtest_discover_tests(TestRealFieldSymmetry)
 gtest_discover_tests(TestParallel)
+gtest_discover_tests(TestWritingForms)

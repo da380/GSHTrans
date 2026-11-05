@@ -291,26 +291,77 @@ class LayeredSpinExpansion {
 // A batch shares grid, degree and upper index. A stack of one field's slices
 // shares all three by construction, which is why the radial axis is the batch
 // axis and no other axis of a three-dimensional problem is.
+//
+// Each comes in two forms, as the two-dimensional Expand and Evaluate do: one
+// writing into a stack the caller already holds, which allocates nothing and
+// takes its degree from that stack, and one returning a new stack, which is
+// the first applied to a new result.
+
+namespace LayeredDetails {
+
+// The two stacks of a transform must be on the same grids: a stack on other
+// radii would claim values at radii they were not computed for, and one on
+// another angular grid of the same size would pair samples with the wrong
+// points. Equal sizes would let either through in silence.
+template <typename A, typename B>
+void CheckSameGrids(const A& a, const B& b) {
+  if (a.Radial().Identity() != b.Radial().Identity() ||
+      a.Grid().Identity() != b.Grid().Identity()) {
+    throw std::invalid_argument(
+        "A layered field and the expansion it is transformed to or from must "
+        "be on the same radial and angular grids");
+  }
+}
+
+}  // namespace LayeredDetails
+
+/**
+ * @brief Expands every radius of @p field into @p out, to @p out's degree.
+ * @throws std::invalid_argument if the two are not on the same grids.
+ */
+template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
+void Expand(const LayeredSpinField<N, Grid, Value>& field,
+            LayeredSpinExpansion<N, Grid, Value>& out,
+            Execution policy = Execution::Sequential()) {
+  LayeredDetails::CheckSameGrids(field, out);
+  auto target = out.Data();
+  field.Grid().ForwardTransformation(out.MaxDegree(), N, field.Data(),
+                                     field.Batch(), target, out.Batch(),
+                                     policy);
+}
+
+/** @brief Expands every radius of @p field to degree @p lMax. */
 template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
 auto Expand(const LayeredSpinField<N, Grid, Value>& field, std::ptrdiff_t lMax,
             Execution policy = Execution::Sequential()) {
   auto expansion =
       LayeredSpinExpansion<N, Grid, Value>(field.Radial(), field.Grid(), lMax);
-  auto out = expansion.Data();
-  field.Grid().ForwardTransformation(lMax, N, field.Data(), field.Batch(), out,
-                                     expansion.Batch(), policy);
+  Expand(field, expansion, policy);
   return expansion;
 }
 
+/**
+ * @brief Evaluates every radius of @p expansion into @p out.
+ * @throws std::invalid_argument if the two are not on the same grids.
+ */
+template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
+void Evaluate(const LayeredSpinExpansion<N, Grid, Value>& expansion,
+              LayeredSpinField<N, Grid, Value>& out,
+              Execution policy = Execution::Sequential()) {
+  LayeredDetails::CheckSameGrids(out, expansion);
+  auto target = out.Data();
+  expansion.Grid().InverseTransformation(expansion.MaxDegree(), N,
+                                         expansion.Data(), expansion.Batch(),
+                                         target, out.Batch(), policy);
+}
+
+/** @brief Evaluates every radius of @p expansion. */
 template <std::ptrdiff_t N, AngularGrid Grid, RealOrComplexValued Value>
 auto Evaluate(const LayeredSpinExpansion<N, Grid, Value>& expansion,
               Execution policy = Execution::Sequential()) {
   auto field =
       LayeredSpinField<N, Grid, Value>(expansion.Radial(), expansion.Grid());
-  auto out = field.Data();
-  expansion.Grid().InverseTransformation(expansion.MaxDegree(), N,
-                                         expansion.Data(), expansion.Batch(),
-                                         out, field.Batch(), policy);
+  Evaluate(expansion, field, policy);
   return field;
 }
 

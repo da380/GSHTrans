@@ -281,6 +281,118 @@ concept SpinCoefficients =
 // transform is the grid's, and these only arrange the call. They are also the
 // point at which a field's Value decides which of the transform's two paths
 // runs -- a real field through the real one, with its reduced m >= 0 storage.
+//
+// Each comes in two forms. The returning form allocates its result. The
+// writing form takes the result as an argument -- an owning object kept from
+// call to call, or a view over the caller's own storage -- and allocates
+// nothing; the degree is the result's. The returning form is the writing form
+// applied to a new result, so the two give the same bits.
+
+namespace SpinExpansionDetails {
+
+// A field or view of upper index N and value kind V, whose storage can be
+// written: what the writing Evaluate fills.
+template <typename T, std::ptrdiff_t N, typename V>
+concept WritableSpinField =
+    SpinWeighted<T> && (T::UpperIndex == N) &&
+    std::same_as<typename T::Value, V> && requires(T& t) {
+      { t.Data() } -> std::same_as<std::span<typename T::Scalar>>;
+    };
+
+// Coefficients of upper index N and value kind V whose storage can be
+// written: what the writing Expand fills.
+template <typename T, std::ptrdiff_t N, typename V>
+concept WritableSpinCoefficients =
+    SpinCoefficients<T> && (T::UpperIndex == N) &&
+    std::same_as<typename T::Value, V> && requires(T& t) {
+      {
+        t.Data()
+      } -> std::same_as<std::span<std::complex<typename T::GridType::Real>>>;
+    };
+
+// The separation of successive samples in a field's storage: a view's stride,
+// one for anything else.
+template <typename T>
+std::ptrdiff_t StrideOf(const T& field) {
+  if constexpr (requires { field.Stride(); }) {
+    return field.Stride();
+  } else {
+    return 1;
+  }
+}
+
+// One field of `size` samples, `stride` apart, as a batch descriptor.
+inline Batch SingleField(std::ptrdiff_t size, std::ptrdiff_t stride) {
+  return stride == 1 ? Batch::One(size)
+                     : Batch::Strided(1, stride, size * stride);
+}
+
+// Hand `run` a field's samples as the transform reads them, with the batch
+// descriptor that says where they are. An owning field or a view is read in
+// place, at its stride; an expression is evaluated into per-thread scratch,
+// which is kept between calls so that a repeated transform allocates nothing.
+template <typename F, typename Run>
+void WithSamples(const F& field, Run&& run) {
+  const auto size = field.Grid().FieldSize();
+  if constexpr (requires { field.Data(); } &&
+                (IsTerminal<F> || requires { field.Stride(); })) {
+    run(field.Data(), SingleField(size, StrideOf(field)));
+  } else {
+    thread_local auto scratch = std::vector<typename F::Scalar>{};
+    if (scratch.size() < static_cast<std::size_t>(size)) {
+      scratch.resize(static_cast<std::size_t>(size));
+    }
+    auto samples = std::span(scratch.data(), static_cast<std::size_t>(size));
+    field.EvaluateInto(samples);
+    run(std::span<const typename F::Scalar>(samples), Batch::One(size));
+  }
+}
+
+template <typename A, typename B>
+void CheckSameGrid(const A& a, const B& b) {
+  if (a.Grid().Identity() != b.Grid().Identity()) {
+    throw std::invalid_argument(
+        "A field and the expansion it is transformed to or from must be on "
+        "the same grid");
+  }
+}
+
+}  // namespace SpinExpansionDetails
+
+/**
+ * @brief Expands a field, writing into @p out.
+ * @details The degree is @p out's. @p field may be an owning field, a view
+ * (read in place at its stride) or a lazy expression (evaluated into
+ * per-thread scratch first).
+ * @param field What to expand.
+ * @param out Where the coefficients go: a SpinExpansion, or a writable
+ * SpinExpansionView over the caller's storage.
+ * @param policy Whether the transform may thread.
+ * @throws std::invalid_argument if the two are not on the same grid.
+ */
+template <typename FieldType, typename OutType>
+requires SpinWeighted<std::remove_cvref_t<FieldType>> &&
+         SpinExpansionDetails::WritableSpinCoefficients<
+             std::remove_cvref_t<OutType>,
+             std::remove_cvref_t<FieldType>::UpperIndex,
+             typename std::remove_cvref_t<FieldType>::Value>
+void Expand(const FieldType& field, OutType&& out,
+            Execution policy = Execution::Sequential()) {
+  using F = std::remove_cvref_t<FieldType>;
+  SpinExpansionDetails::CheckSameGrid(field, out);
+  auto target = out.Data();
+  const auto lMax = static_cast<std::ptrdiff_t>(out.MaxDegree());
+  SpinExpansionDetails::WithSamples(field, [&](auto samples, Batch batch) {
+    field.Grid().ForwardTransformation(
+        lMax, F::UpperIndex, samples, batch, target,
+        Batch::One(static_cast<std::ptrdiff_t>(target.size())), policy);
+  });
+}
+
+/**
+ * @brief Expands a field to degree @p lMax.
+ * @return A new SpinExpansion.
+ */
 template <typename FieldType>
 requires SpinWeighted<std::remove_cvref_t<FieldType>>
 auto Expand(const FieldType& field, std::ptrdiff_t lMax,
@@ -289,22 +401,43 @@ auto Expand(const FieldType& field, std::ptrdiff_t lMax,
   auto expansion =
       SpinExpansion<F::UpperIndex, typename F::GridType, typename F::Value>(
           field.Grid(), lMax);
-  auto values = std::vector<typename F::Scalar>(
-      static_cast<std::size_t>(field.Grid().FieldSize()));
-  field.EvaluateInto(std::span(values));
-  auto out = expansion.Data();
-  field.Grid().ForwardTransformation(lMax, F::UpperIndex, values, out, policy);
+  Expand(field, expansion, policy);
   return expansion;
 }
 
+/**
+ * @brief Evaluates an expansion on its grid, writing into @p out.
+ * @param expansion The coefficients, to their own degree.
+ * @param out Where the samples go: a SpinField, or a writable SpinFieldView
+ * over the caller's storage, at any stride.
+ * @param policy Whether the transform may thread.
+ * @throws std::invalid_argument if the two are not on the same grid.
+ */
+template <SpinCoefficients E, typename OutType>
+requires SpinExpansionDetails::WritableSpinField<
+    std::remove_cvref_t<OutType>, E::UpperIndex, typename E::Value>
+void Evaluate(const E& expansion, OutType&& out,
+              Execution policy = Execution::Sequential()) {
+  SpinExpansionDetails::CheckSameGrid(expansion, out);
+  auto target = out.Data();
+  expansion.Grid().InverseTransformation(
+      expansion.MaxDegree(), E::UpperIndex, expansion.Data(),
+      Batch::One(static_cast<std::ptrdiff_t>(expansion.Data().size())), target,
+      SpinExpansionDetails::SingleField(out.Grid().FieldSize(),
+                                        SpinExpansionDetails::StrideOf(out)),
+      policy);
+}
+
+/**
+ * @brief Evaluates an expansion on its grid.
+ * @return A new SpinField.
+ */
 template <SpinCoefficients E>
 auto Evaluate(const E& expansion, Execution policy = Execution::Sequential()) {
   auto field =
       SpinField<E::UpperIndex, typename E::GridType, typename E::Value>(
           expansion.Grid());
-  auto out = field.Data();
-  expansion.Grid().InverseTransformation(expansion.MaxDegree(), E::UpperIndex,
-                                         expansion.Data(), out, policy);
+  Evaluate(expansion, field, policy);
   return field;
 }
 

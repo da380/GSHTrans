@@ -411,6 +411,21 @@ another are covered in the reference. An expansion too short to carry a
 gradient's output returns zero at the lowest degree that can hold it rather
 than refusing.
 
+Every transform between the two domains comes in two forms: `Expand(field,
+lMax)` and `Evaluate(expansion)` return a new result, and `Expand(field, out)`
+and `Evaluate(expansion, out)` write into one the caller holds, taking the
+degree from `out` and allocating nothing. The same pairs exist for layered
+fields, flat and layered tensors, and radial lines (`ExpandToLines(field,
+lMax, out)`, `EvaluateLines(lines, lMax, out)`). The returning form is the
+writing form applied to a new result, so the two give the same bits. A
+writing form refuses a result on another grid — the same radial and angular
+grids, not merely equal sizes. In the flat spin case `out` may be a view over
+the caller's own storage, and the field may be one too: a `SpinFieldView` is
+read and written in place at its stride through the batch descriptor, with no
+copy, and a lazy expression is evaluated into per-thread scratch kept between
+calls. This is the form for a code that keeps its workspaces from one
+transform to the next.
+
 ### 4.5 Interpolation
 
 `Interpolate(field, scheme)` returns a callable of `(θ, φ)` that is itself a
