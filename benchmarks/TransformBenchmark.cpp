@@ -600,7 +600,7 @@ int main(int argc, char** argv) {
   // file, make then sees nothing to do, and the previous harness produces a
   // log that looks entirely plausible. The script's `expected` must be bumped
   // with this.
-  constexpr auto revision = 12;
+  constexpr auto revision = 13;
 
   if (argc == 2 && std::string(argv[1]) == "--check") {
     std::printf("harness revision %d\n", revision);
@@ -618,7 +618,7 @@ int main(int argc, char** argv) {
       "sections run by default: stream (or roof) grid transforms threading "
       "batching generated kernels interpolation tuning\n"
       "sections run only when named: kernels-loop kernels-matrix server "
-      "lines huge\n");
+      "lines huge forward-threading\n");
 
   // An unoptimised build measures nothing, and the default build directory is
   // one: `cmake -S . -B build` leaves CMAKE_BUILD_TYPE empty, which is fine
@@ -1694,5 +1694,98 @@ int main(int argc, char** argv) {
         "FFT\n"
         "work, negligible Legendre work. Leg is the difference. GB/s is the\n"
         "Wigner bytes that call streams divided by the Legendre time.\n");
+  }
+
+  //------------------------------------------------------------------------//
+  //          Batched transforms against threads (forward threading)        //
+  //------------------------------------------------------------------------//
+  //
+  // The shape sl3dpp's step uses: a 3/2-oversampled grid for band lBand
+  // (GaussLegendreGrid::ForBand(lBand, 2, 1.5)), stored Wigner values, the
+  // loop kernel, complex fields, and one batched call of a few hundred
+  // contiguous fields at each upper index n = -2..2, transformed at degree
+  // lBand. Written for docs/forward-threading-brief.md: the question is
+  // whether the forward direction scales with threads inside one call, and
+  // the inverse beside it is the control, since it has no accumulator.
+  //
+  // Two chunking policies per row: Automatic() (8 MiB, what sl3dpp uses) and
+  // ForCache(32 MiB), one Zen 4 CCD's L3, which separates what the chunk rule
+  // costs from what the decomposition costs. chunk(fwd) is the chunk the
+  // forward direction picks at that thread count; the inverse's is the
+  // one-thread figure. Times are per field, in ms. Run only when named.
+  if (WantNamed("forward-threading")) {
+    PrintHeader("Batched transforms against threads (sl3dpp shape)");
+    constexpr Int batch = 256;
+    constexpr Int nMax = 2;
+    constexpr Int ccdCache = Int{32} << 20;
+    std::printf(
+        "\nForBand(lBand, 2, 1.5) grid, stored, loop kernel, complex, "
+        "batch %zd contiguous.\nms per field; auto = Chunking::Automatic(), "
+        "ccd = Chunking::ForCache(32 MiB).\n",
+        batch);
+    for (auto lBand : {Int{64}, Int{128}}) {
+      using Grid = GaussLegendreGrid<Real, All, All>;
+      auto automatic = Grid::ForBand(lBand, nMax, 1.5, FFTWpp::Measure,
+                                     Chunking::Automatic());
+      auto ccd = Grid::ForBand(lBand, nMax, 1.5, FFTWpp::Measure,
+                               Chunking::ForCache(ccdCache));
+      const auto fieldSize = automatic.FieldSize();
+      std::printf("\nlBand = %zd, grid lMax = %zd (%zd x %zd points)\n\n",
+                  lBand, automatic.MaxDegree(),
+                  automatic.NumberOfCoLatitudes(),
+                  automatic.NumberOfLongitudes());
+      std::printf("%4s %8s %6s %6s %10s %10s %10s %10s %8s %8s\n", "n",
+                  "threads", "chunkA", "chunkC", "fwd auto", "fwd ccd",
+                  "inv auto", "inv ccd", "fwd/inv", "fwdSpd");
+      for (auto n = -nMax; n <= nMax; ++n) {
+        const auto coefficientSize =
+            static_cast<Int>(automatic.CoefficientSize(lBand, n));
+        auto fields = FFTWpp::vector<Complex>(batch * fieldSize);
+        auto coefficients = FFTWpp::vector<Complex>(batch * coefficientSize);
+        for (auto i = Int{0}; i < batch * fieldSize; ++i) {
+          fields[i] = Complex{0.5 + 0.001 * (i % 997), -0.25 + 0.002 * (i % 991)};
+        }
+        const auto fb = Batch::Contiguous(batch, fieldSize);
+        const auto cb = Batch::Contiguous(batch, coefficientSize);
+        const auto bytesPerField =
+            coefficientSize * static_cast<Int>(sizeof(Complex));
+        auto forwardBase = 0.0;
+        for (auto threads : {1, 8, 16, 32}) {
+          const auto policy = threads == 1 ? Execution::Sequential()
+                                           : Execution::Parallel(threads);
+          auto Time = [&](auto& grid, bool forward) {
+            return TimePerCall(
+                       [&] {
+                         if (forward) {
+                           grid.ForwardTransformation(lBand, n, fields, fb,
+                                                      coefficients, cb, policy);
+                         } else {
+                           grid.InverseTransformation(lBand, n, coefficients,
+                                                      cb, fields, fb, policy);
+                         }
+                       },
+                       0.3, 3) /
+                   static_cast<double>(batch);
+          };
+          const auto fa = Time(automatic, true);
+          const auto fc = Time(ccd, true);
+          const auto ia = Time(automatic, false);
+          const auto ic = Time(ccd, false);
+          if (threads == 1) forwardBase = fa;
+          std::printf("%4zd %8d %6zd %6zd %10.4f %10.4f %10.4f %10.4f %7.2fx "
+                      "%7.2fx\n",
+                      n, threads,
+                      Chunking::Automatic().Count(bytesPerField, threads),
+                      Chunking::ForCache(ccdCache).Count(bytesPerField,
+                                                         threads),
+                      fa * 1e3, fc * 1e3, ia * 1e3, ic * 1e3, fa / ia,
+                      forwardBase / fa);
+          std::fflush(stdout);
+        }
+      }
+    }
+    std::printf(
+        "\nfwd/inv and fwdSpd (forward speedup over one thread) are for the "
+        "auto\ncolumns, which is sl3dpp's configuration.\n");
   }
 }

@@ -754,7 +754,6 @@ TEST(GaussLegendreGrid, ParallelAgreesWithSequential) {
   using Grid = GaussLegendreGrid<Real, All, All>;
   constexpr std::ptrdiff_t lMax = 24;
   constexpr std::ptrdiff_t n = 2;
-  constexpr auto tolerance = 1.0e-12;
 
   auto grid = Grid(lMax, n, FFTWpp::Estimate);
   const auto indices = GSHIndices<All>(lMax, lMax, n);
@@ -783,12 +782,81 @@ TEST(GaussLegendreGrid, ParallelAgreesWithSequential) {
 
     auto coefficients = FFTWpp::vector<Complex>(indices.Size());
     grid.ForwardTransformation(lMax, n, field, coefficients, policy);
-    // The forward transform sums the colatitudes in a different order, so
-    // this is close and not exact.
+    // On a stored table the forward transform's threads divide the
+    // coefficients and each sums the colatitudes in the sequential order, so
+    // this is exact too. (A generating grid's threaded forward is only close:
+    // see GeneratingGrid.BatchedAndParallelCallsAgreeExactly.)
     for (auto j = std::size_t{0}; j < coefficients.size(); ++j) {
-      EXPECT_NEAR(std::abs(coefficients[j] - coefficientsSequential[j]), 0.0,
-                  tolerance)
+      EXPECT_EQ(coefficients[j], coefficientsSequential[j])
           << threads << " threads, coefficient " << j;
+    }
+  }
+}
+
+// The degree-block forward kernel's promise: on a stored table a threaded
+// forward transform gives the sequential bits, whatever the thread count.
+// Uneven thread counts split the colatitudes and the coefficients unevenly;
+// more threads than degrees leaves some threads no coefficients; a batch of
+// seven in chunks of three ends on a short chunk; the call's degree below the
+// grid's exercises truncation; and both planner flags are run, since the
+// promise also rests on every thread's plan of one shape giving the same
+// bits.
+TEST(GaussLegendreGrid, ForwardThreadingIsBitwiseDeterministic) {
+  using Real = double;
+  using Complex = std::complex<Real>;
+  constexpr auto count = std::ptrdiff_t{7};
+
+  const auto Check = [&](auto grid, auto scalar, std::ptrdiff_t lMax,
+                         std::ptrdiff_t n, const char* label) {
+    using Scalar = decltype(scalar);
+    const auto fieldSize = grid.FieldSize();
+    const auto coefficientSize = static_cast<std::ptrdiff_t>(
+        std::same_as<Scalar, Complex> ? grid.CoefficientSize(lMax, n)
+                                      : grid.RealCoefficientSize(lMax));
+    auto fields = FFTWpp::vector<Scalar>(count * fieldSize);
+    for (auto i = std::ptrdiff_t{0}; i < count * fieldSize; i++) {
+      if constexpr (std::same_as<Scalar, Complex>) {
+        fields[i] = Complex{std::sin(0.37 * i + n), std::cos(0.11 * i - n)};
+      } else {
+        fields[i] = std::sin(0.37 * i) + 0.25 * std::cos(0.013 * i * i);
+      }
+    }
+    const auto Run = [&](Execution policy) {
+      auto out = FFTWpp::vector<Complex>(count * coefficientSize);
+      grid.ForwardTransformation(lMax, n, fields,
+                                 Batch::Contiguous(count, fieldSize), out,
+                                 Batch::Contiguous(count, coefficientSize),
+                                 policy);
+      return out;
+    };
+    const auto reference = Run(Execution::Sequential());
+    for (auto threads : {2, 3, 5, 8}) {
+      const auto threaded = Run(Execution::Parallel(threads));
+      for (auto j = std::ptrdiff_t{0}; j < count * coefficientSize; j++) {
+        ASSERT_EQ(threaded[j], reference[j])
+            << label << ", lMax " << lMax << ", n " << n << ", " << threads
+            << " threads, entry " << j;
+      }
+    }
+  };
+
+  for (auto flag : {FFTWpp::Estimate, FFTWpp::Measure}) {
+    using Full = GaussLegendreGrid<Real, All, All>;
+    using Half = GaussLegendreGrid<Real, NonNegative, All>;
+    const auto full = Full::ForBand(12, 2, 1.5, flag, Chunking::Fixed(3));
+    for (auto lMax : {std::ptrdiff_t{12}, full.MaxDegree()}) {
+      for (auto n = std::ptrdiff_t{-2}; n <= 2; n++) {
+        Check(full, Complex{}, lMax, n, "complex");
+      }
+      Check(full, Real{}, lMax, 0, "real on a full grid");
+    }
+    const auto half = Half::ForBand(12, 0, 1.5, flag, Chunking::Fixed(3));
+    Check(half, Real{}, 12, 0, "real on a half grid");
+
+    // More threads than colatitudes and than coefficients.
+    const auto tiny = Full(2, 2, flag, Chunking::Fixed(3));
+    for (auto n = std::ptrdiff_t{-2}; n <= 2; n++) {
+      Check(tiny, Complex{}, 2, n, "tiny");
     }
   }
 }
@@ -1476,11 +1544,6 @@ TEST(GeneratingGrid, BatchedAndParallelCallsAgreeExactly) {
     std::copy(one.begin(), one.end(), fields.begin() + k * fieldSize);
   }
 
-  // Like for like in both runs. The forward transform's parallel reduction
-  // sums each thread's partials at the end rather than accumulating the
-  // colatitudes in order, so a sequential run and a parallel one differ in
-  // the last bits by design; comparing across that would be testing the
-  // reduction, not the supplier.
   const auto Run = [&](auto& grid, Execution policy) {
     auto out = std::vector<GenComplex>(count * coefficientSize);
     grid.ForwardTransformation(
@@ -1489,13 +1552,21 @@ TEST(GeneratingGrid, BatchedAndParallelCallsAgreeExactly) {
     return out;
   };
 
-  for (auto policy : {Execution::Sequential(), Execution::Parallel(4)}) {
-    const auto a = Run(stored, policy);
-    const auto b = Run(generated, policy);
-    for (auto j = std::ptrdiff_t{0}; j < count * coefficientSize; j++) {
-      EXPECT_EQ(a[j], b[j])
-          << "entry " << j << (policy.IsParallel() ? ", parallel" : "");
-    }
+  // Sequentially the two suppliers go through the same loop, so they agree
+  // exactly. So does a threaded stored grid, whose degree-block kernel sums
+  // the colatitudes in the sequential order. A threaded generating grid
+  // keeps the accumulator kernel, which adds each thread's partials at the
+  // end, so it differs from the others in the last bits by design and is
+  // compared within round-off instead.
+  const auto reference = Run(stored, Execution::Sequential());
+  const auto sequential = Run(generated, Execution::Sequential());
+  const auto threadedStored = Run(stored, Execution::Parallel(4));
+  const auto threadedGenerated = Run(generated, Execution::Parallel(4));
+  for (auto j = std::ptrdiff_t{0}; j < count * coefficientSize; j++) {
+    EXPECT_EQ(sequential[j], reference[j]) << "entry " << j;
+    EXPECT_EQ(threadedStored[j], reference[j]) << "entry " << j << ", stored";
+    EXPECT_NEAR(std::abs(threadedGenerated[j] - reference[j]), 0.0, 1.0e-12)
+        << "entry " << j << ", generated";
   }
 }
 
