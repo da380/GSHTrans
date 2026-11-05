@@ -22,7 +22,7 @@ layout.
 
 | Layer | Headers | What it provides |
 | :--- | :--- | :--- |
-| Core | `SphericalGrid.hpp`, `GaussLegendreGrid.hpp`, `Wigner.hpp`, `WignerMatrices.hpp`, `Indexing.hpp`, `Views.hpp`, `Policies.hpp`, `Tuning.hpp`, `Blas.hpp`, `OpenMP.hpp`, `Utility.hpp`, `Concepts.hpp` | quadrature grid, Wigner tables, the batched transform and its two Legendre kernels, policies, threading, measurement-based tuning |
+| Core | `SphericalGrid.hpp`, `GaussLegendreGrid.hpp`, `Wigner.hpp`, `WignerMatrices.hpp`, `Indexing.hpp`, `Views.hpp`, `Policies.hpp`, `Tuning.hpp`, `Blas.hpp`, `OpenMP.hpp`, `Parallel.hpp`, `Utility.hpp`, `Concepts.hpp` | quadrature grid, Wigner tables, the batched transform and its two Legendre kernels, policies, threading and parallel loops, measurement-based tuning |
 | 3-j | `3j.hpp` | Wigner 3-j symbols and coupling matrices; independent of grids and fields |
 | Spin fields | `SpinField/` | the lazy, index-checked algebra of spin-weighted fields |
 | Tensors | `Tensor/` | tensor fields in the canonical basis, symmetry orbits, tensor algebra |
@@ -242,7 +242,36 @@ length when `_OPENMP` is undefined. The library asks the compiler through
 `_OPENMP` rather than defining a macro of its own that could disagree with it.
 `OpenMP::Available` reports which was built.
 
-### 3.2 The BLAS and the library's threads
+### 3.2 Parallel loops
+
+`Parallel.hpp` gives callers, and the library's own pointwise and per-line
+work, the loops these rules imply without an OpenMP region of their own:
+`ForEach(policy, n, body(i))` and `ForEachBlock(policy, n, body(begin, end))`
+over static contiguous blocks (one per team member, the same blocks for the
+same `n`, so a pass over memory stays on the thread that touched it; the block
+form leaves the body's inner loop free to vectorise); `ForEachTask` with a
+dynamic schedule for tasks of uneven cost; and `Reduce`/`Sum`. Each takes an
+`Execution` policy and its team is `TeamSize()`, so a loop inside a region, or
+a threaded transform inside a loop, runs sequentially.
+
+Two properties are part of the contract:
+
+- **The exception is the sequential one.** A body may throw; the exception
+  rethrown is the lowest failing index's. After a failure at index `j` only
+  indices above `j` may be skipped, so the lowest failure is always found,
+  under a static or a dynamic schedule.
+- **Reductions do not depend on the team.** `Reduce` divides `[0, n)` into
+  `min(n, ReduceBlocks)` blocks fixed by `n` alone, forms each block's partial
+  in index order and combines the partials in block order. The grouping is the
+  same however the blocks are shared out, so the result is bitwise identical
+  on any number of threads, sequential included (absent `-ffast-math`). Fixing
+  the blocks costs a few hundred extra combines per reduction.
+
+The loops take index ranges, not grids or fields, so they work on a caller's
+own storage and layout. Distribution over processes is the caller's: a
+cross-process combine is applied to what `Reduce` returns.
+
+### 3.3 The BLAS and the library's threads
 
 No BLAS call is ever made from inside a library-opened parallel region. The
 rule is not about speed: whether and how a BLAS threads is outside the
@@ -264,7 +293,7 @@ reintroduce.
 names, so linking one would not fail; it would pass the wrong arguments. There
 is no portable way to detect this from a header.
 
-### 3.3 Preconditions throw, in every build
+### 3.4 Preconditions throw, in every build
 
 Size, degree, upper-index, layout and range checks throw
 `std::invalid_argument` in Release as well as Debug.
@@ -274,17 +303,19 @@ can reach, and where an asserting member initialiser would run before a
 throwing check, the throwing check is placed first so that both builds throw
 the same thing.
 
-### 3.4 Exceptions and OpenMP regions
+### 3.5 Exceptions and OpenMP regions
 
-An exception that escapes an OpenMP region terminates the process. Every
-region that can throw — both Fourier stages, the loop kernel's colatitude
-loops, the degree-block forward kernel's set-up,
-the Wigner table constructions, the radial-line loops — runs its body
-through `Details::ExceptionCapture` (`Utility.hpp`), which keeps the first
-exception and rethrows it after the region closes. A thread whose set-up
-failed still passes through the worksharing loop and does nothing, as OpenMP
-requires. The result is that a call that throws sequentially throws the same
-exception threaded. Regions whose bodies only copy or allocate nothing are not
+An exception that escapes an OpenMP region terminates the process. The
+radial-line loops (`ApplyRadially`, `ApplyToLines`, `Resample`), the
+radial-major transpose and `Broadcast` run on the loops of §3.2, which catch
+inside the region and rethrow the lowest failing index's exception. The
+regions with a structure of their own — both Fourier stages, the transform
+kernels' set-up and barriers, the Wigner table constructions — run what can
+throw through `Details::ExceptionCapture` (`Utility.hpp`), which keeps the
+first exception in time and rethrows it after the region closes; a thread
+whose set-up failed still passes through the worksharing loop and does
+nothing, as OpenMP requires. Either way a call that throws sequentially
+throws threaded. Regions whose bodies only copy or allocate nothing are not
 wrapped.
 
 ---

@@ -10,19 +10,10 @@
 #include <vector>
 
 #include "../Concepts.hpp"
-#include "../OpenMP.hpp"
+#include "../Parallel.hpp"
 #include "../Policies.hpp"
 #include "../Utility.hpp"
 #include "RadialOperator.hpp"
-
-// The pragmas below are for a compiler that was asked for OpenMP. One that was
-// not ignores them, which is right, and warns that it has, which in a
-// header-only library is a warning in the caller's build. So the warning is
-// turned off for this file alone, and only where OpenMP is off: see OpenMP.hpp.
-#ifndef _OPENMP
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunknown-pragmas"
-#endif
 
 namespace GSHTrans {
 
@@ -202,7 +193,6 @@ class RadialMajor {
   static void Transpose(const T* in, T* out, Int rows, Int cols,
                         Execution policy) {
     const auto tile = TileSize();
-    const auto threads = policy.TeamSize();
 
     const auto block = [&](Int i0) {
       const auto iEnd = std::min(i0 + tile, rows);
@@ -216,12 +206,9 @@ class RadialMajor {
       }
     };
 
-    if (threads == 1) {
-      for (auto i0 = Int{0}; i0 < rows; i0 += tile) block(i0);
-    } else {
-#pragma omp parallel for schedule(static) num_threads(threads)
-      for (Int i0 = 0; i0 < rows; i0 += tile) block(i0);
-    }
+    // One task per band of `tile` rows, in static blocks of bands.
+    ForEach(policy, (rows + tile - 1) / tile,
+            [&](Int band) { block(band * tile); });
   }
 };
 
@@ -260,7 +247,6 @@ void ApplyToLines(const RadialMajor<Stack>& in, RadialMajor<Stack>& out,
 
   const auto lines = in.NumberOfLines();
   const auto nR = static_cast<std::size_t>(in.NumberOfRadii());
-  const auto threads = policy.TeamSize();
   const bool inPlace = static_cast<const void*>(&in) == &out;
 
   const auto run = [&](Int j) {
@@ -275,21 +261,9 @@ void ApplyToLines(const RadialMajor<Stack>& in, RadialMajor<Stack>& out,
     std::copy_n(scratch.data(), nR, out.Line(j).data());
   };
 
-  if (threads == 1) {
-    for (auto j = Int{0}; j < lines; j++) run(j);
-  } else {
-    // Nothing may leave the region, and what runs in it is the caller's: see
-    // ExceptionCapture. The first line to throw stops the rest being started,
-    // and its exception is the one the caller sees, as it would be
-    // sequentially.
-    auto capture = Details::ExceptionCapture{};
-#pragma omp parallel for schedule(static) num_threads(threads)
-    for (Int j = 0; j < lines; j++) {
-      if (capture.Failed()) continue;
-      capture.Run([&] { run(j); });
-    }
-    capture.Rethrow();
-  }
+  // What runs per line is the caller's and may throw: the exception the caller
+  // sees is the lowest failing line's, as it would be sequentially.
+  ForEach(policy, lines, run);
 }
 
 //--------------------------------------------------------------------------//
@@ -381,7 +355,3 @@ auto EvaluateLines(
 }
 
 }  // namespace GSHTrans
-
-#ifndef _OPENMP
-#pragma GCC diagnostic pop
-#endif

@@ -10,6 +10,7 @@
 
 #include "../Concepts.hpp"
 #include "../Indexing.hpp"
+#include "../Parallel.hpp"
 #include "../Policies.hpp"
 #include "../SpinField/SpinField.hpp"
 #include "../SpinField/SpinFieldOverloads.hpp"
@@ -318,17 +319,22 @@ auto Evaluate(const LayeredSpinExpansion<N, Grid, Value>& expansion,
 // The explicit way up. There is no implicit conversion in either direction: a
 // function that wants a stack must be given one, and a function that wants an
 // angular field cannot be handed a one-slice stack by accident.
+//
+// Under a parallel policy the slices are evaluated concurrently, which the
+// expression layer allows: evaluation is const and stateless, and each slice
+// is a disjoint target.
 template <typename Expr, typename RadialGridType>
 requires SpinFieldExpr<Expr>
-auto Broadcast(const RadialGridType& radialGrid, const Expr& expr) {
+auto Broadcast(const RadialGridType& radialGrid, const Expr& expr,
+               Execution policy = Execution::Sequential()) {
   using E = Node<Expr>;
   auto stack =
       LayeredSpinField<E::UpperIndex, typename E::GridType, typename E::Value>(
           radialGrid, expr.Grid());
-  for (auto i : stack.RadiusIndices()) {
+  ForEach(policy, stack.NumberOfRadii(), [&](std::ptrdiff_t i) {
     auto slice = stack.Slice(i);
     expr.EvaluateInto(slice.Data());
-  }
+  });
   return stack;
 }
 

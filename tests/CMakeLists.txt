@@ -94,6 +94,10 @@ add_executable(TestRealFieldSymmetry
                TestRealFieldSymmetry.cpp)
 target_link_libraries(TestRealFieldSymmetry PRIVATE GSHTrans gtest_main)
 
+add_executable(TestParallel
+               TestParallel.cpp)
+target_link_libraries(TestParallel PRIVATE GSHTrans gtest_main)
+
 # Every core header must compile on its own, and twice.
 # One translation unit per header, generated at configure time.
 #
@@ -128,6 +132,7 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/Layered/RadialResample.hpp
   GSHTrans/Layered/RadialSplineDerivative.hpp
   GSHTrans/OpenMP.hpp
+  GSHTrans/Parallel.hpp
   GSHTrans/Policies.hpp
   GSHTrans/SphericalGrid.hpp
   GSHTrans/SpinField/SpinField.hpp
@@ -219,3 +224,4 @@ gtest_discover_tests(TestLayered)
 gtest_discover_tests(TestWigner)
 gtest_discover_tests(TestGaussLegendreGrid)
 gtest_discover_tests(TestRealFieldSymmetry)
+gtest_discover_tests(TestParallel)
