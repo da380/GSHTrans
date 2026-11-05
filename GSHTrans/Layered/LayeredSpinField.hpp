@@ -410,6 +410,11 @@ class LayeredSpinFieldView {
   std::span<Element_> data_;
 };
 
+// A layered stack owns its storage: an expression holds one passed as an
+// lvalue by reference.
+template <std::ptrdiff_t N, AngularGrid G, RealOrComplexValued V>
+struct IsTerminalTrait<LayeredSpinField<N, G, V>> : std::true_type {};
+
 /// A layered field view nobody may write through.
 template <std::ptrdiff_t N, AngularGrid Grid,
           RealOrComplexValued Value = ComplexValued>

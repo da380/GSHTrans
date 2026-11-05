@@ -106,6 +106,10 @@ add_executable(TestLayeredExpressions
                TestLayeredExpressions.cpp)
 target_link_libraries(TestLayeredExpressions PRIVATE GSHTrans gtest_main)
 
+add_executable(TestLayeredTensorExpressions
+               TestLayeredTensorExpressions.cpp)
+target_link_libraries(TestLayeredTensorExpressions PRIVATE GSHTrans gtest_main)
+
 # Every core header must compile on its own, and twice.
 # One translation unit per header, generated at configure time.
 #
@@ -133,6 +137,7 @@ set(GSHTRANS_SELF_SUFFICIENT_HEADERS
   GSHTrans/Layered/LayeredExpressions.hpp
   GSHTrans/Layered/LayeredGradient.hpp
   GSHTrans/Layered/LayeredSpinField.hpp
+  GSHTrans/Layered/LayeredTensorExpressions.hpp
   GSHTrans/Layered/LayeredTensorField.hpp
   GSHTrans/Layered/RadialDerivatives.hpp
   GSHTrans/Layered/RadialGrid.hpp
@@ -236,3 +241,4 @@ gtest_discover_tests(TestRealFieldSymmetry)
 gtest_discover_tests(TestParallel)
 gtest_discover_tests(TestWritingForms)
 gtest_discover_tests(TestLayeredExpressions)
+gtest_discover_tests(TestLayeredTensorExpressions)

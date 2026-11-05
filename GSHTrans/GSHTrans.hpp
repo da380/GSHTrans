@@ -50,6 +50,7 @@
 #include "Layered/LayeredExpressions.hpp"
 #include "Layered/LayeredGradient.hpp"
 #include "Layered/LayeredSpinField.hpp"
+#include "Layered/LayeredTensorExpressions.hpp"
 #include "Layered/LayeredTensorField.hpp"
 #include "Layered/RadialDerivatives.hpp"
 #include "Layered/RadialGrid.hpp"

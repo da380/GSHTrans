@@ -15,6 +15,7 @@
 #include "../Tensor/Orbits.hpp"
 #include "../Tensor/TensorField.hpp"
 #include "../Utility.hpp"
+#include "LayeredExpressions.hpp"
 #include "LayeredSpinField.hpp"
 #include "RadialGrid.hpp"
 
@@ -71,6 +72,18 @@ using ExpansionStackAt =
     LayeredSpinExpansion<Flat::ComponentLayout.upperIndexOfSlot[Slot],
                          typename Flat::GridType, ValueAt<Flat, Slot>>;
 
+// The same, over a caller's storage: what the view forms of the two layered
+// tensor types hold.
+template <typename Flat, Int Slot>
+using FieldViewAt =
+    LayeredSpinFieldView<Flat::ComponentLayout.upperIndexOfSlot[Slot],
+                         typename Flat::GridType, ValueAt<Flat, Slot>>;
+
+template <typename Flat, Int Slot>
+using ExpansionViewAt =
+    LayeredSpinExpansionView<Flat::ComponentLayout.upperIndexOfSlot[Slot],
+                             typename Flat::GridType, ValueAt<Flat, Slot>>;
+
 template <template <typename, Int> typename At, typename Flat, typename Seq>
 struct StacksImpl;
 
@@ -108,7 +121,9 @@ using Stacks =
  */
 template <std::ptrdiff_t Rank_, TensorSymmetry<Rank_> Symmetry_,
           TensorReality Reality_, AngularGrid Grid_,
-          SlotAlphabet Slots_ = AllSlots>
+          SlotAlphabet Slots_ = AllSlots,
+          template <typename, LayeredDetails::Int> typename StackAt_ =
+              LayeredDetails::FieldStackAt>
 class LayeredTensorField {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
@@ -154,6 +169,11 @@ class LayeredTensorField {
   template <Int... Alphas>
   static constexpr bool Vanishes = Flat::template Vanishes<Alphas...>;
 
+  /** @brief Whether this owns its storage, or views a caller's. */
+  static constexpr bool Owning =
+      std::same_as<LayeredDetails::Stacks<StackAt_, Flat>,
+                   LayeredDetails::Stacks<LayeredDetails::FieldStackAt, Flat>>;
+
   LayeredTensorField() = delete;
 
   /**
@@ -163,9 +183,29 @@ class LayeredTensorField {
    * -Rank to Rank.
    */
   LayeredTensorField(RadialGridType radialGrid, GridType grid)
+  requires Owning
       : stacks_{Build(radialGrid, grid,
                       std::make_index_sequence<static_cast<std::size_t>(
                           StoredComponents)>{})},
+        radialGrid_{std::move(radialGrid)},
+        grid_{std::move(grid)} {}
+
+  /**
+   * @brief A view of a caller's storage as a layered tensor: one radius-major
+   * array per stored component, in slot order (`ComponentLayout`).
+   * @details The view form, LayeredTensorFieldView. Each span is viewed as a
+   * LayeredSpinFieldView, complex or real as the component is, and checked as
+   * one; the storage must outlive the view.
+   * @param radialGrid The radii.
+   * @param grid The angular grid.
+   * @param spans One span per stored component.
+   */
+  template <typename... Spans>
+  requires(!Owning && sizeof...(Spans) == StoredComponents)
+  LayeredTensorField(RadialGridType radialGrid, GridType grid, Spans... spans)
+      : stacks_{View(radialGrid, grid, std::tuple<Spans...>(spans...),
+                     std::make_index_sequence<static_cast<std::size_t>(
+                         StoredComponents)>{})},
         radialGrid_{std::move(radialGrid)},
         grid_{std::move(grid)} {}
 
@@ -215,8 +255,35 @@ class LayeredTensorField {
         SliceOfSlot<SlotOfFlat(Orbits.representative[flat])>(i));
   }
 
+  /// The whole radial stack of *any* representable component, as a layered
+  /// expression: the stored stack itself, or its representative's with the
+  /// sign and conjugation the orbit table records.
+  ///
+  /// This is what makes a layered tensor a tensor expression whose components
+  /// are layered, so that the tensor operations of TensorExpr.hpp -- Permute,
+  /// TensorProduct, Contract, Symmetrise -- apply to it unchanged and give
+  /// layered tensor expressions (LayeredTensorExpressions.hpp).
+  template <Int... Alphas>
+  requires Represents<Alphas...>
+  auto Component() const& {
+    constexpr auto flat = Flat::template FlatOf<Alphas...>;
+    constexpr auto slot = SlotOfFlat(Orbits.representative[flat]);
+    const auto& stack = std::get<static_cast<std::size_t>(slot)>(stacks_);
+    using Stack = std::remove_cvref_t<decltype(stack)>;
+    return DerivedComponent<Orbits.RelationOf(flat), Real>(
+        ConstLayeredSpinFieldView<Stack::UpperIndex, GridType,
+                                  typename Stack::Value>(radialGrid_, grid_,
+                                                         stack.Data()));
+  }
+
+  /// Not offered on a temporary owning tensor, whose storage the component
+  /// would view. (A view's storage is the caller's, and outlives it.)
+  template <Int... Alphas>
+  requires Owning
+  void Component() const&& = delete;
+
  private:
-  LayeredDetails::Stacks<LayeredDetails::FieldStackAt, Flat> stacks_;
+  LayeredDetails::Stacks<StackAt_, Flat> stacks_;
   RadialGridType radialGrid_;
   GridType grid_;
 
@@ -244,7 +311,22 @@ class LayeredTensorField {
         LayeredDetails::FieldStackAt<Flat, static_cast<Int>(Slots)>(radialGrid,
                                                                     grid)...};
   }
+
+  template <typename SpanTuple, std::size_t... Slots>
+  static auto View(const RadialGridType& radialGrid, const GridType& grid,
+                   const SpanTuple& spans, std::index_sequence<Slots...>) {
+    return LayeredDetails::Stacks<StackAt_, Flat>{
+        StackAt_<Flat, static_cast<Int>(Slots)>(radialGrid, grid,
+                                                std::get<Slots>(spans))...};
+  }
 };
+
+// A layered tensor owns its storage, so an expression holds one passed as an
+// lvalue by reference, as it holds a flat tensor field.
+template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
+          TensorReality Reality, AngularGrid Grid, SlotAlphabet Slots>
+struct IsTerminalTrait<LayeredTensorField<Rank, Symmetry, Reality, Grid, Slots>>
+    : std::true_type {};
 
 //--------------------------------------------------------------------------//
 //                        The layered tensor expansion                       //
@@ -258,7 +340,9 @@ class LayeredTensorField {
  */
 template <std::ptrdiff_t Rank_, TensorSymmetry<Rank_> Symmetry_,
           TensorReality Reality_, AngularGrid Grid_,
-          SlotAlphabet Slots_ = AllSlots>
+          SlotAlphabet Slots_ = AllSlots,
+          template <typename, LayeredDetails::Int> typename StackAt_ =
+              LayeredDetails::ExpansionStackAt>
 class LayeredTensorExpansion {
  public:
   using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
@@ -296,6 +380,11 @@ class LayeredTensorExpansion {
   template <Int... Alphas>
   static constexpr bool Writable = Flat::template Writable<Alphas...>;
 
+  /** @brief Whether this owns its storage, or views a caller's. */
+  static constexpr bool Owning = std::same_as<
+      LayeredDetails::Stacks<StackAt_, Flat>,
+      LayeredDetails::Stacks<LayeredDetails::ExpansionStackAt, Flat>>;
+
   LayeredTensorExpansion() = delete;
 
   /**
@@ -305,9 +394,27 @@ class LayeredTensorExpansion {
    * @param lMax The largest degree stored.
    */
   LayeredTensorExpansion(RadialGridType radialGrid, GridType grid, Int lMax)
+  requires Owning
       : stacks_{Build(radialGrid, grid, Checked(lMax),
                       std::make_index_sequence<static_cast<std::size_t>(
                           StoredComponents)>{})},
+        radialGrid_{std::move(radialGrid)},
+        grid_{std::move(grid)},
+        lMax_{lMax} {}
+
+  /**
+   * @brief A view of a caller's storage as a layered tensor expansion to
+   * degree @p lMax: one radius-major array per stored component, in slot
+   * order. The view form, LayeredTensorExpansionView.
+   */
+  template <typename... Spans>
+  requires(!Owning && sizeof...(Spans) == StoredComponents)
+  LayeredTensorExpansion(RadialGridType radialGrid, GridType grid, Int lMax,
+                         Spans... spans)
+      : stacks_{View(radialGrid, grid, Checked(lMax),
+                     std::tuple<Spans...>(spans...),
+                     std::make_index_sequence<static_cast<std::size_t>(
+                         StoredComponents)>{})},
         radialGrid_{std::move(radialGrid)},
         grid_{std::move(grid)},
         lMax_{lMax} {}
@@ -384,7 +491,7 @@ class LayeredTensorExpansion {
   }
 
  private:
-  LayeredDetails::Stacks<LayeredDetails::ExpansionStackAt, Flat> stacks_;
+  LayeredDetails::Stacks<StackAt_, Flat> stacks_;
   RadialGridType radialGrid_;
   GridType grid_;
   Int lMax_;
@@ -417,7 +524,32 @@ class LayeredTensorExpansion {
         LayeredDetails::ExpansionStackAt<Flat, static_cast<Int>(Slots)>(
             radialGrid, grid, lMax)...};
   }
+
+  template <typename SpanTuple, std::size_t... Slots>
+  static auto View(const RadialGridType& radialGrid, const GridType& grid,
+                   Int lMax, const SpanTuple& spans,
+                   std::index_sequence<Slots...>) {
+    return LayeredDetails::Stacks<StackAt_, Flat>{
+        StackAt_<Flat, static_cast<Int>(Slots)>(radialGrid, grid, lMax,
+                                                std::get<Slots>(spans))...};
+  }
 };
+
+/// A layered tensor over a caller's storage: one array per stored component.
+template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
+          TensorReality Reality, AngularGrid Grid,
+          SlotAlphabet Slots = AllSlots>
+using LayeredTensorFieldView =
+    LayeredTensorField<Rank, Symmetry, Reality, Grid, Slots,
+                       LayeredDetails::FieldViewAt>;
+
+/// A layered tensor expansion over a caller's storage.
+template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
+          TensorReality Reality, AngularGrid Grid,
+          SlotAlphabet Slots = AllSlots>
+using LayeredTensorExpansionView =
+    LayeredTensorExpansion<Rank, Symmetry, Reality, Grid, Slots,
+                           LayeredDetails::ExpansionViewAt>;
 
 //--------------------------------------------------------------------------//
 //                          Between the two domains                          //
@@ -467,12 +599,16 @@ void EvaluateOne(Result& result, const Expansion& expansion, Execution policy,
  * @throws std::invalid_argument if the two are not on the same grids.
  */
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
-          TensorReality Reality, AngularGrid Grid, SlotAlphabet SlotSet>
+          TensorReality Reality, AngularGrid Grid, SlotAlphabet SlotSet,
+          template <typename, LayeredDetails::Int> typename AtF,
+          template <typename, LayeredDetails::Int> typename AtE>
 void Expand(
-    const LayeredTensorField<Rank, Symmetry, Reality, Grid, SlotSet>& field,
-    LayeredTensorExpansion<Rank, Symmetry, Reality, Grid, SlotSet>& out,
+    const LayeredTensorField<Rank, Symmetry, Reality, Grid, SlotSet, AtF>&
+        field,
+    LayeredTensorExpansion<Rank, Symmetry, Reality, Grid, SlotSet, AtE>& out,
     Execution policy = Execution::Sequential()) {
-  using Result = LayeredTensorExpansion<Rank, Symmetry, Reality, Grid, SlotSet>;
+  using Result =
+      LayeredTensorExpansion<Rank, Symmetry, Reality, Grid, SlotSet, AtE>;
   using Flat = typename Result::Flat;
 
   LayeredDetails::CheckSameGrids(field, out);
@@ -494,10 +630,11 @@ void Expand(
 
 /** @brief Expands every stored component of @p field to degree @p lMax. */
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
-          TensorReality Reality, AngularGrid Grid, SlotAlphabet SlotSet>
-auto Expand(
-    const LayeredTensorField<Rank, Symmetry, Reality, Grid, SlotSet>& field,
-    std::ptrdiff_t lMax, Execution policy = Execution::Sequential()) {
+          TensorReality Reality, AngularGrid Grid, SlotAlphabet SlotSet,
+          template <typename, LayeredDetails::Int> typename AtF>
+auto Expand(const LayeredTensorField<Rank, Symmetry, Reality, Grid, SlotSet,
+                                     AtF>& field,
+            std::ptrdiff_t lMax, Execution policy = Execution::Sequential()) {
   auto result = LayeredTensorExpansion<Rank, Symmetry, Reality, Grid, SlotSet>(
       field.Radial(), field.Grid(), lMax);
   Expand(field, result, policy);
@@ -509,12 +646,16 @@ auto Expand(
  * @throws std::invalid_argument if the two are not on the same grids.
  */
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
-          TensorReality Reality, AngularGrid Grid, SlotAlphabet SlotSet>
-void Evaluate(const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid,
-                                           SlotSet>& expansion,
-              LayeredTensorField<Rank, Symmetry, Reality, Grid, SlotSet>& out,
-              Execution policy = Execution::Sequential()) {
-  using Result = LayeredTensorField<Rank, Symmetry, Reality, Grid, SlotSet>;
+          TensorReality Reality, AngularGrid Grid, SlotAlphabet SlotSet,
+          template <typename, LayeredDetails::Int> typename AtE,
+          template <typename, LayeredDetails::Int> typename AtF>
+void Evaluate(
+    const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid, SlotSet, AtE>&
+        expansion,
+    LayeredTensorField<Rank, Symmetry, Reality, Grid, SlotSet, AtF>& out,
+    Execution policy = Execution::Sequential()) {
+  using Result =
+      LayeredTensorField<Rank, Symmetry, Reality, Grid, SlotSet, AtF>;
   using Flat = typename Result::Flat;
 
   LayeredDetails::CheckSameGrids(out, expansion);
@@ -535,9 +676,10 @@ void Evaluate(const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid,
 
 /** @brief Evaluates every stored component of @p expansion. */
 template <std::ptrdiff_t Rank, TensorSymmetry<Rank> Symmetry,
-          TensorReality Reality, AngularGrid Grid, SlotAlphabet SlotSet>
+          TensorReality Reality, AngularGrid Grid, SlotAlphabet SlotSet,
+          template <typename, LayeredDetails::Int> typename AtE>
 auto Evaluate(const LayeredTensorExpansion<Rank, Symmetry, Reality, Grid,
-                                           SlotSet>& expansion,
+                                           SlotSet, AtE>& expansion,
               Execution policy = Execution::Sequential()) {
   auto result = LayeredTensorField<Rank, Symmetry, Reality, Grid, SlotSet>(
       expansion.Radial(), expansion.Grid());

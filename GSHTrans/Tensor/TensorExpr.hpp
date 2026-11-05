@@ -224,7 +224,46 @@ constexpr auto GroupElements() {
   return std::pair(elements, count);
 }
 
+// The flat index of the first component an expression represents, or -1.
+template <typename T>
+constexpr Int FirstRepresentedFlat() {
+  using Index = MultiIndex<T::Rank, typename T::SlotSet>;
+  auto result = Int{-1};
+  [&]<std::size_t... F>(std::index_sequence<F...>) {
+    ((result < 0 &&
+              Represents<Index::FromFlat(static_cast<Int>(F)).Slots(), T>()
+          ? (result = static_cast<Int>(F), 0)
+          : 0),
+     ...);
+  }(std::make_index_sequence<static_cast<std::size_t>(Index::Size)>{});
+  return result;
+}
+
+// The slot letters of that component.
+template <typename T>
+inline constexpr auto FirstRepresented =
+    MultiIndex<T::Rank, typename T::SlotSet>::FromFlat(
+        FirstRepresentedFlat<T>())
+        .Slots();
+
+// What a component of the expression is: a two-dimensional spin node for a
+// flat tensor expression, a layered one for a layered tensor expression.
+// Every component of one expression is the same kind, so the first says.
+template <typename T>
+using ComponentType =
+    std::remove_cvref_t<decltype(ComponentOf<FirstRepresented<T>>(
+        std::declval<const T&>()))>;
+
 }  // namespace TensorDetails
+
+/// A tensor expression whose components are two-dimensional spin nodes: a
+/// TensorField, or an operation on flat tensors. (Its layered counterpart,
+/// whose components are layered expressions, is LayeredTensorExpr.)
+template <typename T>
+concept FlatTensorExpr =
+    TensorExpr<std::remove_cvref_t<T>> &&
+    (TensorDetails::FirstRepresentedFlat<std::remove_cvref_t<T>>() >= 0) &&
+    SpinWeighted<TensorDetails::ComponentType<std::remove_cvref_t<T>>>;
 
 //--------------------------------------------------------------------------//
 //                            Permuting the slots                            //
@@ -775,6 +814,90 @@ auto Symmetrise(T&& tensor) {
 }
 
 //--------------------------------------------------------------------------//
+//                     Scaling by a scalar field, pointwise                  //
+//--------------------------------------------------------------------------//
+
+/// A tensor times a scalar field: (w T)^{alpha} = w T^{alpha}, at every point.
+///
+/// The weight has upper index zero, so the product keeps every component's
+/// upper index, and it keeps the operand's symmetry; it keeps reality only if
+/// the weight is real, which, as for any expression, is the caller's to assert
+/// when materialising. The same node serves a flat tensor with a
+/// two-dimensional weight and a layered tensor with a layered one: its
+/// component is the weight times the operand's, and the two kinds of
+/// component each have that product.
+template <typename Weight, typename Operand>
+class ScaleNode {
+ public:
+  using Int = std::ptrdiff_t;  ///< Signed index type used throughout.
+  /** @brief The operand, with references and cv-qualifiers stripped. */
+  using OperandType = std::remove_cvref_t<Operand>;
+
+  /** @brief The tensor rank. */
+  static constexpr Int Rank = OperandType::Rank;
+  using GridType = typename OperandType::GridType;
+  using SlotSet = typename OperandType::SlotSet;
+
+  /** @brief Whether this node keeps a field alive inside itself. */
+  static constexpr bool HoldsStorage =
+      TensorDetails::HoldsStorage<Operand> or
+      (IsTerminal<Weight> and not std::is_lvalue_reference_v<Weight>);
+
+  /**
+   * @brief Wraps a weight and the tensor it scales.
+   * @throws std::invalid_argument if they are not on the same grid.
+   */
+  ScaleNode(Weight&& weight, Operand&& operand)
+      : weight_{std::forward<Weight>(weight)},
+        operand_{std::forward<Operand>(operand)} {
+    if (weight_.Grid().Identity() != operand_.Grid().Identity()) {
+      throw std::invalid_argument(
+          "A tensor and the scalar field scaling it must be on the same grid");
+    }
+  }
+
+  /** @brief The angular grid this is defined on. */
+  const GridType& Grid() const { return operand_.Grid(); }
+
+  /** @brief Whether this holds a component at those slot letters. */
+  template <Int... Alphas>
+  static constexpr bool Represents =
+      OperandType::template Represents<Alphas...>;
+
+  /** @brief The component at those slot letters: the weight times the
+   * operand's. */
+  template <Int... Alphas>
+  requires Represents<Alphas...>
+  auto Component() const& {
+    return weight_ * operand_.template Component<Alphas...>();
+  }
+
+  template <Int... Alphas>
+  requires HoldsStorage
+  void Component() const&& = delete;
+
+ private:
+  OperandStorage<Weight> weight_;
+  OperandStorage<Operand> operand_;
+};
+
+/// A flat tensor times a two-dimensional scalar field (upper index zero).
+template <typename W, typename T>
+requires SpinWeighted<std::remove_cvref_t<W>> &&
+         (std::remove_cvref_t<W>::UpperIndex == 0) && FlatTensorExpr<T>
+auto operator*(W&& weight, T&& tensor) {
+  return ScaleNode<W, T>(std::forward<W>(weight), std::forward<T>(tensor));
+}
+
+/// The same, written the other way round.
+template <typename T, typename W>
+requires SpinWeighted<std::remove_cvref_t<W>> &&
+         (std::remove_cvref_t<W>::UpperIndex == 0) && FlatTensorExpr<T>
+auto operator*(T&& tensor, W&& weight) {
+  return ScaleNode<W, T>(std::forward<W>(weight), std::forward<T>(tensor));
+}
+
+//--------------------------------------------------------------------------//
 //                              Materialisation                              //
 //--------------------------------------------------------------------------//
 
@@ -848,7 +971,7 @@ void AssignSlot(Field& field, const Expr& expr) {
 // expression.
 template <typename Symmetry = void, TensorReality Reality = ComplexTensor,
           typename Expr>
-requires TensorExpr<std::remove_cvref_t<Expr>>
+requires FlatTensorExpr<Expr>
 auto Materialise(const Expr& expr) {
   using E = std::remove_cvref_t<Expr>;
   using Chosen = std::conditional_t<std::same_as<Symmetry, void>,

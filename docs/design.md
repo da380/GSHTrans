@@ -395,6 +395,10 @@ Consequences:
 - `Permute<Image>(T)^{a0 a1 …} = T^{a_Image[0] a_Image[1] …}`; an image that is
   not a permutation is not an overload. `TensorSymmetry` requires its
   generators to be signed permutations.
+- A trace-free condition is not one: it ties two orbits by a linear relation
+  (for a symmetric rank-2 tensor, the `(-, +)` and `(0, 0)` components), so a
+  deviatoric tensor is stored as a symmetric one and its trace removed by the
+  caller.
 - A letter outside a `MultiIndex` alphabet is a hard error (thrown in a
   constant expression), not a SFINAE-friendly failure, so every accessor that
   takes component letters as template arguments checks them first with
@@ -586,6 +590,30 @@ one batched call, so the product is never stored whole: the scratch is about
 64 slices. The block is a multiple of the transform's own chunk
 (`ForwardChunk`), so every chunk falls where one call over the stored value
 would put it and the result is that call's, bit for bit.
+
+**Layered tensors** (`LayeredTensorExpressions.hpp`). A layered tensor's
+`Component<α...>()` is the whole radial stack of that component as a layered
+expression — the stored stack, or its representative's with the orbit
+table's sign and conjugation, through the same `DerivedComponent` the flat
+type uses. So a layered tensor is a tensor expression whose components are
+layered, and the tensor operations of `TensorExpr.hpp` — `Permute`,
+`Transpose`, `TensorProduct`, `Contract`, `Symmetrise` — apply to it
+unchanged: their components are formed with operators layered expressions
+have. A tensor times a scalar field (`w * T`, upper index zero) is one node
+for both cases. `FlatTensorExpr` and `LayeredTensorExpr` tell the two kinds
+apart by what a component is. `Assign`, `Materialise<Symmetry, Reality>` and
+`Expand` for a layered tensor expression work one stored component at a time
+through the layered spin layer — threaded over radii, expanded in blocks,
+bitwise equal to expanding the stored value — and a component the target pins
+to one real number takes the part of the expression that survives, as flat
+`Materialise` does. `LayeredTensorFieldView` and `LayeredTensorExpansionView`
+are the layered tensor types over a caller's storage, one array per stored
+component in slot order.
+
+A trace-free tensor has no storage of its own: the trace ties two orbits by a
+linear relation, which is not a signed permutation or a conjugation, so the
+orbit derivation cannot express it (§4.3). A deviatoric tensor is stored as a
+symmetric one, or kept per component as layered spin expressions.
 
 ---
 
