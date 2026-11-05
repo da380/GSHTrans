@@ -23,6 +23,7 @@ set(GSHTRANS_EXAMPLES
   20-transform-kernels
   21-interpolation
   22-wigner-3j
+  23-layered-expressions
 )
 
 foreach(example IN LISTS GSHTRANS_EXAMPLES)

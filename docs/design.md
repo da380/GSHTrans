@@ -27,7 +27,7 @@ layout.
 | Spin fields | `SpinField/` | the lazy, index-checked algebra of spin-weighted fields |
 | Tensors | `Tensor/` | tensor fields in the canonical basis, symmetry orbits, tensor algebra |
 | Expansions | `Expansion/` | the spectral side: spin and tensor expansions, `ð`/`ð̄`, raising and lowering, surface gradient, intrinsic derivative, interpolation |
-| Layered | `Layered/` | fields on a stack of spheres; radial grids with interfaces; radial operators; `RadialMajor` |
+| Layered | `Layered/` | fields on a stack of spheres, owned or viewed; layered expressions; radial grids with interfaces; radial operators; `RadialMajor` |
 
 The 3-j header stands alone: it includes nothing from the rest of the library.
 
@@ -556,6 +556,36 @@ at lMax = 512 with a few hundred radii — but is not reliably faster: its
 scatter has stride `nR`, and at power-of-two `nR` under threads it loses to the
 tiled transpose. There is therefore no automatic choice; it is offered as the
 memory-saving route.
+
+**Views.** `LayeredSpinFieldView` and `LayeredSpinExpansionView` (and their
+`Const` forms) are the layered fields and expansions over a caller's storage:
+the same radius-major layout, a span instead of owned storage, and `Slice(i)`
+a two-dimensional view. Every layered transform accepts either on either side,
+so a code with its own arrays uses the layered layer in place. Contiguous
+radius-major only; a strided or point-major layered view would go through the
+batch descriptor but nothing needs one.
+
+**Expressions** (`LayeredExpressions.hpp`). A layered expression is a map from
+a radius to a two-dimensional expression: `Slice(i)` of `w * u` is
+`w.Slice(i) * u.Slice(i)`, formed with the two-dimensional operators. There is
+no second expression system, so the upper-index rules, reality, precision and
+the angular-grid check are the two-dimensional ones, and an operator is
+offered on layered operands exactly when the two-dimensional one is defined on
+their slices. What the layer adds is the radial axis (operands must share the
+radial grid too, checked when the node is made) and the loop over radii:
+`Assign(target, expr, policy)` evaluates slice by slice through `ForEach`, and
+`stack = expr` is its sequential form. The target may appear in the
+expression, for the two-dimensional reason. A two-dimensional field enters
+only explicitly: `AtEveryRadius(radial, f)` is a layered node equal to `f` at
+every radius that stores nothing, while `Broadcast` remains the way to make a
+stack of it.
+
+**Expanding an expression.** `Expand(expr, out)` evaluates the expression a
+block of radii at a time into per-thread scratch and transforms each block in
+one batched call, so the product is never stored whole: the scratch is about
+64 slices. The block is a multiple of the transform's own chunk
+(`ForwardChunk`), so every chunk falls where one call over the stored value
+would put it and the result is that call's, bit for bit.
 
 ---
 

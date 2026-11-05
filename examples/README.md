@@ -79,6 +79,7 @@ is not:
 | `17-tangential-tensors` | the bundle with no radial slot: what it saves, `Embed` and `Tangential`, and the intrinsic derivative, which is closed on it |
 | `18-radial-operators` | the ready-made radial derivatives, the rules for writing your own, and working on contiguous radial lines |
 | `19-layered-models` | elements and interfaces: a two-valued derivative at a discontinuity, and resampling that does not cross one |
+| `23-layered-expressions` | products over a stack on the caller's own arrays: layered views, layered expressions, and expanding a product without storing it |
 
 ### Numerical tools
 

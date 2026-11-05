@@ -176,6 +176,27 @@ class SphericalGrid {
   auto ValuesPolicy() const { return impl_->values; }
 
   /**
+   * @brief How many fields of a batch a forward transform takes at once.
+   * @details The chunk ForwardTransformation would use for fields of type
+   * @p Scalar at this degree and upper index under @p policy. A caller who
+   * feeds a long batch in pieces gets the bits of one whole call by making
+   * each piece but the last a multiple of this: the chunks then fall where
+   * the whole call's would.
+   * @tparam Scalar The field's scalar type, real or complex.
+   * @param lMax The degree of the transform.
+   * @param n The upper index.
+   * @param policy The policy the transform will be called with.
+   */
+  template <RealOrComplexFloatingPoint Scalar>
+  Int ForwardChunk(Int lMax, Int n,
+                   Execution policy = Execution::Sequential()) const {
+    const auto coefficientSize =
+        static_cast<Int>(CoefficientSizeFor<Scalar>(lMax, n));
+    return impl_->kernel.IsMatrix() ? InverseChunkSize(coefficientSize)
+                                    : ForwardChunkSize(coefficientSize, policy);
+  }
+
+  /**
    * @brief Frees what *this thread* keeps between transforms: its FFTW plans,
    * their aligned buffers, and its scratch.
    *
